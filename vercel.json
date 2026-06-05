@@ -9,5 +9,7 @@
             "src": "/(.*)",
             "dest": "/api/index.php"
         }
-    ]
+    ],
+    "outputDirectory": "public",
+    "buildCommand": "composer install --no-dev --optimize-autoloader && php artisan optimize"
 }
