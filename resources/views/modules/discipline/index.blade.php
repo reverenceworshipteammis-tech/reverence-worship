@@ -12,7 +12,6 @@
         $canViewPermissions = auth()->check() && auth()->user()->canAccess('discipline', 'view-permissions');
         $canViewDisciplineRecords = auth()->check() && auth()->user()->canAccess('discipline', 'view-records');
         $canViewActionPlans = auth()->check() && auth()->user()->canAccess('discipline', 'view-action-plans');
-        $canViewReports = auth()->check() && auth()->user()->canAccess('discipline', 'view-reports');
         $canManage = auth()->check() && (auth()->user()->canAccess('discipline', 'manage') || auth()->user()->isSuperAdmin());
     @endphp
 
@@ -21,7 +20,7 @@
    
     
     <!-- Tabs Navigation - Only show tabs user has permission for -->
-    @if($canViewOverview || $canViewAttendance || $canViewPermissions || $canViewDisciplineRecords || $canViewActionPlans || $canViewReports)
+    @if($canViewOverview || $canViewAttendance || $canViewPermissions || $canViewDisciplineRecords || $canViewActionPlans)
     <div class="bg-white rounded-xl shadow-md overflow-hidden">
         <div class="border-b border-gray-200">
             <nav class="flex flex-wrap -mb-px">
@@ -52,12 +51,6 @@
                 @if($canViewActionPlans)
                 <button class="tab-btn px-6 py-3 text-sm font-medium text-gray-500 border-b-2 border-transparent hover:text-gray-700 hover:border-gray-300" data-tab="action-plans">
                     <i class="fas fa-tasks mr-2"></i> Action Plans
-                </button>
-                @endif
-                
-                @if($canViewReports)
-                <button class="tab-btn px-6 py-3 text-sm font-medium text-gray-500 border-b-2 border-transparent hover:text-gray-700 hover:border-gray-300" data-tab="reports">
-                    <i class="fas fa-chart-bar mr-2"></i> Reports
                 </button>
                 @endif
             </nav>
@@ -95,17 +88,12 @@
             </div>
             @endif
             
-            @if($canViewReports)
-            <div id="reports-tab" class="tab-content" style="display: none;">
-                @include('modules.discipline.partials.reports-tab')
-            </div>
-            @endif
         </div>
     </div>
     @endif
 
     <!-- No Permission Message -->
-    @if(!$canViewOverview && !$canViewAttendance && !$canViewPermissions && !$canViewDisciplineRecords && !$canViewActionPlans && !$canViewReports)
+    @if(!$canViewOverview && !$canViewAttendance && !$canViewPermissions && !$canViewDisciplineRecords && !$canViewActionPlans)
     <div class="bg-white rounded-xl shadow-sm p-12 text-center border border-gray-100">
         <div class="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <i class="fas fa-lock text-gray-400 text-3xl"></i>
@@ -119,10 +107,10 @@
 
 <!-- Include all modals -->
 @include('modules.discipline.modals.discipline-modal')
-@include('modules.discipline.modals.attendance-modal')
 @include('modules.discipline.modals.permission-modal')
 @include('modules.discipline.modals.action-plan-modal')
 @include('modules.discipline.modals.session-details-modal')
+@include('modules.discipline.modals.discipline-dialog')
 
 <script>
 // Tab Management with localStorage persistence
@@ -140,7 +128,6 @@ document.addEventListener('DOMContentLoaded', function() {
     @if($canViewPermissions) validTabs.push('permission'); @endif
     @if($canViewDisciplineRecords) validTabs.push('discipline-records'); @endif
     @if($canViewActionPlans) validTabs.push('action-plans'); @endif
-    @if($canViewReports) validTabs.push('reports'); @endif
     
     const defaultTab = validTabs.length > 0 ? validTabs[0] : 'overview';
     const activeTab = savedTab && validTabs.includes(savedTab) ? savedTab : defaultTab;
@@ -153,7 +140,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function isValidTab(tabName) {
-    const validTabs = ['overview', 'attendance', 'permission', 'discipline-records', 'action-plans', 'reports'];
+    const validTabs = ['overview', 'attendance', 'permission', 'discipline-records', 'action-plans'];
     return validTabs.includes(tabName);
 }
 
@@ -236,20 +223,15 @@ function loadTabData(tabName) {
                 window.loadActionPlans();
             }
             break;
-        case 'reports':
-            if (typeof window.loadReports === 'function') {
-                window.loadReports();
-            }
-            break;
         default:
             console.log('Overview tab - no data to load');
             break;
     }
 }
 
-function openDisciplineModal() {
+function openDisciplineOverviewModal() {
     @if(!$canManage)
-        alert('You do not have permission to create discipline records.');
+        disciplineAlert('You do not have permission to create discipline records.', 'Permission required');
         return;
     @endif
     
@@ -257,7 +239,7 @@ function openDisciplineModal() {
     if (modal) {
         modal.classList.remove('hidden');
     } else {
-        alert('Discipline modal not available');
+        disciplineAlert('Discipline modal not available.', 'Unavailable');
     }
 }
 
@@ -371,14 +353,6 @@ window.loadActionPlans = function() {
         .catch(error => console.error('Error loading action plans:', error));
 };
 
-// Reports functions
-window.loadReports = function() {
-    console.log('Loading reports...');
-    if (typeof window.loadReportsData === 'function') {
-        window.loadReportsData();
-    }
-};
-
 function showSessionSummary(date, sessionType) {
     fetch(`/discipline/attendance/session-summary?date=${date}&type=${encodeURIComponent(sessionType)}`, {
         headers: { 'X-Requested-With': 'XMLHttpRequest' }
@@ -393,10 +367,11 @@ function showSessionSummary(date, sessionType) {
             message += `Excused: ${data.excused}\n`;
             message += `Total: ${data.total}\n`;
             message += `Attendance Rate: ${data.rate}%`;
-            alert(message);
+            disciplineAlert(message, 'Session summary');
         }
     })
     .catch(error => console.error('Error:', error));
 }
 </script>
 @endsection
+

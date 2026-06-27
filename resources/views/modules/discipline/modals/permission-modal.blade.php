@@ -1,4 +1,4 @@
-<div id="permissionModal" class="modal hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+﻿<div id="permissionModal" class="modal hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
     <div class="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-lg bg-white">
         <div class="flex justify-between items-center pb-3 border-b">
             <h3 id="permission_modal_title" class="text-lg font-bold text-gray-800">Permission Request</h3>
@@ -12,7 +12,8 @@
             <input type="hidden" id="permission_id" name="permission_id">
             <!-- Use hidden input instead of hidden select -->
             <input type="hidden" id="permission_user_id" name="user_id" value="">
-            
+            <input type="hidden" id="permission_type" name="type" value="General">
+                
             <div class="mt-4 space-y-4">
                 <!-- Searchable User Selection -->
                 <div>
@@ -34,19 +35,6 @@
                         </div>
                     </div>
                     <p class="text-xs text-gray-500 mt-1">Type at least 2 characters to search</p>
-                </div>
-                
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Request Type *</label>
-                    <select id="permission_type" name="type" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
-                        <option value="">Select Type</option>
-                        <option value="Leave">Leave</option>
-                        <option value="Time Off">Time Off</option>
-                        <option value="Emergency">Emergency</option>
-                        <option value="Sick Leave">Sick Leave</option>
-                        <option value="Personal">Personal</option>
-                        <option value="Other">Other</option>
-                    </select>
                 </div>
                 
                 <div>
@@ -204,7 +192,7 @@ function resetPermissionForm() {
     document.getElementById('user_search_input').dataset.selectedUserId = '';
     document.getElementById('user_search_input').setAttribute('required', 'required');
     document.getElementById('permission_user_id').value = '';
-    document.getElementById('permission_type').value = '';
+    document.getElementById('permission_type').value = 'General';
     document.getElementById('permission_start_date').value = new Date().toISOString().split('T')[0];
     document.getElementById('permission_end_date').value = new Date().toISOString().split('T')[0];
     document.getElementById('permission_reason').value = '';
@@ -252,7 +240,7 @@ document.getElementById('permission-form')?.addEventListener('submit', function(
     if (!userId) {
         searchInput.classList.add('border-red-500');
         searchInput.focus();
-        alert('Please select a valid user from the search results');
+        disciplineAlert('Please select a valid user from the search results');
         return;
     }
     
@@ -288,12 +276,12 @@ document.getElementById('permission-form')?.addEventListener('submit', function(
             }
             resetPermissionForm();
         } else {
-            alert('Error: ' + (data.message || 'Failed to submit request'));
+            disciplineAlert('Error: ' + (data.message || 'Failed to submit request'));
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error submitting request');
+        disciplineAlert('Error submitting request');
     })
     .finally(() => {
         submitBtn.innerHTML = originalText;
@@ -301,8 +289,6 @@ document.getElementById('permission-form')?.addEventListener('submit', function(
     });
 });
 
-// Override openPermissionModal
-const originalOpenPermissionModal = window.openPermissionModal;
 window.openPermissionModal = function(permissionId = null) {
     initPermissionModal();
     
@@ -321,7 +307,7 @@ window.openPermissionModal = function(permissionId = null) {
                 document.getElementById('user_search_input').removeAttribute('required');
                 document.getElementById('clear_user_search').classList.remove('hidden');
                 
-                document.getElementById('permission_type').value = data.permission.type;
+                document.getElementById('permission_type').value = data.permission.type || 'General';
                 document.getElementById('permission_start_date').value = data.permission.start_date;
                 document.getElementById('permission_end_date').value = data.permission.end_date;
                 document.getElementById('permission_reason').value = data.permission.reason;
@@ -342,3 +328,4 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 </script>
+

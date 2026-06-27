@@ -1,4 +1,4 @@
-<div>
+﻿<div>
     <div class="flex justify-between items-center mb-4">
         <h3 class="text-lg font-semibold text-gray-800">Action Plans</h3>
         <button onclick="openActionPlanModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2">
@@ -63,12 +63,12 @@ function openActionPlanModal(planId = null) {
                 document.getElementById('action_plan_due_date').value = data.plan.due_date || '';
                 document.getElementById('actionPlanModal').classList.remove('hidden');
             } else {
-                alert('Error loading action plan: ' + data.message);
+                disciplineAlert('Error loading action plan: ' + data.message);
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Error loading action plan');
+            disciplineAlert('Error loading action plan');
         });
     } else {
         document.getElementById('action_plan_modal_title').textContent = 'Create Action Plan';
@@ -204,8 +204,8 @@ function updateActionPlansList(plans) {
     }).join('');
 }
 
-function deleteActionPlan(id) {
-    if (confirm('Are you sure you want to delete this action plan? All associated tasks will also be deleted.')) {
+async function deleteActionPlan(id) {
+    if (await disciplineConfirm('Are you sure you want to delete this action plan? All associated tasks will also be deleted.', 'Delete action plan', 'Delete', 'Cancel', 'danger')) {
         fetch(`/discipline/action-plans/${id}`, {
             method: 'DELETE',
             headers: {
@@ -218,12 +218,12 @@ function deleteActionPlan(id) {
             if (data.success) {
                 filterActionPlans();
             } else {
-                alert('Error: ' + data.message);
+                disciplineAlert('Error: ' + data.message);
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Error deleting action plan');
+            disciplineAlert('Error deleting action plan');
         });
     }
 }

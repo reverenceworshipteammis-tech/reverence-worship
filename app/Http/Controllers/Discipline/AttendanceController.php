@@ -86,6 +86,14 @@ public function getSessionDetails($date, $sessionType)
 {
     try {
         $sessionType = urldecode($sessionType);
+        $this->ensureAttendanceSessionsTable();
+        $this->ensureAttendanceOnTimeColumn();
+        $session = DB::selectOne("
+            SELECT is_completed
+            FROM attendance_sessions
+            WHERE session_date = ? AND session_type = ?
+        ", [$date, $sessionType]);
+        $isCompleted = $this->truthy($session->is_completed ?? false);
         
         // Get all active users
         $allUsers = DB::select("SELECT id, name, email FROM users WHERE is_active = true ORDER BY name");
@@ -130,7 +138,7 @@ public function getSessionDetails($date, $sessionType)
             $permissionMap[$perm->user_id] = [
                 'id' => $perm->id,
                 'status' => $perm->status,
-                'type' => $perm->type ?? 'General',
+                'type' => $perm->type ?? null,
                 'reason' => $perm->reason ?? 'No reason provided',
                 'rejection_reason' => $perm->rejection_reason ?? null,
                 'start_date' => $perm->start_date_formatted,
@@ -156,9 +164,10 @@ public function getSessionDetails($date, $sessionType)
             $attendance = $attendanceMap[$user->id] ?? null;
             $permissionInfo = $permissionMap[$user->id] ?? null;
             $permissionStatus = $permissionInfo['status'] ?? null;
+            $hasAttendance = $attendance !== null;
             
             $present = $attendance ? ($attendance->status == 'present' || $attendance->status == 'late') : false;
-            $onTime = $attendance ? ($attendance->status == 'present') : false;
+            $onTime = $attendance ? $this->truthy($attendance->on_time ?? false) : false;
             $communicated = $attendance ? ($attendance->communicated ?? false) : false;
             $discipline = $attendance ? (($attendance->discipline_points ?? 0) > 0) : false;
             
@@ -177,23 +186,30 @@ public function getSessionDetails($date, $sessionType)
             $points = 0;
             if ($permissionStatus === 'approved') {
                 $points = 3;
+            } elseif (!$hasAttendance) {
+                $points = 4;
             } else {
                 if ($present) $points++;
-                if ($present && $onTime) $points++;
+                if ($onTime) $points++;
                 if ($communicated) $points++;
                 if ($discipline) $points++;
             }
             
             $members[] = [
                 'id' => $user->id,
+                'user_id' => $user->id,
                 'name' => $user->name,
+                'user_name' => $user->name,
                 'email' => $user->email,
+                'user_email' => $user->email,
                 'present' => $present,
                 'on_time' => $onTime,
                 'communicated' => $communicated,
                 'discipline' => $discipline,
                 'total_points' => $points,
                 'has_permission' => $permissionInfo !== null,
+                'has_attendance' => $hasAttendance,
+                'permission_reason' => $permissionInfo['reason'] ?? null,
                 'present_disabled' => $presentDisabled,
                 'on_time_disabled' => $onTimeDisabled,
                 'permission' => $permissionInfo
@@ -208,6 +224,7 @@ public function getSessionDetails($date, $sessionType)
             'approved_permissions' => $approvedCount,
             'pending_permissions' => $pendingCount,
             'rejected_permissions' => $rejectedCount,
+            'is_completed' => $isCompleted,
             'pending_permissions_list' => $pendingList,
             'rejected_permissions_list' => $rejectedList,
             'members' => $members
@@ -298,6 +315,7 @@ public function getSessionDetails($date, $sessionType)
             'records.*.user_id' => 'required|exists:users,id',
             'records.*.status' => 'required|in:present,absent,late,excused',
             'records.*.late_minutes' => 'nullable|integer',
+            'records.*.on_time' => 'boolean',
             'records.*.communicated' => 'boolean',
             'records.*.discipline_points' => 'nullable|integer',
             'records.*.has_official_permission' => 'boolean'
@@ -305,6 +323,22 @@ public function getSessionDetails($date, $sessionType)
         
         DB::beginTransaction();
         try {
+            $this->ensureAttendanceSessionsTable();
+            $this->ensureAttendanceOnTimeColumn();
+            $session = DB::selectOne("
+                SELECT is_completed
+                FROM attendance_sessions
+                WHERE session_date = ? AND session_type = ?
+            ", [$validated['session_date'], $validated['session_type']]);
+
+            if ($this->truthy($session->is_completed ?? false)) {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This session is completed and cannot be edited.'
+                ], 423);
+            }
+
             foreach ($validated['records'] as $record) {
                 $existing = DB::selectOne("
                     SELECT id FROM attendance_records 
@@ -314,12 +348,12 @@ public function getSessionDetails($date, $sessionType)
                 // If user has official permission, force specific values
                 $isOfficialPermission = $record['has_official_permission'] ?? false;
                 $status = $record['status'];
+                $onTime = $record['on_time'] ?? false;
                 $communicated = $record['communicated'] ?? false;
                 $disciplinePoints = $record['discipline_points'] ?? 0;
                 
                 if ($isOfficialPermission) {
-                    // For official permission: Present = false, On Time = true (status = 'present')
-                    $status = 'present';  // This represents "on time" for official permission
+                    $onTime = true;
                     $communicated = true;
                     $disciplinePoints = 1;
                 }
@@ -327,12 +361,13 @@ public function getSessionDetails($date, $sessionType)
                 if ($existing) {
                     DB::update("
                         UPDATE attendance_records 
-                        SET status = ?, late_minutes = ?, communicated = ?, 
+                        SET status = ?, late_minutes = ?, on_time = ?, communicated = ?, 
                             discipline_points = ?, updated_at = NOW()
                         WHERE user_id = ? AND session_date = ? AND session_type = ?
                     ", [
                         $status,
                         $record['late_minutes'] ?? 0,
+                        $onTime,
                         $communicated,
                         $disciplinePoints,
                         $record['user_id'],
@@ -343,15 +378,16 @@ public function getSessionDetails($date, $sessionType)
                     DB::insert("
                         INSERT INTO attendance_records (
                             user_id, session_date, session_type, status, 
-                            late_minutes, communicated, discipline_points,
+                            late_minutes, on_time, communicated, discipline_points,
                             marked_by, created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
                     ", [
                         $record['user_id'],
                         $validated['session_date'],
                         $validated['session_type'],
                         $status,
                         $record['late_minutes'] ?? 0,
+                        $onTime,
                         $communicated,
                         $disciplinePoints,
                         auth()->id()
@@ -383,6 +419,8 @@ public function getSessionDetails($date, $sessionType)
         
         DB::beginTransaction();
         try {
+            $this->ensureAttendanceSessionsTable();
+
             // Mark all records as completed
             DB::update("
                 UPDATE attendance_records 
@@ -393,6 +431,18 @@ public function getSessionDetails($date, $sessionType)
                 updated_at = NOW()
                 WHERE session_date = ? AND session_type = ?
             ", [$validated['session_date'], $validated['session_type']]);
+
+            DB::statement("
+                INSERT INTO attendance_sessions (
+                    session_date, session_type, is_completed, completed_at, completed_by, created_at, updated_at
+                ) VALUES (?, ?, TRUE, NOW(), ?, NOW(), NOW())
+                ON CONFLICT (session_date, session_type)
+                DO UPDATE SET
+                    is_completed = TRUE,
+                    completed_at = NOW(),
+                    completed_by = EXCLUDED.completed_by,
+                    updated_at = NOW()
+            ", [$validated['session_date'], $validated['session_type'], auth()->id()]);
             
             DB::commit();
             
@@ -407,6 +457,41 @@ public function getSessionDetails($date, $sessionType)
                 'message' => 'Failed to complete session: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    private function ensureAttendanceSessionsTable()
+    {
+        DB::statement("
+            CREATE TABLE IF NOT EXISTS attendance_sessions (
+                session_date DATE NOT NULL,
+                session_type VARCHAR(100) NOT NULL,
+                is_completed BOOLEAN DEFAULT FALSE,
+                completed_at TIMESTAMP,
+                completed_by INTEGER REFERENCES users(id),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (session_date, session_type)
+            )
+        ");
+    }
+
+    private function ensureAttendanceOnTimeColumn()
+    {
+        DB::statement("
+            ALTER TABLE attendance_records
+            ADD COLUMN IF NOT EXISTS on_time BOOLEAN DEFAULT FALSE
+        ");
+
+        DB::statement("
+            UPDATE attendance_records
+            SET on_time = TRUE
+            WHERE status = 'present' AND on_time = FALSE
+        ");
+    }
+
+    private function truthy($value)
+    {
+        return in_array($value, [true, 1, '1', 't', 'true'], true);
     }
     
     public function edit($id)
@@ -522,8 +607,15 @@ public function getSessionDetails($date, $sessionType)
         
         DB::beginTransaction();
         try {
+            $this->ensureAttendanceSessionsTable();
+
             DB::delete("
                 DELETE FROM attendance_records 
+                WHERE session_date = ? AND session_type = ?
+            ", [$date, $sessionType]);
+
+            DB::delete("
+                DELETE FROM attendance_sessions 
                 WHERE session_date = ? AND session_type = ?
             ", [$date, $sessionType]);
             

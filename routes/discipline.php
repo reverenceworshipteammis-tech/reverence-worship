@@ -46,7 +46,10 @@ Route::prefix('permission')->name('permission.')->group(function () {
     // Records
     Route::prefix('records')->name('records.')->group(function () {
         Route::get('/', [DisciplineRecordController::class, 'index'])->name('index');
+        Route::get('/session', [DisciplineRecordController::class, 'viewSession'])->name('session-view');
+        Route::delete('/session', [DisciplineRecordController::class, 'deleteSession'])->name('session-delete');
         Route::post('/store', [DisciplineRecordController::class, 'store'])->name('store');
+        Route::post('/bulk', [DisciplineRecordController::class, 'bulkStore'])->name('bulk');
         Route::get('/{id}/edit', [DisciplineRecordController::class, 'edit'])->name('edit');
         Route::put('/{id}', [DisciplineRecordController::class, 'update'])->name('update');
         Route::delete('/{id}', [DisciplineRecordController::class, 'destroy'])->name('destroy');
@@ -69,13 +72,7 @@ Route::prefix('permission')->name('permission.')->group(function () {
     // Reports
 Route::prefix('reports')->name('reports.')->group(function () {
     Route::get('/', [ReportController::class, 'index'])->name('index');
-    Route::get('/generate', function() {
-        return response()->json([
-            'success' => true,
-            'html' => '<div class="p-4 text-center">Reports module is being configured. Please check back soon.</div>',
-            'csv' => ''
-        ]);
-    })->name('generate');
+    Route::get('/generate', [ReportController::class, 'generate'])->name('generate');
     Route::get('/export', [ReportController::class, 'export'])->name('export');
 });
 });

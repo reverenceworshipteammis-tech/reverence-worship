@@ -1,10 +1,9 @@
-{{-- resources/views/admin/attendance-modal.blade.php --}}
+﻿{{-- resources/views/admin/attendance-modal.blade.php --}}
 <div class="space-y-6" x-data="attendanceManager()" x-init="init()">
     <!-- Header -->
     <div class="flex justify-between items-center">
         <div>
             <h3 class="text-2xl font-bold text-gray-800">Attendance Management</h3>
-            <p class="text-sm text-gray-500 mt-1">Track and manage member attendance</p>
         </div>
         <button @click="openCreateSessionModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition shadow-sm flex items-center gap-2">
             <i class="fas fa-plus-circle"></i> New Session
@@ -323,7 +322,9 @@
                                 </span>
                             </div>
                             <div class="mt-3 grid grid-cols-2 gap-2 text-sm">
-                                <div><span class="text-gray-500">Type:</span> <span class="font-medium" x-text="perm.type || 'General'"></span></div>
+                                <template x-if="perm.type && perm.type.trim() && perm.type.trim().toLowerCase() !== 'general'">
+                                <div><span class="text-gray-500">Type:</span> <span class="font-medium" x-text="perm.type"></span></div>
+                            </template>
                                 <div><span class="text-gray-500">Dates:</span> <span class="font-medium" x-text="formatDateRange(perm.start_date, perm.end_date)"></span></div>
                                 <div class="col-span-2"><span class="text-gray-500">Reason:</span> <span x-text="perm.reason"></span></div>
                             </div>
@@ -377,7 +378,9 @@
                                 </span>
                             </div>
                             <div class="mt-3 grid grid-cols-2 gap-2 text-sm">
-                                <div><span class="text-gray-500">Type:</span> <span class="font-medium" x-text="perm.type || 'General'"></span></div>
+                                <template x-if="perm.type && perm.type.trim() && perm.type.trim().toLowerCase() !== 'general'">
+                                <div><span class="text-gray-500">Type:</span> <span class="font-medium" x-text="perm.type"></span></div>
+                            </template>
                                 <div><span class="text-gray-500">Dates:</span> <span class="font-medium" x-text="formatDateRange(perm.start_date, perm.end_date)"></span></div>
                                 <div class="col-span-2"><span class="text-gray-500">Reason:</span> <span x-text="perm.reason"></span></div>
                             </div>
@@ -721,7 +724,7 @@
 
             // Quick approve permission
             async quickApprovePermission(permissionId) {
-                if (!confirm('Approve this permission request?')) return;
+                if (!(await disciplineConfirm('Approve this permission request?', 'Approve request', 'Approve', 'Cancel', 'confirm'))) return;
                 
                 try {
                     const response = await fetch(`/discipline/permission/${permissionId}`, {
@@ -751,7 +754,7 @@
 
             // Quick reject permission with reason
             async quickRejectPermission(permissionId) {
-                const reason = prompt('Enter rejection reason:');
+                const reason = await disciplinePrompt('Enter rejection reason:', 'Reject request', 'Rejection reason');
                 if (reason === null) return;
                 if (reason.trim() === '') {
                     this.showToast('Please provide a rejection reason', 'error');

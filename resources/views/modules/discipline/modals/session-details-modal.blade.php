@@ -27,6 +27,22 @@
             </div>
         </div>
         
+        <!-- User Search + Export -->
+        <div class="mb-3 flex flex-col sm:flex-row sm:items-end gap-3">
+            <div class="relative w-full sm:max-w-sm">
+                <label for="session_user_search" class="sr-only">Search users</label>
+                <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                <input id="session_user_search" type="search" placeholder="Search user..."
+                       oninput="window.filterSessionUsers && window.filterSessionUsers()"
+                       class="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500">
+            </div>
+            <button type="button" onclick="exportSessionAttendance()"
+                    class="inline-flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-800 text-white px-4 py-2 rounded-lg text-sm transition shadow-sm">
+                <i class="fas fa-file-export"></i>
+                Export
+            </button>
+        </div>
+
         <!-- Members Table -->
         <div class="overflow-x-auto">
             <table class="w-full border">
@@ -86,7 +102,7 @@
     const modal = document.getElementById('sessionDetailsModal');
     if (!modal) {
         console.error('Session details modal not found');
-        alert('Modal not found. Please refresh the page.');
+        disciplineAlert('Modal not found. Please refresh the page.');
         return;
     }
     
@@ -96,6 +112,10 @@
     modal.classList.remove('hidden');
     document.getElementById('session_modal_title').textContent = 'Mark Attendance';
     document.getElementById('session_info').innerHTML = `<strong>Session for:</strong> ${date} - ${escapeHtml(decodedSessionType)}`;
+    const searchInput = document.getElementById('session_user_search');
+    if (searchInput) {
+        searchInput.value = '';
+    }
     
     document.getElementById('session_members_body').innerHTML = `
         <tr>
@@ -121,10 +141,11 @@
             if (data.is_completed) {
                 document.getElementById('session_completed_warning').classList.remove('hidden');
                 document.getElementById('complete_session_btn').classList.add('hidden');
-                document.getElementById('save_session_btn').disabled = true;
+                document.getElementById('save_session_btn').classList.add('hidden');
             } else {
                 document.getElementById('session_completed_warning').classList.add('hidden');
                 document.getElementById('complete_session_btn').classList.remove('hidden');
+                document.getElementById('save_session_btn').classList.remove('hidden');
                 document.getElementById('save_session_btn').disabled = false;
             }
             
@@ -163,57 +184,106 @@
         tbody.innerHTML = members.map(member => {
             const permissionText = member.has_permission ? (member.permission_reason || 'Approved') : 'No approved permission';
             const permissionClass = member.has_permission ? 'text-yellow-600' : 'text-gray-400';
+            const searchableName = String(member.user_name || '').toLowerCase();
             
             if (isCompleted) {
                 return `
-                    <tr class="border-b hover:bg-gray-50">
+                    <tr class="border-b hover:bg-gray-50" data-user-id="${member.user_id}" data-user-name="${escapeHtml(searchableName)}">
                         <td class="px-4 py-3 text-sm text-gray-800">${escapeHtml(member.user_name)}</td>
                         <td class="px-4 py-3 text-sm ${permissionClass}">${escapeHtml(permissionText)}</td>
-                        <td class="px-4 py-3 text-center">${member.present ? '✓' : '✗'}</td>
-                        <td class="px-4 py-3 text-center">${member.on_time ? '✓' : '✗'}</td>
-                        <td class="px-4 py-3 text-center">${member.communicated ? '✓' : '✗'}</td>
-                        <td class="px-4 py-3 text-center">${member.discipline ? '✓' : '✗'}</td>
+                        <td class="px-4 py-3 text-center">${member.present ? 'Yes' : 'No'}</td>
+                        <td class="px-4 py-3 text-center">${member.on_time ? 'Yes' : 'No'}</td>
+                        <td class="px-4 py-3 text-center">${member.communicated ? 'Yes' : 'No'}</td>
+                        <td class="px-4 py-3 text-center">${member.discipline ? 'Yes' : 'No'}</td>
                         <td class="px-4 py-3 text-center font-bold">${member.total_points}</td>
                     </tr>
                 `;
             } else {
                 return `
-                    <tr class="border-b hover:bg-gray-50" data-user-id="${member.user_id}">
+                    <tr class="border-b hover:bg-gray-50" data-user-id="${member.user_id}" data-user-name="${escapeHtml(searchableName)}">
                         <td class="px-4 py-3 text-sm text-gray-800">${escapeHtml(member.user_name)}</td>
                         <td class="px-4 py-3 text-sm ${permissionClass}">${escapeHtml(permissionText)}</td>
                         <td class="px-4 py-3 text-center">
-                            <input type="checkbox" class="present-checkbox" data-user-id="${member.user_id}" ${member.present ? 'checked' : ''} onchange="window.updateMemberPoints('${member.user_id}')">
+                            ${renderYesNoToggle('present', member.user_id, member.permission?.status === 'approved' ? false : (member.has_attendance ? member.present : true))}
                         </td>
                         <td class="px-4 py-3 text-center">
-                            <input type="checkbox" class="ontime-checkbox" data-user-id="${member.user_id}" ${member.on_time ? 'checked' : ''} ${!member.present ? 'disabled' : ''} onchange="window.updateMemberPoints('${member.user_id}')">
+                            ${renderYesNoToggle('ontime', member.user_id, member.has_attendance ? member.on_time : true)}
                         </td>
                         <td class="px-4 py-3 text-center">
-                            <input type="checkbox" class="communicated-checkbox" data-user-id="${member.user_id}" ${member.communicated ? 'checked' : ''} onchange="window.updateMemberPoints('${member.user_id}')">
+                            ${renderYesNoToggle('communicated', member.user_id, member.has_attendance ? member.communicated : true)}
                         </td>
                         <td class="px-4 py-3 text-center">
-                            <input type="checkbox" class="discipline-checkbox" data-user-id="${member.user_id}" ${member.discipline ? 'checked' : ''} onchange="window.updateMemberPoints('${member.user_id}')">
+                            ${renderYesNoToggle('discipline', member.user_id, member.has_attendance ? member.discipline : true)}
                         </td>
                         <td class="px-4 py-3 text-center font-bold points-display-${member.user_id}">${member.total_points}</td>
                     </tr>
                 `;
             }
-        }).join('');
+        }).join('') + `
+            <tr id="session_user_search_empty" class="hidden">
+                <td colspan="7" class="text-center py-8 text-sm text-gray-500">No users match your search.</td>
+            </tr>
+        `;
         
         if (!isCompleted) {
-            document.querySelectorAll('#session_members_body .present-checkbox').forEach(checkbox => {
-                checkbox.addEventListener('change', function(e) {
-                    const userId = this.dataset.userId;
-                    const row = this.closest('tr');
-                    const ontimeCheckbox = row.querySelector('.ontime-checkbox');
-                    if (!this.checked) {
-                        ontimeCheckbox.checked = false;
-                        ontimeCheckbox.disabled = true;
-                    } else {
-                        ontimeCheckbox.disabled = false;
-                    }
-                    window.updateMemberPoints(userId);
+            document.querySelectorAll('#session_members_body .attendance-toggle').forEach(button => {
+                button.addEventListener('click', function() {
+                    if (this.disabled) return;
+                    const currentValue = this.dataset.value === 'true';
+                    setToggleValue(this.closest('tr'), this.dataset.field, !currentValue);
+                    window.updateMemberPoints(this.dataset.userId);
                 });
             });
+        }
+
+        applyUserSearch();
+    }
+
+    function renderYesNoToggle(field, userId, value, disabled = false) {
+        const activeClass = value ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-700 text-white border-gray-700';
+        const disabledAttrs = disabled ? 'disabled aria-disabled="true"' : '';
+        const disabledClass = disabled ? ' opacity-50 cursor-not-allowed' : '';
+        const label = value ? 'Yes' : 'No';
+
+        return `
+            <button type="button" class="attendance-toggle ${field}-toggle inline-flex items-center justify-center px-3 py-1 text-xs font-semibold border rounded-md ${activeClass}${disabledClass}" data-field="${field}" data-user-id="${userId}" data-value="${value ? 'true' : 'false'}" ${disabledAttrs}>${label}</button>
+        `;
+    }
+
+    function setToggleValue(row, field, value) {
+        const toggle = row.querySelector(`[data-field="${field}"][data-value]`);
+        if (!toggle) return;
+
+        toggle.dataset.value = value ? 'true' : 'false';
+        toggle.textContent = value ? 'Yes' : 'No';
+        toggle.className = [
+            'attendance-toggle',
+            `${field}-toggle`,
+            'inline-flex items-center justify-center px-3 py-1 text-xs font-semibold border rounded-md',
+            value ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-700 text-white border-gray-700',
+            toggle.disabled ? 'opacity-50 cursor-not-allowed' : ''
+        ].join(' ');
+    }
+
+    function getToggleValue(row, field) {
+        return row.querySelector(`[data-field="${field}"][data-value]`)?.dataset.value === 'true';
+    }
+
+    function applyUserSearch() {
+        const searchInput = document.getElementById('session_user_search');
+        const query = (searchInput?.value || '').trim().toLowerCase();
+        const rows = document.querySelectorAll('#session_members_body tr[data-user-name]');
+        let visibleCount = 0;
+
+        rows.forEach(row => {
+            const matches = !query || row.dataset.userName.includes(query);
+            row.classList.toggle('hidden', !matches);
+            if (matches) visibleCount++;
+        });
+
+        const noResultsRow = document.getElementById('session_user_search_empty');
+        if (noResultsRow) {
+            noResultsRow.classList.toggle('hidden', visibleCount > 0 || rows.length === 0);
         }
     }
     
@@ -221,10 +291,10 @@
         const row = document.querySelector(`#session_members_body tr[data-user-id="${userId}"]`);
         if (!row) return;
         
-        const present = row.querySelector('.present-checkbox')?.checked || false;
-        const onTime = row.querySelector('.ontime-checkbox')?.checked || false;
-        const communicated = row.querySelector('.communicated-checkbox')?.checked || false;
-        const discipline = row.querySelector('.discipline-checkbox')?.checked || false;
+        const present = getToggleValue(row, 'present');
+        const onTime = getToggleValue(row, 'ontime');
+        const communicated = getToggleValue(row, 'communicated');
+        const discipline = getToggleValue(row, 'discipline');
         
         let points = 0;
         if (present) points++;
@@ -235,10 +305,69 @@
         const pointsDisplay = document.querySelector(`.points-display-${userId}`);
         if (pointsDisplay) pointsDisplay.textContent = points;
     }
+
+    function exportSessionAttendance() {
+        const tableRows = document.querySelectorAll('#session_members_body tr[data-user-id]');
+        if (!tableRows.length) {
+            disciplineAlert('No session data to export');
+            return;
+        }
+        const rows = [];
+
+        tableRows.forEach((row, index) => {
+            const hasLiveToggles = !!row.querySelector('[data-field="present"][data-value]');
+            const cells = row.querySelectorAll('td');
+            const name = (row.dataset.userName || cells[0]?.textContent || '').trim();
+            const permissionStatus = (cells[1]?.textContent || 'No approved permission').trim();
+            const presence = hasLiveToggles ? (getToggleValue(row, 'present') ? 1 : 0) : ((cells[2]?.textContent || '').trim().toLowerCase() === 'yes' ? 1 : 0);
+            const timeliness = hasLiveToggles ? (getToggleValue(row, 'ontime') ? 1 : 0) : ((cells[3]?.textContent || '').trim().toLowerCase() === 'yes' ? 1 : 0);
+            const communication = hasLiveToggles ? (getToggleValue(row, 'communicated') ? 1 : 0) : ((cells[4]?.textContent || '').trim().toLowerCase() === 'yes' ? 1 : 0);
+            const discipline = hasLiveToggles ? (getToggleValue(row, 'discipline') ? 1 : 0) : ((cells[5]?.textContent || '').trim().toLowerCase() === 'yes' ? 1 : 0);
+            const totalPointsCell = cells[6]?.textContent || '';
+            const totalPoints = hasLiveToggles ? (presence + timeliness + communication + discipline) : parseInt(totalPointsCell, 10) || 0;
+
+            rows.push({
+                'No': index + 1,
+                'Names': name || 'N/A',
+                'Permission Status': permissionStatus,
+                'Points of Presence': presence,
+                'Timeliness': timeliness,
+                'Communication': communication,
+                'Discipline': discipline,
+                'Total Points': totalPoints
+            });
+        });
+
+        if (rows.length === 0) {
+            disciplineAlert('No session data to export');
+            return;
+        }
+
+        const headers = ['No', 'Names', 'Permission Status', 'Points of Presence', 'Timeliness', 'Communication', 'Discipline', 'Total Points'];
+        const csvLines = [
+            headers.join(','),
+            ...rows.map(row => headers.map(header => escapeCsvValue(row[header])).join(','))
+        ];
+
+        const blob = new Blob([csvLines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        const sessionInfo = document.getElementById('session_info')?.textContent?.trim() || 'attendance';
+        const sessionLabel = currentSessionData?.date
+            ? `${currentSessionData.date}_${String(currentSessionData.session_type || 'attendance').replace(/[^a-zA-Z0-9]+/g, '_')}`
+            : sessionInfo.replace(/[^a-zA-Z0-9]+/g, '_') || 'attendance';
+
+        link.href = url;
+        link.download = `attendance_session_${sessionLabel}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }
     
     function saveSessionChanges() {
         if (!currentSessionData) {
-            alert('No session data to save');
+            disciplineAlert('No session data to save');
             return;
         }
         
@@ -247,10 +376,10 @@
         
         rows.forEach(row => {
             const userId = row.getAttribute('data-user-id');
-            const present = row.querySelector('.present-checkbox')?.checked || false;
-            const onTime = row.querySelector('.ontime-checkbox')?.checked || false;
-            const communicated = row.querySelector('.communicated-checkbox')?.checked || false;
-            const discipline = row.querySelector('.discipline-checkbox')?.checked || false;
+            const present = getToggleValue(row, 'present');
+            const onTime = getToggleValue(row, 'ontime');
+            const communicated = getToggleValue(row, 'communicated');
+            const discipline = getToggleValue(row, 'discipline');
             
             let status = 'absent';
             let lateMinutes = 0;
@@ -269,6 +398,7 @@
                 user_id: userId,
                 status: status,
                 late_minutes: lateMinutes,
+                on_time: onTime,
                 communicated: communicated,
                 discipline_points: discipline ? 1 : 0
             });
@@ -295,18 +425,18 @@
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                alert('Attendance records saved successfully!');
+                disciplineAlert('Attendance records saved successfully!');
                 openSessionDetailsModal(currentSessionData.date, currentSessionData.session_type);
                 if (typeof window.loadAttendanceData === 'function') {
                     window.loadAttendanceData();
                 }
             } else {
-                alert('Error: ' + (data.message || 'Failed to save records'));
+                disciplineAlert('Error: ' + (data.message || 'Failed to save records'));
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Error saving attendance records');
+            disciplineAlert('Error saving attendance records');
         })
         .finally(() => {
             saveBtn.innerHTML = originalText;
@@ -314,10 +444,10 @@
         });
     }
     
-    function completeSession() {
+    async function completeSession() {
         if (!currentSessionData) return;
         
-        if (confirm('⚠️ Complete this session? This will lock all records.')) {
+        if (await disciplineConfirm('Complete this session? This will lock all records.', 'Complete session', 'Complete', 'Cancel', 'danger')) {
             const completeBtn = document.getElementById('complete_session_btn');
             const originalText = completeBtn.innerHTML;
             completeBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Completing...';
@@ -338,18 +468,18 @@
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    alert('Session completed successfully!');
-                    closeSessionModal();
+                    disciplineAlert('Session completed successfully!');
+                    openSessionDetailsModal(currentSessionData.date, currentSessionData.session_type);
                     if (typeof window.loadAttendanceData === 'function') {
                         window.loadAttendanceData();
                     }
                 } else {
-                    alert('Error: ' + (data.message || 'Failed to complete session'));
+                    disciplineAlert('Error: ' + (data.message || 'Failed to complete session'));
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('Error completing session');
+                disciplineAlert('Error completing session');
             })
             .finally(() => {
                 completeBtn.innerHTML = originalText;
@@ -364,6 +494,11 @@
         div.textContent = text;
         return div.innerHTML;
     }
+
+    function escapeCsvValue(value) {
+        const text = value === null || value === undefined ? '' : String(value);
+        return `"${text.replace(/"/g, '""')}"`;
+    }
     
     // Expose functions globally
     window.openSessionDetailsModal = openSessionDetailsModal;
@@ -371,5 +506,7 @@
     window.saveSessionChanges = saveSessionChanges;
     window.completeSession = completeSession;
     window.updateMemberPoints = updateMemberPoints;
+    window.exportSessionAttendance = exportSessionAttendance;
+    window.filterSessionUsers = applyUserSearch;
 })();
 </script>

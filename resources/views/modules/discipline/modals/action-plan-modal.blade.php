@@ -1,4 +1,4 @@
-<div id="actionPlanModal" class="modal hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+﻿<div id="actionPlanModal" class="modal hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
     <div class="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-lg bg-white">
         <div class="flex justify-between items-center pb-3 border-b">
             <h3 id="action_plan_modal_title" class="text-lg font-bold text-gray-800">Action Plan</h3>
@@ -75,7 +75,7 @@ document.getElementById('action-plan-form')?.addEventListener('submit', function
             closeModal('actionPlanModal');
             loadActionPlans();
         } else {
-            alert('Error: ' + data.message);
+            disciplineAlert('Error: ' + data.message);
         }
     });
 });

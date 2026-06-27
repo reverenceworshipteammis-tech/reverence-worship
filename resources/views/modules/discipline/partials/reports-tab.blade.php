@@ -50,28 +50,24 @@
             <h4 class="font-semibold text-gray-800">Quick Actions</h4>
         </div>
         <div class="p-6">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <!-- Quick Actions Left -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">                <!-- Quick Actions Left -->
                 <div>
                     <div class="bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl p-5 text-white">
-                        <h5 class="font-semibold mb-3">Attendance Management</h5>
-                        <p class="text-sm opacity-90 mb-4">Track and manage team attendance</p>
+                        <h5 class="font-semibold mb-3">Attendance Reports</h5>
+                        <p class="text-xs opacity-80 mb-3">Set a custom date and time range for the report</p>
                         
                         <div class="space-y-3">
                             <div>
-                                <label class="block text-xs font-medium mb-1 opacity-80">Select Date for Attendance</label>
-                                <input type="date" id="report_attendance_date" value="{{ date('Y-m-d') }}" class="w-full px-3 py-2 rounded-lg text-gray-800 text-sm">
+                                <label class="block text-xs font-medium mb-1 opacity-80">From</label>
+                                <input type="datetime-local" id="report_attendance_start" value="{{ now()->startOfMonth()->format('Y-m-d\TH:i') }}" class="w-full px-3 py-2 rounded-lg text-gray-800 text-sm">
                             </div>
                             <div>
-                                <label class="block text-xs font-medium mb-1 opacity-80">Session Name</label>
-                                <input type="text" id="report_session_name" placeholder="e.g., Sunday Service" class="w-full px-3 py-2 rounded-lg text-gray-800 text-sm">
+                                <label class="block text-xs font-medium mb-1 opacity-80">To</label>
+                                <input type="datetime-local" id="report_attendance_end" value="{{ now()->format('Y-m-d\TH:i') }}" class="w-full px-3 py-2 rounded-lg text-gray-800 text-sm">
                             </div>
                             <div class="flex gap-3 pt-2">
                                 <button onclick="generateAttendanceReport()" class="flex-1 bg-white text-blue-600 px-3 py-2 rounded-lg text-sm font-semibold hover:bg-gray-100 transition">
-                                    <i class="fas fa-chart-bar mr-2"></i> Attendance Report
-                                </button>
-                                <button onclick="startAttendanceSession()" class="flex-1 bg-green-600 text-white px-3 py-2 rounded-lg text-sm font-semibold hover:bg-green-700 transition">
-                                    <i class="fas fa-play-circle mr-2"></i> Start Attendance Session
+                                    <i class="fas fa-chart-bar mr-2"></i> View Report
                                 </button>
                             </div>
                         </div>
@@ -82,11 +78,11 @@
                 <div class="grid grid-cols-2 gap-4">
                     <div class="bg-blue-50 rounded-xl p-4 text-center">
                         <p class="text-3xl font-bold text-blue-600" id="report_total_sessions">0</p>
-                        <p class="text-xs text-gray-600 mt-1">Total Sessions</p>
+                        <p class="text-xs text-gray-600 mt-1">Total Records</p>
                     </div>
                     <div class="bg-green-50 rounded-xl p-4 text-center">
                         <p class="text-3xl font-bold text-green-600" id="report_avg_attendance">0%</p>
-                        <p class="text-xs text-gray-600 mt-1">Average Attendance</p>
+                        <p class="text-xs text-gray-600 mt-1">Attendance Rate</p>
                     </div>
                 </div>
             </div>
@@ -113,7 +109,6 @@ let currentReportType = 'attendance';
 // Make functions available globally
 window.switchReportType = switchReportType;
 window.generateAttendanceReport = generateAttendanceReport;
-window.startAttendanceSession = startAttendanceSession;
 window.loadReports = loadReports;
 window.loadReportsData = loadReportsData;
 
@@ -143,7 +138,15 @@ function loadReportsData() {
         </div>
     `;
     
-    fetch(`/discipline/reports/generate?type=${currentReportType}`, {
+    const reportParams = new URLSearchParams({ type: currentReportType });
+    if (currentReportType === 'attendance') {
+        const startAt = document.getElementById('report_attendance_start')?.value || '';
+        const endAt = document.getElementById('report_attendance_end')?.value || '';
+        if (startAt) reportParams.set('start_at', startAt);
+        if (endAt) reportParams.set('end_at', endAt);
+    }
+
+    fetch(`/discipline/reports/generate?${reportParams.toString()}`, {
         headers: { 'X-Requested-With': 'XMLHttpRequest' }
     })
     .then(response => response.json())
@@ -194,48 +197,109 @@ function updateReportContent(data) {
 
 function generateAttendanceReportContent(data) {
     const attendance = data.attendance_summary || {};
-    const total = attendance.total_sessions || 1;
-    const presentPercent = ((attendance.present_count || 0) / total * 100).toFixed(1);
-    const absentPercent = ((attendance.absent_count || 0) / total * 100).toFixed(1);
+
+    const userSummary = data.attendance_user_summary || [];
+    const range = data.report_range || {};
+    const total = Number(attendance.total_records || attendance.total_sessions || 0);
+    const attendanceRate = total > 0 ? Number(attendance.attendance_rate || (((Number(attendance.present_count || 0) + Number(attendance.late_count || 0)) / total) * 100).toFixed(1)) : 0;
+    const avgPoints = Number(attendance.avg_points || 0).toFixed(1);
+    const totalPoints = Number(attendance.total_points || 0);
+    const averagePercentage = Number(attendance.average_percentage || attendanceRate || 0).toFixed(1);
     
     return `
         <div class="space-y-6">
-            <!-- Summary Stats -->
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                <div>
+                    <h5 class="text-lg font-semibold text-gray-800">Attendance Report</h5>
+                    <p class="text-sm text-gray-500">${range.label ? `Period: ${escapeHtml(range.label)}` : 'Custom report period'}</p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button onclick="exportReport('attendance', 'detailed')" class="bg-gray-700 hover:bg-gray-800 text-white px-4 py-2 rounded-lg text-sm">
+                        <i class="fas fa-download mr-2"></i> Export Detailed
+                    </button>
+                    <button onclick="exportReport('attendance', 'summary')" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm">
+                        <i class="fas fa-file-export mr-2"></i> Export Summary
+                    </button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
                 <div class="bg-blue-50 rounded-lg p-4 text-center">
-                    <p class="text-2xl font-bold text-blue-600">${attendance.total_sessions || 0}</p>
-                    <p class="text-xs text-gray-600">Total Sessions</p>
+                    <p class="text-2xl font-bold text-blue-600">${attendance.total_records || 0}</p>
+                    <p class="text-xs text-gray-600">Total Records</p>
                 </div>
                 <div class="bg-green-50 rounded-lg p-4 text-center">
                     <p class="text-2xl font-bold text-green-600">${attendance.present_count || 0}</p>
-                    <p class="text-xs text-gray-600">Present (${presentPercent}%)</p>
-                </div>
-                <div class="bg-red-50 rounded-lg p-4 text-center">
-                    <p class="text-2xl font-bold text-red-600">${attendance.absent_count || 0}</p>
-                    <p class="text-xs text-gray-600">Absent (${absentPercent}%)</p>
+                    <p class="text-xs text-gray-600">Present</p>
                 </div>
                 <div class="bg-yellow-50 rounded-lg p-4 text-center">
                     <p class="text-2xl font-bold text-yellow-600">${attendance.late_count || 0}</p>
                     <p class="text-xs text-gray-600">Late</p>
                 </div>
+                <div class="bg-red-50 rounded-lg p-4 text-center">
+                    <p class="text-2xl font-bold text-red-600">${attendance.absent_count || 0}</p>
+                    <p class="text-xs text-gray-600">Absent</p>
+                </div>
+                <div class="bg-indigo-50 rounded-lg p-4 text-center">
+                    <p class="text-2xl font-bold text-indigo-600">${totalPoints}</p>
+                    <p class="text-xs text-gray-600">Total Points</p>
+                </div>
+                <div class="bg-emerald-50 rounded-lg p-4 text-center">
+                    <p class="text-2xl font-bold text-emerald-600">${averagePercentage}%</p>
+                    <p class="text-xs text-gray-600">Average</p>
+                </div>
             </div>
-            
-            <!-- Progress Bar -->
+
             <div class="bg-gray-50 rounded-lg p-4">
                 <div class="flex justify-between mb-2">
                     <span class="text-sm font-medium text-gray-700">Attendance Rate</span>
-                    <span class="text-sm font-semibold ${presentPercent >= 80 ? 'text-green-600' : (presentPercent >= 60 ? 'text-yellow-600' : 'text-red-600')}">${presentPercent}%</span>
+                    <span class="text-sm font-semibold ${attendanceRate >= 80 ? 'text-green-600' : (attendanceRate >= 60 ? 'text-yellow-600' : 'text-red-600')}">${attendanceRate}%</span>
                 </div>
                 <div class="w-full bg-gray-200 rounded-full h-2.5">
-                    <div class="h-2.5 rounded-full ${presentPercent >= 80 ? 'bg-green-500' : (presentPercent >= 60 ? 'bg-yellow-500' : 'bg-red-500')}" style="width: ${presentPercent}%"></div>
+                    <div class="h-2.5 rounded-full ${attendanceRate >= 80 ? 'bg-green-500' : (attendanceRate >= 60 ? 'bg-yellow-500' : 'bg-red-500')}" style="width: ${Math.min(attendanceRate, 100)}%"></div>
                 </div>
             </div>
-            
-            <!-- Export Button -->
-            <div class="flex justify-end">
-                <button onclick="exportReport('attendance')" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm">
-                    <i class="fas fa-download mr-2"></i> Export Report
-                </button>
+
+            <div class="grid grid-cols-1 gap-6">
+                <div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+                    <div class="px-4 py-3 border-b bg-gray-50">
+                        <h6 class="font-semibold text-gray-800">Attendance by User Summary</h6>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-white border-b text-xs uppercase text-gray-500">
+                                <tr>
+                                    <th class="px-4 py-3 text-left">No</th>
+                                    <th class="px-4 py-3 text-left">Names</th>
+                                    <th class="px-4 py-3 text-center">Number of Sessions</th>
+                                    <th class="px-4 py-3 text-center">Presence</th>
+                                    <th class="px-4 py-3 text-center">Timeliness</th>
+                                    <th class="px-4 py-3 text-center">Communication</th>
+                                    <th class="px-4 py-3 text-center">Discipline</th>
+                                    <th class="px-4 py-3 text-center">Total Marks</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${userSummary.length > 0 ? userSummary.map((user, index) => `
+                                    <tr class="border-b hover:bg-gray-50">
+                                        <td class="px-4 py-3 text-gray-700">${user.no || index + 1}</td>
+                                        <td class="px-4 py-3 font-medium text-gray-800">${escapeHtml(user.names || user.user_name || 'N/A')}</td>
+                                        <td class="px-4 py-3 text-center text-gray-700">${user.number_sessions || 0}</td>
+                                        <td class="px-4 py-3 text-center text-green-600">${user.presence_count || 0}</td>
+                                        <td class="px-4 py-3 text-center text-yellow-600">${user.timeliness_count || 0}</td>
+                                        <td class="px-4 py-3 text-center text-blue-600">${user.communication_count || 0}</td>
+                                        <td class="px-4 py-3 text-center font-semibold text-indigo-600">${user.discipline_points || 0}</td>
+                                        <td class="px-4 py-3 text-center font-semibold text-gray-800">${user.total_marks || 0}</td>
+                                    </tr>
+                                `).join('') : `
+                                    <tr>
+                                        <td colspan="8" class="px-4 py-10 text-center text-gray-500">No user summaries available for the selected period.</td>
+                                    </tr>
+                                `}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
     `;
@@ -442,54 +506,33 @@ function generatePermissionReportContent(data) {
 
 function updateQuickStats(data) {
     const attendance = data.attendance_summary || {};
-    const total = attendance.total_sessions || 0;
-    const present = attendance.present_count || 0;
-    const presentRate = total > 0 ? ((present / total) * 100).toFixed(1) : 0;
+    const total = attendance.total_records ?? attendance.total_sessions ?? 0;
+    const attendanceRate = attendance.attendance_rate ?? 0;
     
     const totalSessionsEl = document.getElementById('report_total_sessions');
     const avgAttendanceEl = document.getElementById('report_avg_attendance');
     
     if (totalSessionsEl) totalSessionsEl.textContent = total;
-    if (avgAttendanceEl) avgAttendanceEl.textContent = `${presentRate}%`;
+    if (avgAttendanceEl) avgAttendanceEl.textContent = `${attendanceRate}%`;
 }
 
 function generateAttendanceReport() {
-    const date = document.getElementById('report_attendance_date').value;
-    const sessionName = document.getElementById('report_session_name').value;
-    
-    if (!sessionName) {
-        alert('Please enter a session name');
-        return;
-    }
-    
-    window.location.href = `/discipline/reports/attendance?date=${date}&session=${encodeURIComponent(sessionName)}`;
+    currentReportType = 'attendance';
+    loadReportsData();
 }
 
-function startAttendanceSession() {
-    const date = document.getElementById('report_attendance_date').value;
-    const sessionName = document.getElementById('report_session_name').value;
-    
-    if (!sessionName) {
-        alert('Please enter a session name');
-        return;
-    }
-    
-    // Switch to attendance tab and open modal
-    const attendanceTab = document.querySelector('.tab-btn[data-tab="attendance"]');
-    if (attendanceTab) {
-        attendanceTab.click();
-        setTimeout(() => {
-            if (typeof window.openAttendanceModal === 'function') {
-                window.openAttendanceModal();
-                document.getElementById('attendance_session_date').value = date;
-                document.getElementById('attendance_session_type').value = sessionName;
-            }
-        }, 500);
-    }
-}
 
-function exportReport(type) {
-    window.location.href = `/discipline/reports/export?type=${type}&period=monthly`;
+function exportReport(type, format = 'detailed') {
+    const params = new URLSearchParams({ type, format });
+
+    if (type === 'attendance') {
+        const startAt = document.getElementById('report_attendance_start')?.value || '';
+        const endAt = document.getElementById('report_attendance_end')?.value || '';
+        if (startAt) params.set('start_at', startAt);
+        if (endAt) params.set('end_at', endAt);
+    }
+
+    window.location.href = `/discipline/reports/export?${params.toString()}`;
 }
 
 function loadReports() {
