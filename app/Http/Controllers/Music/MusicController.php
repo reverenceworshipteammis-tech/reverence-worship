@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Music;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Concerns\ManagesActionPlans;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Models\Music\Playlist;
@@ -16,11 +17,26 @@ use App\Models\PublicBoard;
 use App\Models\ActionPlan;
 use App\Models\Music\ServiceTeam;
 use App\Models\Music\TeamMember;
+use Illuminate\Support\Facades\Schema;
 
 
 
 class MusicController extends Controller
 {
+    use ManagesActionPlans;
+
+    protected ?string $actionPlanDepartment = 'music-ministry';
+
+    protected function actionPlanView(): string
+    {
+        return 'modules.music.actionplan';
+    }
+
+    protected function actionPlanCanManage(): bool
+    {
+        return auth()->user()?->canAccess('music-ministry', 'manage-actionplan') ?? false;
+    }
+
     // ==================== MAIN INDEX ====================
    public function index()
 {
@@ -50,9 +66,17 @@ class MusicController extends Controller
         ->orderBy('sort_order')
         ->get();
     
-    $featuredImages = DB::table('landing_featured_images')
-        ->orderBy('sort_order')
-        ->get();
+    $featuredImages = Schema::hasTable('landing_featured_images')
+        ? (Schema::hasColumn('landing_featured_images', 'is_hero')
+            ? DB::table('landing_featured_images')
+                ->select('*', 'is_hero')
+                ->orderBy('sort_order')
+                ->get()
+            : DB::table('landing_featured_images')
+                ->select('*', DB::raw('false as is_hero'))
+                ->orderBy('sort_order')
+                ->get())
+        : collect();
 
     return view('modules.music.index', compact('playlists', 'songs', 'singers', 'gallery', 'groups', 'posts', 'tasks', 'users', 'serviceTeams', 'generations', 'voiceParts', 'performanceLevels','youtubeVideos', 'featuredImages'));
 }
@@ -541,44 +565,42 @@ public function storeBoardPost(Request $request)
     
     public function storeActionPlan(Request $request)
     {
-        if (!auth()->user()->canAccess('music-ministry', 'manage-actionplan')) {
-            abort(403, 'You do not have permission to create action plans.');
-        }
-        
-        $request->validate([
-            'title' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'due_date' => 'nullable|date',
-            'assigned_to' => 'nullable|exists:users,id'
-        ]);
-        
-        ActionPlan::create([
-            'title' => $request->title,
-            'description' => $request->description,
-            'due_date' => $request->due_date,
-            'status' => 'pending',
-            'assigned_to' => $request->assigned_to,
-            'created_by' => auth()->id()
-        ]);
-        
-        return redirect()->back()->with('success', 'Task created successfully!');
+        return $this->actionPlanStore($request);
+    }
+
+    public function editActionPlan($id)
+    {
+        return $this->actionPlanEdit($id);
+    }
+
+    public function updateActionPlan(Request $request, $id)
+    {
+        return $this->actionPlanUpdate($request, $id);
     }
     
     public function updateActionPlanStatus(Request $request, $id)
     {
-        $task = ActionPlan::findOrFail($id);
-        $task->status = $request->status;
-        $task->save();
-        
-        return redirect()->back()->with('success', 'Task status updated!');
+        return $this->actionPlanUpdateStatus($request, $id);
     }
     
     public function deleteActionPlan($id)
     {
-        $task = ActionPlan::findOrFail($id);
-        $task->delete();
-        
-        return redirect()->back()->with('success', 'Task deleted successfully!');
+        return $this->actionPlanDestroy($id);
+    }
+
+    public function addTask(Request $request, $planId)
+    {
+        return $this->actionPlanAddTask($request, $planId);
+    }
+
+    public function updateTask(Request $request, $taskId)
+    {
+        return $this->actionPlanUpdateTask($request, $taskId);
+    }
+
+    public function deleteTask($taskId)
+    {
+        return $this->actionPlanDeleteTask($taskId);
     }
 
     // ==================== SERVICE TEAM GENERATOR METHODS ====================
@@ -1064,10 +1086,7 @@ public function storeGallery(Request $request)
     
     $request->validate([
         'images.*' => 'required|image|mimes:jpeg,png,jpg,gif|max:5120',
-        'alt_text' => 'required|string|max:255',
         'caption' => 'nullable|string',
-        'category' => 'nullable|string',
-        'tags' => 'nullable|string'
     ]);
     
     $uploadedCount = 0;
@@ -1077,13 +1096,13 @@ public function storeGallery(Request $request)
             $filename = time() . '_' . uniqid() . '_' . $image->getClientOriginalName();
             $image->move(public_path('uploads/gallery'), $filename);
             $imagePath = 'uploads/gallery/' . $filename;
+            $fallbackTitle = pathinfo($image->getClientOriginalName(), PATHINFO_FILENAME);
+            $title = trim((string) $request->caption) !== '' ? trim((string) $request->caption) : $fallbackTitle;
             
             Gallery::create([
-                'title' => $request->alt_text,
+                'title' => $title,
                 'image_path' => $imagePath,
                 'description' => $request->caption,
-                'category' => $request->category,
-                'tags' => $request->tags,
                 'event_date' => now(),
                 'created_by' => auth()->id()
             ]);
@@ -1307,10 +1326,15 @@ public function toggleFeaturedPublish($id)
 {
     try {
         $image = DB::table('landing_featured_images')->where('id', $id)->first();
-        $willPublish = !$image->is_published;
+        if (!$image) {
+            return response()->json(['success' => false, 'message' => 'Image not found.'], 404);
+        }
+
+        $currentHero = property_exists($image, 'is_hero') ? (bool) $image->is_hero : false;
+        $willPublish = !($image->is_published ?? false);
         DB::table('landing_featured_images')->where('id', $id)->update([
             'is_published' => $willPublish,
-            'is_hero' => $willPublish ? $image->is_hero : false,
+            'is_hero' => $willPublish ? $currentHero : false,
             'updated_at' => now()
         ]);
         return response()->json(['success' => true]);
@@ -1327,15 +1351,19 @@ public function toggleFeaturedHero($id)
             return response()->json(['success' => false, 'message' => 'Image not found.'], 404);
         }
 
+        $currentHero = property_exists($image, 'is_hero') ? (bool) $image->is_hero : false;
+        $currentPublished = property_exists($image, 'is_published') ? (bool) $image->is_published : false;
+        $nextHero = !$currentHero;
+
         DB::table('landing_featured_images')->where('id', $id)->update([
-            'is_hero' => !$image->is_hero,
-            'is_published' => !$image->is_hero ? true : $image->is_published,
+            'is_hero' => $nextHero,
+            'is_published' => $nextHero ? true : $currentPublished,
             'updated_at' => now(),
         ]);
 
         return response()->json([
             'success' => true,
-            'message' => $image->is_hero ? 'Image removed from hero.' : 'Image added to hero.',
+            'message' => $currentHero ? 'Image removed from hero.' : 'Image added to hero.',
         ]);
     } catch (\Exception $e) {
         return response()->json(['success' => false, 'message' => $e->getMessage()], 500);

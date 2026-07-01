@@ -109,9 +109,8 @@
 @include('modules.discipline.modals.discipline-modal')
 @include('modules.discipline.modals.permission-modal')
 @include('modules.discipline.modals.action-plan-modal')
+@include('modules.discipline.modals.action-plan-task-modal')
 @include('modules.discipline.modals.session-details-modal')
-@include('modules.discipline.modals.discipline-dialog')
-
 <script>
 // Tab Management with localStorage persistence
 const STORAGE_KEY = 'discipline_active_tab';
@@ -265,6 +264,8 @@ window.closeModal = function(modalId) {
     const modal = document.getElementById(modalId);
     if (modal) {
         modal.classList.add('hidden');
+        modal.style.setProperty('display', 'none', 'important');
+        document.body.style.overflow = '';
     }
 };
 
@@ -331,26 +332,11 @@ window.loadDisciplineRecords = function() {
 };
 
 // Action plans functions
-window.loadActionPlans = function() {
+window.loadActionPlans = function(page = window.currentActionPlansPage || 1) {
     console.log('Loading action plans...');
-    const status = document.getElementById('action_plan_status_filter')?.value || 'all';
-    const userId = document.getElementById('action_plan_user_filter')?.value || '';
-    
-    let url = '/discipline/action-plans';
-    const params = new URLSearchParams();
-    if (status !== 'all') params.append('status', status);
-    if (userId) params.append('user_id', userId);
-    
-    if (params.toString()) url += '?' + params.toString();
-    
-    fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success && typeof window.updateActionPlansList === 'function') {
-                window.updateActionPlansList(data.action_plans);
-            }
-        })
-        .catch(error => console.error('Error loading action plans:', error));
+    if (typeof filterActionPlans === 'function') {
+        filterActionPlans(page);
+    }
 };
 
 function showSessionSummary(date, sessionType) {

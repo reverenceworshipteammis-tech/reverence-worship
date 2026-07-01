@@ -63,7 +63,7 @@
                 <div class="py-1">
                     <button onclick="openViewModal({{ $user->id }})" 
                             class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 flex items-center gap-2">
-                        <i class="fas fa-eye text-gray-500 w-4"></i> View Details
+                        <i class="fas fa-file-lines text-gray-500 w-4"></i> View Details
                     </button>
                     <button onclick="openEditModal({{ $user->id }})" 
                             class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 flex items-center gap-2">

@@ -1,4 +1,4 @@
-<div>
+﻿<div>
     <div class="mb-6">
         <h3 class="text-lg font-semibold text-gray-800">Users Report</h3>
         <p class="text-sm text-gray-500 mt-0.5">Analytics and statistics for all users</p>
@@ -513,7 +513,7 @@ function exportCSV() {
 
 async function exportPDF() {
     if (!currentReportData) {
-        alert('Please generate the report first');
+        appAlert('Please generate the report first');
         return;
     }
     
@@ -604,7 +604,7 @@ async function exportPDF() {
         
     } catch (error) {
         console.error('PDF generation error:', error);
-        alert('Error generating PDF. Please try again.');
+        appAlert('Error generating PDF. Please try again.');
     } finally {
         exportBtn.innerHTML = originalHtml;
         exportBtn.disabled = false;

@@ -89,8 +89,6 @@
 </div>
 
 {{-- MODALS - Include at the bottom of the page --}}
-@include('modules.intercession.partials.modals')
-
 <script>
     // Function to switch tabs with persistence
     window.showTab = function(tabName) {

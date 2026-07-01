@@ -18,10 +18,17 @@ class LandingPageController extends Controller
             : collect();
 
         $pictures = Schema::hasTable('landing_featured_images')
-            ? DB::table('landing_featured_images')
-                ->where('is_published', true)
-                ->orderBy('sort_order')
-                ->get()
+            ? (Schema::hasColumn('landing_featured_images', 'is_hero')
+                ? DB::table('landing_featured_images')
+                    ->select('*', 'is_hero')
+                    ->where('is_published', true)
+                    ->orderBy('sort_order')
+                    ->get()
+                : DB::table('landing_featured_images')
+                    ->select('*', DB::raw('false as is_hero'))
+                    ->where('is_published', true)
+                    ->orderBy('sort_order')
+                    ->get())
             : collect();
 
         $events = collect();

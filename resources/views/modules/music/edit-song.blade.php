@@ -23,12 +23,6 @@
                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                 </div>
                 
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Artist</label>
-                    <input type="text" name="artist" value="{{ $song->artist }}"
-                           class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                </div>
-                
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Key Signature</label>
@@ -40,18 +34,6 @@
                         <input type="number" name="tempo" value="{{ $song->tempo }}"
                                class="w-full px-3 py-2 border border-gray-300 rounded-lg">
                     </div>
-                </div>
-                
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Assigned Singer</label>
-                    <input type="text" name="assigned_singer" value="{{ $song->assigned_singer }}"
-                           class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                </div>
-                
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">YouTube Link</label>
-                    <input type="url" name="youtube_link" value="{{ $song->youtube_link }}"
-                           class="w-full px-3 py-2 border border-gray-300 rounded-lg">
                 </div>
                 
                 <div>

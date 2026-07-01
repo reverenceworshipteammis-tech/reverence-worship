@@ -1,4 +1,4 @@
-@extends('layouts.app')
+﻿@extends('layouts.app')
 
 @section('title', $form->title)
 
@@ -560,7 +560,7 @@ $isLoggedIn = auth()->check();
                 }
                 if (timeRemaining <= 0) {
                     clearInterval(timerInterval);
-                    alert('Time is up! Your form will be submitted automatically.');
+                    appAlert('Time is up! Your form will be submitted automatically.');
                     document.getElementById('formSubmission').submit();
                 }
             }, 1000);
@@ -711,12 +711,12 @@ $isLoggedIn = auth()->check();
         }
     }
 
-    function loadAutoSavedData() {
+    async function loadAutoSavedData() {
         const saved = localStorage.getItem('form_auto_save_{{ $form->id }}');
         if (saved) {
             try {
                 const formData = JSON.parse(saved);
-                if (confirm('You have a saved draft. Do you want to continue where you left off?')) {
+                if (await appConfirm('You have a saved draft. Do you want to continue where you left off?')) {
                     @foreach($displayQuestions as $index => $question)
                     @php
                     $questionType = $question['type'] ?? 'short_answer';
@@ -771,6 +771,7 @@ $isLoggedIn = auth()->check();
     }
 
     function showNotification(message, type) {
+    return window.appNotify(...arguments);
         const notification = document.createElement('div');
         var bgClass = 'bg-blue-500';
         if (type === 'success') bgClass = 'bg-green-500';
@@ -957,7 +958,7 @@ $isLoggedIn = auth()->check();
         @endforeach
         
         if (!isValid) {
-            alert(' ' + errorMessages.join('\n\n'));
+            appAlert(' ' + errorMessages.join('\n\n'));
             return false;
         }
         return true;
@@ -1053,17 +1054,17 @@ $isLoggedIn = auth()->check();
             if (data.success) {
                 clearAutoSave();
                 var scoreMessage = data.score !== undefined ? ' Your score: ' + data.score + '%' : '';
-                alert('Form submitted successfully!' + scoreMessage + '\nThank you!');
+                appAlert('Form submitted successfully!' + scoreMessage + '\nThank you!');
                 window.location.href = '/forms/' + data.form_id + '/results';
             } else {
-                alert('❌ Error: ' + data.message);
+                appAlert('âŒ Error: ' + data.message);
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Form';
             }
         })
         .catch(function(error) {
             console.error('Error:', error);
-            alert('❌ Error submitting form. Please try again.');
+            appAlert('âŒ Error submitting form. Please try again.');
             submitBtn.disabled = false;
             submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Form';
         });
@@ -1140,3 +1141,4 @@ $isLoggedIn = auth()->check();
     }
 </style>
 @endsection
+

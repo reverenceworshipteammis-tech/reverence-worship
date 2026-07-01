@@ -1,4 +1,4 @@
-<div>
+﻿<div>
     <!-- Payment Filters -->
     <div class="bg-white rounded-lg border border-gray-200 shadow-sm p-3 mb-4">
         <div class="grid grid-cols-2 gap-2 w-full sm:flex sm:flex-wrap sm:items-end sm:gap-3">
@@ -679,6 +679,7 @@
     }
 
     function showNotification(message, type = 'success') {
+    return window.appNotify(...arguments);
         const notification = document.createElement('div');
         const icon = type === 'success' ? 'fa-check-circle' : 
                     type === 'warning' ? 'fa-exclamation-triangle' : 'fa-exclamation-circle';
@@ -949,3 +950,5 @@
         transform: rotate(180deg);
     }
 </style>
+
+

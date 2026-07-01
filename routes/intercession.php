@@ -24,6 +24,9 @@ Route::prefix('intercession/action-plans')->middleware('auth')->group(function (
     // Change this from POST to PUT
     Route::put('/{id}', [IntercessionController::class, 'updateActionPlan'])->name('intercession.action-plans.update');
     Route::put('/tasks/{id}/status', [IntercessionController::class, 'updateTaskStatus'])->name('intercession.action-plans.tasks.status');
+    Route::post('/{id}/task', [IntercessionController::class, 'addTask'])->name('intercession.action-plans.tasks.store');
+    Route::put('/task/{taskId}', [IntercessionController::class, 'updateTask'])->name('intercession.action-plans.tasks.update');
+    Route::delete('/task/{taskId}', [IntercessionController::class, 'deleteTask'])->name('intercession.action-plans.tasks.delete');
 });
 
 // ==================== DEVOTIONS ROUTES ====================

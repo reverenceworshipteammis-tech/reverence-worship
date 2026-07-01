@@ -49,6 +49,13 @@
                         <i class="fas fa-bullhorn mr-2"></i>Public Board
                     </button>
                     @endif
+
+                    @if(auth()->user()->canAccess('music-ministry', 'view-actionplan'))
+                    <button onclick="showTab('actionPlan')" id="tab-actionPlan" 
+                            class="tab-btn py-2 px-1 border-b-2 font-medium text-sm transition whitespace-nowrap">
+                        <i class="fas fa-tasks mr-2"></i>Action Plans
+                    </button>
+                    @endif
                 </nav>
             </div>
         </div>
@@ -101,6 +108,12 @@
             ])
         </div>
         @endif
+
+        @if(auth()->user()->canAccess('music-ministry', 'view-actionplan'))
+        <div id="actionPlan-tab" class="tab-content hidden">
+            @include('modules.music.actionplan')
+        </div>
+        @endif
     @endif
 </div>
 
@@ -138,7 +151,7 @@ function showTab(tabName) {
 // On page load, restore the last active tab
 document.addEventListener('DOMContentLoaded', function() {
     const savedTab = localStorage.getItem('activeMusicTab');
-    const validTabs = ['playlist', 'gallery', 'groups', 'board'];
+    const validTabs = ['playlist', 'gallery', 'groups', 'board', 'actionPlan'];
     
     // Check if saved tab exists and user has permission
     if (savedTab && validTabs.includes(savedTab)) {

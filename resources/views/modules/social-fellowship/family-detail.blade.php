@@ -1,4 +1,4 @@
-@extends('layouts.app')
+﻿@extends('layouts.app')
 
 @section('title', $family->name)
 
@@ -310,7 +310,7 @@ function removeSubtask(button) {
     if (item && document.querySelectorAll('.subtask-item').length > 1) {
         item.remove();
     } else {
-        alert('You need at least one subtask');
+        appAlert('You need at least one subtask');
     }
 }
 
@@ -386,7 +386,7 @@ function editTask(taskId) {
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error loading task for editing');
+        appAlert('Error loading task for editing');
     });
 }
 
@@ -408,8 +408,8 @@ function toggleSubtask(subtaskId, taskId) {
     .catch(error => console.error('Error:', error));
 }
 
-function deleteTask(taskId) {
-    if (confirm('Are you sure you want to delete this task and all its subtasks?')) {
+async function deleteTask(taskId) {
+    if (await appConfirm('Are you sure you want to delete this task and all its subtasks?')) {
         fetch(`/social-fellowship/tasks/${taskId}`, {
             method: 'DELETE',
             headers: {
@@ -424,12 +424,12 @@ function deleteTask(taskId) {
                 showNotification('Task deleted successfully!', 'success');
                 location.reload();
             } else {
-                alert('Error deleting task: ' + (data.message || 'Unknown error'));
+                appAlert('Error deleting task: ' + (data.message || 'Unknown error'));
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Error deleting task');
+            appAlert('Error deleting task');
         });
     }
 }
@@ -458,12 +458,12 @@ function submitTask(event) {
             showNotification('Task created successfully!', 'success');
             location.reload();
         } else {
-            alert('Error: ' + (data.message || 'Failed to create task'));
+            appAlert('Error: ' + (data.message || 'Failed to create task'));
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Network error: ' + error.message);
+        appAlert('Network error: ' + error.message);
     });
 }
 
@@ -489,12 +489,12 @@ function updateTask(event) {
             showNotification('Task updated successfully!', 'success');
             location.reload();
         } else {
-            alert('Error: ' + (data.message || 'Failed to update task'));
+            appAlert('Error: ' + (data.message || 'Failed to update task'));
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Network error: ' + error.message);
+        appAlert('Network error: ' + error.message);
     });
 }
 
@@ -502,7 +502,7 @@ function updateTask(event) {
 // MEMBER FUNCTIONS
 // ============================================
 function addMember() {
-    alert('Add member feature coming soon');
+    appAlert('Add member feature coming soon');
 }
 
 // ============================================
@@ -513,6 +513,7 @@ function closeModal(modalId) {
 }
 
 function showNotification(message, type) {
+    return window.appNotify(...arguments);
     const notification = document.createElement('div');
     notification.className = `fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg text-white z-50 transition-all ${
         type === 'success' ? 'bg-green-500' : 'bg-red-500'
@@ -548,3 +549,4 @@ function escapeHtml(text) {
 }
 </style>
 @endsection
+

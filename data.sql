@@ -1398,22 +1398,7 @@ CREATE TABLE IF NOT EXISTS discipline_records (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Attendance Records Table
-CREATE TABLE IF NOT EXISTS attendance_records (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    session_date DATE NOT NULL,
-    session_type VARCHAR(100) NOT NULL,
-    status VARCHAR(50) CHECK (status IN ('present', 'absent', 'late', 'excused')),
-    check_in_time TIME,
-    check_out_time TIME,
-    late_minutes INTEGER DEFAULT 0,
-    notes TEXT,
-    marked_by INTEGER NOT NULL REFERENCES users(id),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(user_id, session_date, session_type)
-);
+
 
 -- Permission Requests Table
 CREATE TABLE IF NOT EXISTS permission_requests (

@@ -1,4 +1,4 @@
-@props([
+﻿@props([
     'canViewSongs' => false,
     'canAddSongs' => false,
     'canEditSongs' => false,
@@ -27,7 +27,7 @@
             <select id="songSelect" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <option value="">Select Song</option>
                 @foreach($songs ?? [] as $song)
-                    <option value="{{ $song->id }}">{{ $song->title }} @if($song->artist)- {{ $song->artist }} @endif</option>
+                    <option value="{{ $song->id }}">{{ $song->title }}</option>
                 @endforeach
             </select>
             <button onclick="addToPlaylist()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition">
@@ -67,7 +67,7 @@
                             <div class="flex space-x-2">
                                 @if($canViewPlaylists)
                                 <button onclick="viewPlaylistSongs({{ $playlist->id }})" class="text-green-600 hover:text-green-800 transition" title="View Songs">
-                                    <i class="fas fa-eye"></i>
+                                    <i class="fas fa-file-lines"></i>
                                 </button>
                                 @endif
                                 @if($canEditPlaylists)
@@ -77,7 +77,7 @@
                                 @endif
                                 @if($canDeletePlaylists)
                                 <form action="{{ route('music.playlist.delete', $playlist->id) }}" method="POST" class="inline" 
-                                      onsubmit="return confirm('Delete playlist \"{{ $playlist->title }}\"?')">
+                                      onsubmit="return confirmSubmit(event, 'Delete playlist \"{{ $playlist->title }}\"?')">
                                     @csrf
                                     @method('DELETE')
                                     <button type="submit" class="text-red-600 hover:text-red-800 transition" title="Delete Playlist">
@@ -119,7 +119,7 @@
             <!-- Song Search Bar -->
             <div class="relative mb-3">
                 <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
-                <input type="text" id="songsSearchInput" placeholder="Search songs by title, artist, key, or assigned singer..." 
+                <input type="text" id="songsSearchInput" placeholder="Search songs by title or key..." 
                        class="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
             </div>
             
@@ -140,12 +140,6 @@
                                     @if($song->tempo)
                                         <span><i class="fas fa-tachometer-alt"></i> {{ $song->tempo }} BPM</span>
                                     @endif
-                                    @if($song->artist)
-                                        <span><i class="fas fa-user"></i> {{ $song->artist }}</span>
-                                    @endif
-                                    @if($song->assigned_singer)
-                                        <span><i class="fas fa-microphone"></i> {{ $song->assigned_singer }}</span>
-                                    @endif
                                 </div>
                             </div>
                             <div class="flex space-x-2 ml-2">
@@ -161,7 +155,7 @@
                                 @endif
                                 @if($canDeleteSongs)
                                 <form action="{{ route('music.song.delete', $song->id) }}" method="POST" class="inline" 
-                                      onsubmit="return confirm('Delete song \"{{ $song->title }}\"?')">
+                                      onsubmit="return confirmSubmit(event, 'Delete song \"{{ $song->title }}\"?')">
                                     @csrf
                                     @method('DELETE')
                                     <button type="submit" class="text-red-600 hover:text-red-800 transition" title="Delete Song">
@@ -224,8 +218,8 @@
                     <!-- Search Bar -->
                     <div class="relative mb-3">
                         <i class="fas fa-search absolute left-3 top-3 text-gray-400"></i>
-                        <input type="text" id="playlistSongSearchInput" placeholder="Search songs by title, artist, or key..." 
-                               class="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <input type="text" id="playlistSongSearchInput" placeholder="Search songs by title or key..." 
+                       class="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                     </div>
                     
                     <div class="border rounded-lg p-3 max-h-64 overflow-y-auto bg-gray-50">
@@ -246,9 +240,6 @@
                                        class="song-checkbox rounded border-gray-300 text-blue-600">
                                 <div class="flex-1">
                                     <span class="text-sm font-medium text-gray-700">{{ $song->title }}</span>
-                                    @if($song->artist)
-                                        <span class="text-xs text-gray-500 ml-2">by {{ $song->artist }}</span>
-                                    @endif
                                     <div class="text-xs text-gray-400">
                                         @if($song->key_signature)
                                             <span class="mr-2">Key: {{ $song->key_signature }}</span>
@@ -304,24 +295,12 @@
                     <input type="text" name="title" required class="w-full px-3 py-2 border border-gray-300 rounded-lg">
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Artist</label>
-                    <input type="text" name="artist" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                </div>
-                <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Key Signature</label>
                     <input type="text" name="key_signature" placeholder="C, G, D, etc" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Tempo (BPM)</label>
                     <input type="number" name="tempo" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Assigned Singer</label>
-                    <input type="text" name="assigned_singer" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                </div>
-                <div class="col-span-2">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">YouTube Link</label>
-                    <input type="url" name="youtube_link" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
                 </div>
                 <div class="col-span-2">
                     <label class="block text-sm font-medium text-gray-700 mb-1">Lyrics</label>
@@ -341,13 +320,57 @@
     <div class="relative top-20 mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-lg bg-white">
         <div class="flex justify-between items-center pb-3 border-b">
             <h3 id="viewPlaylistTitle" class="text-xl font-bold text-gray-800">Playlist Songs</h3>
-            <button onclick="closeModal('viewPlaylistModal')" class="text-gray-400 hover:text-gray-600">
+            <button type="button" onclick="closeModal('viewPlaylistModal')" class="text-gray-400 hover:text-gray-600">
                 <i class="fas fa-times text-xl"></i>
             </button>
         </div>
         <div id="viewPlaylistContent" class="mt-4 max-h-96 overflow-y-auto"></div>
         <div class="flex justify-end mt-4 pt-3 border-t">
-            <button onclick="closeModal('viewPlaylistModal')" class="px-4 py-2 bg-blue-600 text-white rounded-lg">Close</button>
+            <button type="button" onclick="closeModal('viewPlaylistModal')" class="px-4 py-2 bg-blue-600 text-white rounded-lg">Close</button>
+        </div>
+    </div>
+</div>
+
+<div id="lyricsModal" class="modal hidden fixed inset-0 z-[1100] bg-slate-950/60 backdrop-blur-sm overflow-y-auto">
+    <div class="min-h-full w-full flex items-start justify-center px-4 py-8 sm:py-12">
+        <div class="w-full max-w-3xl overflow-hidden rounded-[2rem] bg-white shadow-[0_40px_120px_rgba(15,23,42,0.28)] ring-1 ring-slate-200">
+            <div class="flex items-start justify-between gap-4 border-b border-slate-100 px-6 sm:px-8 py-5">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-600">Song Lyrics</p>
+                    <h3 id="lyricsModalTitle" class="mt-2 text-2xl font-bold tracking-tight text-slate-900">Lyrics</h3>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button type="button" id="copyLyricsBtn" onclick="copyCurrentLyrics()" class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700">
+                        <i class="fas fa-copy"></i>
+                        Copy Lyrics
+                    </button>
+                    <button type="button" onclick="closeModal('lyricsModal')" class="rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600">
+                        <i class="fas fa-times text-2xl"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="px-6 sm:px-8 py-6">
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <div class="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Key</p>
+                        <p id="lyricsKey" class="mt-1 text-sm font-medium text-slate-900">-</p>
+                    </div>
+                    <div class="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Tempo</p>
+                        <p id="lyricsTempo" class="mt-1 text-sm font-medium text-slate-900">-</p>
+                    </div>
+                </div>
+
+                <div class="mt-6 rounded-[1.5rem] border border-slate-200 bg-slate-50/80">
+                    <div class="border-b border-slate-200 px-5 py-4">
+                        <h4 class="text-sm font-semibold uppercase tracking-wide text-slate-700">Lyrics</h4>
+                    </div>
+                    <div class="max-h-[60vh] overflow-y-auto px-5 py-5">
+                        <pre id="lyricsText" class="whitespace-pre-wrap text-[15px] leading-7 text-slate-700 font-sans">Select a song to view lyrics.</pre>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -505,7 +528,11 @@ function openCreatePlaylistModal() {
 
 function closeModal(modalId) {
     const modal = document.getElementById(modalId);
-    if (modal) modal.classList.add('hidden');
+    if (modal) {
+        modal.classList.add('hidden');
+        modal.style.setProperty('display', 'none', 'important');
+        document.body.style.overflow = '';
+    }
 }
 
 function openCreateSongModal() {
@@ -514,7 +541,66 @@ function openCreateSongModal() {
 }
 
 function viewLyrics(songId) {
-    window.open(`/music/song/${songId}/lyrics`, '_blank', 'width=600,height=500');
+    fetch(`/music/song/${songId}/lyrics`, {
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json'
+        }
+    })
+    .then(async response => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || 'Unable to load lyrics');
+        }
+
+        return data.song;
+    })
+    .then(song => {
+        document.getElementById('lyricsModalTitle').textContent = song.title || 'Lyrics';
+        document.getElementById('lyricsKey').textContent = song.key_signature || '-';
+        document.getElementById('lyricsTempo').textContent = song.tempo ? `${song.tempo} BPM` : '-';
+        document.getElementById('lyricsText').textContent = song.lyrics || 'No lyrics available.';
+        document.getElementById('lyricsModal').classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+    })
+    .catch(error => {
+        console.error('Error loading lyrics:', error);
+        appAlert('Could not load lyrics: ' + error.message);
+    });
+}
+
+function copyCurrentLyrics() {
+    const lyricsText = document.getElementById('lyricsText')?.textContent || '';
+    if (!lyricsText || lyricsText === 'No lyrics available.' || lyricsText === 'Select a song to view lyrics.') {
+        appAlert('No lyrics to copy!');
+        return;
+    }
+
+    if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(lyricsText)
+            .then(() => appAlert('Lyrics copied to clipboard!'))
+            .catch(() => fallbackCopyLyrics(lyricsText));
+        return;
+    }
+
+    fallbackCopyLyrics(lyricsText);
+}
+
+function fallbackCopyLyrics(text) {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+        document.execCommand('copy');
+        appAlert('Lyrics copied to clipboard!');
+    } catch (error) {
+        console.error('Copy lyrics failed:', error);
+        appAlert('Unable to copy lyrics right now.');
+    }
+    document.body.removeChild(textarea);
 }
 
 function viewPlaylistSongs(playlistId) {
@@ -522,7 +608,7 @@ function viewPlaylistSongs(playlistId) {
         .then(response => response.json())
         .then(data => {
             if (!data.success) {
-                alert(data.message || 'Error loading songs');
+                appAlert(data.message || 'Error loading songs');
                 return;
             }
             
@@ -557,8 +643,6 @@ function viewPlaylistSongs(playlistId) {
                                     <div class="flex flex-wrap gap-2 text-xs text-gray-500">
                                         ${song.key_signature ? `<span>Key: ${escapeHtml(song.key_signature)}</span>` : ''}
                                         ${song.tempo ? `<span>Tempo: ${escapeHtml(song.tempo)} BPM</span>` : ''}
-                                        ${song.artist ? `<span>Artist: ${escapeHtml(song.artist)}</span>` : ''}
-                                        ${song.assigned_singer ? `<span>Singer: ${escapeHtml(song.assigned_singer)}</span>` : ''}
                                     </div>
                                 </div>
                             </div>
@@ -577,7 +661,7 @@ function viewPlaylistSongs(playlistId) {
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Could not load playlist songs: ' + error.message);
+            appAlert('Could not load playlist songs: ' + error.message);
         });
 }
 
@@ -586,7 +670,7 @@ function addToPlaylist() {
     const songId = document.getElementById('songSelect')?.value;
     
     if (!playlistId || !songId) {
-        alert('Please select both a playlist and a song');
+        appAlert('Please select both a playlist and a song');
         return;
     }
     
@@ -604,15 +688,15 @@ function addToPlaylist() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert('Song added to playlist!');
+            appAlert('Song added to playlist!');
             location.reload();
         } else {
-            alert('Error: ' + (data.message || 'Unknown error'));
+            appAlert('Error: ' + (data.message || 'Unknown error'));
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error adding song to playlist');
+        appAlert('Error adding song to playlist');
     });
 }
 
@@ -642,16 +726,16 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    alert('Playlist created with ' + (data.songs_added || 0) + ' songs!');
+                    appAlert('Playlist created with ' + (data.songs_added || 0) + ' songs!');
                     closeModal('createPlaylistModal');
                     location.reload();
                 } else {
-                    alert(data.message || 'Error creating playlist');
+                    appAlert(data.message || 'Error creating playlist');
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('Error creating playlist');
+                appAlert('Error creating playlist');
             });
         });
     }
@@ -670,18 +754,20 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    alert('Song added successfully!');
+                    appAlert('Song added successfully!');
                     closeModal('createSongModal');
                     location.reload();
                 } else {
-                    alert(data.message || 'Error creating song');
+                    appAlert(data.message || 'Error creating song');
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('Error creating song');
+                appAlert('Error creating song');
             });
         });
     }
 });
 </script>
+
+

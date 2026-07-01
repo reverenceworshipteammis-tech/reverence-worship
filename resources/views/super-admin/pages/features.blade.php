@@ -1,4 +1,4 @@
-@extends('layouts.app')
+﻿@extends('layouts.app')
 
 @section('title', 'Manage Features - ' . $page->display_name)
 @section('page-title', 'Page Management')
@@ -81,7 +81,7 @@
                                     </a>
                                     <form action="{{ route('pages.features.destroy', [$page->id, $feature->id]) }}" 
                                           method="POST" class="inline" 
-                                          onsubmit="return confirm('Delete this feature?')">
+                                          onsubmit="return confirmSubmit(event, 'Delete this feature?')">
                                         @csrf
                                         @method('DELETE')
                                         <button type="submit" class="text-red-600 hover:text-red-800" title="Delete">

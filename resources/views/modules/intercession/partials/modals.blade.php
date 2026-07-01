@@ -1,9 +1,9 @@
-{{-- Create Action Plan Modal --}}
+﻿{{-- Create Action Plan Modal --}}
 <div id="createActionPlanModal" class="modal hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
     <div class="relative top-10 mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-lg bg-white mb-10">
         <div class="flex justify-between items-center pb-3 border-b">
             <h3 class="text-xl font-bold text-gray-800">Create New Action Plan</h3>
-            <button onclick="closeModal('createActionPlanModal')" class="text-gray-400 hover:text-gray-600 transition">
+            <button type="button" data-modal-close="createActionPlanModal" onclick="closeModal('createActionPlanModal')" class="text-gray-400 hover:text-gray-600 transition">
                 <i class="fas fa-times text-xl"></i>
             </button>
         </div>
@@ -47,7 +47,7 @@
             </div>
             
             <div class="flex flex-wrap justify-end gap-3 mt-5 pt-3 border-t">
-                <button type="button" onclick="closeModal('createActionPlanModal')" class="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50 transition">
+                <button type="button" data-modal-close="createActionPlanModal" onclick="closeModal('createActionPlanModal')" class="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50 transition">
                     Cancel
                 </button>
                 <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition flex items-center gap-2">
@@ -63,7 +63,7 @@
     <div class="relative top-10 mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-lg bg-white mb-10">
         <div class="flex justify-between items-center pb-3 border-b">
             <h3 class="text-xl font-bold text-gray-800">Edit Action Plan</h3>
-            <button onclick="closeModal('editActionPlanModal')" class="text-gray-400 hover:text-gray-600 transition">
+            <button type="button" data-modal-close="editActionPlanModal" onclick="closeModal('editActionPlanModal')" class="text-gray-400 hover:text-gray-600 transition">
                 <i class="fas fa-times text-xl"></i>
             </button>
         </div>
@@ -100,7 +100,7 @@
             </div>
             
             <div class="flex flex-wrap justify-end gap-3 mt-5 pt-3 border-t">
-                <button type="button" onclick="closeModal('editActionPlanModal')" class="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50 transition">
+                <button type="button" data-modal-close="editActionPlanModal" onclick="closeModal('editActionPlanModal')" class="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50 transition">
                     Cancel
                 </button>
                 <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition flex items-center gap-2">
@@ -116,7 +116,7 @@
     <div class="relative top-10 mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-lg bg-white mb-10">
         <div class="flex justify-between items-center pb-3 border-b">
             <h3 id="viewPlanTitle" class="text-xl font-bold text-gray-800">Plan Details</h3>
-            <button onclick="closeModal('viewPlanModal')" class="text-gray-400 hover:text-gray-600 transition">
+            <button type="button" data-modal-close="viewPlanModal" onclick="closeModal('viewPlanModal')" class="text-gray-400 hover:text-gray-600 transition">
                 <i class="fas fa-times text-xl"></i>
             </button>
         </div>
@@ -126,7 +126,7 @@
         </div>
         
         <div class="flex flex-wrap justify-end gap-3 mt-5 pt-3 border-t">
-            <button type="button" onclick="closeModal('viewPlanModal')" class="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50 transition">
+            <button type="button" data-modal-close="viewPlanModal" onclick="closeModal('viewPlanModal')" class="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50 transition">
                 Close
             </button>
         </div>
@@ -389,6 +389,9 @@
         const modal = document.getElementById(modalId);
         if (modal) {
             modal.classList.add('hidden');
+            modal.style.setProperty('display', 'none', 'important');
+            modal.style.removeProperty('visibility');
+            modal.style.removeProperty('pointer-events');
             document.body.style.overflow = '';
         }
     }
@@ -512,6 +515,7 @@ document.getElementById('edit-action-plan-form')?.addEventListener('submit', fun
 
     // ==================== TOAST NOTIFICATION ====================
     window.showNotification = function(message, type = 'info') {
+    return window.appNotify(...arguments);
         const types = {
             success: 'bg-green-500',
             error: 'bg-red-500',
@@ -573,3 +577,4 @@ document.getElementById('edit-action-plan-form')?.addEventListener('submit', fun
     }
 })();
 </script>
+

@@ -1,4 +1,4 @@
-<div>
+﻿<div>
     <div class="flex justify-between items-center mb-4">
         <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2">
             <i class="fas fa-tasks text-purple-600"></i>
@@ -145,7 +145,7 @@ function updateTasksTable(tasks) {
                 <td class="px-4 py-3">
                     <div class="flex gap-2">
                         <button onclick="viewTaskDetails(${task.id})" class="text-gray-600 hover:text-gray-900 text-sm" title="View">
-                            <i class="fas fa-eye"></i>
+                            <i class="fas fa-file-lines"></i>
                         </button>
                         <button onclick="editTask(${task.id})" class="text-blue-600 hover:text-blue-800 text-sm" title="Edit Task">
                             <i class="fas fa-edit"></i>
@@ -254,12 +254,12 @@ function viewTaskDetails(taskId) {
             if (content) content.innerHTML = viewModalHtml;
             if (modal) modal.classList.remove('hidden');
         } else {
-            alert('Error loading task details: ' + (data.message || 'Unknown error'));
+            appAlert('Error loading task details: ' + (data.message || 'Unknown error'));
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error loading task details');
+        appAlert('Error loading task details');
     });
 }
 
@@ -314,12 +314,12 @@ function editTask(taskId) {
             
             document.getElementById('editTaskModal').classList.remove('hidden');
         } else {
-            alert('Error loading task for editing: ' + (data.message || 'Unknown error'));
+            appAlert('Error loading task for editing: ' + (data.message || 'Unknown error'));
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error loading task for editing');
+        appAlert('Error loading task for editing');
     });
 }
 
@@ -351,12 +351,12 @@ function updateTask(event) {
             showNotification('Task updated successfully!', 'success');
             loadTasks();
         } else {
-            alert('Error: ' + (data.message || 'Failed to update task'));
+            appAlert('Error: ' + (data.message || 'Failed to update task'));
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Network error: ' + error.message);
+        appAlert('Network error: ' + error.message);
     });
 }
 
@@ -385,12 +385,12 @@ function submitTask(event) {
             showNotification('Task created successfully!', 'success');
             loadTasks();
         } else {
-            alert('Error: ' + (data.message || 'Failed to create task'));
+            appAlert('Error: ' + (data.message || 'Failed to create task'));
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Network error: ' + error.message);
+        appAlert('Network error: ' + error.message);
     });
 }
 
@@ -458,7 +458,7 @@ function removeSubtask(button) {
     if (item && document.querySelectorAll('.subtask-item').length > 1) {
         item.remove();
     } else {
-        alert('You need at least one subtask');
+        appAlert('You need at least one subtask');
     }
 }
 
@@ -491,6 +491,7 @@ function closeModal(modalId) {
 }
 
 function showNotification(message, type) {
+    return window.appNotify(...arguments);
     const notification = document.createElement('div');
     notification.className = `fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg text-white z-50 transition-all ${
         type === 'success' ? 'bg-green-500' : 'bg-red-500'
@@ -517,3 +518,5 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
+
+

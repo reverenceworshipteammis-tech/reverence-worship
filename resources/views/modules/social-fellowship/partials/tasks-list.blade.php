@@ -1,4 +1,4 @@
-<div class="bg-white rounded-xl shadow-md p-6">
+﻿<div class="bg-white rounded-xl shadow-md p-6">
     
     <div class="flex justify-between items-center mb-6">
         <div>
@@ -138,7 +138,7 @@
                 </div>
                 <div class="flex gap-2 ml-4">
                     <button onclick="viewTask({{ $task->id }})" class="text-gray-600 hover:text-gray-900" title="View">
-                        <i class="fas fa-eye"></i>
+                        <i class="fas fa-file-lines"></i>
                     </button>
                     <button onclick="editTask({{ $task->id }})" class="text-gray-400 hover:text-purple-600" title="Edit">
                         <i class="fas fa-edit"></i>
@@ -400,7 +400,7 @@ function removeSubtask(button) {
     if (item && document.querySelectorAll('.subtask-item').length > 1) {
         item.remove();
     } else {
-        alert('You need at least one subtask');
+        appAlert('You need at least one subtask');
     }
 }
 
@@ -625,7 +625,7 @@ function viewTask(id) {
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error loading task details');
+        appAlert('Error loading task details');
     });
 }
 
@@ -684,8 +684,8 @@ function editTask(id) {
 }
 
 // Delete task
-function deleteTask(id) {
-    if (confirm('Are you sure you want to delete this task and all its subtasks?')) {
+async function deleteTask(id) {
+    if (await appConfirm('Are you sure you want to delete this task and all its subtasks?')) {
         fetch(`/social-fellowship/tasks/${id}`, {
             method: 'DELETE',
             headers: {
@@ -700,12 +700,12 @@ function deleteTask(id) {
                 showNotification('Task deleted successfully!', 'success');
                 setTimeout(() => location.reload(), 1000);
             } else {
-                alert('Error deleting task: ' + (data.message || 'Unknown error'));
+                appAlert('Error deleting task: ' + (data.message || 'Unknown error'));
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Error deleting task');
+            appAlert('Error deleting task');
         });
     }
 }
@@ -740,12 +740,12 @@ document.getElementById('taskForm')?.addEventListener('submit', function(e) {
             showNotification('Task saved successfully!', 'success');
             setTimeout(() => location.reload(), 1000);
         } else {
-            alert('Error: ' + (data.message || 'Unknown error'));
+            appAlert('Error: ' + (data.message || 'Unknown error'));
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error saving task');
+        appAlert('Error saving task');
     });
 });
 
@@ -772,12 +772,12 @@ document.getElementById('editTaskForm')?.addEventListener('submit', function(e) 
             showNotification('Task updated successfully!', 'success');
             setTimeout(() => location.reload(), 1000);
         } else {
-            alert('Error: ' + (data.message || 'Unknown error'));
+            appAlert('Error: ' + (data.message || 'Unknown error'));
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error updating task');
+        appAlert('Error updating task');
     });
 });
 
@@ -787,6 +787,7 @@ function closeModal(modalId) {
 }
 
 function showNotification(message, type) {
+    return window.appNotify(...arguments);
     const notification = document.createElement('div');
     notification.className = `fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg text-white z-50 transition-all ${
         type === 'success' ? 'bg-green-500' : 'bg-red-500'
@@ -832,3 +833,5 @@ document.addEventListener('DOMContentLoaded', function() {
     transition: all 0.2s ease;
 }
 </style>
+
+

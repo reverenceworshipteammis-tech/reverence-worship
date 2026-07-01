@@ -141,7 +141,7 @@
                         </td>
                         <td class="px-4 py-3">
                             <a href="{{ route('logs.view-activity', $log->id) }}" class="text-blue-600 hover:text-blue-900">
-                                <i class="fas fa-eye"></i>
+                                <i class="fas fa-file-lines"></i>
                             </a>
                         </td>
                     </tr>
@@ -166,8 +166,8 @@
 </div>
 
 <script>
-function confirmClear() {
-    if (confirm('⚠️ WARNING: This will permanently delete ALL activity logs. This action cannot be undone. Are you sure?')) {
+async function confirmClear() {
+    if (await appConfirm('⚠️ WARNING: This will permanently delete ALL activity logs. This action cannot be undone. Are you sure?')) {
         window.location.href = "{{ route('logs.clear.activity') }}";
     }
 }

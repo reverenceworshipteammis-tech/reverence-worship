@@ -26,10 +26,14 @@ Route::prefix('social-fellowship')->group(function () {
     Route::delete('/tasks/{id}', [SocialFellowshipController::class, 'deleteTask'])->name('social-fellowship.tasks.delete');
     
     // ==================== ACTION PLAN ROUTES ====================
+    Route::get('/action-plans', [SocialFellowshipController::class, 'actionPlans'])->name('social-fellowship.action-plans.index');
     Route::post('/action-plans/store', [SocialFellowshipController::class, 'storeActionPlan'])->name('social-fellowship.action-plans.store');
     Route::get('/action-plans/{id}/edit', [SocialFellowshipController::class, 'editActionPlan'])->name('social-fellowship.action-plans.edit');
     Route::put('/action-plans/{id}', [SocialFellowshipController::class, 'updateActionPlan'])->name('social-fellowship.action-plans.update');
     Route::delete('/action-plans/{id}', [SocialFellowshipController::class, 'deleteActionPlan'])->name('social-fellowship.action-plans.delete');
+    Route::post('/action-plans/{id}/task', [SocialFellowshipController::class, 'addActionPlanTask'])->name('social-fellowship.action-plans.tasks.store');
+    Route::put('/action-plans/task/{taskId}', [SocialFellowshipController::class, 'updateActionPlanTask'])->name('social-fellowship.action-plans.tasks.update');
+    Route::delete('/action-plans/task/{taskId}', [SocialFellowshipController::class, 'deleteActionPlanTask'])->name('social-fellowship.action-plans.tasks.delete');
     
     // ==================== ARCHIVE ROUTES ====================
     Route::prefix('archives')->group(function () {

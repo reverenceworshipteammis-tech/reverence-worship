@@ -1,4 +1,4 @@
-<div>
+﻿<div>
     <!-- Header with Year Selection -->
     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-3 mb-4">
         <h3 class="text-base font-semibold text-gray-800">Member Contributions</h3>
@@ -368,6 +368,7 @@
     }
 
     function showNotification(message, type = 'success') {
+    return window.appNotify(...arguments);
         const notification = document.createElement('div');
         const icon = type === 'success' ? 'fa-check-circle' : 
                     type === 'warning' ? 'fa-exclamation-triangle' : 'fa-exclamation-circle';
@@ -1347,7 +1348,7 @@
                                 class="h-7 w-7 inline-flex items-center justify-center rounded-md text-amber-600 hover:bg-amber-50 transition" 
                                 title="View Details & History"
                                 aria-label="View details and history for ${escapeHtml(cont.user_name)}">
-                            <i class="fas fa-eye text-sm" aria-hidden="true"></i>
+                            <i class="fas fa-file-lines text-sm" aria-hidden="true"></i>
                         </button>
                     </div>
                 </td>
@@ -1394,7 +1395,7 @@
                                         </div>
                                         <div class="text-sm">
                                             <div class="grid grid-cols-2 gap-2 mb-2">
-                                                <div><span class="text-gray-500">Amount:</span> <span class="line-through text-red-500">${formatCurrency(history.old_amount || 0)}</span> → <span class="text-green-600 font-medium">${formatCurrency(history.new_amount || 0)}</span></div>
+                                                <div><span class="text-gray-500">Amount:</span> <span class="line-through text-red-500">${formatCurrency(history.old_amount || 0)}</span> â†’ <span class="text-green-600 font-medium">${formatCurrency(history.new_amount || 0)}</span></div>
                                             </div>
                                             ${history.notes ? `<div class="text-xs text-gray-500 mt-1"><span class="text-gray-400">Reason:</span> ${escapeHtml(history.notes)}</div>` : ''}
                                         </div>
@@ -1540,10 +1541,10 @@
                                                 </div>
                                                 <div class="text-sm">
                                                     <div class="grid grid-cols-2 gap-2 mb-2">
-                                                        <div><span class="text-gray-500">Term:</span> <span class="line-through text-red-500">${history.old_term || '-'}</span> → <span class="text-green-600 font-medium">${history.new_term || '-'}</span></div>
-                                                        <div><span class="text-gray-500">Amount:</span> <span class="line-through text-red-500">${formatCurrency(history.old_amount || 0)}</span> → <span class="text-green-600 font-medium">${formatCurrency(history.new_amount || 0)}</span></div>
-                                                        <div><span class="text-gray-500">Method:</span> <span class="line-through text-red-500 capitalize">${history.old_payment_method || '-'}</span> → <span class="text-green-600 font-medium capitalize">${history.new_payment_method || '-'}</span></div>
-                                                        <div><span class="text-gray-500">Date:</span> <span class="line-through text-red-500">${history.old_payment_date || '-'}</span> → <span class="text-green-600 font-medium">${history.new_payment_date || '-'}</span></div>
+                                                        <div><span class="text-gray-500">Term:</span> <span class="line-through text-red-500">${history.old_term || '-'}</span> â†’ <span class="text-green-600 font-medium">${history.new_term || '-'}</span></div>
+                                                        <div><span class="text-gray-500">Amount:</span> <span class="line-through text-red-500">${formatCurrency(history.old_amount || 0)}</span> â†’ <span class="text-green-600 font-medium">${formatCurrency(history.new_amount || 0)}</span></div>
+                                                        <div><span class="text-gray-500">Method:</span> <span class="line-through text-red-500 capitalize">${history.old_payment_method || '-'}</span> â†’ <span class="text-green-600 font-medium capitalize">${history.new_payment_method || '-'}</span></div>
+                                                        <div><span class="text-gray-500">Date:</span> <span class="line-through text-red-500">${history.old_payment_date || '-'}</span> â†’ <span class="text-green-600 font-medium">${history.new_payment_date || '-'}</span></div>
                                                     </div>
                                                     ${history.notes ? `<div class="text-xs text-gray-500 mt-1"><span class="text-gray-400">Reason:</span> ${escapeHtml(history.notes)}</div>` : ''}
                                                 </div>
@@ -1771,3 +1772,5 @@
 
 })();
 </script>
+
+

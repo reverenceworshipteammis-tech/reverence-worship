@@ -1,4 +1,4 @@
-<div>
+﻿<div>
     <!-- Header with Date Range -->
     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-3 mb-4">
         <h3 class="text-base font-semibold text-gray-800">Sponsors</h3>
@@ -505,8 +505,8 @@ function openPaymentModal(id, name) {
         });
     }
 
-    function deleteSponsor(id, name) {
-        if (confirm(`Are you sure you want to delete "${name}"? This will also delete all associated payments.`)) {
+    async function deleteSponsor(id, name) {
+        if (await appConfirm(`Are you sure you want to delete "${name}"? This will also delete all associated payments.`)) {
             fetch(`/finance/sponsors/${id}`, {
                 method: 'DELETE',
                 headers: { 
@@ -667,6 +667,7 @@ function openPaymentModal(id, name) {
     }
 
     function showNotification(message, type = 'success') {
+    return window.appNotify(...arguments);
         const notification = document.createElement('div');
         const icon = type === 'success' ? 'fa-check-circle' : 
                      type === 'error' ? 'fa-exclamation-circle' : 
@@ -867,3 +868,5 @@ function openPaymentModal(id, name) {
     }
 }
 </style>
+
+

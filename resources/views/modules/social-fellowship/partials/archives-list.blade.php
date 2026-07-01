@@ -1,4 +1,4 @@
-<div class="bg-white rounded-xl shadow-md p-6">
+﻿<div class="bg-white rounded-xl shadow-md p-6">
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
         
         <!-- Left Sidebar - Sections -->
@@ -182,8 +182,8 @@ function editSection(id, name) {
     document.getElementById('sectionModal').classList.remove('hidden');
 }
 
-function deleteSection(id) {
-    if (confirm('Delete this section? All pages in this section will also be deleted.')) {
+async function deleteSection(id) {
+    if (!(await appConfirm('Delete this section? All pages in this section will also be deleted.'))) {
         fetch(`/${moduleName}/archives/sections/${id}`, {
             method: 'DELETE',
             headers: {
@@ -196,7 +196,7 @@ function deleteSection(id) {
             if (data.success) {
                 location.reload();
             } else {
-                alert('Error deleting section');
+                appAlert('Error deleting section');
             }
         });
     }
@@ -266,7 +266,7 @@ function loadSectionContent(sectionId) {
 
 function openPageModal() {
     if (!currentSectionId) {
-        alert('Please select a section first');
+        appAlert('Please select a section first');
         return;
     }
     
@@ -302,8 +302,8 @@ function editPage(pageId) {
     });
 }
 
-function deletePage(pageId) {
-    if (confirm('Delete this page?')) {
+async function deletePage(pageId) {
+    if (!(await appConfirm('Delete this page?'))) {
         fetch(`/${moduleName}/archives/pages/${pageId}`, {
             method: 'DELETE',
             headers: {
@@ -318,7 +318,7 @@ function deletePage(pageId) {
                     loadSectionContent(currentSectionId);
                 }
             } else {
-                alert('Error deleting page');
+                appAlert('Error deleting page');
             }
         });
     }
@@ -359,12 +359,12 @@ document.getElementById('section-form')?.addEventListener('submit', function(e) 
             closeModal('sectionModal');
             location.reload();
         } else {
-            alert('Error: ' + (data.message || 'Something went wrong'));
+            appAlert('Error: ' + (data.message || 'Something went wrong'));
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('An error occurred. Please try again.');
+        appAlert('An error occurred. Please try again.');
     });
 });
 
@@ -401,12 +401,12 @@ document.getElementById('page-form')?.addEventListener('submit', function(e) {
                 loadSectionContent(currentSectionId);
             }
         } else {
-            alert('Error: ' + (data.message || 'Something went wrong'));
+            appAlert('Error: ' + (data.message || 'Something went wrong'));
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('An error occurred. Please try again.');
+        appAlert('An error occurred. Please try again.');
     });
 });
 
@@ -426,3 +426,4 @@ function escapeHtml(text) {
 .modal { display: none; }
 .modal:not(.hidden) { display: block !important; }
 </style>
+

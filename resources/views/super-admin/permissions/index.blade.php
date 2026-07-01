@@ -1,4 +1,4 @@
-@extends('layouts.app')
+﻿@extends('layouts.app')
 
 @section('title', 'Permission Management')
 @section('page-title', 'Permission Management')
@@ -81,7 +81,7 @@
                                 
                                 @if($permission->roles->count() == 0)
                                     <form action="{{ route('permissions.destroy', $permission->id) }}" method="POST" class="inline" 
-                                          onsubmit="return confirm('Delete permission {{ $permission->display_name }}? This action cannot be undone.')">
+                                          onsubmit="return confirmSubmit(event, 'Delete permission {{ $permission->display_name }}? This action cannot be undone.')">
                                         @csrf
                                         @method('DELETE')
                                         <button type="submit" class="text-red-600 hover:text-red-900" title="Delete Permission">

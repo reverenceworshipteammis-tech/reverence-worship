@@ -1,4 +1,4 @@
-@extends('layouts.app')
+﻿@extends('layouts.app')
 
 @section('title', 'My Contributions')
 @section('page-title', 'Contribution Management')
@@ -118,7 +118,7 @@
                         $borderColor = 'border-green-200';
                         $bgColor = 'bg-green-50';
                         $statusColor = 'green';
-                        $statusIcon = '✓';
+                        $statusIcon = 'âœ“';
                         $statusText = 'completed';
                     } elseif ($status == 'partial') {
                         $borderColor = 'border-yellow-200';
@@ -157,7 +157,7 @@
                     </div>
 
                     @if($status == 'completed')
-                        <p class="text-green-600 text-xs mt-2">✓ Fully Paid!</p>
+                        <p class="text-green-600 text-xs mt-2">âœ“ Fully Paid!</p>
                     @else
                         <!-- Pay Button - Requires create/pay permission -->
                         @if(auth()->check() && auth()->user()->canAccess('financial', 'pay'))
@@ -383,7 +383,7 @@ function selectYear(year) {
 function openPaymentModal(term, targetAmount, remainingAmount) {
     // Check if user has pay permission
     @if(!(auth()->check() && auth()->user()->canAccess('financial', 'pay')))
-        alert('You do not have permission to make payments.');
+        appAlert('You do not have permission to make payments.');
         return;
     @endif
     
@@ -400,7 +400,7 @@ function openPaymentModal(term, targetAmount, remainingAmount) {
 function openEditAmountModal() {
     // Check if user has update permission
     @if(!(auth()->check() && auth()->user()->canAccess('financial', 'update')))
-        alert('You do not have permission to edit contribution amounts.');
+        appAlert('You do not have permission to edit contribution amounts.');
         return;
     @endif
     
@@ -410,7 +410,7 @@ function openEditAmountModal() {
 function openPaymentHistory() {
     // Check if user has view permission
     @if(!(auth()->check() && auth()->user()->canAccess('financial', 'view')))
-        alert('You do not have permission to view payment history.');
+        appAlert('You do not have permission to view payment history.');
         return;
     @endif
     
@@ -458,7 +458,7 @@ function openPaymentHistory() {
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Could not load payment history');
+        appAlert('Could not load payment history');
     });
 }
 

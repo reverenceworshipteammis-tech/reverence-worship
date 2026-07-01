@@ -1,4 +1,4 @@
-<div class="bg-white rounded-xl shadow-md p-6">
+﻿<div class="bg-white rounded-xl shadow-md p-6">
     
     @php
         $canViewForms = auth()->check() && auth()->user()->canAccess('intercession', 'view-forms');
@@ -735,8 +735,11 @@ function refreshAvailableForms() {
 }
 
 // ==================== DELETE FORM ====================
-window.deleteForm = function(id) {
-    if(confirm('Delete this form? All responses will be lost forever.')) {
+window.deleteForm = async function(id) {
+    if (!(await appConfirm('Delete this form? All responses will be lost forever.'))) {
+        return;
+    }
+
         fetch(`/forms/manage/${id}`, {
             method: 'DELETE',
             headers: {
@@ -763,11 +766,11 @@ window.deleteForm = function(id) {
                 showNotification('Error deleting form', 'error');
             }
         });
-    }
 };
 
 // ==================== NOTIFICATION ====================
 window.showNotification = function(message, type) {
+    return window.appNotify(...arguments);
     const colors = {
         success: 'bg-green-500',
         error: 'bg-red-500',
@@ -786,7 +789,7 @@ window.showNotification = function(message, type) {
     notification.innerHTML = `
         <i class="fas ${icons[type] || 'fa-bell'}"></i>
         <span class="text-sm">${message}</span>
-        <button onclick="this.parentElement.remove()" class="text-white/70 hover:text-white ml-2">×</button>
+        <button onclick="this.parentElement.remove()" class="text-white/70 hover:text-white ml-2">Ã—</button>
     `;
     document.body.appendChild(notification);
     setTimeout(() => {
@@ -874,3 +877,5 @@ document.addEventListener('DOMContentLoaded', function() {
 window.showFormSection = showFormSection;
 window.refreshAvailableForms = refreshAvailableForms;
 </script>
+
+

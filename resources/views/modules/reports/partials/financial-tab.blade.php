@@ -1,4 +1,4 @@
-<div>
+﻿<div>
     <div class="mb-6">
         <h3 class="text-lg font-semibold text-gray-800">Financial Report</h3>
         <p class="text-sm text-gray-500 mt-0.5">Comprehensive financial overview including contributions, expenses, and sponsors</p>
@@ -484,7 +484,7 @@ function renderFinancialTable(data) {
 
 function exportFinancialCSV() {
     if (!financialData) {
-        alert('Please generate the report first');
+        appAlert('Please generate the report first');
         return;
     }
     

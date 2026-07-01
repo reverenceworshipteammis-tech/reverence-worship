@@ -1,4 +1,4 @@
-@extends('layouts.app')
+﻿@extends('layouts.app')
 
 @section('title', 'Permission Manager')
 
@@ -197,7 +197,7 @@ let featuresData = @json($allFeatures);
 let roleAssignments = @json($allAssignments);
 
 const featureIconMap = {
-    view: ['fa-eye', 'text-emerald-600', 'bg-emerald-50'],
+    view: ['fa-file-lines', 'text-emerald-600', 'bg-emerald-50'],
     create: ['fa-plus-circle', 'text-blue-600', 'bg-blue-50'],
     edit: ['fa-edit', 'text-amber-600', 'bg-amber-50'],
     delete: ['fa-trash-alt', 'text-red-600', 'bg-red-50']
@@ -228,8 +228,8 @@ function editRole(id) {
         .catch(error => console.error('Error:', error));
 }
 
-function deleteRole(id, name) {
-    if (confirm(`Delete role "${name}"? This will remove all permissions for this role.`)) {
+async function deleteRole(id, name) {
+    if (await appConfirm(`Delete role "${name}"? This will remove all permissions for this role.`)) {
         fetch(`/permission-manager/role/${id}`, {
             method: 'DELETE',
             headers: {
@@ -361,16 +361,16 @@ document.getElementById('saveRolePermissionsBtn').addEventListener('click', func
     .then(res => res.json())
     .then(data => {
         if (data.success) {
-            alert(`Permissions saved for "${currentEditingRoleName}" successfully!`);
+            appAlert(`Permissions saved for "${currentEditingRoleName}" successfully!`);
             closeModal('assignPermissionsModal');
             location.reload();
         } else {
-            alert('Error: ' + data.message);
+            appAlert('Error: ' + data.message);
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Network error. Please try again.');
+        appAlert('Network error. Please try again.');
     });
 });
 
@@ -388,13 +388,13 @@ document.getElementById('roleForm').addEventListener('submit', function(e) {
     .then(res => res.json())
     .then(data => {
         if (data.success) {
-            alert(data.message);
+            appAlert(data.message);
             location.reload();
         } else {
-            alert('Error: ' + data.message);
+            appAlert('Error: ' + data.message);
         }
     })
-    .catch(error => alert('Error: ' + error.message));
+    .catch(error => appAlert('Error: ' + error.message));
 });
 
 document.getElementById('roleSearch')?.addEventListener('input', function() {
@@ -450,3 +450,4 @@ document.addEventListener('keydown', function(event) {
 });
 </script>
 @endsection
+

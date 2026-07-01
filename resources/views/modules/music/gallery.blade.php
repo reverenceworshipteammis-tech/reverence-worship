@@ -1,25 +1,14 @@
-<div class="bg-white rounded-lg shadow-lg p-6">
+﻿<div class="bg-white rounded-lg shadow-lg p-6">
     <div class="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
         <h3 class="text-lg font-bold text-gray-800">Photo Gallery</h3>
         
-        <!-- Search and Filter Bar -->
+        <!-- Search and Sort Bar -->
         <div class="flex flex-wrap gap-3">
             <div class="relative">
                 <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
                 <input type="text" id="searchPhotos" placeholder="Search photos..." 
                        class="pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm w-48 focus:ring-blue-500 focus:border-blue-500">
             </div>
-            
-            <select id="categoryFilter" class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500">
-                <option value="">All Categories</option>
-                <option value="worship">Worship Service</option>
-                <option value="event">Special Event</option>
-                <option value="practice">Practice Session</option>
-                <option value="concert">Concert</option>
-                <option value="retreat">Retreat</option>
-                <option value="conference">Conference</option>
-            </select>
-            
             <select id="sortBy" class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500">
                 <option value="newest">Newest First</option>
                 <option value="oldest">Oldest First</option>
@@ -38,33 +27,12 @@
     <!-- Gallery Stats -->
     @php
         $totalPhotos = count($gallery ?? []);
-        $worshipCount = 0;
-        $eventCount = 0;
-        $practiceCount = 0;
-        
-        foreach ($gallery ?? [] as $photo) {
-            if ($photo->category == 'worship') $worshipCount++;
-            elseif ($photo->category == 'event') $eventCount++;
-            elseif ($photo->category == 'practice') $practiceCount++;
-        }
     @endphp
-    
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+
+    <div class="grid grid-cols-1 gap-3 mb-6">
         <div class="bg-blue-50 rounded-lg p-3 text-center">
             <p class="text-2xl font-bold text-blue-600">{{ $totalPhotos }}</p>
             <p class="text-xs text-gray-600">Total Photos</p>
-        </div>
-        <div class="bg-green-50 rounded-lg p-3 text-center">
-            <p class="text-2xl font-bold text-green-600">{{ $worshipCount }}</p>
-            <p class="text-xs text-gray-600">Worship</p>
-        </div>
-        <div class="bg-purple-50 rounded-lg p-3 text-center">
-            <p class="text-2xl font-bold text-purple-600">{{ $eventCount }}</p>
-            <p class="text-xs text-gray-600">Events</p>
-        </div>
-        <div class="bg-yellow-50 rounded-lg p-3 text-center">
-            <p class="text-2xl font-bold text-yellow-600">{{ $practiceCount }}</p>
-            <p class="text-xs text-gray-600">Practice</p>
         </div>
     </div>
     
@@ -169,38 +137,10 @@
                 </div>
                 
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Alt Text <span class="text-red-500">*</span></label>
-                    <input type="text" name="alt_text" id="altText" required 
-                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                           placeholder="Describe the photos">
-                </div>
-                
-                <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Caption</label>
                     <textarea name="caption" id="caption" rows="2" 
                               class="w-full px-4 py-2 border border-gray-300 rounded-lg"
                               placeholder="Optional caption..."></textarea>
-                </div>
-                
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                    <select name="category" id="category" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                        <option value="">Select a category</option>
-                        <option value="worship">Worship Service</option>
-                        <option value="event">Special Event</option>
-                        <option value="practice">Practice Session</option>
-                        <option value="concert">Concert</option>
-                        <option value="retreat">Retreat</option>
-                        <option value="conference">Conference</option>
-                    </select>
-                </div>
-                
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Tags</label>
-                    <input type="text" name="tags" id="tags" 
-                           class="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                           placeholder="e.g., worship, music, sunday">
-                    <p class="text-xs text-gray-400 mt-1">Separate multiple tags with commas</p>
                 </div>
             </div>
             
@@ -284,7 +224,6 @@ let visibleCount = 12;
 // Search and Filter
 function filterGallery() {
     const searchTerm = document.getElementById('searchPhotos').value.toLowerCase();
-    const categoryFilter = document.getElementById('categoryFilter').value;
     const sortBy = document.getElementById('sortBy').value;
     
     let items = Array.from(document.querySelectorAll('.gallery-item'));
@@ -292,10 +231,8 @@ function filterGallery() {
     // Filter
     items = items.filter(item => {
         const title = item.dataset.title || '';
-        const category = item.dataset.category || '';
         const matchesSearch = title.includes(searchTerm);
-        const matchesCategory = !categoryFilter || category === categoryFilter;
-        return matchesSearch && matchesCategory;
+        return matchesSearch;
     });
     
     // Sort
@@ -374,13 +311,13 @@ function editPhoto(id) {
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error loading photo data');
+        appAlert('Error loading photo data');
     });
 }
 
 // Delete Photo
-function deletePhoto(id) {
-    if (confirm('Are you sure you want to delete this photo?')) {
+async function deletePhoto(id) {
+    if (!(await appConfirm('Are you sure you want to delete this photo?'))) {
         fetch(`/music/gallery/${id}`, {
             method: 'DELETE',
             headers: {
@@ -393,7 +330,7 @@ function deletePhoto(id) {
             if (data.success) {
                 location.reload();
             } else {
-                alert('Error deleting photo');
+                appAlert('Error deleting photo');
             }
         });
     }
@@ -439,7 +376,6 @@ function nextPhoto() {
 
 // Event Listeners
 document.getElementById('searchPhotos')?.addEventListener('keyup', filterGallery);
-document.getElementById('categoryFilter')?.addEventListener('change', filterGallery);
 document.getElementById('sortBy')?.addEventListener('change', filterGallery);
 document.getElementById('loadMoreBtn')?.addEventListener('click', loadMore);
 
@@ -485,12 +421,12 @@ document.getElementById('editForm')?.addEventListener('submit', function(e) {
         if (data.success) {
             location.reload();
         } else {
-            alert('Error updating photo');
+            appAlert('Error updating photo');
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error updating photo');
+        appAlert('Error updating photo');
     });
 });
 
@@ -532,3 +468,4 @@ document.addEventListener('DOMContentLoaded', function() {
 .modal:not(.hidden) { display: block !important; }
 .gallery-item { transition: all 0.3s ease; }
 </style>
+

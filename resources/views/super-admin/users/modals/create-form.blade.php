@@ -1,4 +1,4 @@
-<form method="POST" action="{{ route('users.store') }}" id="createUserForm">
+﻿<form method="POST" action="{{ route('users.store') }}" id="createUserForm">
     @csrf
 
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto pr-1">
@@ -154,12 +154,13 @@ document.getElementById('createUserForm').addEventListener('submit', function(e)
             closeModal('createModal');
             location.reload();
         } else {
-            alert(data.message || 'Error creating user');
+            appAlert(data.message || 'Error creating user');
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error creating user');
+        appAlert('Error creating user');
     });
 });
 </script>
+

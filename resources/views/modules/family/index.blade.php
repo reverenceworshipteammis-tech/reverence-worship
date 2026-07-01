@@ -1,4 +1,4 @@
-@extends('layouts.app')
+﻿@extends('layouts.app')
 
 @section('title', $userFamily->name ?? 'My Family')
 @section('page-title', $userFamily->name ?? 'My Family')
@@ -19,7 +19,7 @@
                     <div class="flex items-center gap-2 text-xs text-gray-500">
                         <span><i class="fas fa-users mr-1"></i> {{ $familyMembers->count() }} members</span>
                         @if(isset($userFamily->parent_name) && $userFamily->parent_name)
-                        <span>•</span>
+                        <span>â€¢</span>
                         <span><i class="fas fa-user-check mr-1"></i> {{ $userFamily->parent_name }}</span>
                         @endif
                     </div>
@@ -126,10 +126,10 @@
                         </h2>
                         <div class="flex gap-1.5">
                             <span class="px-2 py-0.5 text-xs bg-green-100 text-green-600 rounded-full">
-                                ✓ {{ $taskStats['completed'] ?? 0 }}
+                                âœ“ {{ $taskStats['completed'] ?? 0 }}
                             </span>
                             <span class="px-2 py-0.5 text-xs bg-yellow-100 text-yellow-600 rounded-full">
-                                ⏳ {{ ($taskStats['in_progress'] ?? 0) + ($taskStats['pending'] ?? 0) }}
+                                â³ {{ ($taskStats['in_progress'] ?? 0) + ($taskStats['pending'] ?? 0) }}
                             </span>
                         </div>
                     </div>
@@ -289,6 +289,7 @@
     
 
     function showNotification(type, message) {
+    return window.appNotify(...arguments);
         const notification = document.createElement('div');
         notification.className = `fixed top-20 right-4 z-50 px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-slide-in`;
         notification.style.backgroundColor = type === 'success' ? '#10b981' : '#ef4444';
@@ -410,8 +411,8 @@
     @endif
 
     @if(auth()->check() && auth()->user()->canAccess('family', 'delete'))
-    function deleteMember(memberId, memberName) {
-        if (confirm(`Are you sure you want to delete "${memberName}" from the family?`)) {
+    async function deleteMember(memberId, memberName) {
+        if (await appConfirm(`Are you sure you want to delete "${memberName}" from the family?`)) {
             fetch(`/my-family/member/${memberId}`, {
                 method: 'DELETE',
                 headers: {
@@ -473,3 +474,4 @@
     .animate-slide-in { animation: slideIn 0.3s ease-out; }
 </style>
 @endsection
+

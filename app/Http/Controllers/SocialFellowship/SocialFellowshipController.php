@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\SocialFellowship;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Concerns\ManagesActionPlans;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -11,6 +12,15 @@ use App\Models\User\User;
 
 class SocialFellowshipController extends Controller
 {
+    use ManagesActionPlans;
+
+    protected ?string $actionPlanDepartment = 'social-fellowship';
+
+    protected function actionPlanView(): string
+    {
+        return 'modules.social-fellowship.partials.action-plans-list';
+    }
+
     public function index(Request $request)
 {
     // Get the selected year from request, default to current year
@@ -148,18 +158,6 @@ class SocialFellowshipController extends Controller
         }
     }
     
-    $actionPlans = DB::table('family_action_plans')
-        ->leftJoin('families', 'family_action_plans.family_id', '=', 'families.id')
-        ->select('family_action_plans.*', 'families.name as family_name')
-        ->orderBy('created_at', 'desc')
-        ->get();
-    
-    $totalActionPlans = $actionPlans->count();
-    $completedPlans = $actionPlans->where('status', 'completed')->count();
-    $inProgressPlans = $actionPlans->where('status', 'in-progress')->count();
-    $pendingPlans = $actionPlans->where('status', 'pending')->count();
-    $overallProgress = $totalActionPlans > 0 ? round(($completedPlans / $totalActionPlans) * 100) : 0;
-    
     $totalFamilies = $families->count();
     $totalMembers = DB::table('family_members')->count();
     $activeTasks = DB::table('family_tasks')
@@ -170,12 +168,6 @@ class SocialFellowshipController extends Controller
     return view('modules.social-fellowship.index', compact(
         'families', 
         'tasks',
-        'actionPlans',
-        'totalActionPlans',
-        'completedPlans',
-        'inProgressPlans',
-        'pendingPlans',
-        'overallProgress',
         'archiveSections',
         'availableUsers',
         'allUsers',
@@ -842,102 +834,42 @@ class SocialFellowshipController extends Controller
     
     public function storeActionPlan(Request $request)
     {
-        try {
-            $request->validate([
-                'title' => 'required|string|max:255',
-                'description' => 'nullable|string',
-                'family_id' => 'required|exists:families,id',
-                'due_date' => 'nullable|date',
-                'progress' => 'nullable|integer|min:0|max:100',
-                'status' => 'nullable|string'
-            ]);
-            
-            $planId = DB::table('family_action_plans')->insertGetId([
-                'title' => $request->title,
-                'description' => $request->description,
-                'family_id' => $request->family_id,
-                'due_date' => $request->due_date,
-                'progress' => $request->progress ?? 0,
-                'status' => $request->status ?? 'pending',
-                'created_by' => auth()->id(),
-                'created_at' => now(),
-                'updated_at' => now()
-            ]);
-            
-            if ($request->ajax()) {
-                return response()->json(['success' => true, 'plan_id' => $planId]);
-            }
-            
-            return redirect()->back()->with('success', 'Action plan created successfully');
-        } catch (\Exception $e) {
-            if ($request->ajax()) {
-                return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
-            }
-            return redirect()->back()->with('error', 'Error creating action plan: ' . $e->getMessage());
-        }
+        return $this->actionPlanStore($request);
     }
-    
+
+    public function actionPlans(Request $request)
+    {
+        return $this->actionPlanIndex($request);
+    }
+
     public function editActionPlan($id)
     {
-        try {
-            $plan = DB::table('family_action_plans')->where('id', $id)->first();
-            return response()->json(['success' => true, 'plan' => $plan]);
-        } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
-        }
+        return $this->actionPlanEdit($id);
     }
-    
+
     public function updateActionPlan(Request $request, $id)
     {
-        try {
-            $request->validate([
-                'title' => 'required|string|max:255',
-                'description' => 'nullable|string',
-                'family_id' => 'required|exists:families,id',
-                'due_date' => 'nullable|date',
-                'progress' => 'nullable|integer|min:0|max:100',
-                'status' => 'nullable|string'
-            ]);
-            
-            DB::table('family_action_plans')->where('id', $id)->update([
-                'title' => $request->title,
-                'description' => $request->description,
-                'family_id' => $request->family_id,
-                'due_date' => $request->due_date,
-                'progress' => $request->progress ?? 0,
-                'status' => $request->status ?? 'pending',
-                'updated_at' => now()
-            ]);
-            
-            if ($request->ajax()) {
-                return response()->json(['success' => true]);
-            }
-            
-            return redirect()->back()->with('success', 'Action plan updated successfully');
-        } catch (\Exception $e) {
-            if ($request->ajax()) {
-                return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
-            }
-            return redirect()->back()->with('error', 'Error updating action plan: ' . $e->getMessage());
-        }
+        return $this->actionPlanUpdate($request, $id);
     }
-    
+
     public function deleteActionPlan($id)
     {
-        try {
-            DB::table('family_action_plans')->where('id', $id)->delete();
-            
-            if (request()->ajax()) {
-                return response()->json(['success' => true]);
-            }
-            
-            return redirect()->back()->with('success', 'Action plan deleted successfully');
-        } catch (\Exception $e) {
-            if (request()->ajax()) {
-                return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
-            }
-            return redirect()->back()->with('error', 'Error deleting action plan: ' . $e->getMessage());
-        }
+        return $this->actionPlanDestroy($id);
+    }
+
+    public function addActionPlanTask(Request $request, $planId)
+    {
+        return $this->actionPlanAddTask($request, $planId);
+    }
+
+    public function updateActionPlanTask(Request $request, $taskId)
+    {
+        return $this->actionPlanUpdateTask($request, $taskId);
+    }
+
+    public function deleteActionPlanTask($taskId)
+    {
+        return $this->actionPlanDeleteTask($taskId);
     }
     
     // ==================== ARCHIVES METHODS ====================

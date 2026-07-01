@@ -1,4 +1,4 @@
-<div>
+﻿<div>
     <!-- Email Inbox Header -->
     <div class="bg-white border-b px-4 py-3 flex items-center justify-between">
         <div class="flex items-center gap-3">
@@ -380,11 +380,15 @@ function updateSelectedCount() {
 function deleteSelected() {
     const selected = document.querySelectorAll('.message-checkbox:checked');
     if (selected.length === 0) {
-        alert('Please select messages to delete');
+        appAlert('Please select messages to delete');
         return;
     }
     
-    if (confirm(`Delete ${selected.length} selected message(s)?`)) {
+    appConfirm(`Delete ${selected.length} selected message(s)?`).then((confirmed) => {
+        if (!confirmed) {
+            return;
+        }
+
         let deleted = 0;
         let promises = [];
         
@@ -406,13 +410,13 @@ function deleteSelected() {
         });
         
         Promise.all(promises).then(() => {
-            alert(`${deleted} message(s) deleted successfully`);
+            appAlert(`${deleted} message(s) deleted successfully`);
             window.loadAnnouncements();
             if (typeof window.refreshOverviewStats === 'function') {
                 window.refreshOverviewStats();
             }
         });
-    }
+    });
 }
 
 function refreshMessages() {
@@ -455,7 +459,11 @@ window.viewMessage = function(id) {
 };
 
 window.resendAnnouncement = function(id) {
-    if (confirm('Resend this announcement to all recipients?')) {
+    appConfirm('Resend this announcement to all recipients?').then((confirmed) => {
+        if (!confirmed) {
+            return;
+        }
+
         fetch(`/announcements/${id}/resend`, {
             method: 'POST',
             headers: {
@@ -467,21 +475,25 @@ window.resendAnnouncement = function(id) {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                alert(data.message || 'Message resent successfully!');
+                appAlert(data.message || 'Message resent successfully!');
                 window.loadAnnouncements();
             } else {
-                alert('Error: ' + (data.message || 'Failed to resend'));
+                appAlert('Error: ' + (data.message || 'Failed to resend'));
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Error resending announcement');
+            appAlert('Error resending announcement');
         });
-    }
+    });
 };
 
 window.deleteAnnouncement = function(id) {
-    if (confirm('Are you sure you want to delete this announcement?')) {
+    appConfirm('Are you sure you want to delete this announcement?').then((confirmed) => {
+        if (!confirmed) {
+            return;
+        }
+
         fetch(`/announcements/${id}`, {
             method: 'DELETE',
             headers: {
@@ -496,16 +508,16 @@ window.deleteAnnouncement = function(id) {
                 if (typeof window.refreshOverviewStats === 'function') {
                     window.refreshOverviewStats();
                 }
-                alert('Announcement deleted successfully');
+                appAlert('Announcement deleted successfully');
             } else {
-                alert('Error: ' + data.message);
+                appAlert('Error: ' + data.message);
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Error deleting announcement');
+            appAlert('Error deleting announcement');
         });
-    }
+    });
 };
 
 window.openViewMessageModal = function(id) {
@@ -703,3 +715,4 @@ window.refreshAnnouncementsList = function() {
     window.loadAnnouncements();
 };
 </script>
+

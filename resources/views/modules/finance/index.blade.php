@@ -1,4 +1,4 @@
-@extends('layouts.app')
+﻿@extends('layouts.app')
 
 @section('title', 'Financial Management')
 @section('page-title', 'Financial Management')
@@ -245,27 +245,27 @@ function activateTab(tabName) {
 // These get overridden when tabs load
 // ============================================
 window.loadContributions = function() {
-    console.log('⚠️ loadContributions called but contributions tab not loaded');
+    console.log('âš ï¸ loadContributions called but contributions tab not loaded');
 };
 
 window.filterPayments = function() {
-    console.log('⚠️ filterPayments called but payments tab not loaded');
+    console.log('âš ï¸ filterPayments called but payments tab not loaded');
 };
 
 window.loadSponsors = function() {
-    console.log('⚠️ loadSponsors called but sponsors tab not loaded');
+    console.log('âš ï¸ loadSponsors called but sponsors tab not loaded');
 };
 
 window.loadExpenses = function() {
-    console.log('⚠️ loadExpenses called but expenses tab not loaded');
+    console.log('âš ï¸ loadExpenses called but expenses tab not loaded');
 };
 
 window.loadActionPlans = function() {
-    console.log('⚠️ loadActionPlans called but action plans tab not loaded');
+    console.log('âš ï¸ loadActionPlans called but action plans tab not loaded');
 };
 
 window.loadSettings = function() {
-    console.log('⚠️ loadSettings called but settings tab not loaded');
+    console.log('âš ï¸ loadSettings called but settings tab not loaded');
 };
 
 
@@ -315,6 +315,8 @@ window.closeModal = function(modalId) {
     const modal = document.getElementById(modalId);
     if (modal) {
         modal.classList.add('hidden');
+        modal.style.setProperty('display', 'none', 'important');
+        document.body.style.overflow = '';
     }
 };
 
@@ -581,6 +583,7 @@ function submitContribute(event) {
 // NOTIFICATION FUNCTION - Global
 // ============================================
 function showNotification(message, type) {
+    return window.appNotify(...arguments);
     const notification = document.createElement('div');
     notification.className = `fixed top-20 right-4 z-50 px-6 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-slide-in max-w-md`;
     notification.style.backgroundColor = type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#3b82f6';
@@ -602,3 +605,4 @@ function showNotification(message, type) {
 }
 </script>
 @endsection
+

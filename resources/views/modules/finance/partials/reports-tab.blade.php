@@ -1,4 +1,4 @@
-<div>
+﻿<div>
     
     <!-- Reports Grid -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
@@ -169,12 +169,12 @@ function generateReport(type) {
             currentReportData = data;
             document.getElementById('reportPreviewModal').classList.remove('hidden');
         } else {
-            alert('Error: ' + data.message);
+            appAlert('Error: ' + data.message);
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error loading report: ' + error.message);
+        appAlert('Error loading report: ' + error.message);
     });
 }
 
@@ -205,7 +205,7 @@ function exportReportToPDF() {
 
 function exportReportToCSV() {
     if (!currentReportData || !currentReportData.csv) {
-        alert('No data to export');
+        appAlert('No data to export');
         return;
     }
     

@@ -1,4 +1,4 @@
-<div class="bg-white rounded-xl shadow-md p-6">
+﻿<div class="bg-white rounded-xl shadow-md p-6">
     
     <div class="flex justify-between items-center mb-6">
         <div>
@@ -498,8 +498,8 @@ document.getElementById('searchFamilies')?.addEventListener('keyup', function() 
 });
 
 // Delete Family
-function deleteFamily(familyId) {
-    if (confirm('Are you sure you want to delete this family? All members and tasks will also be deleted. This action cannot be undone.')) {
+async function deleteFamily(familyId) {
+    if (await appConfirm('Are you sure you want to delete this family? All members and tasks will also be deleted. This action cannot be undone.')) {
         fetch(`/social-fellowship/family/${familyId}`, {
             method: 'DELETE',
             headers: {
@@ -514,12 +514,12 @@ function deleteFamily(familyId) {
                 showNotification('Family deleted successfully!', 'success');
                 setTimeout(() => location.reload(), 1000);
             } else {
-                alert('Error deleting family: ' + data.message);
+                appAlert('Error deleting family: ' + data.message);
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Error deleting family');
+            appAlert('Error deleting family');
         });
     }
 }
@@ -548,7 +548,7 @@ function viewFamilyMembers(familyId) {
             document.getElementById('modalFamilyName').textContent = data.family.name;
             document.getElementById('modalFamilyInfo').innerHTML = `
                 ${data.family.motto ? `<i class="fas fa-quote-left mr-1"></i> "${data.family.motto}"` : ''}
-                ${data.family.parent_name ? ` • Parent: ${data.family.parent_name}` : ''}
+                ${data.family.parent_name ? ` â€¢ Parent: ${data.family.parent_name}` : ''}
                 <span class="ml-2 text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">${data.members.length} members</span>
             `;
             
@@ -645,7 +645,7 @@ function viewFamilyMembers(familyId) {
 // Open Add Member Modal
 function openAddMemberModal() {
     if (!currentFamilyId) {
-        alert('No family selected');
+        appAlert('No family selected');
         return;
     }
     document.getElementById('addMemberFamilyId').value = currentFamilyId;
@@ -653,8 +653,8 @@ function openAddMemberModal() {
 }
 
 // Remove Member
-function removeMember(userId, familyId) {
-    if (confirm('Are you sure you want to remove this member from the family?')) {
+async function removeMember(userId, familyId) {
+    if (await appConfirm('Are you sure you want to remove this member from the family?')) {
         fetch(`/social-fellowship/family/${familyId}/member/${userId}`, {
             method: 'DELETE',
             headers: {
@@ -669,12 +669,12 @@ function removeMember(userId, familyId) {
                 showNotification('Member removed successfully!', 'success');
                 viewFamilyMembers(currentFamilyId);
             } else {
-                alert('Error: ' + data.message);
+                appAlert('Error: ' + data.message);
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Error removing member');
+            appAlert('Error removing member');
         });
     }
 }
@@ -832,12 +832,12 @@ document.getElementById('changeParentForm')?.addEventListener('submit', function
             showNotification('Family parent updated successfully!', 'success');
             setTimeout(() => location.reload(), 1000);
         } else {
-            alert('Error: ' + data.message);
+            appAlert('Error: ' + data.message);
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error updating family parent');
+        appAlert('Error updating family parent');
     });
 });
 
@@ -866,7 +866,7 @@ document.getElementById('familyForm')?.addEventListener('submit', function(e) {
             showNotification('Family created successfully!', 'success');
             setTimeout(() => location.reload(), 1000);
         } else {
-            alert('Error: ' + data.message);
+            appAlert('Error: ' + data.message);
         }
     });
 });
@@ -965,7 +965,7 @@ document.getElementById('addMemberForm')?.addEventListener('submit', function(e)
             viewFamilyMembers(currentFamilyId);
             document.getElementById('addMemberForm').reset();
         } else {
-            alert('Error: ' + data.message);
+            appAlert('Error: ' + data.message);
         }
     });
 });
@@ -975,6 +975,7 @@ function closeModal(modalId) {
 }
 
 function showNotification(message, type) {
+    return window.appNotify(...arguments);
     const notification = document.createElement('div');
     notification.className = `fixed top-4 right-4 px-4 py-2 rounded-lg shadow-lg text-white z-50 ${
         type === 'success' ? 'bg-green-500' : 'bg-red-500'
@@ -1018,3 +1019,4 @@ document.addEventListener('DOMContentLoaded', function() {
     transform: rotate(180deg);
 }
 </style>
+

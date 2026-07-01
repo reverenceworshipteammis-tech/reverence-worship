@@ -1,4 +1,4 @@
-<div>
+﻿<div>
     <div class="flex justify-between items-center mb-4">
         <h3 class="text-lg font-semibold text-gray-800">Gifts & Donations</h3>
         <button onclick="openGiftModal()" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm">
@@ -102,8 +102,8 @@ function editGift(id) {
     window.location.href = `/finance/gifts/${id}/edit`;
 }
 
-function deleteGift(id) {
-    if (confirm('Are you sure you want to delete this gift?')) {
+async function deleteGift(id) {
+    if (await appConfirm('Are you sure you want to delete this gift?')) {
         fetch(`/finance/gifts/${id}`, {
             method: 'DELETE',
             headers: {
@@ -116,7 +116,7 @@ function deleteGift(id) {
             if (data.success) {
                 filterGifts();
             } else {
-                alert('Error deleting gift');
+                appAlert('Error deleting gift');
             }
         });
     }

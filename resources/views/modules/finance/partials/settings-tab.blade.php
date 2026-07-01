@@ -3,8 +3,7 @@
     <div class="mb-4">
         <div class="flex items-center justify-between">
             <div>
-                <h1 class="text-xl font-bold text-gray-900">Finance Settings</h1>
-                <p class="text-xs text-gray-500 mt-0.5">Term structure and contribution allocation</p>
+                <h1 class="text-xl font-bold text-gray-900">Contribution allocation per Term</h1>
             </div>
             <div class="h-8 w-8 rounded-lg bg-blue-50 flex items-center justify-center">
                 <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">

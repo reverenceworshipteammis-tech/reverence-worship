@@ -1,4 +1,4 @@
-@extends('layouts.app')
+﻿@extends('layouts.app')
 
 @section('title', 'Edit Form')
 @section('page-title', 'Edit Form')
@@ -496,7 +496,7 @@
                     '<div class="flex items-center gap-3">' +
                     '<span class="text-xs text-gray-500">Range:</span>' +
                     '<input type="number" value="' + (q.min || 1) + '" onchange="updateAndAutoSave(\'scaleMin\', ' + q.id + ', null, this.value)" class="w-14 px-2 py-1 border rounded-md text-sm text-center">' +
-                    '<span class="text-gray-400">→</span>' +
+                    '<span class="text-gray-400">â†’</span>' +
                     '<input type="number" value="' + (q.max || 5) + '" onchange="updateAndAutoSave(\'scaleMax\', ' + q.id + ', null, this.value)" class="w-14 px-2 py-1 border rounded-md text-sm text-center">' +
                     '</div>' +
                     '<div class="flex items-center gap-3 border-l border-gray-300 pl-4">' +
@@ -942,9 +942,11 @@
                     var btn = document.querySelector('.bg-green-600');
                     btn.innerHTML = '<i class="fas fa-check mr-1"></i> Done';
                     btn.disabled = false;
-                    if (confirm('Form updated successfully! Click OK to go back to Manage Forms.')) {
-                        window.location.href = '{{ route("intercession.index") }}';
-                    }
+                    appConfirm('Form updated successfully! Click OK to go back to Manage Forms.').then((confirmed) => {
+                        if (confirmed) {
+                            window.location.href = '{{ route("intercession.index") }}';
+                        }
+                    });
                 }
             } else {
                 isSaving = false;
@@ -952,7 +954,7 @@
                     var btn = document.querySelector('.bg-green-600');
                     btn.innerHTML = '<i class="fas fa-check mr-1"></i> Done';
                     btn.disabled = false;
-                    alert('Error: ' + (data.message || 'Unknown error'));
+                    appAlert('Error: ' + (data.message || 'Unknown error'));
                 }
             }
         })
@@ -963,7 +965,7 @@
                 var btn = document.querySelector('.bg-green-600');
                 btn.innerHTML = '<i class="fas fa-check mr-1"></i> Done';
                 btn.disabled = false;
-                alert('Error saving form: ' + error.message);
+                appAlert('Error saving form: ' + error.message);
             }
         });
     }

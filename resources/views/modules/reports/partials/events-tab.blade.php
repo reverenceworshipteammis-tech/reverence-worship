@@ -1,4 +1,4 @@
-<div>
+﻿<div>
     <div class="flex justify-between items-center mb-4">
         <h3 class="text-lg font-semibold text-gray-800">Event Reports</h3>
         <button onclick="openEventModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm">
@@ -149,7 +149,7 @@ function updateEventsTable(events) {
             <td class="px-4 py-3 text-sm">${event.participants_count || 0}</td>
             <td class="px-4 py-3">
                 <button onclick="viewEventDetails(${event.id})" class="text-blue-500 hover:text-blue-700 mr-2">
-                    <i class="fas fa-eye"></i>
+                    <i class="fas fa-file-lines"></i>
                 </button>
                 <button onclick="editEvent(${event.id})" class="text-green-500 hover:text-green-700 mr-2">
                     <i class="fas fa-edit"></i>
@@ -186,7 +186,7 @@ function formatDate(dateString) {
 
 function openEventModal() {
     // Implement modal opening
-    alert('Add event modal - coming soon');
+    appAlert('Add event modal - coming soon');
 }
 
 function viewEventDetails(id) {
@@ -197,8 +197,8 @@ function editEvent(id) {
     window.location.href = `/reports/events/${id}/edit`;
 }
 
-function deleteEvent(id) {
-    if (confirm('Are you sure you want to delete this event?')) {
+async function deleteEvent(id) {
+    if (!(await appConfirm('Are you sure you want to delete this event?'))) {
         fetch(`/reports/events/${id}`, {
             method: 'DELETE',
             headers: {
@@ -210,16 +210,16 @@ function deleteEvent(id) {
         .then(data => {
             if (data.success) {
                 filterEventsReport();
-                alert('Event deleted successfully');
+                appAlert('Event deleted successfully');
             } else {
-                alert('Error: ' + data.message);
+                appAlert('Error: ' + data.message);
             }
         });
     }
 }
 
 function exportReport(type, format) {
-    alert(`Export ${type} report as ${format}`);
+    appAlert(`Export ${type} report as ${format}`);
 }
 
 function escapeHtml(text) {
@@ -229,3 +229,5 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 </script>
+
+

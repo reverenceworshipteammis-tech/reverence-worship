@@ -1,4 +1,4 @@
-<div class="bg-white rounded-xl shadow-md p-6">
+﻿<div class="bg-white rounded-xl shadow-md p-6">
     
     <div class="flex justify-between items-center mb-6">
         <div>
@@ -119,7 +119,7 @@
                     <td class="px-4 py-3 whitespace-nowrap">
     <div class="flex gap-2">
         <button onclick="viewUserDetails({{ $user->id }})" class="text-gray-600 hover:text-gray-900" title="View Details">
-            <i class="fas fa-eye"></i>
+            <i class="fas fa-file-lines"></i>
         </button>
         @if($user->is_assigned_in_year && $user->family_name)
             <button onclick="removeFromFamily({{ $user->id }}, {{ $user->family_id }}, '{{ $user->name }}')" class="text-red-500 hover:text-red-700" title="Remove from Family in {{ $selectedYear }}">
@@ -554,14 +554,14 @@ function confirmRemove(userId, familyId) {
             showNotification('Member removed successfully!', 'success');
             setTimeout(() => location.reload(), 1000);
         } else {
-            alert('Error: ' + data.message);
+            appAlert('Error: ' + data.message);
             btn.innerHTML = '<i class="fas fa-trash"></i> Remove';
             btn.disabled = false;
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error removing member');
+        appAlert('Error removing member');
         btn.innerHTML = '<i class="fas fa-trash"></i> Remove';
         btn.disabled = false;
     });
@@ -702,12 +702,12 @@ document.getElementById('addUserForm')?.addEventListener('submit', function(e) {
     const familyId = document.getElementById('selectFamilyId').value;
     
     if (!userId) {
-        alert('Please select a user');
+        appAlert('Please select a user');
         return;
     }
     
     if (!familyId) {
-        alert('Please select a family');
+        appAlert('Please select a family');
         return;
     }
     
@@ -733,14 +733,14 @@ document.getElementById('addUserForm')?.addEventListener('submit', function(e) {
             showNotification('User added to family successfully!', 'success');
             setTimeout(() => location.reload(), 1000);
         } else {
-            alert('Error: ' + data.message);
+            appAlert('Error: ' + data.message);
             btn.innerHTML = 'Add to Family';
             btn.disabled = false;
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error adding user to family');
+        appAlert('Error adding user to family');
         btn.innerHTML = 'Add to Family';
         btn.disabled = false;
     });
@@ -754,7 +754,7 @@ document.getElementById('assignForm')?.addEventListener('submit', function(e) {
     const familyId = document.getElementById('assignFamilyId').value;
     
     if (!familyId) {
-        alert('Please select a family');
+        appAlert('Please select a family');
         return;
     }
     
@@ -780,14 +780,14 @@ document.getElementById('assignForm')?.addEventListener('submit', function(e) {
             showNotification('User assigned to family successfully!', 'success');
             setTimeout(() => location.reload(), 1000);
         } else {
-            alert('Error: ' + data.message);
+            appAlert('Error: ' + data.message);
             btn.innerHTML = '<i class="fas fa-check"></i> Assign to Family';
             btn.disabled = false;
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error assigning user to family');
+        appAlert('Error assigning user to family');
         btn.innerHTML = '<i class="fas fa-check"></i> Assign to Family';
         btn.disabled = false;
     });
@@ -806,6 +806,7 @@ function viewUserDetails(userId) {
 // ============================================
 
 function showNotification(message, type) {
+    return window.appNotify(...arguments);
     const notification = document.createElement('div');
     notification.className = `fixed top-4 right-4 px-4 py-3 rounded-lg shadow-lg text-white z-50 flex items-center gap-2 ${
         type === 'success' ? 'bg-green-500' : 'bg-red-500'
@@ -813,7 +814,7 @@ function showNotification(message, type) {
     notification.innerHTML = `
         <i class="fas ${type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'}"></i>
         ${message}
-        <button onclick="this.parentElement.remove()" class="ml-2 text-white/70 hover:text-white">×</button>
+        <button onclick="this.parentElement.remove()" class="ml-2 text-white/70 hover:text-white">Ã—</button>
     `;
     document.body.appendChild(notification);
     setTimeout(() => {
@@ -859,3 +860,5 @@ document.addEventListener('DOMContentLoaded', function() {
     transform: rotate(180deg);
 }
 </style>
+
+

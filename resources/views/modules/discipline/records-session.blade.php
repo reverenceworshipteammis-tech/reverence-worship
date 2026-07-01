@@ -69,7 +69,6 @@
         </div>
     </div>
 </div>
-@include('modules.discipline.modals.discipline-dialog')
 <script>
 const sessionUserSearch = document.getElementById('session-user-search');
 const sessionRows = Array.from(document.querySelectorAll('tbody tr[data-user]'));

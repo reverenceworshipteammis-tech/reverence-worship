@@ -1,4 +1,4 @@
-<div class="reports-container">
+﻿<div class="reports-container">
     
     
     <!-- Filters -->
@@ -159,7 +159,7 @@
                         <td class="px-4 py-3 text-center">
                             <button onclick="viewUserProgress({{ $data['user']->id }}, '{{ $data['user']->name }}')" 
                                     class="text-blue-600 hover:text-blue-800 transition text-sm flex items-center gap-1 mx-auto">
-                                <i class="fas fa-eye"></i> View
+                                <i class="fas fa-file-lines"></i> View
                             </button>
                         </td>
                     </tr>
@@ -549,7 +549,7 @@ function updateReportTable(data) {
                 <td class="px-4 py-3 text-center">
                     <button onclick="viewUserProgress(${user.id || 0}, '${escapeHtml(user.name || 'Unknown')}')" 
                             class="text-blue-600 hover:text-blue-800 transition text-sm flex items-center gap-1 mx-auto">
-                        <i class="fas fa-eye"></i> View
+                        <i class="fas fa-file-lines"></i> View
                     </button>
                 </td>
             </tr>
@@ -618,6 +618,7 @@ function exportReport() {
 
 // ==================== NOTIFICATIONS ====================
 function showNotification(message, type) {
+    return window.appNotify(...arguments);
     const notification = document.createElement('div');
     const bgColor = type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : type === 'warning' ? 'bg-yellow-500' : 'bg-blue-500';
     notification.className = `fixed top-4 right-4 px-4 py-2 rounded-lg shadow-lg text-white z-50 ${bgColor} transition-all duration-300`;
@@ -776,3 +777,4 @@ function hideExcessForms() {
     }
 }
 </style>
+

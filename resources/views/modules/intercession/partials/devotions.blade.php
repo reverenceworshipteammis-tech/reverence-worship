@@ -1,4 +1,4 @@
-<div class="bg-white rounded-xl shadow-md p-6">
+﻿<div class="bg-white rounded-xl shadow-md p-6">
     
     <!-- Header -->
     <div class="flex justify-between items-center mb-6">
@@ -152,7 +152,7 @@ function submitComment() {
     const comment = commentInput.value.trim();
     
     if (!comment) {
-        alert('Please enter a comment');
+        appAlert('Please enter a comment');
         return;
     }
     
@@ -172,7 +172,7 @@ function openDevotionModal() {
                 initializeModal();
             })
             .catch(() => {
-                alert('Error loading modal');
+                appAlert('Error loading modal');
             });
     } else {
         initializeModal();
@@ -203,7 +203,7 @@ function editDevotion(id) {
                 loadDevotionData(id);
             })
             .catch(() => {
-                alert('Error loading modal');
+                appAlert('Error loading modal');
             });
     } else {
         loadDevotionData(id);
@@ -235,12 +235,12 @@ function loadDevotionData(id) {
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error loading devotion data');
+        appAlert('Error loading devotion data');
     });
 }
 
-function deleteDevotion(id) {
-    if (confirm('Are you sure you want to delete this devotion?')) {
+async function deleteDevotion(id) {
+    if (await appConfirm('Are you sure you want to delete this devotion?')) {
         fetch(`/intercession/devotions/${id}`, {
             method: 'DELETE',
             headers: {
@@ -253,7 +253,7 @@ function deleteDevotion(id) {
             if (data.success) {
                 location.reload();
             } else {
-                alert('Error deleting devotion');
+                appAlert('Error deleting devotion');
             }
         });
     }
@@ -290,12 +290,12 @@ document.addEventListener('submit', function(e) {
                 showNotification('Devotion saved successfully!', 'success');
                 setTimeout(() => location.reload(), 1000);
             } else {
-                alert('Error: ' + data.message);
+                appAlert('Error: ' + data.message);
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Error saving devotion');
+            appAlert('Error saving devotion');
         });
     }
 });
@@ -308,6 +308,7 @@ function closeModal(modalId) {
 }
 
 function showNotification(message, type) {
+    return window.appNotify(...arguments);
     const notification = document.createElement('div');
     notification.className = `fixed top-4 right-4 px-4 py-2 rounded-lg shadow-lg text-white z-50 ${
         type === 'success' ? 'bg-green-500' : 'bg-red-500'
@@ -329,3 +330,4 @@ function showNotification(message, type) {
     transition: transform 0.3s ease;
 }
 </style>
+

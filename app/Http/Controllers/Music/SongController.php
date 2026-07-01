@@ -79,6 +79,23 @@ class SongController extends Controller
     public function viewLyrics($id)
     {
         $song = Song::findOrFail($id);
+
+        if (request()->expectsJson() || request()->ajax()) {
+            return response()->json([
+                'success' => true,
+                'song' => [
+                    'id' => $song->id,
+                    'title' => $song->title,
+                    'artist' => $song->artist,
+                    'key_signature' => $song->key_signature,
+                    'tempo' => $song->tempo,
+                    'assigned_singer' => $song->assigned_singer,
+                    'youtube_link' => $song->youtube_link,
+                    'lyrics' => $song->lyrics,
+                ],
+            ]);
+        }
+
         return view('modules.music.lyrics-modal', compact('song'));
     }
     

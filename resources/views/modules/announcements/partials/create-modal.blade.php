@@ -1,4 +1,4 @@
-<div id="createAnnouncementModal" class="modal hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+﻿<div id="createAnnouncementModal" class="modal hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
     <div class="relative top-10 mx-auto p-0 border w-full max-w-3xl shadow-2xl rounded-xl bg-white">
         <!-- Header -->
         <div class="flex justify-between items-center px-6 py-4 border-b bg-gray-50 rounded-t-xl">
@@ -81,7 +81,7 @@
             <!-- Editor Toolbar (Simple) -->
             <div class="border-t border-gray-200 pt-3 flex items-center justify-between">
                 <p class="text-xs text-gray-500">
-                    <i class="fas fa-lock mr-1"></i> One-way announcement — replies are not monitored.
+                    <i class="fas fa-lock mr-1"></i> One-way announcement â€” replies are not monitored.
                 </p>
                 
                 <div class="flex items-center gap-2">
@@ -442,7 +442,7 @@ async function submitCreateAnnouncement(event) {
     const content = document.getElementById('announcementContent')?.value;
     
     if (!title || !content) {
-        alert('Please fill in both subject and message');
+        appAlert('Please fill in both subject and message');
         return;
     }
     
@@ -455,13 +455,13 @@ async function submitCreateAnnouncement(event) {
     
     if (targetType === 'roles') {
         if (selectedRoles.size === 0) {
-            alert('Please select at least one role');
+            appAlert('Please select at least one role');
             return;
         }
         formData.append('target_roles', JSON.stringify(Array.from(selectedRoles)));
     } else if (targetType === 'users') {
         if (selectedUsers.size === 0) {
-            alert('Please select at least one user');
+            appAlert('Please select at least one user');
             return;
         }
         formData.append('target_users', JSON.stringify(Array.from(selectedUsers)));
@@ -493,14 +493,14 @@ async function submitCreateAnnouncement(event) {
             if (typeof window.refreshOverviewStats === 'function') {
                 window.refreshOverviewStats();
             }
-            alert(data.message || 'Message sent successfully!');
+            appAlert(data.message || 'Message sent successfully!');
             resetCreateForm();
         } else {
-            alert('Error: ' + (data.message || 'Failed to send message'));
+            appAlert('Error: ' + (data.message || 'Failed to send message'));
         }
     } catch (error) {
         console.error('Error:', error);
-        alert('Network error. Please try again.');
+        appAlert('Network error. Please try again.');
     } finally {
         submitBtn.innerHTML = originalText;
         submitBtn.disabled = false;
@@ -547,3 +547,4 @@ window.removeUser = removeUser;
 window.toggleUserSelection = toggleUserSelection;
 window.saveAsDraft = saveAsDraft;
 </script>
+

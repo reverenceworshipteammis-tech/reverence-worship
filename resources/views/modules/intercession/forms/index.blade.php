@@ -1,4 +1,4 @@
-@extends('layouts.app')
+﻿@extends('layouts.app')
 
 @section('title', 'Manage Forms')
 
@@ -80,8 +80,8 @@
 </div>
 
 <script>
-function deleteForm(id) {
-    if (confirm('Delete this form? All responses will be lost forever.')) {
+async function deleteForm(id) {
+    if (!(await appConfirm('Delete this form? All responses will be lost forever.'))) {
         fetch(`/forms/manage/${id}`, {
             method: 'DELETE',
             headers: {
@@ -94,14 +94,15 @@ function deleteForm(id) {
             if (data.success) {
                 location.reload();
             } else {
-                alert('Error deleting form: ' + data.message);
+                appAlert('Error deleting form: ' + data.message);
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Error deleting form');
+            appAlert('Error deleting form');
         });
     }
 }
 </script>
 @endsection
+

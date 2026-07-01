@@ -1,4 +1,4 @@
-@extends('layouts.app')
+﻿@extends('layouts.app')
 
 @section('title', 'User Management')
 @section('page-title', 'User Management')
@@ -188,33 +188,33 @@
                                 class="w-28 px-2 py-1.5 border border-gray-300 rounded-lg text-xs font-medium text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
                                 <option value="">Action</option>
                                 @if(auth()->check() && auth()->user()->canAccess('users', 'view-user-details'))
-                                    <option value="view">👁 View Details</option>
+                                    <option value="view">ðŸ‘ View Details</option>
                                 @endif
                                 @if(auth()->check() && auth()->user()->canAccess('users', 'edit-user'))
-                                    <option value="edit">✎ Edit User</option>
+                                    <option value="edit">âœŽ Edit User</option>
                                 @endif
                                 @if(!$user->is_active && $user->created_by === null && $user->email_verified_at === null)
                                     @if(auth()->check() && auth()->user()->canAccess('users', 'approve-user'))
-                                        <option value="approve">✓ Approve User</option>
-                                        <option value="reject">✕ Reject User</option>
+                                        <option value="approve">âœ“ Approve User</option>
+                                        <option value="reject">âœ• Reject User</option>
                                     @endif
                                 @endif
                                 @if(auth()->id() !== $user->id && $user->is_active)
                                     @if(auth()->check() && auth()->user()->canAccess('users', 'deactivate-user'))
-                                        <option value="deactivate">⊘ Deactivate User</option>
+                                        <option value="deactivate">âŠ˜ Deactivate User</option>
                                     @endif
                                 @endif
                                 @if(auth()->id() !== $user->id && !$user->is_active && $user->created_by !== null)
                                     @if(auth()->check() && auth()->user()->canAccess('users', 'activate-user'))
-                                        <option value="activate">✓ Activate User</option>
+                                        <option value="activate">âœ“ Activate User</option>
                                     @endif
                                 @endif
                                 @if(auth()->check() && auth()->user()->canAccess('users', 'edit-user-roles'))
-                                    <option value="roles">⚙ Manage Roles</option>
+                                    <option value="roles">âš™ Manage Roles</option>
                                 @endif
                                 @if(auth()->id() !== $user->id)
                                     @if(auth()->check() && auth()->user()->canAccess('users', 'delete-user'))
-                                        <option value="delete">🗑 Delete User</option>
+                                        <option value="delete">ðŸ—‘ Delete User</option>
                                     @endif
                                 @endif
                             </select>
@@ -253,33 +253,33 @@
                             class="w-24 px-2 py-1 border border-gray-300 rounded-md text-[11px] font-medium text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
                             <option value="">Action</option>
                             @if(auth()->check() && auth()->user()->canAccess('users', 'view-user-details'))
-                                <option value="view">👁 View Details</option>
+                                <option value="view">ðŸ‘ View Details</option>
                             @endif
                             @if(auth()->check() && auth()->user()->canAccess('users', 'edit-user'))
-                                <option value="edit">✎ Edit User</option>
+                                <option value="edit">âœŽ Edit User</option>
                             @endif
                             @if(!$user->is_active && $user->created_by === null && $user->email_verified_at === null)
                                 @if(auth()->check() && auth()->user()->canAccess('users', 'approve-user'))
-                                    <option value="approve">✓ Approve User</option>
-                                    <option value="reject">✕ Reject User</option>
+                                    <option value="approve">âœ“ Approve User</option>
+                                    <option value="reject">âœ• Reject User</option>
                                 @endif
                             @endif
                             @if(auth()->id() !== $user->id && $user->is_active)
                                 @if(auth()->check() && auth()->user()->canAccess('users', 'deactivate-user'))
-                                    <option value="deactivate">⊘ Deactivate User</option>
+                                    <option value="deactivate">âŠ˜ Deactivate User</option>
                                 @endif
                             @endif
                             @if(auth()->id() !== $user->id && !$user->is_active && $user->created_by !== null)
                                 @if(auth()->check() && auth()->user()->canAccess('users', 'activate-user'))
-                                    <option value="activate">✓ Activate User</option>
+                                    <option value="activate">âœ“ Activate User</option>
                                 @endif
                             @endif
                             @if(auth()->check() && auth()->user()->canAccess('users', 'edit-user-roles'))
-                                <option value="roles">⚙ Manage Roles</option>
+                                <option value="roles">âš™ Manage Roles</option>
                             @endif
                             @if(auth()->id() !== $user->id)
                                 @if(auth()->check() && auth()->user()->canAccess('users', 'delete-user'))
-                                    <option value="delete">🗑 Delete User</option>
+                                    <option value="delete">ðŸ—‘ Delete User</option>
                                 @endif
                             @endif
                         </select>
@@ -496,6 +496,7 @@
     }
 
     function showNotification(type, message) {
+    return window.appNotify(...arguments);
         const existingNotification = document.querySelector('.notification-toast');
         if (existingNotification) existingNotification.remove();
         const notification = document.createElement('div');
@@ -769,6 +770,7 @@ function escapeHtml(text) {
 
 // Helper function to show notification
 function showNotification(type, message) {
+    return window.appNotify(...arguments);
     // You can implement your notification system here
     console.log(`${type}: ${message}`);
 }
@@ -958,3 +960,4 @@ function showNotification(type, message) {
     .animate-slide-in { animation: slideIn 0.3s ease-out; }
 </style>
 @endsection
+

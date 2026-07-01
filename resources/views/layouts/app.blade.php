@@ -18,6 +18,9 @@
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
+
     <style>
         * {
             margin: 0;
@@ -593,6 +596,8 @@
     <div class="mobile-footer-nav">
         @include('layouts.mobile-footer')
     </div>
+
+    @include('layouts.partials.global-dialogs')
 
     <script>
         function toggleMobileMenu() {

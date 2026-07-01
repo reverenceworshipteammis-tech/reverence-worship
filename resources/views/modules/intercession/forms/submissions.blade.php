@@ -1,4 +1,4 @@
-@extends('layouts.app')
+﻿@extends('layouts.app')
 
 @section('title', 'Form Submissions')
 @section('page-title', 'Form Submissions')
@@ -305,7 +305,7 @@
             </div>
             <select id="filterScore" class="text-sm border rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-500 focus:border-transparent" onchange="filterSubmissions()">
                 <option value="all">All Scores</option>
-                <option value="high">High (≥ 80%)</option>
+                <option value="high">High (â‰¥ 80%)</option>
                 <option value="medium">Medium (60-79%)</option>
                 <option value="low">Low (40-59%)</option>
                 <option value="fail">Fail (&lt; 40%)</option>
@@ -451,7 +451,7 @@
                             <div class="flex items-center gap-2 flex-wrap">
                                 <a href="{{ route('forms.results', ['id' => $sub->form_id, 'submission_id' => $sub->id]) }}" 
                                    class="text-blue-600 hover:text-blue-800 text-sm transition flex items-center gap-1">
-                                    <i class="fas fa-eye"></i> View
+                                    <i class="fas fa-file-lines"></i> View
                                 </a>
                                 @if($releaseGrade == 'later' && $sub->score !== null)
                                     @if(!$sub->is_released)
@@ -704,10 +704,10 @@ function confirmRelease() {
     .then(data => {
         closeReleaseModal();
         if (data.success) {
-            showNotification('✅ Submission released successfully!', 'success');
+            showNotification('âœ… Submission released successfully!', 'success');
             setTimeout(() => location.reload(), 1500);
         } else {
-            showNotification('❌ Error: ' + (data.message || 'Failed to release'), 'error');
+            showNotification('âŒ Error: ' + (data.message || 'Failed to release'), 'error');
             if (btn) {
                 btn.innerHTML = originalText;
                 btn.disabled = false;
@@ -716,7 +716,7 @@ function confirmRelease() {
     })
     .catch(error => {
         closeReleaseModal();
-        showNotification('❌ Error releasing submission', 'error');
+        showNotification('âŒ Error releasing submission', 'error');
         if (btn) {
             btn.innerHTML = originalText;
             btn.disabled = false;
@@ -763,10 +763,10 @@ function confirmUnrelease() {
     .then(data => {
         closeUnreleaseModal();
         if (data.success) {
-            showNotification('🔒 Submission unreleased successfully!', 'success');
+            showNotification('ðŸ”’ Submission unreleased successfully!', 'success');
             setTimeout(() => location.reload(), 1500);
         } else {
-            showNotification('❌ Error: ' + (data.message || 'Failed to unrelease'), 'error');
+            showNotification('âŒ Error: ' + (data.message || 'Failed to unrelease'), 'error');
             if (btn) {
                 btn.innerHTML = originalText;
                 btn.disabled = false;
@@ -775,7 +775,7 @@ function confirmUnrelease() {
     })
     .catch(error => {
         closeUnreleaseModal();
-        showNotification('❌ Error unreleasing submission', 'error');
+        showNotification('âŒ Error unreleasing submission', 'error');
         if (btn) {
             btn.innerHTML = originalText;
             btn.disabled = false;
@@ -832,10 +832,10 @@ function confirmBulkRelease() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            showNotification('✅ ' + (data.message || 'All submissions released successfully!'), 'success');
+            showNotification('âœ… ' + (data.message || 'All submissions released successfully!'), 'success');
             setTimeout(() => location.reload(), 1500);
         } else {
-            showNotification('❌ Error: ' + (data.message || 'Failed to release submissions'), 'error');
+            showNotification('âŒ Error: ' + (data.message || 'Failed to release submissions'), 'error');
             if (btn) {
                 btn.innerHTML = originalText;
                 btn.disabled = false;
@@ -843,7 +843,7 @@ function confirmBulkRelease() {
         }
     })
     .catch(error => {
-        showNotification('❌ Error releasing submissions', 'error');
+        showNotification('âŒ Error releasing submissions', 'error');
         if (btn) {
             btn.innerHTML = originalText;
             btn.disabled = false;
@@ -900,10 +900,10 @@ function confirmBulkUnrelease() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            showNotification('🔒 ' + (data.message || 'All submissions unreleased successfully!'), 'success');
+            showNotification('ðŸ”’ ' + (data.message || 'All submissions unreleased successfully!'), 'success');
             setTimeout(() => location.reload(), 1500);
         } else {
-            showNotification('❌ Error: ' + (data.message || 'Failed to unrelease submissions'), 'error');
+            showNotification('âŒ Error: ' + (data.message || 'Failed to unrelease submissions'), 'error');
             if (btn) {
                 btn.innerHTML = originalText;
                 btn.disabled = false;
@@ -911,7 +911,7 @@ function confirmBulkUnrelease() {
         }
     })
     .catch(error => {
-        showNotification('❌ Error unreleasing submissions', 'error');
+        showNotification('âŒ Error unreleasing submissions', 'error');
         if (btn) {
             btn.innerHTML = originalText;
             btn.disabled = false;
@@ -968,7 +968,7 @@ function exportSubmissions() {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
     
-    showNotification('📊 Export completed!', 'success');
+    showNotification('ðŸ“Š Export completed!', 'success');
 }
 
 // ==================== DELETE FUNCTIONS ====================
@@ -1007,10 +1007,10 @@ function confirmDelete() {
     .then(data => {
         closeDeleteModal();
         if (data.success) {
-            showNotification('✅ Submission deleted successfully!', 'success');
+            showNotification('âœ… Submission deleted successfully!', 'success');
             setTimeout(() => location.reload(), 1500);
         } else {
-            showNotification('❌ Error: ' + data.message, 'error');
+            showNotification('âŒ Error: ' + data.message, 'error');
             if (btn) {
                 btn.innerHTML = '<i class="fas fa-trash"></i>';
                 btn.disabled = false;
@@ -1019,7 +1019,7 @@ function confirmDelete() {
     })
     .catch(error => {
         closeDeleteModal();
-        showNotification('❌ Error deleting submission', 'error');
+        showNotification('âŒ Error deleting submission', 'error');
         if (btn) {
             btn.innerHTML = '<i class="fas fa-trash"></i>';
             btn.disabled = false;
@@ -1029,6 +1029,7 @@ function confirmDelete() {
 
 // ==================== NOTIFICATION FUNCTION ====================
 function showNotification(message, type) {
+    return window.appNotify(...arguments);
     const colors = {
         success: '#10b981',
         error: '#ef4444',
@@ -1128,3 +1129,4 @@ tbody tr {
 }
 </style>
 @endsection
+

@@ -1,4 +1,4 @@
-@extends('layouts.app')
+﻿@extends('layouts.app')
 
 @section('title', $devotion->title ?? 'Devotion')
 
@@ -135,7 +135,7 @@ function shareDevotion(platform) {
 
 function copyLink() {
     navigator.clipboard.writeText(window.location.href).then(() => {
-        alert('Link copied to clipboard!');
+        appAlert('Link copied to clipboard!');
     });
 }
 
@@ -156,15 +156,15 @@ function submitPrayerRequest(event) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert('Prayer request submitted successfully!');
+            appAlert('Prayer request submitted successfully!');
             event.target.reset();
         } else {
-            alert('Error submitting prayer request: ' + (data.message || 'Unknown error'));
+            appAlert('Error submitting prayer request: ' + (data.message || 'Unknown error'));
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error submitting prayer request');
+        appAlert('Error submitting prayer request');
     });
 }
 </script>

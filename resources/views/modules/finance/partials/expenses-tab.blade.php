@@ -1,4 +1,4 @@
-<div>
+﻿<div>
     <!-- Header with Date Range -->
     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-3 mb-4">
         <h3 class="text-base font-semibold text-gray-800">Expenses</h3>
@@ -426,8 +426,8 @@
             });
     }
 
-    function approveExpense(id) {
-        if (!confirm('Approve this expense?')) return;
+    async function approveExpense(id) {
+        if (!(await appConfirm('Approve this expense?'))) return;
         fetch(`/finance/expenses/${id}/approve`, {
             method: 'POST',
             headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content, 'X-Requested-With': 'XMLHttpRequest' }
@@ -436,8 +436,8 @@
         .then(d => { if (d.success) { filterExpenses(); showNotification('Approved!', 'success'); } else { showNotification('Error', 'error'); } });
     }
 
-    function deleteExpense(id) {
-        if (!confirm('Delete this expense?')) return;
+    async function deleteExpense(id) {
+        if (!(await appConfirm('Delete this expense?'))) return;
         fetch(`/finance/expenses/${id}`, {
             method: 'DELETE',
             headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content, 'X-Requested-With': 'XMLHttpRequest' }
@@ -455,10 +455,11 @@
     function statusBadge(s) { return s === 'approved' ? 'bg-green-100 text-green-700' : s === 'pending' ? 'bg-yellow-100 text-yellow-700' : s === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'; }
 
     function showNotification(msg, type) {
+    return window.appNotify(...arguments);
         const n = document.createElement('div');
         n.className = `fixed top-20 right-4 z-50 px-6 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-slide-in max-w-md`;
         n.style.backgroundColor = type === 'success' ? '#10b981' : '#ef4444';
-        n.innerHTML = `<i class="fas ${type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'} text-white"></i><span class="text-white text-sm">${msg}</span><button onclick="this.parentElement.remove()" class="text-white/70 hover:text-white">×</button>`;
+        n.innerHTML = `<i class="fas ${type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'} text-white"></i><span class="text-white text-sm">${msg}</span><button onclick="this.parentElement.remove()" class="text-white/70 hover:text-white">Ã—</button>`;
         document.body.appendChild(n);
         setTimeout(() => { if (n.parentElement) { n.style.opacity = '0'; n.style.transform = 'translateX(100px)'; setTimeout(() => n.remove(), 300); } }, 3000);
     }
@@ -613,3 +614,4 @@
         }
     }
 </style>
+

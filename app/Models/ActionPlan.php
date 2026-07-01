@@ -11,6 +11,7 @@ class ActionPlan extends Model
     
     protected $fillable = [
         'title',
+        'start_date',
         'description',
         'due_date',
         'status',
@@ -20,6 +21,7 @@ class ActionPlan extends Model
     ];
     
     protected $casts = [
+        'start_date' => 'date',
         'due_date' => 'date',
         'created_at' => 'datetime',
         'updated_at' => 'datetime'

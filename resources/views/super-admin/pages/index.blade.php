@@ -1,4 +1,4 @@
-@extends('layouts.app')
+﻿@extends('layouts.app')
 
 @section('title', 'Pages Management')
 @section('page-title', 'Page Management')
@@ -62,7 +62,7 @@
                                 <a href="{{ route('pages.edit', $page->id) }}" class="text-blue-600 hover:text-blue-800" title="Edit Page">
                                     <i class="fas fa-edit"></i>
                                 </a>
-                                <form action="{{ route('pages.destroy', $page->id) }}" method="POST" class="inline" onsubmit="return confirm('Delete this page?')">
+                                <form action="{{ route('pages.destroy', $page->id) }}" method="POST" class="inline" onsubmit="return confirmSubmit(event, 'Delete this page?')">
                                     @csrf
                                     @method('DELETE')
                                     <button type="submit" class="text-red-600 hover:text-red-800" title="Delete Page">

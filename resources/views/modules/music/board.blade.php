@@ -1,4 +1,4 @@
-<div class="bg-white rounded-lg shadow-lg p-6">
+﻿<div class="bg-white rounded-lg shadow-lg p-6">
     <div class="flex justify-between items-center mb-4">
         <h3 class="text-lg font-bold text-gray-800">Landing Page Content Manager</h3>
     </div>
@@ -100,7 +100,7 @@
                                 @else
                                     <span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Draft</span>
                                 @endif
-                                @if($image->is_hero)
+                                @if($image->is_hero ?? false)
                                     <span class="text-xs bg-gray-100 text-black px-2 py-0.5 rounded-full"><i class="fas fa-star mr-1"></i>Hero</span>
                                 @endif
                             </div>
@@ -110,8 +110,8 @@
                         </div>
                     </div>
                     <div class="flex space-x-2">
-                        <button onclick="toggleHero({{ $image->id }})" class="text-black hover:text-gray-600" title="{{ $image->is_hero ? 'Remove from hero' : 'Add to hero' }}">
-                            <i class="{{ $image->is_hero ? 'fas' : 'far' }} fa-star"></i>
+                        <button onclick="toggleHero({{ $image->id }})" class="text-black hover:text-gray-600" title="{{ ($image->is_hero ?? false) ? 'Remove from hero' : 'Add to hero' }}">
+                            <i class="{{ ($image->is_hero ?? false) ? 'fas' : 'far' }} fa-star"></i>
                         </button>
                         <button onclick="togglePublish({{ $image->id }}, 'featured')" class="text-black hover:text-gray-600" title="{{ $image->is_published ? 'Hide from landing page' : 'Publish on landing page' }}">
                             <i class="fas {{ $image->is_published ? 'fa-eye-slash' : 'fa-eye' }}"></i>
@@ -380,18 +380,18 @@ function togglePublish(id, type) {
         if (data.success) {
             location.reload();
         } else {
-            alert('Error: ' + data.message);
+            appAlert('Error: ' + data.message);
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error updating publish status');
+        appAlert('Error updating publish status');
     });
 }
 
 // Delete item
-function deleteItem(id, type) {
-    if (confirm('Are you sure you want to delete this item?')) {
+async function deleteItem(id, type) {
+    if (!(await appConfirm('Are you sure you want to delete this item?'))) {
         fetch(`/music/landing/${type}/${id}`, {
             method: 'DELETE',
             headers: {
@@ -404,12 +404,12 @@ function deleteItem(id, type) {
             if (data.success) {
                 location.reload();
             } else {
-                alert('Error: ' + data.message);
+                appAlert('Error: ' + data.message);
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Error deleting item');
+            appAlert('Error deleting item');
         });
     }
 }
@@ -425,12 +425,12 @@ function toggleHero(id) {
     .then(async response => ({ ok: response.ok, data: await response.json() }))
     .then(({ ok, data }) => {
         if (!ok || !data.success) {
-            alert(data.message || 'Unable to change the hero image.');
+            appAlert(data.message || 'Unable to change the hero image.');
             return;
         }
         location.reload();
     })
-    .catch(() => alert('Unable to change the hero image.'));
+    .catch(() => appAlert('Unable to change the hero image.'));
 }
 
 // YouTube modal functions
@@ -458,7 +458,7 @@ function editYouTube(id) {
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Error loading video details');
+            appAlert('Error loading video details');
         });
 }
 
@@ -495,7 +495,7 @@ function editFeaturedImage(id) {
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Error loading image details');
+            appAlert('Error loading image details');
         });
 }
 
@@ -526,12 +526,12 @@ document.getElementById('youTubeForm')?.addEventListener('submit', function(e) {
             closeModal('youTubeModal');
             location.reload();
         } else {
-            alert('Error: ' + data.message);
+            appAlert('Error: ' + data.message);
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error saving video');
+        appAlert('Error saving video');
     });
 });
 
@@ -554,12 +554,12 @@ document.getElementById('featuredImageForm')?.addEventListener('submit', functio
             closeModal('featuredImageModal');
             location.reload();
         } else {
-            alert('Error: ' + data.message);
+            appAlert('Error: ' + data.message);
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error saving image');
+        appAlert('Error saving image');
     });
 });
 
@@ -586,7 +586,7 @@ function openEventModal() {
 async function editBoardItem(id) {
     const response = await fetch(`/music/board/${id}/edit`, { headers: { Accept: 'application/json' } });
     const data = await response.json();
-    if (!response.ok || !data.success) return alert(data.message || 'Unable to load this item.');
+    if (!response.ok || !data.success) return appAlert(data.message || 'Unable to load this item.');
     const item = data.item;
     document.getElementById('eventModalTitle').textContent = 'Edit Event or Update';
     document.getElementById('board_id').value = item.id;
@@ -601,7 +601,7 @@ async function editBoardItem(id) {
 }
 
 async function boardAction(url, method = 'POST', confirmText = null) {
-    if (confirmText && !confirm(confirmText)) return;
+    if (confirmText && !(await appConfirm(confirmText))) return;
     const response = await fetch(url, {
         method,
         headers: {
@@ -610,7 +610,7 @@ async function boardAction(url, method = 'POST', confirmText = null) {
         }
     });
     const data = await response.json();
-    if (!response.ok || !data.success) return alert(data.message || 'The action could not be completed.');
+    if (!response.ok || !data.success) return appAlert(data.message || 'The action could not be completed.');
     location.reload();
 }
 
@@ -642,7 +642,7 @@ document.getElementById('eventForm')?.addEventListener('submit', async function 
     const data = await response.json();
     if (!response.ok || !data.success) {
         const message = data.errors ? Object.values(data.errors).flat()[0] : data.message;
-        return alert(message || 'Unable to save this item.');
+        return appAlert(message || 'Unable to save this item.');
     }
     closeModal('eventModal');
     location.reload();
@@ -659,3 +659,6 @@ document.addEventListener('DOMContentLoaded', function() {
     switchTab(['youtube', 'featured', 'events'].includes(savedTab) ? savedTab : 'youtube');
 });
 </script>
+
+
+

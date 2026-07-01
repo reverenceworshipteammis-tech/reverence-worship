@@ -111,6 +111,7 @@ Route::prefix('finance')->name('finance.')->middleware('auth')->group(function (
     
     // ==================== ACTION PLANS ROUTES ====================
     Route::prefix('action-plans')->name('action-plans.')->group(function () {
+        Route::get('/', [FinanceActionPlanController::class, 'filterActionPlans'])->name('index');
         Route::get('/filter', [FinanceActionPlanController::class, 'filterActionPlans'])->name('filter');
         Route::post('/store', [FinanceActionPlanController::class, 'storeActionPlan'])->name('store');
         Route::post('/', [FinanceActionPlanController::class, 'storeActionPlan']);
@@ -119,6 +120,9 @@ Route::prefix('finance')->name('finance.')->middleware('auth')->group(function (
         Route::put('/{id}', [FinanceActionPlanController::class, 'updateActionPlan'])->name('update');
         Route::post('/{id}', [FinanceActionPlanController::class, 'updateActionPlan']);
         Route::delete('/{id}', [FinanceActionPlanController::class, 'deleteActionPlan'])->name('delete');
+        Route::post('/{id}/task', [FinanceActionPlanController::class, 'addTask'])->name('tasks.store');
+        Route::put('/task/{taskId}', [FinanceActionPlanController::class, 'updateTask'])->name('tasks.update');
+        Route::delete('/task/{taskId}', [FinanceActionPlanController::class, 'deleteTask'])->name('tasks.delete');
     });
     
     // ==================== REPORTS ROUTES ====================

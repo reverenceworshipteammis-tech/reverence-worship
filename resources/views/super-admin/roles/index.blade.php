@@ -1,4 +1,4 @@
-@extends('layouts.app')
+﻿@extends('layouts.app')
 
 @section('title', 'Role Management')
 @section('page-title', 'Role Management')
@@ -53,7 +53,7 @@
                         <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
                             <div class="flex space-x-3">
                                 <a href="{{ route('roles.show', $role->id) }}" class="text-gray-600 hover:text-gray-900" title="View Details">
-                                    <i class="fas fa-eye"></i>
+                                    <i class="fas fa-file-lines"></i>
                                 </a>
                                 <a href="{{ route('roles.edit', $role->id) }}" class="text-gray-600 hover:text-gray-900" title="Edit Role">
                                     <i class="fas fa-edit"></i>
@@ -61,7 +61,7 @@
                                 
                                 @if($role->name !== 'super-admin')
                                     <form action="{{ route('roles.destroy', $role->id) }}" method="POST" class="inline" 
-                                          onsubmit="return confirm('Delete role {{ $role->display_name }}?')">
+                                          onsubmit="return confirmSubmit(event, 'Delete role {{ $role->display_name }}?')">
                                         @csrf
                                         @method('DELETE')
                                         <button type="submit" class="text-red-600 hover:text-red-800" title="Delete Role">
@@ -89,3 +89,4 @@
     </div>
 </div>
 @endsection
+

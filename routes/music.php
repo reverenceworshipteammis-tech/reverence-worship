@@ -49,9 +49,15 @@ Route::middleware('auth')->prefix('music')->group(function () {
     Route::delete('/board/{id}', [MusicController::class, 'deleteBoardPost'])->name('music.board.delete');
     
     // Action Plan
+    Route::get('/action-plan', [MusicController::class, 'actionPlanIndex'])->name('music.action-plan.index');
     Route::post('/action-plan/store', [MusicController::class, 'storeActionPlan'])->name('music.action-plan.store');
+    Route::get('/action-plan/{id}/edit', [MusicController::class, 'editActionPlan'])->name('music.action-plan.edit');
+    Route::put('/action-plan/{id}', [MusicController::class, 'updateActionPlan'])->name('music.action-plan.update');
     Route::put('/action-plan/{id}/status', [MusicController::class, 'updateActionPlanStatus'])->name('music.action-plan.status');
     Route::delete('/action-plan/{id}', [MusicController::class, 'deleteActionPlan'])->name('music.action-plan.delete');
+    Route::post('/action-plan/{id}/task', [MusicController::class, 'addTask'])->name('music.action-plan.tasks.store');
+    Route::put('/action-plan/task/{taskId}', [MusicController::class, 'updateTask'])->name('music.action-plan.tasks.update');
+    Route::delete('/action-plan/task/{taskId}', [MusicController::class, 'deleteTask'])->name('music.action-plan.tasks.delete');
     
     // Service Team / Generation Routes
     Route::prefix('teams')->group(function () {

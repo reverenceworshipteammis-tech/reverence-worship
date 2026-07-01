@@ -1,4 +1,4 @@
-@props(['canManage' => false])
+﻿@props(['canManage' => false])
 
 <div class="bg-white rounded-lg shadow-lg p-6">
     <div class="flex justify-between items-center mb-4">
@@ -82,12 +82,12 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    alert('Voice part updated!');
+                    appAlert('Voice part updated!');
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('Error updating voice part');
+                appAlert('Error updating voice part');
             });
         });
     });
@@ -109,19 +109,19 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    alert('Performance level updated!');
+                    appAlert('Performance level updated!');
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('Error updating performance level');
+                appAlert('Error updating performance level');
             });
         });
     });
 });
 
-function toggleSingerStatus(userId) {
-    if (confirm('Remove this user from singers list?')) {
+async function toggleSingerStatus(userId) {
+    if (!(await appConfirm('Remove this user from singers list?'))) {
         fetch(`/music/singers/${userId}/toggle`, {
             method: 'PUT',
             headers: {
@@ -138,8 +138,9 @@ function toggleSingerStatus(userId) {
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Error updating singer status');
+            appAlert('Error updating singer status');
         });
     }
 }
 </script>
+

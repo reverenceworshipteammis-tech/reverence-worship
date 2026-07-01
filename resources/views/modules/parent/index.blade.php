@@ -1,4 +1,4 @@
-@extends('layouts.app')
+﻿@extends('layouts.app')
 
 @section('title', 'Parent Dashboard')
 @section('page-title', 'Parent Dashboard')
@@ -329,7 +329,7 @@ function removeSubtask(button) {
     if (item && document.querySelectorAll('.subtask-item').length > 1) {
         item.remove();
     } else {
-        alert('You need at least one subtask');
+        appAlert('You need at least one subtask');
     }
 }
 
@@ -533,12 +533,12 @@ function submitTask(event) {
             showNotification('Task created successfully!', 'success');
             if (typeof loadTasks === 'function') loadTasks();
         } else {
-            alert('Error: ' + (data.message || 'Failed to create task'));
+            appAlert('Error: ' + (data.message || 'Failed to create task'));
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Network error: ' + error.message);
+        appAlert('Network error: ' + error.message);
     });
 }
 
@@ -613,17 +613,17 @@ function updateTask(event) {
             showNotification('Task updated successfully!', 'success');
             if (typeof loadTasks === 'function') loadTasks();
         } else {
-            alert('Error: ' + (data.message || 'Failed to update task'));
+            appAlert('Error: ' + (data.message || 'Failed to update task'));
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Network error: ' + error.message);
+        appAlert('Network error: ' + error.message);
     });
 }
 
-function deleteTask(taskId) {
-    if (confirm('Are you sure you want to delete this task?')) {
+async function deleteTask(taskId) {
+    if (await appConfirm('Are you sure you want to delete this task?')) {
         fetch(`/parent/tasks/${taskId}`, {
             method: 'DELETE',
             headers: {
@@ -638,12 +638,12 @@ function deleteTask(taskId) {
                 showNotification('Task deleted successfully!', 'success');
                 if (typeof loadTasks === 'function') loadTasks();
             } else {
-                alert('Error: ' + (data.message || 'Failed to delete task'));
+                appAlert('Error: ' + (data.message || 'Failed to delete task'));
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Network error: ' + error.message);
+            appAlert('Network error: ' + error.message);
         });
     }
 }
@@ -673,6 +673,7 @@ function escapeHtml(text) {
 }
 
 function showNotification(message, type) {
+    return window.appNotify(...arguments);
     const notification = document.createElement('div');
     notification.className = `fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg text-white z-50 transition-all ${
         type === 'success' ? 'bg-green-500' : 'bg-red-500'
@@ -735,3 +736,4 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 </style>
 @endsection
+

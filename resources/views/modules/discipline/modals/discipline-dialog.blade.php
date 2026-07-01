@@ -175,6 +175,10 @@
 
     window.disciplineDialog = {
         alert(message, title = 'Notice') {
+            if (window.appAlert) {
+                return window.appAlert(message, title);
+            }
+
             return openDialog({
                 mode: 'alert',
                 title,
@@ -183,6 +187,10 @@
             });
         },
         confirm(message, title = 'Confirm', confirmText = 'OK', cancelText = 'Cancel', mode = 'confirm') {
+            if (window.appConfirm) {
+                return window.appConfirm(message, title, confirmText, cancelText, mode);
+            }
+
             return openDialog({
                 mode,
                 title,
@@ -192,6 +200,10 @@
             });
         },
         prompt(message, title = 'Input', promptLabel = 'Response', placeholder = '', defaultValue = '') {
+            if (window.appPrompt) {
+                return window.appPrompt(message, title, promptLabel, placeholder, defaultValue);
+            }
+
             return openDialog({
                 mode: 'prompt',
                 title,

@@ -1,4 +1,4 @@
-@props(['canManage' => false])
+﻿@props(['canManage' => false])
 
 <div class="bg-white rounded-lg shadow-lg p-6">
     <!-- Header -->
@@ -52,7 +52,7 @@
                 </div>
                 @if($canManage)
                 <form action="{{ route('music.teams.delete', $serviceTeam->id) }}" method="POST" class="inline" 
-                      onsubmit="return confirm('Delete this service team?')">
+                      onsubmit="return confirmSubmit(event, 'Delete this service team?')">
                     @csrf
                     @method('DELETE')
                     <button type="submit" class="text-red-600 hover:text-red-800 text-sm">

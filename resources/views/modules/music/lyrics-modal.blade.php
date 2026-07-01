@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html>
 <head>
     <title>{{ $song->title }} - Lyrics</title>
@@ -44,7 +44,7 @@
             const textToCopy = lyricsText.innerText || lyricsText.textContent;
             
             if (!textToCopy || textToCopy === 'No lyrics available.') {
-                alert('No lyrics to copy!');
+                appAlert('No lyrics to copy!');
                 return;
             }
             
@@ -78,7 +78,7 @@
                 showCopySuccess();
             } catch (err) {
                 console.error('Fallback: Oops, unable to copy', err);
-                alert('Failed to copy lyrics. Please select and copy manually.');
+                appAlert('Failed to copy lyrics. Please select and copy manually.');
             }
             
             document.body.removeChild(textarea);

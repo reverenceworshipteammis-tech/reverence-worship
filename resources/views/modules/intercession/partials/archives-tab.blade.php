@@ -1,4 +1,4 @@
-<div class="bg-white rounded-xl shadow-sm p-4">
+﻿<div class="bg-white rounded-xl shadow-sm p-4">
     
     <!-- Header -->
     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
@@ -363,8 +363,8 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // ============ FOLDER FUNCTIONS ============
-function deleteFolder(id) {
-    if (confirm('Delete this folder and all its files?')) {
+async function deleteFolder(id) {
+    if (await appConfirm('Delete this folder and all its files?')) {
         const url = `/intercession/archives/sections/${id}`;
         fetch(url, {
             method: 'DELETE',
@@ -417,7 +417,7 @@ function openFolder(id) {
                     </div>
                     <div class="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition">
                         <a href="/intercession/archives/pages/${page.id}" target="_blank" class="text-blue-600 hover:text-blue-800 text-xs p-1">
-                            <i class="fas fa-eye"></i>
+                            <i class="fas fa-file-lines"></i>
                         </a>
                         ${page.file_path ? `<a href="/intercession/archives/pages/${page.id}/download" class="text-green-600 hover:text-green-800 text-xs p-1">
                             <i class="fas fa-download"></i>
@@ -481,8 +481,8 @@ function editFile(pageId) {
     .catch(() => showNotification('Error loading file', 'error'));
 }
 
-function deleteFile(pageId) {
-    if (confirm('Delete this file?')) {
+async function deleteFile(pageId) {
+    if (await appConfirm('Delete this file?')) {
         const url = `/intercession/archives/pages/${pageId}`;
         fetch(url, {
             method: 'DELETE',
@@ -639,6 +639,7 @@ document.getElementById('file-upload-form')?.addEventListener('submit', function
 
 // ============ NOTIFICATIONS ============
 function showNotification(message, type) {
+    return window.appNotify(...arguments);
     const colors = {
         success: 'bg-green-500',
         error: 'bg-red-500',
@@ -650,7 +651,7 @@ function showNotification(message, type) {
     
     const notification = document.createElement('div');
     notification.className = `notification-toast fixed top-4 right-4 px-3 py-1.5 rounded-lg shadow-lg text-white z-[9999] ${colors[type] || 'bg-gray-700'} text-sm flex items-center gap-2`;
-    notification.innerHTML = `${message} <button onclick="this.parentElement.remove()" class="text-white/70 hover:text-white ml-2">×</button>`;
+    notification.innerHTML = `${message} <button onclick="this.parentElement.remove()" class="text-white/70 hover:text-white ml-2">Ã—</button>`;
     document.body.appendChild(notification);
     
     setTimeout(() => {
@@ -713,3 +714,4 @@ style.textContent = `
 `;
 document.head.appendChild(style);
 </script>
+

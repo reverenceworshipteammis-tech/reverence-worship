@@ -1,4 +1,4 @@
-@props(['canManage' => false, 'generations' => [], 'singers' => [], 'voiceParts' => [], 'performanceLevels' => []])
+﻿@props(['canManage' => false, 'generations' => [], 'singers' => [], 'voiceParts' => [], 'performanceLevels' => []])
 
 <div class="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
 
@@ -25,7 +25,7 @@
 
             <button onclick="openGeneratedListModal()"
                 class="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 transition shadow-sm text-gray-700 font-small">
-                <i class="fas fa-eye"></i>
+                <i class="fas fa-file-lines"></i>
                 View Generated List
             </button>
 
@@ -218,7 +218,7 @@
 
                             @if($singers->count() > 0)
                             <div class="mt-4 text-left text-xs border-t border-gray-200 pt-3">
-                                <p class="font-semibold text-gray-600 mb-2">📊 Membership Type Distribution:</p>
+                                <p class="font-semibold text-gray-600 mb-2">ðŸ“Š Membership Type Distribution:</p>
                                 @php
                                 $grouped = $singers->groupBy('membership_type');
                                 @endphp
@@ -227,14 +227,14 @@
                                     <span class="inline-block w-24">{{ $type ?: 'Not Set' }}</span>
                                     <span class="font-bold text-blue-600">{{ $users->count() }}</span> users
                                     @if(strtolower(trim($type)) === 'permanent')
-                                    <span class="text-green-500">✅</span>
+                                    <span class="text-green-500">âœ…</span>
                                     @endif
                                 </p>
                                 @endforeach
                             </div>
                             @else
                             <div class="mt-4 text-left text-xs border-t border-gray-200 pt-3">
-                                <p class="text-red-500">⚠️ No singers found in the database.</p>
+                                <p class="text-red-500">âš ï¸ No singers found in the database.</p>
                                 <p class="text-gray-400 mt-1">Make sure users have a membership_type value.</p>
                             </div>
                             @endif
@@ -315,7 +315,7 @@
                     <div class="flex flex-wrap gap-1 items-center flex-shrink-0">
                         <button onclick="viewFullGenerationDetails({{ $gen->id }})"
                             class="px-2.5 py-1 text-sm font-medium bg-black-50 hover:bg-black-100 text-black-600 rounded transition flex items-center gap-1">
-                            <i class="fas fa-eye text-sm"></i> View
+                            <i class="fas fa-file-lines text-sm"></i> View
                         </button>
                         <button onclick="restoreGeneration({{ $gen->id }})"
                             class="px-2.5 py-1 text-sm font-medium bg-black-50 hover:bg-black-100 text-black-600 rounded transition flex items-center gap-1">
@@ -326,7 +326,7 @@
                             <i class="fas fa-file-export text-sm"></i> Export
                         </a>
                         <form action="{{ route('music.teams.delete', $gen->id) }}" method="POST" class="inline"
-                            onsubmit="return confirm('⚠️ Delete this generation? This action cannot be undone.')">
+                            onsubmit="return confirmSubmit(event, 'âš ï¸ Delete this generation? This action cannot be undone.')">
                             @csrf
                             @method('DELETE')
                             <button type="submit" class="px-2.5 py-1 text-sm font-medium bg-black-50 hover:bg-black-100 text-black-600 rounded transition flex items-center gap-1">
@@ -455,7 +455,7 @@
     @if($generations && $generations->count() > 0)
         viewFullGenerationDetails({{ $generations->first()->id }});
     @else
-        alert('No groups generated yet');
+        appAlert('No groups generated yet');
     @endif
 }
 
@@ -491,7 +491,7 @@
         const originalText = saveBtn.innerHTML;
 
         if (selects.length === 0) {
-            alert('No singers found to save');
+            appAlert('No singers found to save');
             return;
         }
 
@@ -510,7 +510,7 @@
         });
 
         if (changes.length === 0) {
-            alert('No changes to save.');
+            appAlert('No changes to save.');
             return;
         }
 
@@ -533,14 +533,14 @@
             const data = await response.json();
 
             if (data.success) {
-                alert('Settings saved successfully!');
+                appAlert('Settings saved successfully!');
                 location.reload();
             } else {
-                alert('Error: ' + (data.message || 'Failed to save'));
+                appAlert('Error: ' + (data.message || 'Failed to save'));
             }
         } catch (error) {
             console.error('Error:', error);
-            alert('Network error: ' + error.message);
+            appAlert('Network error: ' + error.message);
         } finally {
             saveBtn.innerHTML = originalText;
             saveBtn.disabled = false;
@@ -578,21 +578,21 @@
                 closeModal('generateModal');
 
                 if (data.success) {
-                    alert('Groups generated successfully!');
+                    appAlert('Groups generated successfully!');
                     location.reload();
                 } else {
-                    alert('Error: ' + (data.message || 'Unknown error'));
+                    appAlert('Error: ' + (data.message || 'Unknown error'));
                 }
             })
             .catch(error => {
                 submitBtn.innerHTML = originalText;
                 submitBtn.disabled = false;
-                alert('Network error: ' + error.message);
+                appAlert('Network error: ' + error.message);
             });
     });
 
-    function exportAllGenerations() {
-        if (confirm('Export all generations data as CSV?')) {
+    async function exportAllGenerations() {
+        if (!(await appConfirm('Export all generations data as CSV?'))) {
             window.location.href = '/music/teams/export-all';
         }
     }
@@ -865,7 +865,7 @@ function showFriendlyNotification(type, message) {
     notification.style.border = '1px solid rgba(255,255,255,0.1)';
     notification.style.backdropFilter = 'blur(8px)';
     
-    const icon = type === 'error' ? '✕' : '✓';
+    const icon = type === 'error' ? 'âœ•' : 'âœ“';
     
     notification.innerHTML = `
         <div class="flex-shrink-0 w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white text-xl font-bold">
@@ -1105,8 +1105,8 @@ document.head.appendChild(style);
     }
 
     // ==================== RESTORE GENERATION ====================
-    function restoreGeneration(id) {
-        if (confirm('Restore this generation? It will create a new copy.')) {
+    async function restoreGeneration(id) {
+        if (!(await appConfirm('Restore this generation? It will create a new copy.'))) {
             fetch(`/music/teams/${id}/restore`, {
                     method: 'POST',
                     headers: {
@@ -1118,15 +1118,15 @@ document.head.appendChild(style);
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        alert('Generation restored successfully!');
+                        appAlert('Generation restored successfully!');
                         location.reload();
                     } else {
-                        alert('Error: ' + (data.message || 'Failed to restore'));
+                        appAlert('Error: ' + (data.message || 'Failed to restore'));
                     }
                 })
                 .catch(error => {
                     console.error('Error:', error);
-                    alert('Network error: ' + error.message);
+                    appAlert('Network error: ' + error.message);
                 });
         }
     }
@@ -1149,3 +1149,6 @@ document.head.appendChild(style);
         display: block !important;
     }
 </style>
+
+
+

@@ -1,4 +1,4 @@
-<div id="editAnnouncementModal" class="modal hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+﻿<div id="editAnnouncementModal" class="modal hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
     <div class="relative top-20 mx-auto p-6 border w-full max-w-2xl shadow-xl rounded-2xl bg-white">
         <div class="flex justify-between items-center pb-4 border-b">
             <h3 class="text-xl font-bold text-gray-800">Edit Announcement</h3>
@@ -116,12 +116,12 @@ window.editAnnouncement = function(id) {
             
             document.getElementById('editAnnouncementModal').classList.remove('hidden');
         } else {
-            alert('Error loading announcement: ' + (data.message || 'Unknown error'));
+            appAlert('Error loading announcement: ' + (data.message || 'Unknown error'));
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error loading announcement');
+        appAlert('Error loading announcement');
     });
 };
 
@@ -143,7 +143,7 @@ window.submitEditAnnouncement = function(event) {
     const imageFile = document.getElementById('editAnnouncementImage').files[0];
     if (imageFile) {
         if (imageFile.size > 2 * 1024 * 1024) {
-            alert('Image size must be less than 2MB');
+            appAlert('Image size must be less than 2MB');
             return;
         }
         formData.append('image', imageFile);
@@ -172,14 +172,14 @@ window.submitEditAnnouncement = function(event) {
             if (typeof window.refreshOverviewStats === 'function') {
                 window.refreshOverviewStats();
             }
-            alert('Announcement updated successfully!');
+            appAlert('Announcement updated successfully!');
         } else {
-            alert('Error: ' + (data.message || 'Failed to update announcement'));
+            appAlert('Error: ' + (data.message || 'Failed to update announcement'));
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Network error: ' + error.message);
+        appAlert('Network error: ' + error.message);
     })
     .finally(() => {
         submitBtn.innerHTML = originalText;

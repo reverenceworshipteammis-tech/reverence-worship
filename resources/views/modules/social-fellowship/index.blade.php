@@ -1,4 +1,4 @@
-@extends('layouts.app')
+﻿@extends('layouts.app')
 
 @section('title', 'Social Fellowship')
 @section('page-title', 'Social Fellowship')
@@ -101,12 +101,6 @@
     @if($canViewActionPlans)
     <div id="actionPlans-tab" class="tab-content hidden">
         @include('modules.social-fellowship.partials.action-plans-list', [
-            'actionPlans' => $actionPlans ?? [],
-            'totalActionPlans' => $totalActionPlans ?? 0,
-            'completedPlans' => $completedPlans ?? 0,
-            'inProgressPlans' => $inProgressPlans ?? 0,
-            'pendingPlans' => $pendingPlans ?? 0,
-            'overallProgress' => $overallProgress ?? 0,
             'families' => $families ?? []
         ])
     </div>
@@ -156,7 +150,7 @@ window.showTab = function(tabName) {
 
 function openCreateFamilyModal() {
     @if(!(auth()->check() && auth()->user()->canAccess('social-fellowship', 'create-family')))
-        alert('You do not have permission to create families.');
+        appAlert('You do not have permission to create families.');
         return;
     @endif
     
@@ -165,7 +159,7 @@ function openCreateFamilyModal() {
     if (modal) {
         modal.classList.remove('hidden');
     } else {
-        alert('Create family modal not available');
+        appAlert('Create family modal not available');
     }
 }
 
@@ -194,7 +188,7 @@ document.addEventListener('DOMContentLoaded', function() {
 function assignToFamily(userId, userName, currentFamilyId = null) {
     // Check if user has permission
     @if(!(auth()->check() && auth()->user()->canAccess('social-fellowship', 'assign-family-members')))
-        alert('You do not have permission to assign family members.');
+        appAlert('You do not have permission to assign family members.');
         return;
     @endif
     
@@ -272,7 +266,7 @@ function confirmAssignToFamily() {
     const familyId = document.getElementById('familySelect')?.value;
     
     if (!familyId) {
-        alert('Please select a family');
+        appAlert('Please select a family');
         return;
     }
     
@@ -296,15 +290,15 @@ function assignUserToFamily(userId, familyId) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert('User assigned to family successfully!');
+            appAlert('User assigned to family successfully!');
             location.reload();
         } else {
-            alert('Error: ' + (data.message || 'Failed to assign user'));
+            appAlert('Error: ' + (data.message || 'Failed to assign user'));
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error assigning user to family');
+        appAlert('Error assigning user to family');
     });
     
     // Close modal

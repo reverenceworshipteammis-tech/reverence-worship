@@ -1,4 +1,4 @@
-<div>
+﻿<div>
     <div class="mb-6">
         <h3 class="text-lg font-semibold text-gray-800">Attendance Report</h3>
         <p class="text-sm text-gray-500 mt-0.5">Analytics and statistics for attendance records</p>
@@ -568,7 +568,7 @@ function initAttendanceChart(sessions) {
 
 function exportAttendanceCSV() {
     if (!attendanceData || attendanceData.length === 0) {
-        alert('No data to export. Please generate the report first.');
+        appAlert('No data to export. Please generate the report first.');
         return;
     }
     
