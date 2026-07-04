@@ -20,7 +20,7 @@
                 <i class="fas fa-bible text-blue-600"></i>
                 Bible Verses
             </h3>
-            <span class="text-sm text-gray-400">{{ $allDevotions ? count($allDevotions) : 0 }} verses</span>
+            <span class="text-sm text-gray-400">{{ count($allDevotions ?? []) }} verses</span>
         </div>
         
         <!-- Comments Section -->
@@ -330,4 +330,3 @@ function showNotification(message, type) {
     transition: transform 0.3s ease;
 }
 </style>
-

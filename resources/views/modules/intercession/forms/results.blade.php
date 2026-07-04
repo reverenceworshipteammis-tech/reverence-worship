@@ -4,7 +4,7 @@
 @section('page-title', 'Form Results')
 
 @section('content')
-<div class="max-w-4xl mx-auto py-6">
+<div class="results-page max-w-6xl mx-auto py-5 px-3 sm:px-5">
     
     <!-- Back Button -->
     <div class="mb-4">
@@ -14,14 +14,14 @@
     </div>
     
     <!-- Results Card -->
-    <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+    <div class="results-shell bg-white rounded-2xl border border-gray-200 overflow-hidden">
         
         <!-- Header -->
-        <div class="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-5">
-            <div class="flex justify-between items-start">
+        <div class="results-header bg-blue-600 px-5 sm:px-7 py-6">
+            <div class="flex flex-col sm:flex-row justify-between sm:items-start gap-4">
                 <div>
                     <h1 class="text-2xl font-bold text-white">{{ $form->title }}</h1>
-                    <p class="text-blue-100 text-sm mt-1">Form Results</p>
+                    <p class="text-blue-100 text-sm mt-1">{{ $userName }} <span class="mx-1">•</span> Form Results</p>
                 </div>
                 <div class="text-right">
                     @if(isset($submission) && isset($submission->submitted_at))
@@ -74,19 +74,15 @@
                 $showScore = $isReleased || $releaseGrade == 'immediately';
                 $showAnswers = $isReleased || $releaseGrade == 'immediately';
             }
-            
-            // Get user name
-            $userName = 'Unknown User';
-            if (isset($submission) && isset($submission->user_id)) {
-                $user = DB::table('users')->where('id', $submission->user_id)->first();
-                if ($user) {
-                    $userName = $user->name;
-                }
-            }
+
+            $canReviewResponses = auth()->user()->isSuperAdmin()
+                || auth()->user()->canAccess('intercession', 'manage-forms')
+                || auth()->user()->canAccess('intercession', 'view-results');
+            $showAnswers = $showAnswers && ($allowViewResponse || $canReviewResponses);
             
             // Check for multiple submissions
             $submissionCount = 0;
-            if ($isQuiz && !isset($submission_id)) {
+            if ($isQuiz && !request()->filled('submission_id')) {
                 $submissionCount = DB::table('form_submissions')
                     ->where('form_id', $form->id)
                     ->where('user_id', auth()->id())
@@ -176,32 +172,29 @@
                 } elseif ($questionType == 'checkboxes') {
                     if (isset($question['correctAnswers']) && is_array($question['correctAnswers']) && !empty($question['correctAnswers'])) {
                         $correctDisplay = implode(', ', $question['correctAnswers']);
-                        $correctAnswers = $question['correctAnswers'];
-                        $userAnswers = is_array($answer) ? $answer : [];
+                        $correctAnswers = array_values(array_unique($question['correctAnswers']));
+                        $userAnswers = is_array($answer) ? array_values(array_unique($answer)) : [];
                         
                         if (!empty($userAnswers)) {
                             $totalCorrect = count($correctAnswers);
-                            $correctSelected = 0;
-                            
-                            foreach ($userAnswers as $userAnswer) {
-                                if (in_array($userAnswer, $correctAnswers)) {
-                                    $correctSelected++;
-                                }
-                            }
+                            $correctSelected = count(array_intersect($userAnswers, $correctAnswers));
+                            $incorrectSelected = count(array_diff($userAnswers, $correctAnswers));
+                            $isExactMatch = $correctSelected === $totalCorrect && $incorrectSelected === 0 && count($userAnswers) === $totalCorrect;
                             
                             if ($allowPartialPoints) {
-                                if ($correctSelected > 0) {
-                                    $questionEarnedPoints = ($correctSelected / $totalCorrect) * $points;
+                                if ($correctSelected > 0 && $totalCorrect > 0) {
+                                    $credit = max(0, $correctSelected - $incorrectSelected);
+                                    $questionEarnedPoints = ($credit / $totalCorrect) * $points;
                                 } else {
                                     $questionEarnedPoints = 0;
                                 }
                                 $questionEarnedPoints = round($questionEarnedPoints, 2);
                                 
-                                if ($correctSelected > 0 && $correctSelected < $totalCorrect) {
+                                if ($questionEarnedPoints > 0 && !$isExactMatch) {
                                     $isPartiallyCorrect = true;
                                 }
                             } else {
-                                if ($correctSelected == $totalCorrect) {
+                                if ($isExactMatch) {
                                     $questionEarnedPoints = $points;
                                     $isCorrect = true;
                                 } else {
@@ -209,7 +202,7 @@
                                 }
                             }
                             
-                            if ($correctSelected == $totalCorrect) {
+                            if ($isExactMatch) {
                                 $isCorrect = true;
                             }
                         }
@@ -217,7 +210,7 @@
                 } elseif ($questionType == 'short_answer' || $questionType == 'paragraph') {
                     if (isset($question['correctAnswer']) && $question['correctAnswer'] !== '') {
                         $correctDisplay = $question['correctAnswer'];
-                        if (strtolower(trim($answer)) == strtolower(trim($question['correctAnswer']))) {
+                        if (strtolower(trim((string) $answer)) == strtolower(trim((string) $question['correctAnswer']))) {
                             $isCorrect = true;
                             $questionEarnedPoints = $points;
                         }
@@ -311,20 +304,22 @@
                                 $correctDisplayParts[] = $row . ': ' . implode(', ', $correctRowAnswers);
                                 
                                 if (!empty($userRowAnswers)) {
-                                    $correctCount = 0;
-                                    foreach ($correctRowAnswers as $correctAns) {
-                                        if (in_array($correctAns, $userRowAnswers)) {
-                                            $correctCount++;
-                                        }
-                                    }
+                                    $correctRowAnswers = array_values(array_unique($correctRowAnswers));
+                                    $userRowAnswers = array_values(array_unique($userRowAnswers));
+                                    $correctCount = count(array_intersect($correctRowAnswers, $userRowAnswers));
+                                    $incorrectCount = count(array_diff($userRowAnswers, $correctRowAnswers));
+                                    $rowExact = $correctCount === count($correctRowAnswers)
+                                        && $incorrectCount === 0
+                                        && count($userRowAnswers) === count($correctRowAnswers);
                                     if ($allowPartialPoints) {
-                                        $gridEarned += ($correctCount / count($correctRowAnswers)) * $rowPoints;
+                                        $credit = max(0, $correctCount - $incorrectCount);
+                                        $gridEarned += ($credit / count($correctRowAnswers)) * $rowPoints;
                                     } else {
-                                        if ($correctCount == count($correctRowAnswers)) {
+                                        if ($rowExact) {
                                             $gridEarned += $rowPoints;
                                         }
                                     }
-                                    if ($correctCount != count($correctRowAnswers)) {
+                                    if (!$rowExact) {
                                         $allCorrect = false;
                                     }
                                 } else {
@@ -335,6 +330,7 @@
                         $correctDisplay = implode(', ', $correctDisplayParts);
                         $questionEarnedPoints = round($gridEarned, 2);
                         $isCorrect = $allCorrect && $gridEarned > 0;
+                        $isPartiallyCorrect = !$isCorrect && $questionEarnedPoints > 0;
                     }
                 }
                 
@@ -355,7 +351,7 @@
             }
             
             $earnedPoints = round($earnedPoints, 2);
-            $scorePercentage = $totalPossiblePoints > 0 ? ($earnedPoints / $totalPossiblePoints) * 100 : 0;
+            $scorePercentage = $totalPossiblePoints > 0 ? min(100, max(0, ($earnedPoints / $totalPossiblePoints) * 100)) : 0;
             
             
             
@@ -367,7 +363,9 @@
                 $releaseStatusIcon = 'fa-check-circle text-green-500';
             } elseif ($releaseGrade == 'later') {
                 if ($isReleased) {
-                    $releaseStatusMessage = 'Released on ' . \Carbon\Carbon::parse($submission->released_at)->format('M d, Y h:i A');
+                    $releaseStatusMessage = !empty($submission->released_at)
+                        ? 'Released on ' . \Carbon\Carbon::parse($submission->released_at)->format('M d, Y h:i A')
+                        : 'Reviewed and released';
                     $releaseStatusIcon = 'fa-check-circle text-green-500';
                 } else {
                     $releaseStatusMessage = 'Pending Review';
@@ -386,14 +384,16 @@
                 <span class="text-sm text-blue-700">
                     Showing latest submission ({{ $submissionCount }} total submissions)
                 </span>
-                <a href="{{ route('forms.manage.submissions', $form->id) }}" class="text-sm text-blue-600 hover:underline ml-auto">
-                    View all submissions
-                </a>
+                @if($canReviewResponses)
+                    <a href="{{ route('forms.manage.submissions', $form->id) }}" class="text-sm text-blue-600 hover:underline ml-auto">
+                        View all submissions
+                    </a>
+                @endif
             </div>
         @endif
         
         <!-- Release Status Banner -->
-        <div class="px-6 py-3 border-b flex items-center gap-3 {{ $showScore ? 'bg-green-50' : 'bg-yellow-50' }}">
+        <div class="px-5 sm:px-7 py-3 border-b flex items-start sm:items-center gap-3 {{ $showScore ? 'bg-green-50' : 'bg-yellow-50' }}">
             <i class="fas {{ $releaseStatusIcon }} {{ $showScore ? 'text-green-500' : 'text-yellow-500' }}"></i>
             <span class="text-sm {{ $showScore ? 'text-green-700' : 'text-yellow-700' }}">
                 <strong>Status:</strong> {{ $releaseStatusMessage }}
@@ -405,37 +405,28 @@
             </span>
         </div>
         
-        <div class="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-5 border-b">
+        <div class="results-summary bg-slate-50 px-5 sm:px-7 py-6 border-b">
             @if($showScore)
-                <div class="flex flex-col md:flex-row justify-between items-center gap-4">
-                    <div class="text-center md:text-left">
+                <div class="summary-grid grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div class="summary-card rounded-xl border border-gray-200 bg-white p-4">
                         <p class="text-gray-600 text-sm">Score</p>
-                        <div class="flex items-baseline gap-2">
-                            <span class="text-2xl font-bold text-blue-600">{{ number_format($scorePercentage, 1) }}%</span>
-                            <span class="text-gray-400 text-sm">/ 100%</span>
+                        <div class="mt-1 flex items-baseline gap-1">
+                            <span class="text-3xl font-bold text-blue-600">{{ number_format($scorePercentage, 1) }}%</span>
                         </div>
-                        <div class="mt-2 flex items-center justify-center md:justify-start gap-2">
-                            <i class="fas fa-user-circle text-blue-500 text-2xl"></i>
-                            <span class="text-xl font-bold text-gray-700">{{ $userName }}</span>
-                        </div>
+                        <p class="mt-1 text-xs text-gray-400">Overall result</p>
                     </div>
-                    
-                    <div class="w-px h-12 bg-gray-300 hidden md:block"></div>
-                    
-                    <div class="text-center">
+
+                    <div class="summary-card rounded-xl border border-gray-200 bg-white p-4">
                         <p class="text-gray-600 text-sm">Points</p>
-                        <p class="text-2xl font-bold text-green-600">{{ number_format($earnedPoints, 1) }}</p>
-                        <p class="text-xs text-gray-400">out of {{ $totalPossiblePoints }} total points</p>
+                        <p class="mt-1 text-3xl font-bold text-green-600">{{ number_format($earnedPoints, 1) }}</p>
+                        <p class="mt-1 text-xs text-gray-400">Out of {{ $totalPossiblePoints }} points</p>
                     </div>
-                    
-                    <div class="w-px h-12 bg-gray-300 hidden md:block"></div>
-                    
-                    <div class="text-center">
+
+                    <div class="summary-card rounded-xl border border-gray-200 bg-white p-4">
                         <p class="text-gray-600 text-sm">Questions</p>
-                        <p class="text-2xl font-bold text-blue-600">{{ $totalQuestionsCount }}</p>
-                        <p class="text-xs text-gray-400">total questions</p>
+                        <p class="mt-1 text-3xl font-bold text-gray-800">{{ $totalQuestionsCount }}</p>
+                        <p class="mt-1 text-xs text-gray-400">Questions in this form</p>
                     </div>
-                    
                 </div>
                 
                 <div class="mt-4">
@@ -464,8 +455,8 @@
         
         <!-- Questions & Answers -->
         @if($showAnswers)
-            <div class="p-6">
-                <div class="flex justify-between items-center mb-4">
+            <div class="responses-section bg-slate-50 p-4 sm:p-7">
+                <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-4">
                     <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2">
                         <i class="fas fa-list-check text-blue-600"></i>
                         Your Responses
@@ -554,7 +545,7 @@
                                 $statusBadgeColor = '';
                                 
                                 // For multiple choice and dropdown, always show status
-                                if ($questionType == 'multiple_choice' || $questionType == 'dropdown') {
+                                if (($questionType == 'multiple_choice' || $questionType == 'dropdown') && $correctDisplay !== '') {
                                     if ($isCorrect) {
                                         $statusBadge = 'Correct';
                                         $statusBadgeColor = 'bg-green-100 text-green-700';
@@ -576,8 +567,8 @@
                                 }
                             @endphp
                             
-                            <div class="border rounded-xl p-5 hover:shadow-md transition-all">
-                                <div class="flex justify-between items-start mb-3">
+                            <div class="response-card border border-gray-200 bg-white rounded-xl p-4 sm:p-5 transition-all">
+                                <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-3">
                                     <div class="flex items-start gap-3">
                                         <div class="w-7 h-7 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
                                             <span class="text-blue-600 text-sm font-bold">{{ $questionCounter }}</span>
@@ -603,7 +594,9 @@
                                                     +{{ $total }} pts
                                                 </span>
                                             @elseif($questionType == 'multiple_choice' || $questionType == 'dropdown')
-                                                @if($isCorrect)
+                                                @if($correctDisplay === '')
+                                                    <span class="text-xs text-gray-500 font-medium">Not graded</span>
+                                                @elseif($isCorrect)
                                                     <i class="fas fa-check-circle text-green-500"></i>
                                                     <span class="text-xs text-green-600 font-medium">+{{ $total }} pts</span>
                                                 @else
@@ -623,7 +616,7 @@
                                     @endif
                                 </div>
                                 
-                                <div class="ml-10">
+                                <div class="response-content sm:ml-10">
                                     <!-- User's Answer -->
                                     <div class="mb-2">
                                         <p class="text-xs text-gray-500 mb-1">Your Answer:</p>
@@ -691,7 +684,7 @@
                                     </div>
                                     
                                     <!-- Correct Answer - ALWAYS SHOW for multiple choice and dropdown -->
-                                    @if($isQuiz && ($questionType == 'multiple_choice' || $questionType == 'dropdown'))
+                                    @if($isQuiz && ($questionType == 'multiple_choice' || $questionType == 'dropdown') && $correctDisplay !== '')
                                         <div class="mb-2">
                                             <p class="text-xs text-green-600 mb-1">
                                                 <i class="fas fa-check-circle mr-1"></i> Correct Answer:
@@ -796,6 +789,9 @@
             <div class="p-6 text-center py-12">
                 @if($releaseGrade == 'never')
                     <p class="text-sm text-gray-400 mt-1">This form is set to never release results</p>
+                @elseif($showScore && !$showAnswers)
+                    <i class="fas fa-eye-slash text-gray-300 text-3xl mb-3"></i>
+                    <p class="text-sm text-gray-500">Detailed responses are not available for this form.</p>
                 @endif
             </div>
         @endif
@@ -806,54 +802,21 @@
 </div>
 
 <style>
-.bg-gradient-to-r {
-    transition: all 0.3s ease;
-}
-
-.border {
-    transition: border-color 0.2s ease;
-}
-.border:hover {
-    border-color: #93c5fd;
-}
-
-.bg-gray-100 {
-    background-color: #f3f4f6;
-}
-
-.border-l-4.border-indigo-500 {
-    border-left-width: 4px;
-}
-
-ul.list-disc {
-    padding-left: 1.5rem;
-}
-ul.list-disc li {
-    margin-bottom: 2px;
-}
-
-.status-badge {
-    transition: all 0.3s ease;
-}
-
-.user-name-display {
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: #1f2937;
-}
-
-/* Table styles for grid questions */
-table {
-    border-collapse: collapse;
-}
-table th, table td {
-    border: 1px solid #e5e7eb;
-    padding: 8px 12px;
+.results-shell { box-shadow:0 18px 50px rgba(15,23,42,.07); }
+.summary-card { box-shadow:0 3px 12px rgba(15,23,42,.035); }
+.response-card:hover { border-color:#bfdbfe; box-shadow:0 8px 24px rgba(37,99,235,.06); }
+.responses-section table { border-collapse:collapse; }
+.responses-section table th,
+.responses-section table td { border:1px solid #e5e7eb; padding:8px 12px; }
+.responses-section ul.list-disc { padding-left:1.5rem; }
+.responses-section ul.list-disc li { margin-bottom:2px; }
+@media(max-width:640px) {
+    .response-content { margin-left:0; }
 }
 
 @media print {
-    .bg-gradient-to-r {
-        background: #4f46e5 !important;
+    .results-header {
+        background:#2563eb !important;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
     }
@@ -862,15 +825,17 @@ table th, table td {
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
     }
-    .shadow-lg {
-        box-shadow: none !important;
-    }
-    .hover\:shadow-md:hover {
-        box-shadow: none !important;
-    }
+    .results-shell,.summary-card,.response-card { box-shadow:none !important; }
     .no-print {
         display: none !important;
     }
 }
 </style>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('.responses-section .text-gray-400').forEach(function (element) {
+        element.textContent = element.textContent.replace(/\u00e2\u20ac\u00a2/g, '\u2022');
+    });
+});
+</script>
 @endsection

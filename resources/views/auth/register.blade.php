@@ -22,9 +22,9 @@
             margin: 0;
             font-family: 'DM Sans', system-ui, sans-serif;
             background:
-                radial-gradient(circle at top left, rgba(216, 168, 78, 0.18), transparent 32rem),
-                linear-gradient(135deg, #f7f3e9 0%, #edf3ef 100%);
-            color: #12231d;
+                radial-gradient(circle at top left, rgba(37, 99, 235, 0.18), transparent 32rem),
+                linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%);
+            color: #0f172a;
         }
 
         .auth-shell {
@@ -42,10 +42,10 @@
             display: grid;
             grid-template-columns: 0.86fr 1.14fr;
             overflow: hidden;
-            background: #eef4ef;
-            border: 1px solid rgba(29, 77, 59, 0.26);
+            background: #f8fafc;
+            border: 1px solid rgba(37, 99, 235, 0.22);
             border-radius: 1.25rem;
-            box-shadow: 0 24px 70px rgba(18, 35, 29, 0.16);
+            box-shadow: 0 24px 70px rgba(30, 64, 175, 0.16);
         }
 
         .brand-panel {
@@ -54,15 +54,15 @@
             flex-direction: column;
             justify-content: space-between;
             padding: 2rem;
-            background: linear-gradient(145deg, #0b241b 0%, #1d4d3b 58%, #102d24 100%);
+            background: linear-gradient(145deg, #0f2f7a 0%, #1d4ed8 58%, #1e40af 100%);
             color: #ffffff;
         }
 
         .form-panel {
             position: relative;
             background:
-                radial-gradient(circle at 100% 0, rgba(216, 168, 78, 0.14), transparent 18rem),
-                linear-gradient(145deg, #fbfaf5 0%, #edf5ef 100%);
+                radial-gradient(circle at 100% 0, rgba(59, 130, 246, 0.14), transparent 18rem),
+                linear-gradient(145deg, #ffffff 0%, #eff6ff 100%);
         }
 
         .form-panel::before {
@@ -70,7 +70,7 @@
             position: absolute;
             inset: 0 auto 0 0;
             width: 5px;
-            background: linear-gradient(#d8a84e, #1d4d3b);
+            background: linear-gradient(#60a5fa, #1d4ed8);
         }
 
         .form-panel > div { position: relative; z-index: 1; }
@@ -119,8 +119,8 @@
 
         .field:focus {
             outline: none;
-            border-color: #1d4d3b;
-            box-shadow: 0 0 0 3px rgba(29, 77, 59, 0.12);
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
         }
 
         .field-icon {
@@ -151,7 +151,7 @@
 
         .password-toggle:hover {
             background: #f3f4f6;
-            color: #1d4d3b;
+            color: #2563eb;
         }
 
         .section-title {
@@ -174,13 +174,13 @@
         }
 
         h1, h2 { font-family: 'Playfair Display', serif; }
-        .primary-action { background:#1d4d3b; }
-        .primary-action:hover { background:#123c2d; }
-        .auth-link { color:#1d4d3b; }
-        .auth-link:hover { color:#d09b39; }
-        .brand-subtitle { color:#f1cf8e; }
+        .primary-action { background:#2563eb; }
+        .primary-action:hover { background:#1d4ed8; }
+        .auth-link { color:#2563eb; }
+        .auth-link:hover { color:#1d4ed8; }
+        .brand-subtitle { color:#bfdbfe; }
         .back-home { color:rgba(255,255,255,.72); transition:color .15s ease; }
-        .back-home:hover { color:#f1cf8e; }
+        .back-home:hover { color:#ffffff; }
 
         .alert {
             border-radius: 0.75rem;
@@ -274,7 +274,7 @@
                             <h2 class="text-2xl font-extrabold text-gray-900">Create Account</h2>
                             <p class="mt-1 text-sm text-gray-500">All fields are required.</p>
                         </div>
-                        <a href="{{ route('home') }}" class="auth-link inline-flex shrink-0 items-center gap-2 rounded-full border border-green-800/20 bg-white/60 px-3 py-2 text-xs font-semibold hover:bg-white transition">
+                        <a href="{{ route('home') }}" class="auth-link inline-flex shrink-0 items-center gap-2 rounded-full border border-blue-800/20 bg-white/60 px-3 py-2 text-xs font-semibold hover:bg-white transition">
                             <i class="fas fa-arrow-left"></i>
                             <span>Back to Home</span>
                         </a>

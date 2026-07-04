@@ -89,6 +89,11 @@ Route::middleware('auth')->group(function () {
 
     // User Dashboard (for regular users)
     Route::get('/user/dashboard', [UserDashboardController::class, 'index'])->name('user.dashboard');
+    Route::get('/user/performance', [UserDashboardController::class, 'performanceIndex'])
+        ->name('user.performance.index');
+    Route::get('/user/performance/{type}', [UserDashboardController::class, 'performanceDetails'])
+        ->where('type', 'discipline|attendance|communication|contribution')
+        ->name('user.performance.show');
 
     // User Management Routes
     Route::post('/users/{id}/approve', [UserController::class, 'approve'])->name('users.approve');

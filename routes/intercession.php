@@ -68,7 +68,7 @@ Route::prefix('reports')->name('reports.')->middleware('auth')->group(function (
 Route::middleware('auth')->prefix('forms')->name('forms.')->group(function () {
     // Form management routes (admin)
     Route::get('/', [FormController::class, 'index'])->name('index');
-    Route::get('/manage', [FormController::class, 'index'])->name('manage.index');
+    Route::get('/manage', [IntercessionController::class, 'index'])->name('manage');
     Route::get('/manage/create', [FormController::class, 'create'])->name('manage.create');
     Route::post('/manage/store', [FormController::class, 'store'])->name('manage.store');
     Route::get('/manage/{id}/edit', [FormController::class, 'edit'])->name('manage.edit');
@@ -103,5 +103,4 @@ Route::get('/debug-checkbox-grid', [FormController::class, 'debugCheckboxGrid'])
 });
 
 // ==================== BACKWARD COMPATIBILITY ALIASES ====================
-Route::get('/forms/manage', [FormController::class, 'index'])->name('forms.manage')->middleware('auth');
 Route::get('/forms/create', [FormController::class, 'create'])->name('forms.create')->middleware('auth');

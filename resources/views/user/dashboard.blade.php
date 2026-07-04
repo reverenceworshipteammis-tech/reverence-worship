@@ -20,6 +20,72 @@
         <i class="fas fa-sparkles absolute -right-4 -bottom-6 text-8xl text-white/10"></i>
     </section>
 
+    <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-5">
+        <a href="{{ route('user.performance.show', 'discipline') }}" class="block bg-white border border-gray-200 rounded-xl shadow-sm p-5 min-h-[190px] hover:border-emerald-300 hover:shadow-md transition">
+            <h2 class="font-bold text-gray-900">Discipline Performance</h2>
+            <div class="flex items-center gap-4 mt-6">
+                <div class="w-20 h-20 rounded-full p-[6px] shrink-0" style="background: conic-gradient(#10b981 {{ $performance['discipline']['rate'] }}%, #e5e7eb 0)">
+                    <div class="w-full h-full rounded-full bg-white flex items-center justify-center text-xl font-bold text-gray-900">
+                        {{ $performance['discipline']['rate'] }}%
+                    </div>
+                </div>
+                <div class="min-w-0">
+                    <p class="text-sm font-semibold text-gray-600">Good Behavior Rate</p>
+                    <p class="text-sm text-gray-900 mt-1">{{ $performance['discipline']['good'] }} good / {{ $performance['discipline']['total'] }} total records</p>
+                    <p class="text-xs text-gray-500 mt-1">Year {{ $performance['discipline']['year'] }}</p>
+                </div>
+            </div>
+        </a>
+
+        <a href="{{ route('user.performance.show', 'attendance') }}" class="block bg-white border border-gray-200 rounded-xl shadow-sm p-5 min-h-[190px] hover:border-emerald-300 hover:shadow-md transition">
+            <h2 class="font-bold text-gray-900">Attendance Performance</h2>
+            <div class="flex items-center gap-4 mt-6">
+                <div class="w-20 h-20 rounded-full p-[6px] shrink-0" style="background: conic-gradient(#10b981 {{ $performance['attendance']['rate'] }}%, #e5e7eb 0)">
+                    <div class="w-full h-full rounded-full bg-white flex items-center justify-center text-xl font-bold text-gray-900">
+                        {{ $performance['attendance']['rate'] }}%
+                    </div>
+                </div>
+                <div class="min-w-0">
+                    <p class="text-sm font-semibold text-gray-600">Attendance Rate</p>
+                    <p class="text-sm text-gray-900 mt-1">{{ $performance['attendance']['present'] }} attended / {{ $performance['attendance']['total'] }} sessions</p>
+                    <p class="text-xs text-gray-500 mt-1">{{ $performance['attendance']['period'] }}</p>
+                </div>
+            </div>
+        </a>
+
+        <a href="{{ route('user.performance.show', 'communication') }}" class="block bg-white border border-gray-200 rounded-xl shadow-sm p-5 min-h-[190px] hover:border-blue-300 hover:shadow-md transition">
+            <h2 class="font-bold text-gray-900">Communication Performance</h2>
+            <div class="flex items-center gap-4 mt-6">
+                <div class="w-20 h-20 rounded-full p-[6px] shrink-0" style="background: conic-gradient(#3b82f6 {{ $performance['communication']['rate'] }}%, #e5e7eb 0)">
+                    <div class="w-full h-full rounded-full bg-white flex items-center justify-center text-xl font-bold text-gray-900">
+                        {{ $performance['communication']['rate'] }}%
+                    </div>
+                </div>
+                <div class="min-w-0">
+                    <p class="text-sm font-semibold text-gray-600">Communication Rate</p>
+                    <p class="text-sm text-gray-900 mt-1">{{ $performance['communication']['communicated'] }} communicated / {{ $performance['communication']['total'] }} sessions</p>
+                    <p class="text-xs text-gray-500 mt-1">{{ $performance['communication']['period'] }}</p>
+                </div>
+            </div>
+        </a>
+
+        <a href="{{ route('user.performance.show', 'contribution') }}" class="block bg-white border border-gray-200 rounded-xl shadow-sm p-5 min-h-[190px] hover:border-orange-300 hover:shadow-md transition">
+            <h2 class="font-bold text-gray-900">Contribution Progress</h2>
+            <div class="flex items-center gap-4 mt-6">
+                <div class="w-20 h-20 rounded-full p-[6px] shrink-0" style="background: conic-gradient(#f97316 {{ $performance['contribution']['rate'] }}%, #e5e7eb 0)">
+                    <div class="w-full h-full rounded-full bg-white flex items-center justify-center text-xl font-bold text-gray-900">
+                        {{ $performance['contribution']['rate'] }}%
+                    </div>
+                </div>
+                <div class="min-w-0">
+                    <p class="text-sm font-semibold text-gray-600">Contribution Rate</p>
+                    <p class="text-sm text-gray-900 mt-1">RWF {{ number_format($performance['contribution']['paid']) }} / RWF {{ number_format($performance['contribution']['expected']) }}</p>
+                    <p class="text-xs text-gray-500 mt-1">Year {{ $performance['contribution']['year'] }}</p>
+                </div>
+            </div>
+        </a>
+    </section>
+
     <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1.65fr)_minmax(300px,0.85fr)] gap-5">
         <div class="space-y-5 min-w-0">
             <section class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
@@ -100,24 +166,6 @@
                 </section>
             @endif
 
-            @if(isset($stats['my_contributions']) && $stats['my_contributions'] > 0)
-                <section class="bg-white border border-gray-200 rounded-xl shadow-sm p-4 sm:p-5">
-                    <div class="flex items-center justify-between gap-3 mb-4">
-                        <div>
-                            <h2 class="font-bold text-gray-900">Contribution progress</h2>
-                            <p class="text-xs text-gray-500 mt-0.5">Your contribution for the current period.</p>
-                        </div>
-                        <a href="{{ route('financial.my-contributions') }}" class="text-xs font-semibold text-blue-600">View details</a>
-                    </div>
-                    <div class="flex justify-between text-sm mb-2">
-                        <span class="text-gray-500">Paid {{ number_format($stats['my_payments'] ?? 0) }} RWF</span>
-                        <span class="font-semibold text-gray-800">{{ $stats['payment_progress'] ?? 0 }}%</span>
-                    </div>
-                    <div class="h-2.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div class="h-full bg-emerald-500 rounded-full" style="width: {{ min(100, $stats['payment_progress'] ?? 0) }}%"></div>
-                    </div>
-                </section>
-            @endif
         </div>
 
         <aside class="space-y-5 min-w-0">

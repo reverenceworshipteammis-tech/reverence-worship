@@ -1003,10 +1003,6 @@ class FormController extends Controller
     // ==================== RESULTS ====================
     public function results($id, Request $request)
     {
-        if (!auth()->user()->canAccess('intercession', 'view-results')) {
-            abort(403, 'You do not have permission to view results.');
-        }
-
         $submissionId = $request->get('submission_id');
 
         if ($submissionId) {
@@ -1017,6 +1013,14 @@ class FormController extends Controller
 
             if (!$submission) {
                 return redirect()->route('intercession.index')->with('error', 'Submission not found');
+            }
+
+            $isOwner = (int) $submission->user_id === (int) auth()->id();
+            $canViewOtherResults = auth()->user()->isSuperAdmin()
+                || auth()->user()->canAccess('intercession', 'view-results');
+
+            if (!$isOwner && !$canViewOtherResults) {
+                abort(403, 'You do not have permission to view this result.');
             }
         } else {
             $submission = DB::table('form_submissions')

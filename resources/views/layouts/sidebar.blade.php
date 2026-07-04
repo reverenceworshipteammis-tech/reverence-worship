@@ -70,6 +70,11 @@
                     <i class="fas fa-user w-5"></i>
                     <span class="nav-text text-sm font-medium">My Profile</span>
                 </a>
+
+                <a href="{{ route('user.performance.index') }}" class="nav-item {{ request()->routeIs('user.performance.*') ? 'active' : '' }}">
+                    <i class="fas fa-chart-line w-5"></i>
+                    <span class="nav-text text-sm font-medium">My Performance</span>
+                </a>
                 
                 <a href="{{ route('permission-manager.index') }}" class="nav-item {{ request()->routeIs('permission-manager.*') ? 'active' : '' }}">
                     <i class="fas fa-lock w-5"></i>
@@ -185,6 +190,10 @@
                 <a href="{{ route('profile.index') }}" class="nav-item {{ request()->routeIs('profile.*') ? 'active' : '' }}">
                     <i class="fas fa-user w-5"></i>
                     <span class="nav-text text-sm font-medium">My Profile</span>
+                </a>
+                <a href="{{ route('user.performance.index') }}" class="nav-item {{ request()->routeIs('user.performance.*') ? 'active' : '' }}">
+                    <i class="fas fa-chart-line w-5"></i>
+                    <span class="nav-text text-sm font-medium">My Performance</span>
                 </a>
             @endif
         @else

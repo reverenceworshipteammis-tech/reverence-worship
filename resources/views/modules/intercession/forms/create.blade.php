@@ -5,28 +5,75 @@
 
 @section('content')
 
-<div class="min-h-screen bg-gray-50 py-6">
+<style>
+    .form-builder-page { background:#f8fafc; }
+    .builder-topbar { box-shadow:0 8px 28px rgba(15,23,42,.05); }
+    .builder-tools {
+        position:absolute;
+        z-index:20;
+        top:0;
+        right:-62px;
+        width:52px;
+        flex-direction:column;
+        padding:6px;
+        gap:3px;
+    }
+    .sortable-item.toolbar-host { position:relative; overflow:visible !important; }
+    .builder-tools .tools-label { display:none; }
+    .builder-tools button {
+        width:40px;
+        height:40px;
+        padding:0;
+        justify-content:center;
+        color:#475569;
+        background:transparent;
+        transition:transform .15s ease, background-color .15s ease, color .15s ease;
+    }
+    .builder-tools button .tool-text { display:none; }
+    .builder-tools button:first-of-type { color:#2563eb; background:#eff6ff; }
+    .builder-tools button:hover { transform:translateY(-1px); }
+    @media (max-width:760px) {
+        .sortable-item.toolbar-host { margin-bottom:62px; }
+        .builder-tools {
+            position:absolute;
+            top:auto;
+            right:8px;
+            bottom:-54px;
+            width:auto;
+            flex-direction:row;
+            padding:5px;
+            gap:3px;
+        }
+        .builder-tools button { width:38px; height:38px; padding:0; }
+    }
+    @media (max-width:640px) {
+        .builder-heading { align-items:flex-start; flex-direction:column; }
+        .builder-actions, .builder-actions button { width:100%; justify-content:center; }
+    }
+</style>
 
-    <!-- Top Navigation -->
-    <div class="max-w-5xl mx-auto mb-4">
-        <div class="flex justify-center gap-6 text-sm font-medium text-gray-600">
-            <button id="questionsNav" class="nav-tab text-indigo-600 border-b-2 border-indigo-600 pb-2">
-                <i class="fas fa-list mr-1"></i> Questions
-            </button>
-            <button id="settingsNav" class="nav-tab hover:text-indigo-600">
-                <i class="fas fa-cog mr-1"></i> Settings
-            </button>
+<div class="form-builder-page min-h-screen py-5 px-3 sm:px-5">
+    <div class="builder-topbar max-w-5xl mx-auto mb-5 rounded-xl border border-gray-200 bg-white overflow-hidden">
+        <div class="builder-heading flex items-center justify-between gap-4 px-4 sm:px-5 py-4">
+            <div>
+                <a href="{{ route('intercession.index') }}#forms-tab" class="inline-flex items-center gap-2 text-xs font-semibold text-gray-500 hover:text-blue-600">
+                    <i class="fas fa-arrow-left"></i> Manage Forms
+                </a>
+                <h2 class="mt-1 text-xl font-bold text-gray-900">Create a new form</h2>
+                <p class="mt-1 text-xs text-gray-500">Build questions, configure responses, then save your form.</p>
+            </div>
+            <div class="builder-actions flex items-center gap-2">
+                <button id="saveFormButton" type="button" onclick="saveForm(false)" class="inline-flex min-h-10 items-center rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 text-sm font-semibold">
+                    <i class="fas fa-check mr-2"></i> Save Form
+                </button>
+            </div>
         </div>
-    </div>
-
-    <!-- Header with Action Buttons -->
-    <div class="max-w-5xl mx-auto mb-3 flex justify-between items-center">
-        <a href="{{ route('intercession.index') }}" class="inline-flex items-center text-indigo-600 hover:text-indigo-800 text-sm">
-            <i class="fas fa-arrow-left mr-2"></i> Back to Manage Forms
-        </a>
-        <div class="flex gap-2">
-            <button onclick="saveForm(false)" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-sm">
-                <i class="fas fa-check mr-1"></i> Done
+        <div class="flex gap-6 border-t border-gray-100 px-4 sm:px-5 text-sm font-semibold text-gray-500">
+            <button id="questionsNav" type="button" class="nav-tab text-blue-600 border-b-2 border-blue-600 py-3">
+                <i class="fas fa-list mr-1.5"></i> Questions
+            </button>
+            <button id="settingsNav" type="button" class="nav-tab border-b-2 border-transparent py-3 hover:text-blue-600">
+                <i class="fas fa-sliders-h mr-1.5"></i> Settings
             </button>
         </div>
     </div>
@@ -39,33 +86,27 @@
     <!-- ==================== QUESTIONS SECTION ==================== -->
     <div id="questionsSection">
         <!-- Form Header -->
-        <div class="max-w-5xl mx-auto bg-white rounded-xl border border-gray-200 overflow-hidden mb-4">
-            <div class="h-2 bg-indigo-600"></div>
+        <div class="max-w-5xl mx-auto bg-white rounded-xl border border-gray-200 overflow-hidden mb-4 shadow-sm">
+            <div class="h-1 bg-blue-600"></div>
             <div class="p-5">
                 <input type="text" id="formTitle" placeholder="Untitled form"
-                    class="w-full text-2xl font-normal border-none focus:ring-0 outline-none mb-2"
-                    onchange="autoSave()">
-                <input type="text" id="formDescription" placeholder="Form description"
+                    class="w-full text-2xl font-semibold text-gray-900 border-none focus:ring-0 outline-none mb-2"
+                    oninput="autoSave()" maxlength="150" aria-label="Form title">
+                <input type="text" id="formDescription" placeholder="Add a short description (optional)"
                     class="w-full text-sm text-gray-500 border-none focus:ring-0 outline-none"
-                    onchange="autoSave()">
+                    oninput="autoSave()" maxlength="500" aria-label="Form description">
             </div>
+        </div>
+
+        <div id="builderTools" class="builder-tools flex items-center rounded-xl border border-gray-200 bg-white shadow-sm">
+            <span class="tools-label mr-1 text-xs font-semibold uppercase tracking-wide text-gray-400">Add</span>
+            <button type="button" onclick="addQuestion()" title="Add question" aria-label="Add question" class="inline-flex items-center rounded-lg text-sm font-semibold hover:bg-blue-100"><i class="fas fa-plus"></i><span class="tool-text">Question</span></button>
+            <button type="button" onclick="addTitleSection()" title="Add title and description" aria-label="Add title and description" class="inline-flex items-center rounded-lg text-sm font-medium hover:bg-gray-100"><i class="fas fa-heading"></i><span class="tool-text">Title</span></button>
+            <button type="button" onclick="addSection()" title="Add section" aria-label="Add section" class="inline-flex items-center rounded-lg text-sm font-medium hover:bg-gray-100"><i class="fas fa-layer-group"></i><span class="tool-text">Section</span></button>
         </div>
 
         <!-- Questions Container (Sortable) -->
         <div id="questionsContainer" class="max-w-5xl mx-auto space-y-4 sortable-container"></div>
-
-        <!-- Floating Toolbar -->
-        <div class="fixed right-6 top-1/2 -translate-y-1/2 bg-white rounded-lg shadow-md p-3 flex flex-col gap-3 text-lg text-gray-500 z-10 border">
-            <button onclick="addQuestion()" class="hover:text-indigo-600" title="Add question">
-                <i class="fas fa-plus-circle"></i>
-            </button>
-            <button onclick="addTitleSection()" class="hover:text-indigo-600" title="Add title and description">
-                <i class="fas fa-heading"></i>
-            </button>
-            <button onclick="addSection()" class="hover:text-indigo-600" title="Add section">
-                <i class="fas fa-layer-group"></i>
-            </button>
-        </div>
     </div>
 
     <!-- ==================== SETTINGS SECTION ==================== -->
@@ -115,11 +156,11 @@
 
     function updateNavActive(activeId) {
         document.querySelectorAll('.nav-tab').forEach(tab => {
-            tab.classList.remove('text-indigo-700', 'border-b-2', 'border-indigo-700');
-            tab.classList.add('text-gray-500');
+            tab.classList.remove('text-blue-600', 'border-blue-600');
+            tab.classList.add('text-gray-500', 'border-transparent');
         });
-        document.getElementById(activeId).classList.remove('text-gray-500');
-        document.getElementById(activeId).classList.add('text-indigo-700', 'border-b-2', 'border-indigo-700');
+        document.getElementById(activeId).classList.remove('text-gray-500', 'border-transparent');
+        document.getElementById(activeId).classList.add('text-blue-600', 'border-blue-600');
     }
 
     function showSettingsTab(tabName) {
@@ -141,12 +182,12 @@
     function saveSettingsToLocal() {
         let releaseGrade = document.querySelector('input[name="release_grade"]:checked')?.value || 'immediately';
         const settings = {
-            is_quiz: document.getElementById('isQuiz')?.checked || true,
+            is_quiz: document.getElementById('isQuiz')?.checked ?? true,
             release_grade: releaseGrade,
             default_points: document.getElementById('defaultPoints')?.value || 1,
-            allow_view_response: document.getElementById('allowViewResponse')?.checked || true,
+            allow_view_response: document.getElementById('allowViewResponse')?.checked ?? true,
             allow_editing: document.getElementById('allowEditing')?.checked || false,
-            limit_one_response: document.getElementById('limitOneResponse')?.checked || true,
+            limit_one_response: document.getElementById('limitOneResponse')?.checked ?? true,
             show_progress_bar: document.getElementById('showProgressBar')?.checked || false,
             shuffle_questions: document.getElementById('shuffleQuestions')?.checked || false,
             confirmation_message: document.getElementById('confirmationMessage')?.value || 'Your response has been recorded.',
@@ -278,6 +319,10 @@
 
     function renderAllQuestions() {
         const container = document.getElementById('questionsContainer');
+        const toolbar = document.getElementById('builderTools');
+        if (toolbar && container.contains(toolbar)) {
+            document.getElementById('questionsSection').insertBefore(toolbar, container);
+        }
         container.innerHTML = '';
         questions.forEach(q => renderQuestion(q));
         if (sortable) sortable.destroy();
@@ -295,16 +340,20 @@
                 autoSave();
             }
         });
+        if (selectedQuestionId !== null) selectQuestion(selectedQuestionId);
     }
 
     function selectQuestion(questionId) {
         selectedQuestionId = questionId;
         document.querySelectorAll('.sortable-item').forEach(el => {
             el.classList.remove('ring-2', 'ring-indigo-500');
+            el.classList.remove('toolbar-host');
         });
         const selectedEl = document.querySelector(`.sortable-item[data-id="${questionId}"]`);
         if (selectedEl) {
             selectedEl.classList.add('ring-2', 'ring-indigo-500');
+            selectedEl.classList.add('toolbar-host');
+            selectedEl.appendChild(document.getElementById('builderTools'));
         }
     }
 
@@ -413,11 +462,10 @@
             case 'paragraph':
                 return `<div class="flex items-center gap-3 bg-gray-50 p-3 rounded-lg">
                 <span class="text-xs text-gray-500">Correct Answer:</span>
-                <input type="${q.type === 'short_answer' ? 'text' : 'textarea'}" placeholder="Enter correct answer..." 
-                       ${q.type === 'paragraph' ? 'rows="2"' : ''}
-                       onchange="updateAndAutoSave('correctAnswer', ${q.id}, null, this.value)" 
-                       value="${escapeHtml(q.correctAnswer || '')}"
-                       class="flex-1 px-3 py-2 border rounded-lg text-sm border-gray-300 focus:ring-1 focus:ring-indigo-500">
+                ${q.type === 'paragraph'
+                    ? `<textarea rows="2" placeholder="Enter correct answer..." onchange="updateAndAutoSave('correctAnswer', ${q.id}, null, this.value)" class="flex-1 px-3 py-2 border rounded-lg text-sm border-gray-300 focus:ring-1 focus:ring-indigo-500">${escapeHtml(q.correctAnswer || '')}</textarea>`
+                    : `<input type="text" placeholder="Enter correct answer..." onchange="updateAndAutoSave('correctAnswer', ${q.id}, null, this.value)" value="${escapeHtml(q.correctAnswer || '')}" class="flex-1 px-3 py-2 border rounded-lg text-sm border-gray-300 focus:ring-1 focus:ring-indigo-500">`
+                }
             </div>`;
 
             case 'date':
@@ -441,7 +489,7 @@
                     <div class="flex items-center gap-3">
                         <span class="text-xs text-gray-500">Range:</span>
                         <input type="number" value="${q.min || 1}" onchange="updateAndAutoSave('scaleMin', ${q.id}, null, this.value)" class="w-14 px-2 py-1 border rounded-md text-sm text-center">
-                        <span class="text-gray-400">â†’</span>
+                        <span class="text-gray-400">→</span>
                         <input type="number" value="${q.max || 5}" onchange="updateAndAutoSave('scaleMax', ${q.id}, null, this.value)" class="w-14 px-2 py-1 border rounded-md text-sm text-center">
                     </div>
                     <div class="flex items-center gap-3 border-l border-gray-300 pl-4">
@@ -749,9 +797,17 @@
 
     function saveForm(isAutoSave = false) {
         if (isSaving) return;
-        isSaving = true;
 
-        const title = document.getElementById('formTitle').value || 'Untitled form';
+        const titleInput = document.getElementById('formTitle');
+        const enteredTitle = titleInput.value.trim();
+        if (!isAutoSave && !enteredTitle) {
+            titleInput.focus();
+            appAlert('Please enter a form title before saving.');
+            return;
+        }
+
+        isSaving = true;
+        const title = enteredTitle || 'Untitled form';
         const description = document.getElementById('formDescription').value || '';
         const publishByDefault = document.getElementById('publishByDefault')?.checked || false;
 
@@ -759,14 +815,14 @@
             is_published: publishByDefault,
             allow_retake: false,
             show_score: true,
-            allow_view_response: document.getElementById('allowViewResponse')?.checked || true,
+            allow_view_response: document.getElementById('allowViewResponse')?.checked ?? true,
             allow_editing: document.getElementById('allowEditing')?.checked || false,
-            limit_one_response: document.getElementById('limitOneResponse')?.checked || true,
+            limit_one_response: document.getElementById('limitOneResponse')?.checked ?? true,
             show_progress_bar: document.getElementById('showProgressBar')?.checked || false,
             shuffle_questions: document.getElementById('shuffleQuestions')?.checked || false,
             confirmation_message: document.getElementById('confirmationMessage')?.value || 'Your response has been recorded.',
             default_required: document.getElementById('defaultRequired')?.checked || false,
-            is_quiz: document.getElementById('isQuiz')?.checked || true,
+            is_quiz: document.getElementById('isQuiz')?.checked ?? true,
             release_grade: document.querySelector('input[name="release_grade"]:checked')?.value || 'immediately',
             default_points: document.getElementById('defaultPoints')?.value || 1
         };
@@ -809,7 +865,7 @@
         }
 
         if (!isAutoSave) {
-            const btn = document.querySelector('.bg-green-600');
+            const btn = document.getElementById('saveFormButton');
             btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Saving...';
             btn.disabled = true;
         }
@@ -832,20 +888,20 @@
                 if (isAutoSave) {
                     showAutoSaveIndicator();
                 } else {
-                    const btn = document.querySelector('.bg-green-600');
-                    btn.innerHTML = '<i class="fas fa-check mr-1"></i> Done';
+                    const btn = document.getElementById('saveFormButton');
+                    btn.innerHTML = '<i class="fas fa-check mr-2"></i> Save Form';
                     btn.disabled = false;
                     appConfirm('Form saved successfully! Click OK to go back to Manage Forms.').then((confirmed) => {
                         if (confirmed) {
-                            window.location.href = '{{ route("intercession.index") }}';
+                            window.location.href = '{{ route("intercession.index") }}#forms-tab';
                         }
                     });
                 }
             } else {
                 isSaving = false;
                 if (!isAutoSave) {
-                    const btn = document.querySelector('.bg-green-600');
-                    btn.innerHTML = '<i class="fas fa-check mr-1"></i> Done';
+                    const btn = document.getElementById('saveFormButton');
+                    btn.innerHTML = '<i class="fas fa-check mr-2"></i> Save Form';
                     btn.disabled = false;
                     appAlert('Error: ' + (data.message || 'Unknown error'));
                 }
@@ -855,8 +911,8 @@
             console.error('Fetch error:', err);
             isSaving = false;
             if (!isAutoSave) {
-                const btn = document.querySelector('.bg-green-600');
-                btn.innerHTML = '<i class="fas fa-check mr-1"></i> Done';
+                const btn = document.getElementById('saveFormButton');
+                btn.innerHTML = '<i class="fas fa-check mr-2"></i> Save Form';
                 btn.disabled = false;
                 appAlert('Error saving form: ' + err.message);
             }

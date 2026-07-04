@@ -33,14 +33,178 @@ class UserDashboardController extends Controller
     // Personal work requiring the user's attention.
     $pendingForms = $this->getPendingForms($user);
     $familyTasks = $this->getFamilyTasks($user);
+    $performance = $this->getUserPerformance($user);
     
     return view('user.dashboard', compact(
         'stats', 
         'recentActivities', 
         'pendingForms',
-        'familyTasks'
+        'familyTasks',
+        'performance'
     ));
 }
+
+    public function performanceDetails(string $type)
+    {
+        abort_unless(
+            in_array($type, ['discipline', 'attendance', 'communication', 'contribution'], true),
+            404
+        );
+
+        $user = auth()->user();
+        $year = (int) now()->year;
+        $performance = $this->getUserPerformance($user);
+        $records = collect();
+        $contribution = null;
+
+        if ($type === 'discipline' && Schema::hasTable('discipline_records')) {
+            $records = DB::table('discipline_records')
+                ->where('user_id', $user->id)
+                ->whereYear('created_at', $year)
+                ->orderByDesc('created_at')
+                ->get();
+        }
+
+        if (in_array($type, ['attendance', 'communication'], true) && Schema::hasTable('attendance_records')) {
+            $records = DB::table('attendance_records')
+                ->where('user_id', $user->id)
+                ->whereYear('session_date', $year)
+                ->orderByDesc('session_date')
+                ->orderByDesc('created_at')
+                ->get();
+        }
+
+        if ($type === 'contribution') {
+            if (Schema::hasTable('contributions')) {
+                $contribution = DB::table('contributions')
+                    ->where('user_id', $user->id)
+                    ->where('year', $year)
+                    ->first();
+            }
+
+            if (Schema::hasTable('payments')) {
+                $records = DB::table('payments')
+                    ->where('user_id', $user->id)
+                    ->where(function ($query) use ($year) {
+                        $query->where('year', $year)
+                            ->orWhereYear('payment_date', $year);
+                    })
+                    ->orderByDesc('payment_date')
+                    ->orderByDesc('created_at')
+                    ->get();
+            }
+        }
+
+        return view('user.performance-details', compact(
+            'type',
+            'year',
+            'performance',
+            'records',
+            'contribution'
+        ));
+    }
+
+    public function performanceIndex()
+    {
+        $performance = $this->getUserPerformance(auth()->user());
+
+        return view('user.performance-index', compact('performance'));
+    }
+
+    private function getUserPerformance($user): array
+    {
+        $disciplineTotal = 0;
+        $goodBehavior = 0;
+        $attendanceTotal = 0;
+        $presentCount = 0;
+        $communicatedCount = 0;
+        $attendanceStart = null;
+        $attendanceEnd = null;
+        $year = (int) now()->year;
+        $expectedContribution = 0;
+        $paidContribution = 0;
+
+        if (Schema::hasTable('discipline_records')) {
+            $discipline = DB::table('discipline_records')
+                ->where('user_id', $user->id)
+                ->whereYear('created_at', $year)
+                ->selectRaw("COUNT(*) as total")
+                ->selectRaw("SUM(CASE WHEN type = 'positive' THEN 1 ELSE 0 END) as good")
+                ->first();
+            $disciplineTotal = (int) ($discipline->total ?? 0);
+            $goodBehavior = (int) ($discipline->good ?? 0);
+        }
+
+        if (Schema::hasTable('attendance_records')) {
+            $attendance = DB::table('attendance_records')
+                ->where('user_id', $user->id)
+                ->whereYear('session_date', $year)
+                ->selectRaw('COUNT(*) as total')
+                ->selectRaw("SUM(CASE WHEN status IN ('present', 'late') THEN 1 ELSE 0 END) as present")
+                ->selectRaw('SUM(CASE WHEN COALESCE(communicated, false) = true THEN 1 ELSE 0 END) as communicated')
+                ->selectRaw('MIN(session_date) as start_date')
+                ->selectRaw('MAX(session_date) as end_date')
+                ->first();
+            $attendanceTotal = (int) ($attendance->total ?? 0);
+            $presentCount = (int) ($attendance->present ?? 0);
+            $communicatedCount = (int) ($attendance->communicated ?? 0);
+            $attendanceStart = $attendance->start_date ?? null;
+            $attendanceEnd = $attendance->end_date ?? null;
+        }
+
+        if (Schema::hasTable('contributions')) {
+            $expectedContribution = (float) DB::table('contributions')
+                ->where('user_id', $user->id)
+                ->where('year', $year)
+                ->sum('annual_amount');
+        }
+
+        if (Schema::hasTable('payments')) {
+            $paidContribution = (float) DB::table('payments')
+                ->where('user_id', $user->id)
+                ->where(function ($query) use ($year) {
+                    $query->where('year', $year)
+                        ->orWhereYear('payment_date', $year);
+                })
+                ->sum('amount');
+        }
+
+        $dateRange = $attendanceStart && $attendanceEnd
+            ? \Carbon\Carbon::parse($attendanceStart)->format('M Y') . ' – ' .
+                \Carbon\Carbon::parse($attendanceEnd)->format('M Y')
+            : 'No attendance data';
+
+        return [
+            'discipline' => [
+                'rate' => $disciplineTotal > 0 ? round(($goodBehavior / $disciplineTotal) * 100) : 0,
+                'good' => $goodBehavior,
+                'total' => $disciplineTotal,
+                'year' => $year,
+            ],
+            'attendance' => [
+                'rate' => $attendanceTotal > 0 ? round(($presentCount / $attendanceTotal) * 100) : 0,
+                'present' => $presentCount,
+                'total' => $attendanceTotal,
+                'period' => $dateRange,
+                'year' => $year,
+            ],
+            'communication' => [
+                'rate' => $attendanceTotal > 0 ? round(($communicatedCount / $attendanceTotal) * 100) : 0,
+                'communicated' => $communicatedCount,
+                'total' => $attendanceTotal,
+                'period' => $dateRange,
+                'year' => $year,
+            ],
+            'contribution' => [
+                'rate' => $expectedContribution > 0
+                    ? min(100, round(($paidContribution / $expectedContribution) * 100))
+                    : 0,
+                'paid' => $paidContribution,
+                'expected' => $expectedContribution,
+                'year' => $year,
+            ],
+        ];
+    }
 
     private function getPendingForms($user)
     {

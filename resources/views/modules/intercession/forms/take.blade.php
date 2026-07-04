@@ -51,8 +51,8 @@ $isLoggedIn = auth()->check();
         <i class="fas fa-info-circle text-yellow-500 text-4xl mb-3"></i>
         <h2 class="text-xl font-bold text-yellow-700 mb-2">Already Submitted</h2>
         <p class="text-gray-600 mb-4">You have already submitted this form. Only one response is allowed per user.</p>
-        <a href="{{ route('intercession.index') }}" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg inline-block">
-            Back to Dashboard
+        <a href="{{ route('intercession.index') }}#forms-tab" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg inline-block">
+            Back to Forms
         </a>
     </div>
 </div>
@@ -68,8 +68,20 @@ $isLoggedIn = auth()->check();
     </div>
 </div>
 @else
-<div class="max-w-4xl mx-auto py-8 px-4">
-    <div class="bg-white rounded-2xl shadow-xl overflow-hidden">
+<style>
+    .take-form-shell { box-shadow:0 18px 50px rgba(15,23,42,.08); }
+    .take-question { background:#fff; border:1px solid #e2e8f0; }
+    .take-question:focus-within { border-color:#93c5fd; box-shadow:0 0 0 3px rgba(37,99,235,.08); }
+    @media (max-width:640px) {
+        .take-form-header, .take-form-body, .take-form-footer { padding-left:1rem; padding-right:1rem; }
+        .take-question { padding:1rem; }
+        .take-answer { margin-left:0 !important; }
+        .take-form-footer > div { align-items:stretch; flex-direction:column; }
+        .take-form-footer button { justify-content:center; width:100%; }
+    }
+</style>
+<div class="max-w-5xl mx-auto py-5 sm:py-8 px-3 sm:px-4">
+    <div class="take-form-shell bg-white rounded-2xl border border-gray-200 overflow-hidden">
 
         {{-- Timer Display --}}
         @if($showTimer)
@@ -88,10 +100,10 @@ $isLoggedIn = auth()->check();
         @endif
 
         {{-- Form Header with Gradient --}}
-        <div class="bg-gradient-to-r from-indigo-600 to-blue-600 px-8 py-6">
+        <div class="take-form-header bg-blue-600 px-8 py-6">
             <div class="flex justify-between items-center text-white">
-                <a href="{{ route('intercession.index') }}" class="text-white/80 hover:text-white transition flex items-center gap-2">
-                    <i class="fas fa-arrow-left"></i> Back to Dashboard
+                <a href="{{ route('intercession.index') }}#forms-tab" class="text-white/80 hover:text-white transition flex items-center gap-2">
+                    <i class="fas fa-arrow-left"></i> Back to Forms
                 </a>
                 <div class="flex items-center gap-2 text-sm">
                     <i class="fas fa-file-alt"></i>
@@ -140,7 +152,7 @@ $isLoggedIn = auth()->check();
         <form method="POST" action="{{ route('forms.submit', $form->id) }}" id="formSubmission">
             @csrf
 
-            <div class="p-8 space-y-8" id="formContainer">
+            <div class="take-form-body p-8 space-y-6 bg-slate-50" id="formContainer">
                 @php
                 $totalQuestions = count($displayQuestions);
                 $questionCounter = 0;
@@ -205,7 +217,7 @@ $isLoggedIn = auth()->check();
                     </div>
                     @else
                     @php $questionCounter++; @endphp
-                    <div class="question-card bg-gray-50 rounded-xl p-6 transition-all duration-300 hover:shadow-md" data-question="{{ $originalIndex }}">
+                    <div class="question-card take-question rounded-xl p-6 transition-all duration-300" data-question="{{ $originalIndex }}">
                         <div class="flex items-start justify-between mb-4">
                             <div class="flex items-center gap-3">
                                 @if($showQuestionNumbers)
@@ -227,7 +239,7 @@ $isLoggedIn = auth()->check();
                             @endif
                         </div>
 
-                        <div class="{{ $showQuestionNumbers ? 'ml-11' : '' }}">
+                        <div class="take-answer {{ $showQuestionNumbers ? 'ml-11' : '' }}">
                             @if($questionType == 'short_answer')
                             <input type="text"
                                 name="question_{{ $originalIndex }}"
@@ -357,6 +369,7 @@ $isLoggedIn = auth()->check();
                                         name="question_{{ $originalIndex }}"
                                         value="{{ $i }}"
                                         class="hidden star-radio"
+                                        {{ $isRequired ? 'required' : '' }}
                                         data-question-index="{{ $originalIndex }}">
                                     <i class="far fa-star text-3xl text-yellow-400 hover:text-yellow-500 transition star-icon" data-value="{{ $i }}"></i>
                                     <span class="text-xs text-gray-500 mt-1">{{ $i }}</span>
@@ -476,7 +489,7 @@ $isLoggedIn = auth()->check();
                                 @if($gridCorrectCount > 0)
                                 <div id="gridWarning_{{ $originalIndex }}" class="hidden mt-2 text-xs text-amber-700 bg-amber-50 p-2.5 rounded-lg border border-amber-200 flex items-start gap-2">
                                     <i class="fas fa-exclamation-triangle text-amber-500 mt-0.5"></i>
-                                    <span id="gridWarningMessage_{{ $originalIndex }}">Please select exactly {{ $gridCorrectCount }}across all rows.</span>
+                                    <span id="gridWarningMessage_{{ $originalIndex }}">Please select exactly {{ $gridCorrectCount }} across all rows.</span>
                                 </div>
                                 @endif
                             </div>
@@ -501,7 +514,7 @@ $isLoggedIn = auth()->check();
                 @endif
             </div>
 
-            <div class="bg-gray-50 px-8 py-6 border-t">
+            <div class="take-form-footer bg-white px-8 py-6 border-t">
                 <div class="flex justify-between items-center">
                     <div class="text-sm text-gray-500">
                         <i class="fas fa-bible mr-1"></i> Philippians 4:13
@@ -512,7 +525,7 @@ $isLoggedIn = auth()->check();
                         <span class="ml-2 text-xs text-green-600">"I can do all things through Christ who strengthens me."</span>
                         @endif
                     </div>
-                    <button type="submit" id="submitBtn" class="bg-gradient-to-r from-blue-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white px-8 py-3 rounded-xl font-medium transition transform hover:scale-105 flex items-center gap-2">
+                    <button type="submit" id="submitBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-semibold transition flex items-center gap-2">
                         <i class="fas fa-paper-plane"></i> Submit
                     </button>
                 </div>
@@ -1141,4 +1154,3 @@ $isLoggedIn = auth()->check();
     }
 </style>
 @endsection
-
