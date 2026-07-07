@@ -11,12 +11,13 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root { --ink:#0f172a; --green:#1d4ed8; --gold:#60a5fa; --cream:#eff6ff; --muted:#64748b; }
+        html { font-size:14px; zoom:0.83; }
         * { box-sizing:border-box; }
         html { scroll-behavior:smooth; }
         body { margin:0; color:var(--ink); font-family:"DM Sans",sans-serif; background:#fff; }
         img { display:block; max-width:100%; }
         a { color:inherit; text-decoration:none; }
-        .wrap { width:min(1160px, calc(100% - 40px)); margin:auto; }
+        .wrap { width:min(1080px, calc(100% - 28px)); margin:auto; }
         .nav { position:fixed; inset:0 0 auto; z-index:50; background:rgba(37,99,235,.68); backdrop-filter:blur(14px); color:#fff; border-top:1px solid rgba(147,197,253,.35); border-bottom:1px solid rgba(255,255,255,.12); box-shadow:0 8px 30px rgba(15,23,42,.07); }
         .nav-inner { min-height:64px; display:flex; align-items:center; justify-content:space-between; gap:24px; }
         .brand { display:inline-flex; align-items:center; gap:13px; }
@@ -29,30 +30,30 @@
         .login { border:1px solid rgba(255,255,255,.48); border-radius:999px; padding:9px 18px; }
         .login:hover { border-color:#fff; background:rgba(255,255,255,.1); }
         .menu { display:none; color:#fff; border:0; background:none; font-size:1.5rem; }
-        .hero { min-height:760px; display:grid; place-items:center; position:relative; color:#fff; background:#111827; overflow:hidden; }
-        .hero-bg { position:absolute; inset:-4px; width:calc(100% + 8px); height:calc(100% + 8px); object-fit:cover; filter:blur(1px); transform:scale(1.01); opacity:0; transition:opacity 1.2s ease; }
+        .hero { min-height:calc(100vh + 120px); display:grid; place-items:center; position:relative; color:#fff; background:#111827; overflow:hidden; }
+        .hero-bg { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:center 35%; background:#111827; opacity:0; transition:opacity 1.2s ease; }
         .hero-bg.active { opacity:.72; }
         .hero::after { content:""; position:absolute; inset:0; background:linear-gradient(90deg,rgba(3,7,18,.86),rgba(3,7,18,.18)); }
-        .hero-content { position:relative; z-index:1; padding-top:70px; max-width:730px; margin-right:auto; }
+        .hero-content { position:relative; z-index:1; padding-top:56px; max-width:680px; margin-right:auto; }
         .eyebrow { color:#bfdbfe; letter-spacing:.18em; text-transform:uppercase; font-size:.78rem; font-weight:700; }
         h1,h2 { font-family:"Playfair Display",serif; margin:0; }
-        h1 { font-size:clamp(2.8rem,5.5vw,4.8rem); line-height:1.04; margin:18px 0 22px; }
+        h1 { font-size:clamp(2.35rem,4.8vw,4rem); line-height:1.04; margin:15px 0 18px; }
         .hero h1 { max-width:720px; font-family:"DM Sans",sans-serif; font-weight:700; letter-spacing:-.045em; }
-        .hero p { max-width:610px; font-size:1.13rem; line-height:1.75; color:#e2e9e5; }
-        .hero-verse { max-width:610px; margin-top:18px; padding-left:14px; border-left:3px solid #93c5fd; color:#dbeafe; font-size:.9rem; line-height:1.55; }
+        .hero p { max-width:610px; font-size:1rem; line-height:1.7; color:#e2e9e5; }
+        .hero-verse { max-width:610px; margin-top:14px; padding-left:14px; border-left:3px solid #93c5fd; color:#dbeafe; font-size:.84rem; line-height:1.5; }
         .hero-verse span { display:block; }
         .hero-verse strong { display:block; color:#fff; margin-top:5px; font-size:.78rem; letter-spacing:.04em; }
-        .actions { display:flex; gap:14px; margin-top:34px; flex-wrap:wrap; }
-        .btn { display:inline-flex; align-items:center; justify-content:center; padding:13px 23px; border-radius:999px; font-weight:700; }
+        .actions { display:flex; gap:12px; margin-top:24px; flex-wrap:wrap; }
+        .btn { display:inline-flex; align-items:center; justify-content:center; padding:11px 20px; border-radius:999px; font-weight:700; }
         .btn-gold { background:#fff; color:#1d4ed8; }
         .btn-light { border:1px solid rgba(255,255,255,.55); color:#fff; }
-        section { padding:100px 0; scroll-margin-top:70px; }
-        .section-head { max-width:680px; margin-bottom:45px; }
+        section { padding:80px 0; scroll-margin-top:70px; }
+        .section-head { max-width:680px; margin-bottom:32px; }
         .section-head.center { text-align:center; margin-inline:auto; }
-        h2 { font-size:clamp(2.2rem,4vw,3.5rem); margin:10px 0 15px; }
+        h2 { font-size:clamp(1.9rem,3.4vw,2.8rem); margin:10px 0 13px; }
         .lead { color:var(--muted); line-height:1.75; }
         #about { padding:70px 0; }
-        #about h2 { font-size:clamp(2rem,3.2vw,2.9rem); }
+        #about h2 { font-size:clamp(1.75rem,2.8vw,2.4rem); }
         .about-grid { display:grid; grid-template-columns:.9fr 1.1fr; gap:48px; align-items:center; }
         .about-quote { min-height:280px; border:1px solid #dbeafe; border-left:6px solid #2563eb; border-radius:20px; background:linear-gradient(145deg,#fff,#f8fafc); padding:42px 38px 34px; display:flex; flex-direction:column; justify-content:flex-end; position:relative; overflow:hidden; box-shadow:0 18px 45px rgba(30,64,175,.08); }
         .about-quote::before { content:"“"; position:absolute; left:30px; top:2px; color:#dbeafe; font:700 8rem/1 "Playfair Display"; }
@@ -65,12 +66,38 @@
         .ratio { aspect-ratio:16/9; }
         iframe { width:100%; height:100%; border:0; }
         .card-body { padding:18px 20px; font-weight:700; }
-        .picture-grid { display:grid; grid-template-columns:repeat(12,1fr); gap:18px; }
-        .picture { grid-column:span 4; border-radius:18px; overflow:hidden; position:relative; aspect-ratio:4/3; background:#e6e9e7; }
-        .picture:first-child { grid-column:span 8; grid-row:span 2; aspect-ratio:auto; }
-        .picture img { width:100%; height:100%; object-fit:cover; transition:.4s; }
-        .picture:hover img { transform:scale(1.04); }
-        .caption { position:absolute; inset:auto 0 0; padding:35px 18px 16px; color:#fff; background:linear-gradient(transparent,rgba(0,0,0,.75)); }
+        .picture-carousel { position:relative; }
+        .picture-viewport {
+            overflow-x:auto;
+            scroll-snap-type:x mandatory;
+            scroll-behavior:smooth;
+            scrollbar-width:none;
+            -ms-overflow-style:none;
+            border-radius:24px;
+            padding-bottom:8px;
+        }
+        .picture-viewport::-webkit-scrollbar { display:none; }
+        .picture-track { display:flex; gap:18px; }
+        .picture-slide {
+            flex:0 0 calc((100% - 36px) / 3);
+            aspect-ratio:4 / 3;
+            border-radius:22px;
+            overflow:hidden;
+            position:relative;
+            background:#e6e9e7;
+            scroll-snap-align:start;
+            box-shadow:0 16px 40px rgba(15,23,42,.12);
+        }
+        .picture-slide img { width:100%; height:100%; object-fit:cover; transition:transform .45s ease; }
+        .picture-slide:hover img { transform:scale(1.04); }
+        .caption {
+            position:absolute;
+            inset:auto 0 0;
+            padding:42px 18px 16px;
+            color:#fff;
+            background:linear-gradient(transparent,rgba(0,0,0,.8));
+        }
+        .caption strong { font-size:1.02rem; letter-spacing:.01em; }
         .events { background:#172554; color:#fff; }
         .events .lead { color:#bfdbfe; }
         .event-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:20px; }
@@ -98,16 +125,16 @@
         .contact-list { display:grid; gap:16px; }
         .contact-item { display:flex; align-items:flex-start; gap:12px; line-height:1.5; }
         .contact-item i { width:18px; color:#93c5fd; margin-top:3px; }
-        .footer-bottom { border-top:1px solid rgba(219,234,254,.2); margin-top:45px; padding-top:22px; display:flex; justify-content:space-between; gap:20px; font-size:.82rem; }
+        .footer-bottom { border-top:1px solid rgba(219,234,254,.2); margin-top:38px; padding-top:18px; display:flex; justify-content:space-between; gap:20px; font-size:.8rem; }
         @media(max-width:800px) {
             .menu { display:block; }
             .links { display:none; position:absolute; top:64px; left:0; right:0; padding:25px; background:rgba(37,99,235,.96); border-bottom:1px solid rgba(255,255,255,.14); box-shadow:0 14px 30px rgba(15,23,42,.12); flex-direction:column; align-items:flex-start; }
             .links.open { display:flex; }
-            .hero { min-height:680px; }
+            .hero { min-height:calc(100vh + 80px); }
             .about-grid,.video-grid { grid-template-columns:1fr; }
-            .picture,.picture:first-child { grid-column:span 12; aspect-ratio:4/3; }
+            .picture-slide { flex-basis:100%; aspect-ratio:4 / 3; }
             .event-grid { grid-template-columns:1fr; }
-            section { padding:75px 0; }
+            section { padding:66px 0; }
             .footer-grid { grid-template-columns:1fr; gap:38px; }
             .footer-bottom { flex-direction:column; }
         }
@@ -189,13 +216,27 @@
         <section id="pictures">
             <div class="wrap">
                 <div class="section-head"><div class="eyebrow">Our story in frames</div><h2>Pictures</h2><p class="lead">Moments selected and published by the Music & Evangelism team.</p></div>
-                <div class="picture-grid">
-                    @forelse($pictures as $picture)
-                        <figure class="picture"><img src="{{ asset($picture->image_path) }}" alt="{{ $picture->title }}" loading="lazy"><figcaption class="caption"><strong>{{ $picture->title }}</strong>@if($picture->description)<br><small>{{ $picture->description }}</small>@endif</figcaption></figure>
-                    @empty
-                        <div class="empty">Published pictures from the Public Board will appear here.</div>
-                    @endforelse
-                </div>
+                @if($pictures->isNotEmpty())
+                    <div class="picture-carousel" data-picture-carousel>
+                        <div class="picture-viewport" data-picture-viewport tabindex="0" aria-label="Featured pictures carousel">
+                            <div class="picture-track">
+                                @foreach($pictures as $picture)
+                                    <figure class="picture-slide">
+                                        <img src="{{ asset($picture->image_path) }}" alt="{{ $picture->title }}" loading="lazy">
+                                        <figcaption class="caption">
+                                            <strong>{{ $picture->title }}</strong>
+                                            @if($picture->description)
+                                                <br><small>{{ $picture->description }}</small>
+                                            @endif
+                                        </figcaption>
+                                    </figure>
+                                @endforeach
+                            </div>
+                        </div>
+                    </div>
+                @else
+                    <div class="empty">Published pictures from the Public Board will appear here.</div>
+                @endif
             </div>
         </section>
 
@@ -300,6 +341,46 @@
                 heroIndex = (heroIndex + 1) % heroImages.length;
                 heroImages[heroIndex].classList.add('active');
             }, 10000);
+        }
+        const pictureViewport = document.querySelector('[data-picture-viewport]');
+        if (pictureViewport) {
+            const slides = Array.from(pictureViewport.querySelectorAll('.picture-slide'));
+            let slideTimer = null;
+
+            const getStep = () => {
+                const slide = slides[0];
+                if (!slide) return 0;
+                const gap = parseFloat(getComputedStyle(pictureViewport.querySelector('.picture-track')).gap || '0') || 0;
+                return slide.getBoundingClientRect().width + gap;
+            };
+
+            const maxScrollLeft = () => Math.max(0, pictureViewport.scrollWidth - pictureViewport.clientWidth - 1);
+
+            const scrollNext = () => {
+                const step = getStep();
+                if (!step) return;
+                const reachedEnd = pictureViewport.scrollLeft >= maxScrollLeft() - step * 0.3;
+                pictureViewport.scrollTo({
+                    left: reachedEnd ? 0 : pictureViewport.scrollLeft + step,
+                    behavior: 'smooth',
+                });
+            };
+
+            const startAutoSlide = () => {
+                if (slideTimer || slides.length < 2) return;
+                slideTimer = window.setInterval(scrollNext, 5000);
+            };
+
+            const stopAutoSlide = () => {
+                if (!slideTimer) return;
+                window.clearInterval(slideTimer);
+                slideTimer = null;
+            };
+            pictureViewport.addEventListener('mouseenter', stopAutoSlide);
+            pictureViewport.addEventListener('mouseleave', startAutoSlide);
+            pictureViewport.addEventListener('focusin', stopAutoSlide);
+            pictureViewport.addEventListener('focusout', startAutoSlide);
+            startAutoSlide();
         }
     </script>
 </body>

@@ -22,10 +22,19 @@
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
 
     <style>
+        html {
+            font-size: 14px;
+            zoom: 0.83;
+        }
+
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+        }
+
+        html, body {
+            height: 100%;
         }
 
         body {
@@ -39,18 +48,21 @@
             position: fixed;
             left: 0;
             top: 0;
-            height: 100vh;
-            width: 280px;
+            bottom: 0;
+            height: auto;
+            width: 252px;
             z-index: 1000;
             overflow-y: auto;
             transition: all 0.3s ease;
             box-shadow: 2px 0 10px rgba(0, 0, 0, 0.05);
             border-right: 1px solid #e5e7eb;
+            display: flex;
+            flex-direction: column;
         }
 
         /* Collapsed Sidebar - Only Icons */
         .sidebar.collapsed {
-            width: 80px;
+            width: 68px;
         }
 
         .sidebar.collapsed .sidebar-logo-text,
@@ -101,13 +113,13 @@
         }
 
         .main-content {
-            margin-left: 280px;
+            margin-left: 252px;
             min-height: 100vh;
             transition: all 0.3s ease;
         }
 
         .main-content.expanded {
-            margin-left: 80px;
+            margin-left: 68px;
         }
 
         /* Top Header - White Background */

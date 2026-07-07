@@ -32,20 +32,20 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 1rem;
+            padding: 0.75rem;
         }
 
         .auth-card {
             width: 100%;
-            max-width: 1040px;
-            min-height: 640px;
+            max-width: 890px;
+            min-height: 560px;
             display: grid;
             grid-template-columns: 0.86fr 1.14fr;
             overflow: hidden;
             background: #f8fafc;
             border: 1px solid rgba(37, 99, 235, 0.22);
-            border-radius: 1.25rem;
-            box-shadow: 0 24px 70px rgba(30, 64, 175, 0.16);
+            border-radius: 1rem;
+            box-shadow: 0 20px 55px rgba(30, 64, 175, 0.14);
         }
 
         .brand-panel {
@@ -53,7 +53,7 @@
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            padding: 2rem;
+            padding: 1.55rem;
             background: linear-gradient(145deg, #0f2f7a 0%, #1d4ed8 58%, #1e40af 100%);
             color: #ffffff;
         }
@@ -76,9 +76,9 @@
         .form-panel > div { position: relative; z-index: 1; }
 
         .brand-mark {
-            width: 3rem;
-            height: 3rem;
-            border-radius: 0.9rem;
+            width: 2.5rem;
+            height: 2.5rem;
+            border-radius: 0.75rem;
             background: rgba(255, 255, 255, 0.14);
             border: 1px solid rgba(255, 255, 255, 0.22);
             display: flex;
@@ -89,12 +89,12 @@
 
         .field {
             width: 100%;
-            height: 2.65rem;
+            height: 2.35rem;
             border: 1px solid #d1d5db;
-            border-radius: 0.65rem;
+            border-radius: 0.6rem;
             background: rgba(255, 255, 255, 0.72);
             padding: 0 2.45rem;
-            font-size: 0.875rem;
+            font-size: 0.825rem;
             transition: border-color 0.15s ease, box-shadow 0.15s ease;
         }
 
@@ -118,13 +118,13 @@
             top: 50%;
             right: 0.55rem;
             transform: translateY(-50%);
-            width: 1.9rem;
-            height: 1.9rem;
+            width: 1.7rem;
+            height: 1.7rem;
             display: inline-flex;
             align-items: center;
             justify-content: center;
             border: 0;
-            border-radius: 0.5rem;
+            border-radius: 0.45rem;
             background: transparent;
             color: #6b7280;
             cursor: pointer;
@@ -145,7 +145,7 @@
         .back-home:hover { color:#ffffff; }
 
         .alert {
-            border-radius: 0.75rem;
+            border-radius: 0.65rem;
             animation: slideIn 0.2s ease-out;
         }
 
@@ -169,19 +169,19 @@
             .auth-card {
                 min-height: auto;
                 grid-template-columns: 1fr;
-                border-radius: 1rem;
+                border-radius: 0.9rem;
             }
 
             .brand-panel {
                 min-height: auto;
-                padding: 1rem;
+                padding: 0.9rem;
                 display: block;
             }
 
             .brand-mark {
-                width: 2.5rem;
-                height: 2.5rem;
-                border-radius: 0.75rem;
+                width: 2.25rem;
+                height: 2.25rem;
+                border-radius: 0.7rem;
             }
 
             .mobile-hide {
@@ -189,7 +189,7 @@
             }
 
             .auth-card section {
-                padding: 1rem;
+                padding: 0.9rem;
             }
         }
     </style>
@@ -223,18 +223,18 @@
                 </div>
             </aside>
 
-            <section class="form-panel flex items-center justify-center p-5 sm:p-7 lg:p-8">
-                <div class="w-full max-w-md">
-                    <div class="mb-5 flex items-center justify-between gap-4">
-                        <h2 class="text-2xl font-extrabold text-gray-900">Sign In</h2>
-                        <a href="{{ route('home') }}" class="auth-link inline-flex items-center gap-2 rounded-full border border-blue-800/20 bg-white/60 px-3 py-2 text-xs font-semibold hover:bg-white transition">
+            <section class="form-panel flex items-center justify-center p-4 sm:p-5 lg:p-6">
+                <div class="w-full max-w-sm">
+                    <div class="mb-4 flex items-center justify-between gap-3">
+                        <h2 class="text-[1.55rem] font-extrabold text-gray-900">Sign In</h2>
+                        <a href="{{ route('home') }}" class="auth-link inline-flex items-center gap-2 rounded-full border border-blue-800/20 bg-white/60 px-2.5 py-1.5 text-[0.72rem] font-semibold hover:bg-white transition">
                             <i class="fas fa-arrow-left"></i>
                             <span>Back to Home</span>
                         </a>
                     </div>
 
                     @if(session('success'))
-                        <div class="alert bg-green-50 border border-green-200 text-green-700 px-4 py-3 mb-4 text-sm flex items-start gap-2">
+                        <div class="alert bg-green-50 border border-green-200 text-green-700 px-4 py-2.5 mb-3 text-[0.82rem] flex items-start gap-2">
                             <i class="fas fa-check-circle mt-0.5"></i>
                             <div class="flex-1">{{ session('success') }}</div>
                             <button onclick="this.parentElement.remove()" class="text-green-500 hover:text-green-700">
@@ -244,7 +244,7 @@
                     @endif
 
                     @if(session('warning'))
-                        <div class="alert bg-amber-50 border border-amber-200 text-amber-700 px-4 py-3 mb-4 text-sm flex items-start gap-2">
+                        <div class="alert bg-amber-50 border border-amber-200 text-amber-700 px-4 py-2.5 mb-3 text-[0.82rem] flex items-start gap-2">
                             <i class="fas fa-clock mt-0.5"></i>
                             <div class="flex-1">{{ session('warning') }}</div>
                             <button onclick="this.parentElement.remove()" class="text-amber-500 hover:text-amber-700">
@@ -254,7 +254,7 @@
                     @endif
 
                     @if(session('error'))
-                        <div class="alert bg-red-50 border border-red-200 text-red-700 px-4 py-3 mb-4 text-sm flex items-start gap-2">
+                        <div class="alert bg-red-50 border border-red-200 text-red-700 px-4 py-2.5 mb-3 text-[0.82rem] flex items-start gap-2">
                             <i class="fas fa-exclamation-circle mt-0.5"></i>
                             <div class="flex-1">{{ session('error') }}</div>
                             <button onclick="this.parentElement.remove()" class="text-red-500 hover:text-red-700">
@@ -264,7 +264,7 @@
                     @endif
 
                     @if($errors->any())
-                        <div class="alert bg-red-50 border border-red-200 text-red-700 px-4 py-3 mb-4 text-sm">
+                        <div class="alert bg-red-50 border border-red-200 text-red-700 px-4 py-2.5 mb-3 text-[0.82rem]">
                             <div class="flex gap-2">
                                 <i class="fas fa-exclamation-circle mt-0.5"></i>
                                 <div>
@@ -276,11 +276,11 @@
                         </div>
                     @endif
 
-                    <form method="POST" action="{{ route('login') }}" class="space-y-4">
+                    <form method="POST" action="{{ route('login') }}" class="space-y-3.5">
                         @csrf
 
                         <div>
-                            <label class="block text-sm font-semibold text-gray-700 mb-1.5">Email Address</label>
+                            <label class="block text-[0.85rem] font-semibold text-gray-700 mb-1.25">Email Address</label>
                             <div class="relative">
                                 <i class="fas fa-envelope field-icon"></i>
                                 <input type="email" name="email" required
@@ -291,7 +291,7 @@
                         </div>
 
                         <div>
-                            <label class="block text-sm font-semibold text-gray-700 mb-1.5">Password</label>
+                            <label class="block text-[0.85rem] font-semibold text-gray-700 mb-1.25">Password</label>
                             <div class="relative">
                                 <i class="fas fa-lock field-icon"></i>
                                 <input type="password" name="password" required
@@ -304,24 +304,24 @@
                             </div>
                         </div>
 
-                        <button type="submit" class="primary-action w-full h-11 inline-flex items-center justify-center gap-2 rounded-lg text-white text-sm font-bold transition">
+                        <button type="submit" class="primary-action w-full h-10 inline-flex items-center justify-center gap-2 rounded-lg text-[0.82rem] font-bold transition">
                             <i class="fas fa-right-to-bracket"></i>
                             Sign In
                         </button>
                     </form>
 
-                    <div class="flex items-center gap-3 my-5">
+                    <div class="flex items-center gap-3 my-4">
                         <div class="h-px flex-1 bg-gray-200"></div>
-                        <span class="text-xs font-medium text-gray-400">or</span>
+                        <span class="text-[0.72rem] font-medium text-gray-400">or</span>
                         <div class="h-px flex-1 bg-gray-200"></div>
                     </div>
 
-                    <a href="{{ route('google.login') }}" class="w-full h-11 inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 transition">
+                    <a href="{{ route('google.login') }}" class="w-full h-10 inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white text-[0.82rem] font-semibold text-gray-700 hover:bg-gray-50 transition">
                         <i class="fab fa-google text-red-500"></i>
                         Continue with Google
                     </a>
 
-                    <p class="mt-5 text-center text-sm text-gray-500">
+                    <p class="mt-4 text-center text-[0.82rem] text-gray-500">
                         Need an account?
                         <a href="{{ route('register') }}" class="auth-link font-semibold">Create one</a>
                     </p>

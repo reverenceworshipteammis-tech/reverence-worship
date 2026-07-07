@@ -1,4 +1,4 @@
-<div class="flex flex-col h-full bg-white" id="sidebarContent">
+<div class="flex flex-col flex-1 min-h-0 bg-white" id="sidebarContent">
     <!-- Sidebar Header - Blue Background -->
     <div class="bg-gradient-to-r from-blue-700 to-blue-600 px-4 py-4 flex items-center space-x-3 flex-shrink-0">
         <img src="{{ asset('images/logo.png') }}" alt="Reverence Worship" class="h-10 w-auto object-contain">
@@ -8,7 +8,7 @@
     </div>
     
     <!-- Navigation Menu - White Background -->
-    <nav class="flex-1 overflow-y-auto py-4 px-3 space-y-1">
+    <nav class="flex-1 min-h-0 overflow-y-auto py-4 px-3 space-y-1">
         @auth
             @if(auth()->user()->isSuperAdmin())
                 <!-- Super Admin Full Menu -->
@@ -210,7 +210,7 @@
     
     <!-- User Info Footer -->
     @auth
-    <div class="user-info-footer pt-4 pb-4 border-t border-gray-200 flex-shrink-0 px-3">
+    <div class="user-info-footer mt-auto pt-4 pb-4 border-t border-gray-200 flex-shrink-0 px-3">
         <div class="flex items-center space-x-3">
             <div class="w-9 h-9 bg-gray-200 rounded-full flex items-center justify-center">
                 <i class="fas fa-user text-gray-500 text-sm"></i>
