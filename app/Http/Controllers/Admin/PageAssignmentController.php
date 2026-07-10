@@ -8,6 +8,7 @@ use App\Models\User\Role;
 use App\Models\System\Page;
 use App\Models\System\Feature;
 use App\Models\User\RolePageFeature;
+use App\Models\User\User;
 use App\Models\System\ActivityLog;
 
 class PageAssignmentController extends Controller
@@ -61,6 +62,7 @@ class PageAssignmentController extends Controller
                     }
                 }
             }
+            User::refreshPermissionCache();
             
             // Log activity
             $role = Role::find($roleId);

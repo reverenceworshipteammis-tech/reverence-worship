@@ -1,33 +1,34 @@
-kind: wasmer.io/App.v0
-owner: your-wasmer-username
 name: reverence-worship
+app_id: da_R36ILtlUZpY1
+owner: marc-patrick04
 package: .
-
-debug: false
-
 env:
-  APP_NAME: "Reverence Worship"
-  APP_ENV: "production"
-  APP_DEBUG: "false"
-  APP_LOCALE: "en"
-  APP_FALLBACK_LOCALE: "en"
-  APP_FAKER_LOCALE: "en_US"
-  LOG_CHANNEL: "stderr"
-  LOG_LEVEL: "warning"
-  DB_CONNECTION: "pgsql"
-  DB_PORT: "5432"
-  DB_SSLMODE: "require"
-  SESSION_DRIVER: "database"
-  CACHE_STORE: "database"
-  QUEUE_CONNECTION: "database"
-  FILESYSTEM_DISK: "public"
-  MAIL_MAILER: "log"
-  BCRYPT_ROUNDS: "12"
-
-redirect:
-  force_https: true
-
+  APP_NAME: Reverence Worship
+  APP_ENV: production
+  APP_DEBUG: 'true'
+  APP_LOCALE: en
+  APP_FALLBACK_LOCALE: en
+  APP_FAKER_LOCALE: en_US
+  LOG_CHANNEL: stderr
+  LOG_LEVEL: debug
+  DB_CONNECTION: pgsql
+  DB_HOST: ep-lingering-shape-at3vfvkp-pooler.c-9.us-east-1.aws.neon.tech
+  DB_PORT: '5432'
+  DB_DATABASE: neondb
+  DB_USERNAME: neondb_owner
+  DB_SSLMODE: require
+  SESSION_DRIVER: file
+  CACHE_STORE: file
+  QUEUE_CONNECTION: sync
+  FILESYSTEM_DISK: public
+  MAIL_MAILER: log
+  BCRYPT_ROUNDS: '12'
 capabilities:
   instaboot:
+    mode: null
     requests:
-      - path: /
+    - path: /
+debug: true
+redirect:
+  force_https: true
+kind: wasmer.io/App.v0

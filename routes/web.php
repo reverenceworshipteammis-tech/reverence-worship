@@ -19,6 +19,35 @@ Route::get('/ping', function () {
     return 'Laravel is working! Time: ' . date('Y-m-d H:i:s');
 });
 
+Route::get('/wasmer-laravel-check', function () {
+    $db = [
+        'attempted' => false,
+        'ok' => false,
+        'error' => null,
+    ];
+
+    try {
+        $db['attempted'] = true;
+        $db['ok'] = \Illuminate\Support\Facades\DB::selectOne('select 1 as ok')->ok == 1;
+    } catch (\Throwable $e) {
+        $db['error'] = $e->getMessage();
+    }
+
+    return response()->json([
+        'laravel' => app()->version(),
+        'env' => app()->environment(),
+        'debug' => config('app.debug'),
+        'app_key_present' => (bool) config('app.key'),
+        'cache_driver' => config('cache.default'),
+        'session_driver' => config('session.driver'),
+        'queue_driver' => config('queue.default'),
+        'db_connection' => config('database.default'),
+        'db_host_present' => (bool) config('database.connections.pgsql.host'),
+        'db_password_present' => (bool) config('database.connections.pgsql.password'),
+        'database' => $db,
+    ]);
+});
+
 Route::get('/debug-music', function () {
     $user = auth()->user();
     $page = \App\Models\System\Page::where('name', 'music-ministry')->first();

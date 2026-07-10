@@ -9,6 +9,7 @@ use App\Models\System\Page;
 use App\Models\System\Feature;
 use App\Models\System\RolePageFeature;
 use App\Models\System\ActivityLog;
+use App\Models\User\User;
 
 class RoleController extends Controller
 {
@@ -56,6 +57,7 @@ public function index()
                 }
             }
         }
+        User::refreshPermissionCache();
         
         // Log activity
         ActivityLog::create([
@@ -118,6 +120,7 @@ public function index()
                 }
             }
         }
+        User::refreshPermissionCache();
         
         // Log activity
         ActivityLog::create([
@@ -146,6 +149,7 @@ public function index()
         
         $roleName = $role->display_name;
         $role->delete();
+        User::refreshPermissionCache();
         
         // Log activity
         ActivityLog::create([

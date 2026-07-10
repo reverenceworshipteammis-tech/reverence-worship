@@ -17,6 +17,7 @@ use App\Models\PublicBoard;
 use App\Models\ActionPlan;
 use App\Models\Music\ServiceTeam;
 use App\Models\Music\TeamMember;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 
 
@@ -26,6 +27,11 @@ class MusicController extends Controller
     use ManagesActionPlans;
 
     protected ?string $actionPlanDepartment = 'music-ministry';
+
+    private function clearLandingPageCache(): void
+    {
+        Cache::forget('landing_page_payload');
+    }
 
     protected function actionPlanView(): string
     {
@@ -486,6 +492,8 @@ public function storeBoardPost(Request $request)
         'created_by' => auth()->id()
     ]);
 
+    $this->clearLandingPageCache();
+
     return response()->json(['success' => true, 'message' => 'Board item created.', 'item' => $post], 201);
 }
 
@@ -523,6 +531,8 @@ public function storeBoardPost(Request $request)
             'is_pinned' => $request->boolean('is_pinned'),
         ]);
 
+        $this->clearLandingPageCache();
+
         return response()->json(['success' => true, 'message' => 'Board item updated.', 'item' => $item]);
     }
 
@@ -534,6 +544,7 @@ public function storeBoardPost(Request $request)
 
         $item = PublicBoard::findOrFail($id);
         $item->update(['is_published' => !$item->is_published]);
+        $this->clearLandingPageCache();
 
         return response()->json(['success' => true, 'is_published' => $item->is_published]);
     }
@@ -546,6 +557,7 @@ public function storeBoardPost(Request $request)
         $post = PublicBoard::findOrFail($id);
         $post->is_pinned = !$post->is_pinned;
         $post->save();
+        $this->clearLandingPageCache();
         
         return response()->json(['success' => true, 'is_pinned' => $post->is_pinned]);
     }
@@ -557,6 +569,7 @@ public function storeBoardPost(Request $request)
         }
         $post = PublicBoard::findOrFail($id);
         $post->delete();
+        $this->clearLandingPageCache();
         
         return response()->json(['success' => true, 'message' => 'Board item deleted.']);
     }
@@ -1141,6 +1154,8 @@ public function storeYouTubeVideo(Request $request)
             'created_at' => now(),
             'updated_at' => now()
         ]);
+
+        $this->clearLandingPageCache();
         
         return response()->json(['success' => true, 'id' => $id]);
     } catch (\Illuminate\Validation\ValidationException $e) {
@@ -1170,6 +1185,8 @@ public function updateYouTubeVideo(Request $request, $id)
             'is_published' => $request->boolean('is_published'),
             'updated_at' => now()
         ]);
+
+        $this->clearLandingPageCache();
         
         return response()->json(['success' => true]);
     } catch (\Illuminate\Validation\ValidationException $e) {
@@ -1197,6 +1214,7 @@ public function deleteYouTubeVideo($id)
 {
     try {
         DB::table('landing_youtube_videos')->where('id', $id)->delete();
+        $this->clearLandingPageCache();
         return response()->json(['success' => true]);
     } catch (\Exception $e) {
         return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
@@ -1211,6 +1229,7 @@ public function toggleYouTubePublish($id)
             'is_published' => !$video->is_published,
             'updated_at' => now()
         ]);
+        $this->clearLandingPageCache();
         return response()->json(['success' => true]);
     } catch (\Exception $e) {
         return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
@@ -1247,6 +1266,8 @@ public function storeFeaturedImage(Request $request)
             'created_at' => now(),
             'updated_at' => now()
         ]);
+
+        $this->clearLandingPageCache();
         
         return response()->json(['success' => true, 'id' => $id]);
     } catch (\Exception $e) {
@@ -1291,6 +1312,7 @@ public function updateFeaturedImage(Request $request, $id)
         }
         
         DB::table('landing_featured_images')->where('id', $id)->update($updateData);
+        $this->clearLandingPageCache();
         
         return response()->json(['success' => true]);
     } catch (\Exception $e) {
@@ -1316,6 +1338,7 @@ public function deleteFeaturedImage($id)
             unlink(public_path($image->image_path));
         }
         DB::table('landing_featured_images')->where('id', $id)->delete();
+        $this->clearLandingPageCache();
         return response()->json(['success' => true]);
     } catch (\Exception $e) {
         return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
@@ -1337,6 +1360,7 @@ public function toggleFeaturedPublish($id)
             'is_hero' => $willPublish ? $currentHero : false,
             'updated_at' => now()
         ]);
+        $this->clearLandingPageCache();
         return response()->json(['success' => true]);
     } catch (\Exception $e) {
         return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
@@ -1360,6 +1384,8 @@ public function toggleFeaturedHero($id)
             'is_published' => $nextHero ? true : $currentPublished,
             'updated_at' => now(),
         ]);
+
+        $this->clearLandingPageCache();
 
         return response()->json([
             'success' => true,
@@ -1390,6 +1416,8 @@ public function updateLandingOrder(Request $request)
                 'updated_at' => now()
             ]);
         }
+
+        $this->clearLandingPageCache();
         
         return response()->json(['success' => true]);
     } catch (\Exception $e) {

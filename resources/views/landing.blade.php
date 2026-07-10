@@ -212,7 +212,17 @@
     <main>
         <section class="hero" id="home">
             @foreach($heroPictures as $heroPicture)
-                <img class="hero-bg {{ $loop->first ? 'active' : '' }}" src="{{ asset($heroPicture->image_path) }}" alt="{{ $heroPicture->title }}">
+                <img
+                    class="hero-bg {{ $loop->first ? 'active' : '' }}"
+                    @if($loop->first)
+                        src="{{ asset($heroPicture->image_path) }}"
+                        fetchpriority="high"
+                    @else
+                        data-src="{{ asset($heroPicture->image_path) }}"
+                        loading="lazy"
+                    @endif
+                    alt="{{ $heroPicture->title }}"
+                >
             @endforeach
             <div class="wrap">
                 <div class="hero-content">
@@ -385,6 +395,9 @@
             window.setInterval(() => {
                 heroImages[heroIndex].classList.remove('active');
                 heroIndex = (heroIndex + 1) % heroImages.length;
+                if (!heroImages[heroIndex].getAttribute('src') && heroImages[heroIndex].dataset.src) {
+                    heroImages[heroIndex].setAttribute('src', heroImages[heroIndex].dataset.src);
+                }
                 heroImages[heroIndex].classList.add('active');
             }, 10000);
         }

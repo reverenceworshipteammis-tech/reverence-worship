@@ -329,6 +329,7 @@ class UserController extends Controller
         // Assign roles
         if ($request->has('roles')) {
             $user->roles()->attach($request->roles);
+            User::refreshPermissionCache();
         }
         
         // Log activity
@@ -412,6 +413,7 @@ class UserController extends Controller
         
         // Sync roles
         $user->roles()->sync($request->roles ?? []);
+        User::refreshPermissionCache();
         
         // Log activity
         ActivityLog::create([
@@ -439,6 +441,7 @@ class UserController extends Controller
         ]);
         
         $user->roles()->sync($request->roles ?? []);
+        User::refreshPermissionCache();
         
         // Log activity
         ActivityLog::create([

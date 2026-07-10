@@ -70,6 +70,8 @@ class PermissionManagerController extends Controller
                 'ip_address' => $request->ip(),
                 'user_agent' => $request->userAgent()
             ]);
+
+            User::refreshPermissionCache();
             
             return response()->json(['success' => true, 'message' => 'Page created successfully']);
         } catch (\Exception $e) {
@@ -113,6 +115,8 @@ class PermissionManagerController extends Controller
                 'ip_address' => $request->ip(),
                 'user_agent' => $request->userAgent()
             ]);
+
+            User::refreshPermissionCache();
             
             return response()->json(['success' => true, 'message' => 'Page updated successfully']);
         } catch (\Exception $e) {
@@ -132,6 +136,7 @@ class PermissionManagerController extends Controller
             RolePageFeature::where('page_id', $id)->delete();
             // Delete the page
             $page->delete();
+            User::refreshPermissionCache();
             
             ActivityLog::create([
                 'user_id' => auth()->id(),
@@ -173,6 +178,8 @@ class PermissionManagerController extends Controller
                 'ip_address' => $request->ip(),
                 'user_agent' => $request->userAgent()
             ]);
+
+            User::refreshPermissionCache();
             
             return response()->json(['success' => true, 'message' => 'Feature created successfully']);
         } catch (\Exception $e) {
@@ -210,6 +217,8 @@ class PermissionManagerController extends Controller
                 'ip_address' => $request->ip(),
                 'user_agent' => $request->userAgent()
             ]);
+
+            User::refreshPermissionCache();
             
             return response()->json(['success' => true, 'message' => 'Feature updated successfully']);
         } catch (\Exception $e) {
@@ -226,6 +235,7 @@ class PermissionManagerController extends Controller
             // Delete role assignments for this feature
             RolePageFeature::where('feature_id', $id)->delete();
             $feature->delete();
+            User::refreshPermissionCache();
             
             ActivityLog::create([
                 'user_id' => auth()->id(),
@@ -268,6 +278,8 @@ class PermissionManagerController extends Controller
                 'ip_address' => $request->ip(),
                 'user_agent' => $request->userAgent()
             ]);
+
+            User::refreshPermissionCache();
             
             return response()->json(['success' => true, 'message' => 'Role created successfully']);
         } catch (\Exception $e) {
@@ -352,6 +364,8 @@ class PermissionManagerController extends Controller
                 return $imported;
             });
 
+            User::refreshPermissionCache();
+
             return response()->json([
                 'success' => true,
                 'message' => "{$count} " . ($count === 1 ? 'role was' : 'roles were') . ' imported successfully.',
@@ -389,6 +403,7 @@ class PermissionManagerController extends Controller
             }
             $role->display_name = trim($request->name);
             $role->save();
+            User::refreshPermissionCache();
             
             ActivityLog::create([
                 'user_id' => auth()->id(),
@@ -418,6 +433,7 @@ class PermissionManagerController extends Controller
             // Delete associated page features
             RolePageFeature::where('role_id', $id)->delete();
             $role->delete();
+            User::refreshPermissionCache();
             
             ActivityLog::create([
                 'user_id' => auth()->id(),
@@ -479,6 +495,7 @@ class PermissionManagerController extends Controller
                     ]);
                 }
             }
+            User::refreshPermissionCache();
             
             ActivityLog::create([
                 'user_id' => auth()->id(),
@@ -518,6 +535,7 @@ class PermissionManagerController extends Controller
                     'feature_id' => $assignment['feature_id']
                 ]);
             }
+            User::refreshPermissionCache();
             
             ActivityLog::create([
                 'user_id' => auth()->id(),

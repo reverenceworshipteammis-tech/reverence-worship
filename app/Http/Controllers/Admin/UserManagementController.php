@@ -75,6 +75,7 @@ class UserManagementController extends Controller
         
         if ($request->has('roles')) {
             $user->roles()->attach($request->roles);
+            User::refreshPermissionCache();
         }
         
         return redirect()->route('admin.users.index')->with('success', 'User created successfully!');
@@ -165,6 +166,7 @@ class UserManagementController extends Controller
     // Sync roles
     if ($request->has('roles')) {
         $user->roles()->sync($request->roles);
+        User::refreshPermissionCache();
     }
     
     // Log activity
@@ -246,6 +248,7 @@ public function updateRoles(Request $request, $id)
     ]);
     
     $user->roles()->sync($request->roles);
+    User::refreshPermissionCache();
     
     // Log activity
     ActivityLog::create([

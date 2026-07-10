@@ -3,20 +3,28 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class NotificationController extends Controller
 {
+    private static array $tableExistsCache = [];
+
     /**
      * Check if a table exists in the database
      */
     private function tableExists($tableName)
     {
+        if (array_key_exists($tableName, self::$tableExistsCache)) {
+            return self::$tableExistsCache[$tableName];
+        }
+
         try {
-            $result = DB::select("SELECT to_regclass('" . $tableName . "')");
-            return $result[0]->to_regclass !== null;
+            $table = str_replace("'", "''", $tableName);
+            $result = DB::select("SELECT to_regclass('{$table}')");
+            return self::$tableExistsCache[$tableName] = ($result[0]->to_regclass ?? null) !== null;
         } catch (\Exception $e) {
-            return false;
+            return self::$tableExistsCache[$tableName] = false;
         }
     }
 
@@ -235,8 +243,11 @@ class NotificationController extends Controller
             $userId = auth()->id();
             $user = auth()->user();
             $isSuperAdmin = $user->isSuperAdmin();
-            
-            $total = 0;
+
+            $cacheKey = "notifications:unread_count:{$userId}";
+
+            $total = Cache::remember($cacheKey, now()->addSeconds(30), function () use ($userId, $user, $isSuperAdmin) {
+                $total = 0;
             
             // Announcements unread count (all users)
             if ($this->tableExists('announcements')) {
@@ -327,6 +338,9 @@ class NotificationController extends Controller
                 ", [$userId, $userId]);
                 $total += $expenses[0]->count ?? 0;
             }
+
+                return $total;
+            });
             
             return response()->json([
                 'success' => true,
@@ -380,6 +394,8 @@ class NotificationController extends Controller
                     DO UPDATE SET read_at = EXCLUDED.read_at
                 ", [$id, $userId]);
             }
+
+            Cache::forget("notifications:unread_count:{$userId}");
             
             return response()->json([
                 'success' => true,
@@ -427,6 +443,8 @@ class NotificationController extends Controller
                     DO UPDATE SET read_at = EXCLUDED.read_at
                 ", [$userId]);
             }
+
+            Cache::forget("notifications:unread_count:{$userId}");
             
             return response()->json([
                 'success' => true,

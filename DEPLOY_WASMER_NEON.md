@@ -34,6 +34,29 @@ Use this file:
 database_neon.sql
 ```
 
+If your Neon database is already partially imported and you see errors like:
+
+```text
+relation "permission_requests" does not exist
+relation "landing_youtube_videos" does not exist
+```
+
+then reset the test database first.
+
+Run this file in Neon SQL Editor:
+
+```text
+database_neon_reset_before_import.sql
+```
+
+Then run:
+
+```text
+database_neon.sql
+```
+
+Warning: `database_neon_reset_before_import.sql` deletes all tables/data in the selected Neon database. Use it only for this test deployment database. After reset/import, run the super admin seeder again.
+
 It was generated from `database_dep.sql`, but the local-only commands were removed:
 
 - `DROP DATABASE`
@@ -74,6 +97,29 @@ with the values from Neon.
 
 If your password has special characters like `@`, `#`, `?`, `/`, or `:`, use the connection string Neon gives you directly, because Neon encodes the password correctly.
 
+### Neon endpoint/SNI fix for Laravel
+
+If Laravel shows this error:
+
+```text
+Endpoint ID is not specified
+```
+
+use Neon's Laravel password format:
+
+```env
+DB_PASSWORD='endpoint=YOUR_ENDPOINT_ID$YOUR_REAL_PASSWORD'
+```
+
+Example:
+
+```env
+DB_HOST="ep-your-endpoint-pooler.region.aws.neon.tech"
+DB_PASSWORD='endpoint=ep-your-endpoint$your-password'
+```
+
+The endpoint ID is the first part of your Neon host, before `-pooler` or before the first dot.
+
 Neon must have the tables before Laravel can use:
 
 ```env
@@ -97,6 +143,38 @@ php artisan migrate
 Use `database_neon.sql` first.
 
 After the schema is imported, future small table changes can be added as normal Laravel migrations.
+
+## 2.2. Create the first super admin
+
+The online database needs one first super admin user, otherwise nobody can log in and manage the system.
+
+After importing `database_neon.sql`, run this command locally while your `.env` points to Neon:
+
+```powershell
+$env:ADMIN_NAME='Super Admin'
+$env:ADMIN_EMAIL='superadmin@reverence.com'
+$env:ADMIN_PASSWORD='use-a-strong-password-here'
+php artisan db:seed --class=ProductionAdminSeeder --force
+```
+
+On macOS/Linux:
+
+```bash
+ADMIN_NAME='Super Admin' \
+ADMIN_EMAIL='superadmin@reverence.com' \
+ADMIN_PASSWORD='use-a-strong-password-here' \
+php artisan db:seed --class=ProductionAdminSeeder --force
+```
+
+This creates or updates:
+
+- role: `super-admin`
+- user: `superadmin@reverence.com`
+- role assignment in `role_user`
+
+Do not commit the real password anywhere.
+
+If you run this once with a temporary password, log in immediately and change it.
 
 ## 3. Generate a production app key
 
@@ -145,7 +223,7 @@ wasmer app secrets create APP_URL "https://your-app.wasmer.app"
 wasmer app secrets create DB_HOST "your-neon-host.neon.tech"
 wasmer app secrets create DB_DATABASE "your_neon_database"
 wasmer app secrets create DB_USERNAME "your_neon_user"
-wasmer app secrets create DB_PASSWORD "your_neon_password"
+wasmer app secrets create DB_PASSWORD 'endpoint=your_endpoint_id$your_neon_password'
 ```
 
 If you did not copy the Neon connection string earlier, use the Neon dashboard connection details to fill the commands above:

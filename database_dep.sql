@@ -2,11 +2,7 @@
 -- DATABASE CREATION
 -- ============================================
 
-DROP DATABASE IF EXISTS reverence_worship;
-CREATE DATABASE reverence_worship WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LOCALE = 'English_United States.1252';
 
--- Connect to the new database
-\c reverence_worship;
 
 -- ============================================
 -- ENCODING AND CONFIGURATION

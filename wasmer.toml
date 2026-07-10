@@ -2,7 +2,18 @@
 "php/php" = "=8.3.4"
 
 [fs]
-"/app/" = "."
+"/app/app" = "app"
+"/app/bootstrap" = "bootstrap"
+"/app/config" = "config"
+"/app/database" = "database"
+"/app/public" = "public"
+"/app/resources" = "resources"
+"/app/routes" = "routes"
+"/app/vendor" = "vendor"
+"/app/artisan" = "artisan"
+"/app/composer.json" = "composer.json"
+"/app/composer.lock" = "composer.lock"
+"/app/wasmer-start.php" = "wasmer-start.php"
 
 [[command]]
 name = "run"
