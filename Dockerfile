@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     git \
     libfreetype6-dev \
+    libicu-dev \
     libjpeg62-turbo-dev \
     libonig-dev \
     libpng-dev \
