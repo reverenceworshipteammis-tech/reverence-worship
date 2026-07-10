@@ -13,6 +13,7 @@
 "/app/artisan" = "artisan"
 "/app/composer.json" = "composer.json"
 "/app/composer.lock" = "composer.lock"
+"/app/wasmer-router.php" = "wasmer-router.php"
 "/app/wasmer-start.php" = "wasmer-start.php"
 
 [[command]]
