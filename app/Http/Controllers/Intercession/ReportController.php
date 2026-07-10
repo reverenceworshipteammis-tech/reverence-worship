@@ -8,9 +8,129 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Models\User\User;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Collection;
+use Carbon\Carbon;
 
 class ReportController extends Controller
 {
+    /**
+     * Resolve the report date range.
+     */
+    private function resolveReportDateRange(Request $request): array
+    {
+        $from = trim((string) $request->get('from', ''));
+        $to = trim((string) $request->get('to', ''));
+
+        if ($from === '' && $to === '') {
+            $from = now()->startOfMonth()->toDateString();
+            $to = now()->endOfMonth()->toDateString();
+        } elseif ($from === '') {
+            $from = $to;
+        } elseif ($to === '') {
+            $to = $from;
+        }
+
+        $fromDate = Carbon::parse($from)->startOfDay();
+        $toDate = Carbon::parse($to)->endOfDay();
+
+        if ($fromDate->gt($toDate)) {
+            [$fromDate, $toDate] = [$toDate, $fromDate];
+        }
+
+        return [
+            $fromDate,
+            $toDate,
+        ];
+    }
+
+    /**
+     * Get form IDs that have submissions within a date range.
+     */
+    private function getFormIdsInRange(Collection $userIds, Carbon $fromDate, Carbon $toDate): array
+    {
+        if ($userIds->isEmpty()) {
+            return [];
+        }
+
+        return DB::table('form_submissions')
+            ->whereIn('user_id', $userIds)
+            ->whereBetween('submitted_at', [$fromDate, $toDate])
+            ->distinct()
+            ->pluck('form_id')
+            ->toArray();
+    }
+
+    /**
+     * Build report rows for a date range.
+     */
+    private function buildReportRows($users, $forms, Carbon $fromDate, Carbon $toDate): array
+    {
+        $formIds = $forms->pluck('id')->toArray();
+        $submissions = collect();
+
+        if ($users->isNotEmpty() && !empty($formIds)) {
+            $submissions = DB::table('form_submissions')
+                ->whereIn('form_id', $formIds)
+                ->whereIn('user_id', $users->pluck('id'))
+                ->whereBetween('submitted_at', [$fromDate, $toDate])
+                ->select('user_id', 'form_id', 'score', 'submitted_at')
+                ->get()
+                ->groupBy('user_id');
+        }
+
+        $reportData = [];
+        foreach ($users as $user) {
+            $userSubmissions = $submissions->get($user->id, collect());
+            $userData = [
+                'user' => $user,
+                'submissions' => [],
+                'total_submitted' => 0,
+                'total_forms' => count($formIds),
+                'percentage' => 0,
+                'participation_percentage' => 0,
+                'points_percentage' => 0,
+                'total_points_score' => 0,
+                'status' => 'Not Started',
+            ];
+
+            foreach ($forms as $form) {
+                $submission = $userSubmissions->firstWhere('form_id', $form->id);
+                $isSubmitted = !is_null($submission);
+
+                $userData['submissions'][$form->id] = [
+                    'submitted' => $isSubmitted,
+                    'score' => $isSubmitted ? $submission->score : null,
+                    'submitted_at' => $isSubmitted ? $submission->submitted_at : null,
+                    'form_title' => $form->title,
+                    'form_id' => $form->id
+                ];
+
+                if ($isSubmitted) {
+                    $userData['total_submitted']++;
+                    $userData['total_points_score'] += (float) ($submission->score ?? 0);
+                }
+            }
+
+            if ($userData['total_forms'] > 0) {
+                $userData['percentage'] = round(($userData['total_submitted'] / $userData['total_forms']) * 100);
+                $userData['participation_percentage'] = $userData['percentage'];
+                $userData['points_percentage'] = round(min(100, max(0, $userData['total_points_score'] / $userData['total_forms'])), 1);
+            }
+
+            if ($userData['total_submitted'] == 0) {
+                $userData['status'] = 'Not Started';
+            } elseif ($userData['total_submitted'] == $userData['total_forms']) {
+                $userData['status'] = 'Complete';
+            } else {
+                $userData['status'] = 'Partial';
+            }
+
+            $reportData[] = $userData;
+        }
+
+        return [$reportData, $formIds];
+    }
+
     /**
      * Display the reports dashboard
      */
@@ -25,94 +145,13 @@ class ReportController extends Controller
         try {
             // Get all users - dynamically select columns that exist
             $users = $this->getUsersWithStatus();
-            
-            // Get all forms that are published
+            [$fromDate, $toDate] = $this->resolveReportDateRange($request);
+            $selectedFormIds = $this->getFormIdsInRange($users->pluck('id'), $fromDate, $toDate);
             $allForms = DB::table('forms')
-                
+                ->whereIn('id', $selectedFormIds)
                 ->orderBy('created_at', 'desc')
                 ->get();
-
-            // If no forms, return empty data
-            if ($allForms->isEmpty()) {
-                return view('modules.intercession.forms.reports', [
-                    'reportData' => [],
-                    'allForms' => collect(),
-                    'selectedFormIds' => [],
-                    'summary' => [
-                        'total_users' => 0,
-                        'complete' => 0,
-                        'partial' => 0,
-                        'not_started' => 0,
-                    ],
-                ]);
-            }
-
-            // Get selected form IDs from request or default to all
-            $selectedFormIds = $request->get('form_ids', []);
-            if (empty($selectedFormIds)) {
-                $selectedFormIds = $allForms->pluck('id')->toArray();
-            }
-
-            // Get all submissions for these forms
-            $submissions = DB::table('form_submissions')
-                ->whereIn('form_id', $selectedFormIds)
-                ->whereIn('user_id', $users->pluck('id'))
-                ->select('user_id', 'form_id', 'score', 'submitted_at')
-                ->get()
-                ->groupBy('user_id');
-
-            // Build report data
-            $reportData = [];
-            foreach ($users as $user) {
-                $userSubmissions = $submissions->get($user->id, collect());
-                $userData = [
-                    'user' => $user,
-                    'submissions' => [],
-                    'total_submitted' => 0,
-                    'total_forms' => count($selectedFormIds),
-                    'percentage' => 0,
-                    'status' => 'Not Started',
-                ];
-
-                // Check each form
-                foreach ($allForms as $form) {
-                    // Only track selected forms
-                    if (!in_array($form->id, $selectedFormIds)) {
-                        continue;
-                    }
-
-                    $submission = $userSubmissions->firstWhere('form_id', $form->id);
-                    $isSubmitted = !is_null($submission);
-
-                    $userData['submissions'][$form->id] = [
-                        'submitted' => $isSubmitted,
-                        'score' => $isSubmitted ? $submission->score : null,
-                        'submitted_at' => $isSubmitted ? $submission->submitted_at : null,
-                        'form_title' => $form->title,
-                        'form_id' => $form->id
-                    ];
-
-                    if ($isSubmitted) {
-                        $userData['total_submitted']++;
-                    }
-                }
-
-                // Calculate percentage
-                if ($userData['total_forms'] > 0) {
-                    $userData['percentage'] = round(($userData['total_submitted'] / $userData['total_forms']) * 100);
-                }
-
-                // Determine status
-                if ($userData['total_submitted'] == 0) {
-                    $userData['status'] = 'Not Started';
-                } elseif ($userData['total_submitted'] == $userData['total_forms']) {
-                    $userData['status'] = 'Complete';
-                } else {
-                    $userData['status'] = 'Partial';
-                }
-
-                $reportData[] = $userData;
-            }
+            [$reportData, $selectedFormIds] = $this->buildReportRows($users, $allForms, $fromDate, $toDate);
 
             // Calculate summary stats
             $summary = [
@@ -126,6 +165,8 @@ class ReportController extends Controller
                 'reportData' => $reportData,
                 'allForms' => $allForms,
                 'selectedFormIds' => $selectedFormIds,
+                'dateFrom' => $fromDate->toDateString(),
+                'dateTo' => $toDate->toDateString(),
                 'summary' => $summary,
             ]);
             
@@ -136,6 +177,8 @@ class ReportController extends Controller
                 'reportData' => [],
                 'allForms' => collect(),
                 'selectedFormIds' => [],
+                'dateFrom' => now()->startOfMonth()->toDateString(),
+                'dateTo' => now()->endOfMonth()->toDateString(),
                 'summary' => [
                     'total_users' => 0,
                     'complete' => 0,
@@ -200,22 +243,7 @@ class ReportController extends Controller
         try {
             $status = $request->get('status', 'all');
             $search = $request->get('search', '');
-            $formIds = $request->get('form_ids', []);
-
-            // If no form IDs, return empty
-            if (empty($formIds)) {
-                return response()->json([
-                    'success' => true,
-                    'reportData' => [],
-                    'summary' => [
-                        'total_users' => 0,
-                        'complete' => 0,
-                        'partial' => 0,
-                        'not_started' => 0,
-                    ],
-                    'forms' => []
-                ]);
-            }
+            [$fromDate, $toDate] = $this->resolveReportDateRange($request);
 
             // Check which columns exist
             $table = 'users';
@@ -260,72 +288,15 @@ class ReportController extends Controller
                 return $isActive;
             })->values();
 
-            // Get all forms details
+            $selectedFormIds = $this->getFormIdsInRange($users->pluck('id'), $fromDate, $toDate);
             $allForms = DB::table('forms')
-                ->whereIn('id', $formIds)
+                ->whereIn('id', $selectedFormIds)
                 ->orderBy('created_at', 'desc')
                 ->get();
-
-            // Get submissions
-            $submissions = collect();
-            if ($users->isNotEmpty()) {
-                $submissions = DB::table('form_submissions')
-                    ->whereIn('form_id', $formIds)
-                    ->whereIn('user_id', $users->pluck('id'))
-                    ->select('user_id', 'form_id', 'score', 'submitted_at')
-                    ->get()
-                    ->groupBy('user_id');
-            }
-
-            // Build report data
-            $reportData = [];
-            foreach ($users as $user) {
-                $userSubmissions = $submissions->get($user->id, collect());
-                $userData = [
-                    'user' => $user,
-                    'submissions' => [],
-                    'total_submitted' => 0,
-                    'total_forms' => count($formIds),
-                    'percentage' => 0,
-                    'status' => 'Not Started',
-                ];
-
-                foreach ($allForms as $form) {
-                    $submission = $userSubmissions->firstWhere('form_id', $form->id);
-                    $isSubmitted = !is_null($submission);
-
-                    $userData['submissions'][$form->id] = [
-                        'submitted' => $isSubmitted,
-                        'score' => $isSubmitted ? $submission->score : null,
-                        'submitted_at' => $isSubmitted ? $submission->submitted_at : null,
-                        'form_title' => $form->title,
-                        'form_id' => $form->id
-                    ];
-
-                    if ($isSubmitted) {
-                        $userData['total_submitted']++;
-                    }
-                }
-
-                if ($userData['total_forms'] > 0) {
-                    $userData['percentage'] = round(($userData['total_submitted'] / $userData['total_forms']) * 100);
-                }
-
-                if ($userData['total_submitted'] == 0) {
-                    $userData['status'] = 'Not Started';
-                } elseif ($userData['total_submitted'] == $userData['total_forms']) {
-                    $userData['status'] = 'Complete';
-                } else {
-                    $userData['status'] = 'Partial';
-                }
-
-                // Apply status filter
-                if ($status && $status !== 'all' && $userData['status'] !== $status) {
-                    continue;
-                }
-
-                $reportData[] = $userData;
-            }
+            [$reportData, $selectedFormIds] = $this->buildReportRows($users, $allForms, $fromDate, $toDate);
+            $reportData = array_values(array_filter($reportData, function ($userData) use ($status) {
+                return !($status && $status !== 'all' && $userData['status'] !== $status);
+            }));
 
             // Calculate summary stats
             $summary = [
@@ -339,7 +310,10 @@ class ReportController extends Controller
                 'success' => true,
                 'reportData' => $reportData,
                 'summary' => $summary,
-                'forms' => $allForms
+                'forms' => $allForms,
+                'form_ids' => $selectedFormIds,
+                'date_from' => $fromDate->toDateString(),
+                'date_to' => $toDate->toDateString(),
             ]);
 
         } catch (\Exception $e) {
@@ -365,128 +339,56 @@ class ReportController extends Controller
         );
 
         try {
-            $formIds = $request->get('form_ids', []);
-            
-            if (empty($formIds)) {
-                $formIds = DB::table('forms')
-                    ->pluck('id')
-                    ->toArray();
-            }
+            [$fromDate, $toDate] = $this->resolveReportDateRange($request);
+            $users = $this->getUsersWithStatus();
 
-            // Check which columns exist
-            $table = 'users';
-            $hasIsActive = Schema::hasColumn($table, 'is_active');
-            $hasStatus = Schema::hasColumn($table, 'status');
-            
-            // Build select columns
-            $columns = ['id', 'name', 'email', 'membership_type'];
-            
-            if ($hasIsActive) {
-                $columns[] = 'is_active';
-            }
-            
-            if ($hasStatus) {
-                $columns[] = 'status';
-            }
-            
-            // Get all users
-            $allUsers = User::select($columns)->orderBy('name')->get();
-            
-            // Filter: Permanent AND Active
-            $users = $allUsers->filter(function($user) use ($hasIsActive, $hasStatus) {
-                // Check if Permanent
-                $isPermanent = ($user->membership_type ?? '') === 'Permanent';
-                
-                if (!$isPermanent) {
-                    return false;
-                }
-                
-                // Check if Active (if column exists)
-                $isActive = true;
-                
-                if ($hasIsActive && isset($user->is_active)) {
-                    $isActive = ($user->is_active == true || $user->is_active == 1);
-                }
-                
-                if ($hasStatus && isset($user->status) && $isActive) {
-                    $isActive = ($user->status === 'active' || $user->status === 'Active');
-                }
-                
-                return $isActive;
-            })->values();
-
+            $formIds = $this->getFormIdsInRange($users->pluck('id'), $fromDate, $toDate);
             $allForms = DB::table('forms')
                 ->whereIn('id', $formIds)
                 ->orderBy('created_at', 'desc')
                 ->get();
 
-            // If no users or forms, return empty CSV
-            if ($users->isEmpty() || $allForms->isEmpty()) {
-                $headers = ['User', 'Email', 'No Data Available'];
-                $callback = function() use ($headers) {
-                    $handle = fopen('php://output', 'w');
-                    fputcsv($handle, $headers);
-                    fclose($handle);
-                };
-
-                return response()->stream($callback, 200, [
-                    'Content-Type' => 'text/csv; charset=utf-8',
-                    'Content-Disposition' => 'attachment; filename="reports_empty.csv"',
-                ]);
-            }
-
             $submissions = DB::table('form_submissions')
                 ->whereIn('form_id', $formIds)
                 ->whereIn('user_id', $users->pluck('id'))
+                ->whereBetween('submitted_at', [$fromDate, $toDate])
                 ->select('user_id', 'form_id', 'score', 'submitted_at')
                 ->get()
                 ->groupBy('user_id');
 
-            // Build CSV headers
-            $headers = ['User', 'Email'];
-            foreach ($allForms as $form) {
-                $headers[] = $form->title;
-            }
-            $headers[] = 'Total Submitted';
-            $headers[] = 'Progress';
-            $headers[] = 'Status';
+            $totalForms = count($formIds);
 
-            $callback = function() use ($users, $allForms, $submissions, $headers, $formIds) {
+            // Build CSV headers
+            $headers = ['No', 'Name', 'No of Submitted Forms', 'Participation %', 'Points %'];
+
+            $callback = function() use ($users, $submissions, $headers, $formIds, $totalForms) {
                 $handle = fopen('php://output', 'w');
                 fwrite($handle, "\xEF\xBB\xBF");
                 fputcsv($handle, $headers);
 
-                foreach ($users as $user) {
+                foreach ($users->values() as $index => $user) {
                     $userSubmissions = $submissions->get($user->id, collect());
-                    $row = [
-                        $user->name,
-                        $user->email,
-                    ];
 
                     $totalSubmitted = 0;
-                    foreach ($allForms as $form) {
-                        $submission = $userSubmissions->firstWhere('form_id', $form->id);
+                    $totalScore = 0;
+                    foreach ($formIds as $formId) {
+                        $submission = $userSubmissions->firstWhere('form_id', $formId);
                         if ($submission) {
-                            $row[] = '✅';
                             $totalSubmitted++;
-                        } else {
-                            $row[] = '❌';
+                            $totalScore += (float) ($submission->score ?? 0);
                         }
                     }
 
-                    $percentage = count($formIds) > 0 ? round(($totalSubmitted / count($formIds)) * 100) : 0;
-
-                    if ($totalSubmitted == 0) {
-                        $status = 'Not Started';
-                    } elseif ($totalSubmitted == count($formIds)) {
-                        $status = 'Complete';
-                    } else {
-                        $status = 'Partial';
-                    }
-
-                    $row[] = $totalSubmitted . '/' . count($formIds);
-                    $row[] = $percentage . '%';
-                    $row[] = $status;
+                    $participationPercentage = $totalForms > 0 ? round(($totalSubmitted / $totalForms) * 100, 1) : 0;
+                    $pointsPercentage = $totalForms > 0 ? round(min(100, max(0, $totalScore / $totalForms)), 1) : 0;
+                    $submittedForms = $totalSubmitted . ' out of ' . $totalForms;
+                    $row = [
+                        $index + 1,
+                        $user->name,
+                        $submittedForms,
+                        $participationPercentage . '%',
+                        $pointsPercentage . '%',
+                    ];
 
                     fputcsv($handle, $row);
                 }
@@ -522,9 +424,9 @@ public function userProgress(Request $request)
 
     try {
         $userId = $request->get('user_id');
-        $formIds = $request->get('form_ids', []);
+        [$fromDate, $toDate] = $this->resolveReportDateRange($request);
         
-        if (empty($userId) || empty($formIds)) {
+        if (empty($userId)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Missing required parameters'
@@ -541,6 +443,13 @@ public function userProgress(Request $request)
         }
         
         // Get forms
+        $formIds = DB::table('form_submissions')
+            ->where('user_id', $userId)
+            ->whereBetween('submitted_at', [$fromDate, $toDate])
+            ->distinct()
+            ->pluck('form_id')
+            ->toArray();
+        
         $allForms = DB::table('forms')
             ->whereIn('id', $formIds)
             ->orderBy('created_at', 'desc')
@@ -550,6 +459,7 @@ public function userProgress(Request $request)
         $submissions = DB::table('form_submissions')
             ->where('user_id', $userId)
             ->whereIn('form_id', $formIds)
+            ->whereBetween('submitted_at', [$fromDate, $toDate])
             ->select('form_id', 'score', 'submitted_at')
             ->get()
             ->keyBy('form_id');
@@ -608,3 +518,5 @@ public function userProgress(Request $request)
     }
 }
 }
+
+

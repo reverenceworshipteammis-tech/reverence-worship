@@ -41,10 +41,10 @@ class DashboardController extends Controller
             'new_users_month' => $newUsersMonth,
             'growth_rate' => $growthRate,
             'online_users' => $onlineUsers,
-            'total_roles' => DB::table('roles')->count(),
-            'total_pages' => DB::table('pages')->count(),
-            'total_families' => DB::table('families')->count(),
-            'total_members' => DB::table('family_members')->count(),
+            'total_roles' => $this->tableCount('roles'),
+            'total_pages' => $this->tableCount('pages'),
+            'total_families' => $this->tableCount('families'),
+            'total_members' => $this->tableCount('family_members'),
             'system_version' => '2.0.0',
             
             // Department activity (based on data presence)
@@ -55,21 +55,21 @@ class DashboardController extends Controller
             'finance_activity' => $this->calculateDepartmentActivity('finance'),
             
             // System-wide statistics
-            'total_forms' => DB::table('spiritual_forms')->count() ?? 0,
-            'total_songs' => DB::table('songs')->count() ?? 0,
-            'total_playlists' => DB::table('playlists')->count() ?? 0,
+            'total_forms' => $this->tableCount('spiritual_forms'),
+            'total_songs' => $this->tableCount('songs'),
+            'total_playlists' => $this->tableCount('playlists'),
             'total_sponsors' => $this->tableCount('sponsors'),
             'total_announcements' => $this->tableCount('announcements'),
-            'total_discipline' => DB::table('discipline_records')->count() ?? 0,
-            'total_permissions' => DB::table('permission_requests')->count() ?? 0,
+            'total_discipline' => $this->tableCount('discipline_records'),
+            'total_permissions' => $this->tableCount('permission_requests'),
             'pending_permission_requests' => $pendingPermissionRequests,
-            'total_payment_records' => DB::table('payments')->count() ?? 0,
-            'total_expense_records' => DB::table('expenses')->count() ?? 0,
+            'total_payment_records' => $this->tableCount('payments'),
+            'total_expense_records' => $this->tableCount('expenses'),
             
             // Financial statistics
-            'total_expected' => DB::table('contributions')->sum('annual_amount') ?? 0,
-            'total_collected' => DB::table('payments')->sum('amount') ?? 0,
-            'total_expenses' => DB::table('expenses')->sum('amount') ?? 0,
+            'total_expected' => $this->tableSum('contributions', 'annual_amount'),
+            'total_collected' => $this->tableSum('payments', 'amount'),
+            'total_expenses' => $this->tableSum('expenses', 'amount'),
         ];
         
         // Calculate collection rate
@@ -96,7 +96,9 @@ class DashboardController extends Controller
                 $activity = min(100, 70 + ($songCount * 5));
                 break;
             case 'intercession':
-                $prayerCount = DB::table('prayer_requests')->whereMonth('created_at', now()->month)->count();
+                $prayerCount = Schema::hasTable('prayer_requests')
+                    ? DB::table('prayer_requests')->whereMonth('created_at', now()->month)->count()
+                    : 0;
                 $activity = min(100, 70 + ($prayerCount * 2));
                 break;
             case 'social-fellowship':
@@ -158,6 +160,11 @@ class DashboardController extends Controller
     private function tableCount(string $table): int
     {
         return Schema::hasTable($table) ? DB::table($table)->count() : 0;
+    }
+
+    private function tableSum(string $table, string $column): float
+    {
+        return Schema::hasTable($table) ? (float) DB::table($table)->sum($column) : 0;
     }
     
     public function adminDashboard()

@@ -18,9 +18,9 @@
         padding:6px;
         gap:3px;
     }
-    .sortable-item.toolbar-host { position:relative; overflow:visible !important; }
-    .builder-tools .tools-label { display:none; }
-    .builder-tools button {
+.sortable-item.toolbar-host { position:relative; overflow:visible !important; }
+.builder-tools .tools-label { display:none; }
+.builder-tools button {
         width:40px;
         height:40px;
         padding:0;
@@ -49,6 +49,10 @@
     @media (max-width:640px) {
         .builder-heading { align-items:flex-start; flex-direction:column; }
         .builder-actions, .builder-actions button { width:100%; justify-content:center; }
+    }
+    .auto-grow-textarea {
+        overflow: hidden;
+        resize: none;
     }
 </style>
 
@@ -92,9 +96,9 @@
                 <input type="text" id="formTitle" placeholder="Untitled form"
                     class="w-full text-2xl font-semibold text-gray-900 border-none focus:ring-0 outline-none mb-2"
                     oninput="autoSave()" maxlength="150" aria-label="Form title">
-                <input type="text" id="formDescription" placeholder="Add a short description (optional)"
-                    class="w-full text-sm text-gray-500 border-none focus:ring-0 outline-none"
-                    oninput="autoSave()" maxlength="500" aria-label="Form description">
+                <textarea id="formDescription" placeholder="Add a short description (optional)" rows="2"
+                    class="auto-grow-textarea w-full text-lg sm:text-xl text-gray-900 border-none focus:ring-0 outline-none"
+                    oninput="autoResizeTextarea(this); autoSave()" maxlength="500" aria-label="Form description"></textarea>
             </div>
         </div>
 
@@ -126,6 +130,57 @@
     let isSaving = false;
     let isNewQuestion = false;
     let sectionCount = 1;
+
+    function autoResizeTextarea(textarea) {
+        if (!textarea) return;
+        textarea.style.height = 'auto';
+        textarea.style.height = textarea.scrollHeight + 'px';
+    }
+
+    function resizeAllAutoGrowTextareas() {
+        document.querySelectorAll('.auto-grow-textarea').forEach(autoResizeTextarea);
+    }
+
+    function applyTextFormat(action, questionId) {
+        const card = document.getElementById(`question-${questionId}`);
+        if (!card) return;
+        const editor = card.querySelector('[data-format-target="questionText"]');
+        if (!editor) return;
+        editor.focus();
+
+        if (action === 'clear') {
+            document.execCommand('removeFormat', false, null);
+        } else {
+            const command = { bold: 'bold', italic: 'italic', underline: 'underline' }[action];
+            if (!command) return;
+            document.execCommand(command, false, null);
+        }
+
+        editor.dispatchEvent(new Event('input', { bubbles: true }));
+        editor.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    function hydrateRichTextEditors(root = document) {
+        root.querySelectorAll('[data-format-target="questionText"]').forEach(function(editor) {
+            if (editor.dataset.richTextLoaded === '1') return;
+            const encoded = editor.getAttribute('data-rich-text') || '';
+            try {
+                editor.innerHTML = encoded ? decodeURIComponent(encoded) : editor.innerHTML;
+            } catch (e) {}
+            editor.dataset.richTextLoaded = '1';
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        resizeAllAutoGrowTextareas();
+        hydrateRichTextEditors();
+    });
+
+    document.addEventListener('input', function(event) {
+        if (event.target && event.target.classList && event.target.classList.contains('auto-grow-textarea')) {
+            autoResizeTextarea(event.target);
+        }
+    });
 
     const questionTypes = [
         { value: 'short_answer', label: 'Short answer', icon: 'fa-font' },
@@ -184,7 +239,7 @@
         const settings = {
             is_quiz: document.getElementById('isQuiz')?.checked ?? true,
             release_grade: releaseGrade,
-            default_points: document.getElementById('defaultPoints')?.value || 1,
+            default_points: document.getElementById('defaultPoints')?.value ?? 1,
             allow_view_response: document.getElementById('allowViewResponse')?.checked ?? true,
             allow_editing: document.getElementById('allowEditing')?.checked || false,
             limit_one_response: document.getElementById('limitOneResponse')?.checked ?? true,
@@ -212,7 +267,7 @@
             if (s.is_quiz !== false) document.getElementById('quizDetails')?.classList.remove('hidden');
             const radio = document.querySelector(`input[name="release_grade"][value="${s.release_grade}"]`);
             if (radio) radio.checked = true;
-            if (document.getElementById('defaultPoints')) document.getElementById('defaultPoints').value = s.default_points || 1;
+            if (document.getElementById('defaultPoints')) document.getElementById('defaultPoints').value = s.default_points ?? 1;
             if (document.getElementById('allowViewResponse')) document.getElementById('allowViewResponse').checked = s.allow_view_response !== false;
             if (document.getElementById('allowEditing')) document.getElementById('allowEditing').checked = s.allow_editing || false;
             if (document.getElementById('limitOneResponse')) document.getElementById('limitOneResponse').checked = s.limit_one_response !== false;
@@ -291,7 +346,8 @@
     function addQuestion() {
         const insertIndex = getInsertIndex();
         const id = questionCount++;
-        const defaultPoints = document.getElementById('defaultPoints')?.value || 1;
+        const defaultPointsInput = document.getElementById('defaultPoints');
+        const defaultPoints = defaultPointsInput && defaultPointsInput.value !== '' ? defaultPointsInput.value : 1;
         const newQuestion = {
             id,
             text: '',
@@ -325,6 +381,7 @@
         }
         container.innerHTML = '';
         questions.forEach(q => renderQuestion(q));
+        resizeAllAutoGrowTextareas();
         if (sortable) sortable.destroy();
         sortable = new Sortable(container, {
             handle: '.drag-handle',
@@ -341,6 +398,7 @@
             }
         });
         if (selectedQuestionId !== null) selectQuestion(selectedQuestionId);
+        resizeAllAutoGrowTextareas();
     }
 
     function selectQuestion(questionId) {
@@ -372,14 +430,14 @@
             div.innerHTML = `<div class="drag-handle cursor-move bg-gray-50 py-1 text-center border-b"><i class="fas fa-grip-horizontal text-gray-400 text-sm"></i></div>
             <div class="p-5"><div class="flex justify-end mb-2"><i class="fas fa-trash text-sm text-gray-400 cursor-pointer hover:text-red-600" onclick="event.stopPropagation(); deleteQuestion(${q.id})"></i></div>
             <input type="text" value="${escapeHtml(q.title)}" placeholder="Section title" onchange="updateAndAutoSave('titleSection', ${q.id}, 'title', this.value)" class="w-full text-xl font-medium border-0 focus:ring-0 outline-none mb-2">
-            <input type="text" value="${escapeHtml(q.description)}" placeholder="Section description" onchange="updateAndAutoSave('titleSection', ${q.id}, 'description', this.value)" class="w-full text-sm text-gray-500 border-0 focus:ring-0 outline-none"></div>`;
+            <textarea rows="1" placeholder="Section description" oninput="autoResizeTextarea(this); updateAndAutoSave('titleSection', ${q.id}, 'description', this.value)" onchange="updateAndAutoSave('titleSection', ${q.id}, 'description', this.value)" class="auto-grow-textarea w-full text-lg sm:text-xl text-gray-900 border-0 focus:ring-0 outline-none">${escapeHtml(q.description || '')}</textarea></div>`;
         } else if (q.type === 'section_break') {
             div.className += ' relative';
             div.innerHTML = `<div class="drag-handle cursor-move absolute left-1/2 -translate-x-1/2 -top-2 z-10 bg-white px-3 rounded-full shadow text-xs"><i class="fas fa-grip-horizontal text-gray-400"></i></div>
             <div class="bg-gray-50 py-5 px-6 rounded-xl border border-gray-200 text-center"><div class="flex justify-end mb-2"><i class="fas fa-trash text-sm text-gray-400 cursor-pointer hover:text-red-600" onclick="event.stopPropagation(); deleteQuestion(${q.id})"></i></div>
             <i class="fas fa-layer-group text-2xl text-gray-400 mb-2"></i>
             <input type="text" value="${escapeHtml(q.title)}" placeholder="Section title" onchange="updateAndAutoSave('sectionBreak', ${q.id}, 'title', this.value)" class="text-lg font-medium border-0 bg-transparent focus:ring-0 outline-none text-center w-full">
-            <input type="text" value="${escapeHtml(q.description)}" placeholder="Section description" onchange="updateAndAutoSave('sectionBreak', ${q.id}, 'description', this.value)" class="text-sm text-gray-500 border-0 bg-transparent focus:ring-0 outline-none text-center w-full mt-1">
+            <textarea rows="1" placeholder="Section description" oninput="autoResizeTextarea(this); updateAndAutoSave('sectionBreak', ${q.id}, 'description', this.value)" onchange="updateAndAutoSave('sectionBreak', ${q.id}, 'description', this.value)" class="auto-grow-textarea text-lg sm:text-xl text-gray-900 border-0 bg-transparent focus:ring-0 outline-none text-center w-full mt-1">${escapeHtml(q.description || '')}</textarea>
             <div class="border-t border-gray-300 my-3"></div><p class="text-xs text-gray-400">After section break</p></div>`;
         } else {
             div.className += ' bg-white border border-gray-200 rounded-xl shadow-sm relative overflow-hidden';
@@ -387,12 +445,18 @@
             div.innerHTML = `<div class="drag-handle cursor-move bg-gray-50 py-1 text-center border-b"><i class="fas fa-grip-horizontal text-gray-400 text-sm"></i><span class="text-xs text-gray-400 ml-1">Drag</span></div>
             <div class="absolute left-0 top-0 bottom-0 w-1 bg-blue-500" style="top: 30px;"></div>
             <div class="p-4 sm:p-5"><div class="grid grid-cols-12 gap-3 sm:gap-4 items-start">
-                <div class="col-span-12 sm:col-span-7"><input type="text" value="${escapeHtml(q.text)}" placeholder="Question" onchange="updateAndAutoSave('questionText', ${q.id}, null, this.value)" class="w-full text-lg sm:text-xl border-0 border-b border-gray-300 focus:ring-0 focus:border-gray-500 bg-gray-50 px-3 py-2"></div>
+                <div class="col-span-12 sm:col-span-7"><div contenteditable="true" spellcheck="false" data-format-target="questionText" data-rich-text="${encodeURIComponent(q.text || '')}" oninput="updateAndAutoSave('questionText', ${q.id}, null, this.innerHTML)" onchange="updateAndAutoSave('questionText', ${q.id}, null, this.innerHTML)" class="auto-grow-textarea w-full min-h-[2.75rem] text-lg sm:text-xl border-0 border-b border-gray-300 focus:ring-0 focus:border-gray-500 bg-gray-50 px-3 py-2 whitespace-pre-wrap break-words outline-none">${escapeHtml(q.text || '')}</div></div>
                 <div class="col-span-12 sm:col-span-5"><select onchange="changeQuestionType(${q.id}, this.value)" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">${questionTypes.map(t => `<option value="${t.value}" ${q.type === t.value ? 'selected' : ''}>${t.label}</option>`).join('')}</select></div>
             </div>
-            ${isQuizMode ? `<div class="mt-3 flex items-center gap-3 bg-gray-50 p-2 rounded-lg"><div class="flex items-center gap-2"><span class="text-xs text-gray-600">Points:</span><input type="number" value="${q.points || 1}" min="0" max="100" onchange="updateAndAutoSave('points', ${q.id}, null, this.value)" class="w-16 px-2 py-1 border rounded-md text-sm text-center"></div></div>` : ''}
+            ${isQuizMode ? `<div class="mt-3 flex items-center gap-3 bg-gray-50 p-2 rounded-lg"><div class="flex items-center gap-2"><span class="text-xs text-gray-600">Points:</span><input type="number" value="${q.points ?? 1}" min="0" max="100" oninput="updateAndAutoSave('points', ${q.id}, null, this.value)" class="w-16 px-2 py-1 border rounded-md text-sm text-center"></div></div>` : ''}
             <div id="options-${q.id}" class="mt-5">${renderOptionsByType(q)}</div>
             <div class="border-t mt-5 pt-4 flex justify-end items-center gap-4">
+                <div class="flex items-center gap-1 mr-auto">
+                    <button type="button" onclick="event.stopPropagation(); applyTextFormat('bold', ${q.id})" onmousedown="event.preventDefault()" title="Bold" class="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-900"><i class="fas fa-bold text-xs"></i></button>
+                    <button type="button" onclick="event.stopPropagation(); applyTextFormat('italic', ${q.id})" onmousedown="event.preventDefault()" title="Italic" class="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-900"><i class="fas fa-italic text-xs"></i></button>
+                    <button type="button" onclick="event.stopPropagation(); applyTextFormat('underline', ${q.id})" onmousedown="event.preventDefault()" title="Underline" class="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-900"><i class="fas fa-underline text-xs"></i></button>
+                    <button type="button" onclick="event.stopPropagation(); applyTextFormat('clear', ${q.id})" onmousedown="event.preventDefault()" title="Clear formatting" class="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-900"><i class="fas fa-eraser text-xs"></i></button>
+                </div>
                 <i class="fas fa-copy text-gray-500 cursor-pointer hover:text-indigo-600" onclick="event.stopPropagation(); duplicateQuestion(${q.id})"></i>
                 <i class="fas fa-trash text-gray-500 cursor-pointer hover:text-red-600" onclick="event.stopPropagation(); deleteQuestion(${q.id})"></i>
                 <div class="h-6 w-px bg-gray-300"></div><span class="text-xs text-gray-600">Required</span>
@@ -401,6 +465,7 @@
             </div></div>`;
         }
         container.appendChild(div);
+        hydrateRichTextEditors(div);
     }
 
     function renderOptionsByType(q) {
@@ -411,7 +476,7 @@
                     const escapedOpt = escapeHtml(opt);
                     mcHtml += `<div class="flex items-center gap-2 mb-2">
                     <i class="fas fa-circle text-gray-400 text-xs"></i>
-                    <input type="text" value="${escapedOpt}" placeholder="Option ${i+1}" onchange="updateAndAutoSave('option', ${q.id}, ${i}, this.value)" class="flex-1 text-sm border-0 border-b border-gray-300 focus:border-indigo-500 focus:ring-0 py-1">
+                    <input type="text" value="${escapedOpt}" placeholder="Option ${i+1}" onchange="updateAndAutoSave('option', ${q.id}, ${i}, this.value)" class="flex-1 text-lg sm:text-xl text-gray-900 border-0 border-b border-gray-300 focus:border-indigo-500 focus:ring-0 py-1">
                     <label class="flex items-center gap-1 ml-2">
                         <input type="radio" name="correct_${q.id}" value="${escapedOpt}" ${q.correctAnswer === opt ? 'checked' : ''} onchange="updateAndAutoSave('correctAnswer', ${q.id}, null, this.value)" class="w-3 h-3 text-green-600">
                         <span class="text-xs text-gray-500">Correct</span>
@@ -430,7 +495,7 @@
                     const isChecked = q.correctAnswers && q.correctAnswers.includes(opt);
                     cbHtml += `<div class="flex items-center gap-2 mb-2">
                     <i class="fas fa-square text-gray-400 text-xs"></i>
-                    <input type="text" value="${escapedOpt}" placeholder="Option ${i+1}" onchange="updateAndAutoSave('option', ${q.id}, ${i}, this.value)" class="flex-1 text-sm border-0 border-b border-gray-300 focus:border-indigo-500 focus:ring-0 py-1">
+                    <input type="text" value="${escapedOpt}" placeholder="Option ${i+1}" onchange="updateAndAutoSave('option', ${q.id}, ${i}, this.value)" class="flex-1 text-lg sm:text-xl text-gray-900 border-0 border-b border-gray-300 focus:border-indigo-500 focus:ring-0 py-1">
                     <label class="flex items-center gap-1 ml-2">
                         <input type="checkbox" value="${escapedOpt}" ${isChecked ? 'checked' : ''} onchange="updateAndAutoSave('correctAnswers', ${q.id}, null, this.value, this.checked)" class="w-3 h-3 text-green-600 rounded">
                         <span class="text-xs text-gray-500">Correct</span>
@@ -447,7 +512,7 @@
                     const escapedOpt = escapeHtml(opt);
                     ddHtml += `<div class="flex items-center gap-2 mb-2">
                     <i class="fas fa-bars text-gray-400 text-xs"></i>
-                    <input type="text" value="${escapedOpt}" placeholder="Option ${i+1}" onchange="updateAndAutoSave('option', ${q.id}, ${i}, this.value)" class="flex-1 text-sm border-0 border-b border-gray-300 focus:border-indigo-500 focus:ring-0 py-1">
+                    <input type="text" value="${escapedOpt}" placeholder="Option ${i+1}" onchange="updateAndAutoSave('option', ${q.id}, ${i}, this.value)" class="flex-1 text-lg sm:text-xl text-gray-900 border-0 border-b border-gray-300 focus:border-indigo-500 focus:ring-0 py-1">
                     <label class="flex items-center gap-1 ml-2">
                         <input type="radio" name="correct_${q.id}" value="${escapedOpt}" ${q.correctAnswer === opt ? 'checked' : ''} onchange="updateAndAutoSave('correctAnswer', ${q.id}, null, this.value)" class="w-3 h-3 text-green-600">
                         <span class="text-xs text-gray-500">Correct</span>
@@ -463,8 +528,8 @@
                 return `<div class="flex items-center gap-3 bg-gray-50 p-3 rounded-lg">
                 <span class="text-xs text-gray-500">Correct Answer:</span>
                 ${q.type === 'paragraph'
-                    ? `<textarea rows="2" placeholder="Enter correct answer..." onchange="updateAndAutoSave('correctAnswer', ${q.id}, null, this.value)" class="flex-1 px-3 py-2 border rounded-lg text-sm border-gray-300 focus:ring-1 focus:ring-indigo-500">${escapeHtml(q.correctAnswer || '')}</textarea>`
-                    : `<input type="text" placeholder="Enter correct answer..." onchange="updateAndAutoSave('correctAnswer', ${q.id}, null, this.value)" value="${escapeHtml(q.correctAnswer || '')}" class="flex-1 px-3 py-2 border rounded-lg text-sm border-gray-300 focus:ring-1 focus:ring-indigo-500">`
+                    ? `<textarea rows="2" placeholder="Enter correct answer..." oninput="autoResizeTextarea(this); updateAndAutoSave('correctAnswer', ${q.id}, null, this.value)" onchange="updateAndAutoSave('correctAnswer', ${q.id}, null, this.value)" class="auto-grow-textarea flex-1 px-3 py-2 border rounded-lg text-lg sm:text-xl text-gray-900 border-gray-300 focus:ring-1 focus:ring-indigo-500">${escapeHtml(q.correctAnswer || '')}</textarea>`
+                    : `<input type="text" placeholder="Enter correct answer..." onchange="updateAndAutoSave('correctAnswer', ${q.id}, null, this.value)" value="${escapeHtml(q.correctAnswer || '')}" class="flex-1 px-3 py-2 border rounded-lg text-lg sm:text-xl text-gray-900 border-gray-300 focus:ring-1 focus:ring-indigo-500">`
                 }
             </div>`;
 
@@ -473,7 +538,7 @@
                 <span class="text-xs text-gray-500">Correct Answer (Date):</span>
                 <input type="date" onchange="updateAndAutoSave('correctAnswer', ${q.id}, null, this.value)" 
                        value="${q.correctAnswer || ''}"
-                       class="px-3 py-2 border rounded-lg text-sm border-gray-300 focus:ring-1 focus:ring-indigo-500">
+                       class="px-3 py-2 border rounded-lg text-lg sm:text-xl text-gray-900 border-gray-300 focus:ring-1 focus:ring-indigo-500">
             </div>`;
 
             case 'time':
@@ -481,20 +546,20 @@
                 <span class="text-xs text-gray-500">Correct Answer (Time):</span>
                 <input type="time" onchange="updateAndAutoSave('correctAnswer', ${q.id}, null, this.value)" 
                        value="${q.correctAnswer || ''}"
-                       class="px-3 py-2 border rounded-lg text-sm border-gray-300 focus:ring-1 focus:ring-indigo-500">
+                       class="px-3 py-2 border rounded-lg text-lg sm:text-xl text-gray-900 border-gray-300 focus:ring-1 focus:ring-indigo-500">
             </div>`;
 
             case 'linear_scale':
                 return `<div class="flex flex-wrap items-center gap-4 bg-gray-50 p-3 rounded-lg">
                     <div class="flex items-center gap-3">
                         <span class="text-xs text-gray-500">Range:</span>
-                        <input type="number" value="${q.min || 1}" onchange="updateAndAutoSave('scaleMin', ${q.id}, null, this.value)" class="w-14 px-2 py-1 border rounded-md text-sm text-center">
+                        <input type="number" value="${q.min || 1}" onchange="updateAndAutoSave('scaleMin', ${q.id}, null, this.value)" class="w-14 px-2 py-1 border rounded-md text-lg sm:text-xl text-gray-900 text-center">
                         <span class="text-gray-400">→</span>
-                        <input type="number" value="${q.max || 5}" onchange="updateAndAutoSave('scaleMax', ${q.id}, null, this.value)" class="w-14 px-2 py-1 border rounded-md text-sm text-center">
+                        <input type="number" value="${q.max || 5}" onchange="updateAndAutoSave('scaleMax', ${q.id}, null, this.value)" class="w-14 px-2 py-1 border rounded-md text-lg sm:text-xl text-gray-900 text-center">
                     </div>
                     <div class="flex items-center gap-3 border-l border-gray-300 pl-4">
                         <span class="text-xs text-gray-500">Correct Value:</span>
-                        <input type="number" value="${q.correctAnswer || ''}" onchange="updateAndAutoSave('correctAnswer', ${q.id}, null, this.value)" class="w-14 px-2 py-1 border rounded-md text-sm text-center" placeholder="None">
+                        <input type="number" value="${q.correctAnswer || ''}" onchange="updateAndAutoSave('correctAnswer', ${q.id}, null, this.value)" class="w-14 px-2 py-1 border rounded-md text-lg sm:text-xl text-gray-900 text-center" placeholder="None">
                         <span class="text-xs text-gray-400">(Leave blank for no correct answer)</span>
                     </div>
                 </div>`;
@@ -504,13 +569,13 @@
                 return `<div class="flex flex-wrap items-center gap-4 bg-gray-50 p-3 rounded-lg">
                     <div class="flex items-center gap-3">
                         <span class="text-xs text-gray-500">Stars:</span>
-                        <select onchange="updateAndAutoSave('ratingMax', ${q.id}, null, this.value)" class="border rounded px-2 py-1 text-sm">
+                        <select onchange="updateAndAutoSave('ratingMax', ${q.id}, null, this.value)" class="border rounded px-2 py-1 text-lg sm:text-xl text-gray-900">
                             ${[1,2,3,4,5,6,7,8,9,10].map(n => `<option value="${n}" ${(q.max || 5) === n ? 'selected' : ''}>${n} stars</option>`).join('')}
                         </select>
                     </div>
                     <div class="flex items-center gap-3 border-l border-gray-300 pl-4">
                         <span class="text-xs text-gray-500">Correct Value:</span>
-                        <select onchange="updateAndAutoSave('correctAnswer', ${q.id}, null, this.value)" class="border rounded px-2 py-1 text-sm">
+                        <select onchange="updateAndAutoSave('correctAnswer', ${q.id}, null, this.value)" class="border rounded px-2 py-1 text-lg sm:text-xl text-gray-900">
                             <option value="">None</option>
                             ${Array.from({length: maxStars}, (_, i) => i + 1).map(n => `<option value="${n}" ${q.correctAnswer == n ? 'selected' : ''}>${n} star${n > 1 ? 's' : ''}</option>`).join('')}
                         </select>
@@ -526,29 +591,29 @@
                             ${(q.rows || ['Row 1']).map((r,i)=>`
                                 <div class="flex items-center gap-1 mb-1">
                                     <span class="text-gray-500 w-5 text-xs">${i+1}.</span>
-                                    <input type="text" value="${escapeHtml(r)}" onchange="updateAndAutoSave('row', ${q.id}, ${i}, this.value)" class="flex-1 px-2 py-1 border rounded-lg text-xs">
-                                    <button onclick="event.stopPropagation(); removeRow(${q.id}, ${i})" class="text-red-500"><i class="fas fa-times text-xs"></i></button>
+                                    <input type="text" value="${escapeHtml(r)}" onchange="updateAndAutoSave('row', ${q.id}, ${i}, this.value)" class="flex-1 px-2 py-1 border rounded-lg text-lg sm:text-xl text-gray-900">
+                                    <button onclick="event.stopPropagation(); removeRow(${q.id}, ${i})" class="text-red-500"><i class="fas fa-times text-sm"></i></button>
                                 </div>
                             `).join('')}
-                            <button onclick="event.stopPropagation(); addRow(${q.id})" class="text-indigo-600 text-xs">+ Add row</button>
+                            <button onclick="event.stopPropagation(); addRow(${q.id})" class="text-indigo-600 text-sm">+ Add row</button>
                         </div>
                         <div>
                             <label class="block text-xs font-medium text-gray-700 mb-1">Columns</label>
                             ${(q.columns || ['Column 1']).map((c,i)=>`
                                 <div class="flex items-center gap-1 mb-1">
-                                    <input type="text" value="${escapeHtml(c)}" onchange="updateAndAutoSave('column', ${q.id}, ${i}, this.value)" class="flex-1 px-2 py-1 border rounded-lg text-xs">
-                                    <button onclick="event.stopPropagation(); removeColumn(${q.id}, ${i})" class="text-red-500"><i class="fas fa-times text-xs"></i></button>
+                                    <input type="text" value="${escapeHtml(c)}" onchange="updateAndAutoSave('column', ${q.id}, ${i}, this.value)" class="flex-1 px-2 py-1 border rounded-lg text-lg sm:text-xl text-gray-900">
+                                    <button onclick="event.stopPropagation(); removeColumn(${q.id}, ${i})" class="text-red-500"><i class="fas fa-times text-sm"></i></button>
                                 </div>
                             `).join('')}
-                            <button onclick="event.stopPropagation(); addColumn(${q.id})" class="text-indigo-600 text-xs">+ Add column</button>
+                            <button onclick="event.stopPropagation(); addColumn(${q.id})" class="text-indigo-600 text-sm">+ Add column</button>
                         </div>
                     </div>
                     <div class="mt-3 pt-3 border-t border-gray-200">
                         <label class="block text-xs font-medium text-gray-700 mb-2">Correct Answers (per row):</label>
                         ${(q.rows || ['Row 1']).map((r, rowIndex) => `
                             <div class="flex items-center gap-2 mb-1">
-                                <span class="text-xs font-medium text-gray-600 w-16 truncate">${escapeHtml(r)}:</span>
-                                <select onchange="updateGridCorrectAnswer(${q.id}, ${rowIndex}, this.value)" class="flex-1 px-2 py-1 border rounded-lg text-xs">
+                                <span class="text-sm font-medium text-gray-600 w-20 truncate">${escapeHtml(r)}:</span>
+                                <select onchange="updateGridCorrectAnswer(${q.id}, ${rowIndex}, this.value)" class="flex-1 px-2 py-1 border rounded-lg text-lg sm:text-xl text-gray-900">
                                     <option value="">None</option>
                                     ${(q.columns || ['Column 1']).map(c => `<option value="${escapeHtml(c)}" ${(q.correctAnswers && q.correctAnswers[rowIndex] === c) ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}
                                 </select>
@@ -567,28 +632,28 @@
                             ${(q.rows || ['Row 1']).map((r,i)=>`
                                 <div class="flex items-center gap-1 mb-1">
                                     <span class="text-gray-500 w-5 text-xs">${i+1}.</span>
-                                    <input type="text" value="${escapeHtml(r)}" onchange="updateAndAutoSave('row', ${q.id}, ${i}, this.value)" class="flex-1 px-2 py-1 border rounded-lg text-xs">
-                                    <button onclick="event.stopPropagation(); removeRow(${q.id}, ${i})" class="text-red-500"><i class="fas fa-times text-xs"></i></button>
+                                    <input type="text" value="${escapeHtml(r)}" onchange="updateAndAutoSave('row', ${q.id}, ${i}, this.value)" class="flex-1 px-2 py-1 border rounded-lg text-lg sm:text-xl text-gray-900">
+                                    <button onclick="event.stopPropagation(); removeRow(${q.id}, ${i})" class="text-red-500"><i class="fas fa-times text-sm"></i></button>
                                 </div>
                             `).join('')}
-                            <button onclick="event.stopPropagation(); addRow(${q.id})" class="text-indigo-600 text-xs">+ Add row</button>
+                            <button onclick="event.stopPropagation(); addRow(${q.id})" class="text-indigo-600 text-sm">+ Add row</button>
                         </div>
                         <div>
                             <label class="block text-xs font-medium text-gray-700 mb-1">Columns</label>
                             ${(q.columns || ['Column 1']).map((c,i)=>`
                                 <div class="flex items-center gap-1 mb-1">
-                                    <input type="text" value="${escapeHtml(c)}" onchange="updateAndAutoSave('column', ${q.id}, ${i}, this.value)" class="flex-1 px-2 py-1 border rounded-lg text-xs">
-                                    <button onclick="event.stopPropagation(); removeColumn(${q.id}, ${i})" class="text-red-500"><i class="fas fa-times text-xs"></i></button>
+                                    <input type="text" value="${escapeHtml(c)}" onchange="updateAndAutoSave('column', ${q.id}, ${i}, this.value)" class="flex-1 px-2 py-1 border rounded-lg text-lg sm:text-xl text-gray-900">
+                                    <button onclick="event.stopPropagation(); removeColumn(${q.id}, ${i})" class="text-red-500"><i class="fas fa-times text-sm"></i></button>
                                 </div>
                             `).join('')}
-                            <button onclick="event.stopPropagation(); addColumn(${q.id})" class="text-indigo-600 text-xs">+ Add column</button>
+                            <button onclick="event.stopPropagation(); addColumn(${q.id})" class="text-indigo-600 text-sm">+ Add column</button>
                         </div>
                     </div>
                     <div class="mt-3 pt-3 border-t border-gray-200">
                         <label class="block text-xs font-medium text-gray-700 mb-2">Correct Answers (select all that apply per row):</label>
                         ${(q.rows || ['Row 1']).map((r, rowIndex) => `
                             <div class="mb-2">
-                                <span class="text-xs font-medium text-gray-600 block mb-1">${escapeHtml(r)}:</span>
+                                <span class="text-sm font-medium text-gray-600 block mb-1">${escapeHtml(r)}:</span>
                                 <div class="flex flex-wrap gap-2 ml-2">
                                     ${(q.columns || ['Column 1']).map(c => {
                                         const isChecked = q.correctAnswers && q.correctAnswers[rowIndex] && q.correctAnswers[rowIndex].includes(c);
@@ -596,8 +661,8 @@
                                             <label class="flex items-center gap-1 cursor-pointer">
                                                 <input type="checkbox" value="${escapeHtml(c)}" ${isChecked ? 'checked' : ''} 
                                                     onchange="updateGridCheckboxCorrect(${q.id}, ${rowIndex}, '${escapeHtml(c)}', this.checked)" 
-                                                    class="w-3 h-3 text-green-600 rounded">
-                                                <span class="text-xs">${escapeHtml(c)}</span>
+                                                    class="w-4 h-4 text-green-600 rounded">
+                                                <span class="text-sm sm:text-base text-gray-900">${escapeHtml(c)}</span>
                                             </label>
                                         `;
                                     }).join('')}
@@ -610,7 +675,7 @@
                 return checkboxGridHtml;
 
             default:
-                return `<input type="text" class="w-full text-sm border-0 border-b border-gray-300" placeholder="Answer" disabled>`;
+                return `<input type="text" class="w-full text-lg sm:text-xl text-gray-900 border-0 border-b border-gray-300" placeholder="Answer" disabled>`;
         }
     }
 
@@ -824,7 +889,7 @@
             default_required: document.getElementById('defaultRequired')?.checked || false,
             is_quiz: document.getElementById('isQuiz')?.checked ?? true,
             release_grade: document.querySelector('input[name="release_grade"]:checked')?.value || 'immediately',
-            default_points: document.getElementById('defaultPoints')?.value || 1
+            default_points: document.getElementById('defaultPoints')?.value ?? 1
         };
 
         const saved = localStorage.getItem('form_settings');
@@ -849,7 +914,7 @@
                 max: q.max,
                 rows: q.rows,
                 columns: q.columns,
-                points: q.points || 1,
+                points: q.points ?? 1,
                 correctAnswer: q.correctAnswer || null,
                 correctAnswers: q.correctAnswers || null
             })),
@@ -891,7 +956,7 @@
                     const btn = document.getElementById('saveFormButton');
                     btn.innerHTML = '<i class="fas fa-check mr-2"></i> Save Form';
                     btn.disabled = false;
-                    appConfirm('Form saved successfully! Click OK to go back to Manage Forms.').then((confirmed) => {
+                    appConfirm('Form saved successfully!').then((confirmed) => {
                         if (confirmed) {
                             window.location.href = '{{ route("intercession.index") }}#forms-tab';
                         }

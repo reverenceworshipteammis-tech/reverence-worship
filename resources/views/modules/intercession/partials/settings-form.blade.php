@@ -512,12 +512,19 @@ function getSettings() {
 
 function autoSaveSettings() {
     const settings = getSettings();
+    const isEditPage = window.location.pathname.includes('/forms/manage/') && window.location.pathname.includes('/edit');
+
+    if (isEditPage && typeof window.saveForm === 'function') {
+        window.saveForm(true);
+        return;
+    }
+
     localStorage.setItem('form_settings', JSON.stringify(settings));
-    
+
     if (typeof window.showAutoSaveIndicator === 'function') {
         window.showAutoSaveIndicator();
     }
-    
+
     if (typeof window.autoSave === 'function') {
         window.autoSave();
     }
@@ -567,6 +574,7 @@ window.toggleQuizSettings = toggleQuizSettings;
 window.toggleTimerSettings = toggleTimerSettings;
 window.toggleDepartmentRestriction = toggleDepartmentRestriction;
 window.autoSaveSettings = autoSaveSettings;
+window._autoSaveSettings = autoSaveSettings;
 window.loadSettingsFromForm = loadSettingsFromForm;
 window.getSettings = getSettings;
 window.setDefaultSettings = setDefaultSettings;

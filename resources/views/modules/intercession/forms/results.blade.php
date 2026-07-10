@@ -5,6 +5,26 @@
 
 @section('content')
 <div class="results-page max-w-6xl mx-auto py-5 px-3 sm:px-5">
+    @php
+        $settings = json_decode($form->settings, true) ?? [];
+        $limitOneResponse = $settings['limit_one_response'] ?? true;
+        $isViewingOwnSubmission = (int) ($submission->user_id ?? 0) === (int) auth()->id();
+        $canSubmitAnotherResponse = !($managerReviewMode ?? false) && $isViewingOwnSubmission && !$limitOneResponse;
+
+        if (!function_exists('renderRichResultText')) {
+            function renderRichResultText($text) {
+                $text = (string) $text;
+                if (preg_match('/<\/?[a-z][\s\S]*>/i', $text)) {
+                    return strip_tags($text, '<b><strong><i><em><u><br><div><p>');
+                }
+                $text = e($text);
+                $text = preg_replace('/\*\*(.+?)\*\*/s', '<strong>$1</strong>', $text);
+                $text = preg_replace('/__(.+?)__/s', '<u>$1</u>', $text);
+                $text = preg_replace('/\*(.+?)\*/s', '<em>$1</em>', $text);
+                return nl2br($text);
+            }
+        }
+    @endphp
     
     <!-- Back Button -->
     <div class="mb-4">
@@ -36,6 +56,13 @@
                     @if(isset($submission) && isset($submission->submitted_at))
                     <p class="text-blue-200 text-xs">Submitted</p>
                     <p class="text-white text-sm font-medium">{{ \Carbon\Carbon::parse($submission->submitted_at)->format('M d, Y h:i A') }}</p>
+                    @if($canSubmitAnotherResponse)
+                        <a href="{{ route('forms.take', $form->id) }}"
+                           class="mt-3 inline-flex items-center gap-2 rounded-lg bg-white/15 px-3 py-2 text-xs font-semibold text-white transition hover:bg-white/25">
+                            <i class="fas fa-rotate-right"></i>
+                            Submit another response
+                        </a>
+                    @endif
                     @endif
                 </div>
             </div>
@@ -44,10 +71,11 @@
         <!-- Score Summary -->
         @php
             // Get settings
-            $settings = json_decode($form->settings, true) ?? [];
+            $settings = $settings ?? (json_decode($form->settings, true) ?? []);
             $isQuiz = $settings['is_quiz'] ?? false;
             $releaseGrade = $settings['release_grade'] ?? 'immediately';
             $allowViewResponse = $settings['allow_view_response'] ?? true;
+            $limitOneResponse = $settings['limit_one_response'] ?? true;
             $allowPartialPoints = $settings['allow_partial_points'] ?? true;
             $manualGrades = json_decode($submission->manual_grades ?? '[]', true) ?: [];
             $isViewingOwnSubmission = (int) ($submission->user_id ?? 0) === (int) auth()->id();
@@ -204,8 +232,7 @@
                             
                             if ($allowPartialPoints) {
                                 if ($correctSelected > 0 && $totalCorrect > 0) {
-                                    $credit = max(0, $correctSelected - $incorrectSelected);
-                                    $questionEarnedPoints = ($credit / $totalCorrect) * $points;
+                                    $questionEarnedPoints = ($correctSelected / $totalCorrect) * $points;
                                 } else {
                                     $questionEarnedPoints = 0;
                                 }
@@ -279,8 +306,8 @@
                     
                     if (!empty($correctAnswers) && is_array($correctAnswers)) {
                         $gridEarned = 0;
-                        $totalRows = count($rows);
-                        $rowPoints = $totalRows > 0 ? $points / $totalRows : 0;
+                        $totalCorrect = 0;
+                        $correctSelected = 0;
                         $allCorrect = true;
                         $correctDisplayParts = [];
                         
@@ -291,16 +318,36 @@
                             
                             if ($correctRowAnswer !== null && $correctRowAnswer !== '') {
                                 $correctDisplayParts[] = $row . ': ' . $correctRowAnswer;
-                                if ($userRowAnswer == $correctRowAnswer) {
-                                    $gridEarned += $rowPoints;
-                                } else {
+                                
+                                $correct = is_array($correctRowAnswer) ? array_values(array_unique($correctRowAnswer)) : [];
+                                $selected = is_array($userRowAnswer) ? array_values(array_unique($userRowAnswer)) : [];
+                                $rowCorrectCount = count(array_intersect($selected, $correct));
+                                $rowIncorrectCount = count(array_diff($selected, $correct));
+                                $rowExact = $rowCorrectCount === count($correct)
+                                    && $rowIncorrectCount === 0
+                                    && count($selected) === count($correct);
+
+                                $totalCorrect += count($correct);
+                                $correctSelected += $rowCorrectCount;
+                                if (!$rowExact) {
                                     $allCorrect = false;
                                 }
                             }
                         }
+
                         $correctDisplay = implode(', ', $correctDisplayParts);
-                        $questionEarnedPoints = round($gridEarned, 2);
-                        $isCorrect = $allCorrect && $gridEarned > 0;
+                        if ($allowPartialPoints) {
+                            $questionEarnedPoints = $totalCorrect > 0 && $correctSelected > 0
+                                ? round(($correctSelected / $totalCorrect) * $points, 2)
+                                : 0;
+                        } else {
+                            $questionEarnedPoints = $allCorrect && $totalCorrect > 0 ? $points : 0;
+                            if ($questionEarnedPoints > 0) {
+                                $isCorrect = true;
+                            }
+                        }
+                        $isCorrect = $allCorrect && $questionEarnedPoints > 0;
+                        $isPartiallyCorrect = $questionEarnedPoints > 0 && !$isCorrect;
                     }
                 } elseif ($questionType == 'checkbox_grid') {
                     $rows = $question['rows'] ?? [];
@@ -310,48 +357,43 @@
                     $storedColumns = $columns;
                     
                     if (!empty($correctAnswers) && is_array($correctAnswers)) {
-                        $gridEarned = 0;
-                        $totalRows = count($rows);
-                        $rowPoints = $totalRows > 0 ? $points / $totalRows : 0;
+                        $totalCorrect = 0;
+                        $correctSelected = 0;
                         $allCorrect = true;
                         $correctDisplayParts = [];
                         
                         foreach ($rows as $rowIndex => $row) {
                             $rowKey = 'question_' . $index . '_' . $rowIndex;
                             $userRowAnswers = isset($gridAnswers[$rowKey]) ? (array)$gridAnswers[$rowKey] : [];
-                            $correctRowAnswers = $correctAnswers[$rowIndex] ?? [];
+                            $correctRowAnswers = array_values(array_unique((array) ($correctAnswers[$rowIndex] ?? [])));
                             
                             if (!empty($correctRowAnswers)) {
                                 $correctDisplayParts[] = $row . ': ' . implode(', ', $correctRowAnswers);
                                 
-                                if (!empty($userRowAnswers)) {
-                                    $correctRowAnswers = array_values(array_unique($correctRowAnswers));
-                                    $userRowAnswers = array_values(array_unique($userRowAnswers));
-                                    $correctCount = count(array_intersect($correctRowAnswers, $userRowAnswers));
-                                    $incorrectCount = count(array_diff($userRowAnswers, $correctRowAnswers));
-                                    $rowExact = $correctCount === count($correctRowAnswers)
-                                        && $incorrectCount === 0
-                                        && count($userRowAnswers) === count($correctRowAnswers);
-                                    if ($allowPartialPoints) {
-                                        $credit = max(0, $correctCount - $incorrectCount);
-                                        $gridEarned += ($credit / count($correctRowAnswers)) * $rowPoints;
-                                    } else {
-                                        if ($rowExact) {
-                                            $gridEarned += $rowPoints;
-                                        }
-                                    }
-                                    if (!$rowExact) {
-                                        $allCorrect = false;
-                                    }
-                                } else {
+                                $selected = array_values(array_unique($userRowAnswers));
+                                $rowCorrectCount = count(array_intersect($selected, $correctRowAnswers));
+                                $rowIncorrectCount = count(array_diff($selected, $correctRowAnswers));
+                                $rowExact = $rowCorrectCount === count($correctRowAnswers)
+                                    && $rowIncorrectCount === 0
+                                    && count($selected) === count($correctRowAnswers);
+
+                                $totalCorrect += count($correctRowAnswers);
+                                $correctSelected += $rowCorrectCount;
+                                if (!$rowExact) {
                                     $allCorrect = false;
                                 }
                             }
                         }
                         $correctDisplay = implode(', ', $correctDisplayParts);
-                        $questionEarnedPoints = round($gridEarned, 2);
-                        $isCorrect = $allCorrect && $gridEarned > 0;
-                        $isPartiallyCorrect = !$isCorrect && $questionEarnedPoints > 0;
+                        if ($allowPartialPoints) {
+                            $questionEarnedPoints = $totalCorrect > 0 && $correctSelected > 0
+                                ? round(($correctSelected / $totalCorrect) * $points, 2)
+                                : 0;
+                        } else {
+                            $questionEarnedPoints = $allCorrect && $totalCorrect > 0 ? $points : 0;
+                        }
+                        $isCorrect = $allCorrect && $questionEarnedPoints > 0;
+                        $isPartiallyCorrect = $questionEarnedPoints > 0 && !$isCorrect;
                     }
                 }
 
@@ -390,23 +432,7 @@
             // Get release status message
             $releaseStatusMessage = '';
             $releaseStatusIcon = '';
-            if ($releaseGrade == 'immediately') {
-                $releaseStatusMessage = 'Auto-graded';
-                $releaseStatusIcon = 'fa-check-circle text-green-500';
-            } elseif ($releaseGrade == 'later') {
-                if ($isReleased) {
-                    $releaseStatusMessage = !empty($submission->released_at)
-                        ? 'Released on ' . \Carbon\Carbon::parse($submission->released_at)->format('M d, Y h:i A')
-                        : 'Reviewed and released';
-                    $releaseStatusIcon = 'fa-check-circle text-green-500';
-                } else {
-                    $releaseStatusMessage = 'Pending Review';
-                    $releaseStatusIcon = 'fa-clock text-yellow-500';
-                }
-            } elseif ($releaseGrade == 'never') {
-                $releaseStatusMessage = 'Private';
-                $releaseStatusIcon = 'fa-lock text-gray-500';
-            }
+           
         @endphp
 
         @if($managerReviewMode ?? false)
@@ -449,7 +475,7 @@
         <div class="px-5 sm:px-7 py-3 border-b flex items-start sm:items-center gap-3 {{ $resultReleasedToUser ? 'bg-green-50' : 'bg-yellow-50' }}">
             <i class="fas {{ $releaseStatusIcon }} {{ $resultReleasedToUser ? 'text-green-500' : 'text-yellow-500' }}"></i>
             <span class="text-sm {{ $resultReleasedToUser ? 'text-green-700' : 'text-yellow-700' }}">
-                <strong>Status:</strong> {{ $releaseStatusMessage }}
+              
                 @if($isQuiz && $releaseGrade == 'later' && $isReleased)
                     <span class="text-xs text-green-600 ml-2">
                         <i class="fas fa-check-circle mr-1"></i> Score released
@@ -460,25 +486,12 @@
         
         <div class="results-summary bg-slate-50 px-5 sm:px-7 py-6 border-b">
             @if($showScore)
-                <div class="summary-grid grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div class="summary-card rounded-xl border border-gray-200 bg-white p-4">
-                        <p class="text-gray-600 text-sm">Score</p>
-                        <div class="mt-1 flex items-baseline gap-1">
-                            <span class="text-3xl font-bold text-blue-600">{{ number_format($scorePercentage, 1) }}%</span>
-                        </div>
-                        <p class="mt-1 text-xs text-gray-400">Overall result</p>
-                    </div>
-
+                <div class="summary-grid grid grid-cols-1 sm:grid-cols-1 gap-3">
                     <div class="summary-card rounded-xl border border-gray-200 bg-white p-4">
                         <p class="text-gray-600 text-sm">Points</p>
-                        <p class="mt-1 text-3xl font-bold text-green-600">{{ number_format($earnedPoints, 1) }}</p>
-                        <p class="mt-1 text-xs text-gray-400">Out of {{ $totalPossiblePoints }} points</p>
-                    </div>
-
-                    <div class="summary-card rounded-xl border border-gray-200 bg-white p-4">
-                        <p class="text-gray-600 text-sm">Questions</p>
-                        <p class="mt-1 text-3xl font-bold text-gray-800">{{ $totalQuestionsCount }}</p>
-                        <p class="mt-1 text-xs text-gray-400">Questions in this form</p>
+                        <p class="mt-1 text-3xl font-bold text-green-600">
+                            {{ number_format($earnedPoints, 1) }}/{{ rtrim(rtrim(number_format($totalPossiblePoints, 2, '.', ''), '0'), '.') }}
+                        </p>
                     </div>
                 </div>
                 
@@ -518,7 +531,6 @@
                 </div>
                 
                 <div class="space-y-5">
-                    @php $questionCounter = 0; @endphp
                     @foreach($questions as $index => $question)
                         @php
                             $questionType = $question['type'] ?? 'short_answer';
@@ -537,13 +549,12 @@
                                 @endif
                                 @if($questionType == 'section_break')
                                     <div class="mt-3 pt-3 border-t border-gray-300">
-                                        <span class="text-xs text-gray-400">Section break</span>
+                                        
                                     </div>
                                 @endif
                             </div>
                         @else
                             @php
-                                $questionCounter++;
                                 $questionText = $question['text'] ?? $question['title'] ?? $question['question'] ?? 'Question';
                                 $questionPoints = isset($question['points']) ? (int)$question['points'] : 1;
                                 
@@ -642,11 +653,8 @@
                             <div class="response-card border border-gray-200 bg-white rounded-xl p-4 sm:p-5 transition-all">
                                 <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-3">
                                     <div class="flex items-start gap-3">
-                                        <div class="w-7 h-7 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                                            <span class="text-blue-600 text-sm font-bold">{{ $questionCounter }}</span>
-                                        </div>
                                         <div>
-                                            <h3 class="font-semibold text-gray-800">{{ $questionText }}</h3>
+                                            <h3 class="font-semibold text-gray-800">{!! renderRichResultText($questionText) !!}</h3>
                                             @if($statusBadge)
                                             <span class="inline-block mt-1 text-xs px-2 py-0.5 rounded-full {{ $statusBadgeColor }}">
                                                 {{ $statusBadge }}
@@ -675,7 +683,7 @@
                                                 @if(!$hasAnswer)
                                                     <span class="text-xs text-slate-500 font-medium">No answer</span>
                                                 @elseif($correctDisplay === '')
-                                                    <span class="text-xs text-gray-500 font-medium">Not graded</span>
+                                                    <span class="text-xs text-gray-500 font-medium"></span>
                                                 @elseif($isCorrect)
                                                     <i class="fas fa-check-circle text-green-500"></i>
                                                     <span class="text-xs text-green-600 font-medium">+{{ $total }} pts</span>
@@ -701,7 +709,7 @@
                                 <div class="response-content sm:ml-10">
                                     <!-- User's Answer -->
                                     <div class="mb-2">
-                                        <p class="text-xs text-gray-500 mb-1">Your Answer:</p>
+                                    
                                         <div class="bg-gray-50 rounded-lg p-3 
                                             {{ $correctDisplay ? ($isCorrect ? 'border-l-4 border-green-500' : ($isPartial ? 'border-l-4 border-yellow-500' : 'border-l-4 border-red-500')) : '' }}">
                                             
@@ -903,22 +911,7 @@
                                         </div>
                                     @endif
                                     
-                                    <!-- Partial points info -->
-                                    @if(($questionType == 'checkboxes' || $questionType == 'multiple_choice_grid' || $questionType == 'checkbox_grid') && $allowPartialPoints && $correctDisplay)
-                                        <div class="mt-2 p-2 bg-blue-50 rounded-lg border border-blue-200">
-                                            <p class="text-xs text-blue-700">
-                                                <i class="fas fa-info-circle mr-1"></i> 
-                                                Partial grading: {{ number_format($earned, 1) }} out of {{ $total }} points
-                                                @if($isPartial)
-                                                    <span class="text-blue-500"></span>
-                                                @elseif($isCorrect)
-                                                    <span class="text-green-500"></span>
-                                                @else
-                                                    <span class="text-red-500"></span>
-                                                @endif
-                                            </p>
-                                        </div>
-                                    @endif
+                                    
                                     
                                     <div class="mt-2">
                                         <span class="text-xs text-gray-400">

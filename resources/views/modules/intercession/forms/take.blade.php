@@ -16,7 +16,7 @@ $shuffleQuestions = $settings['shuffle_questions'] ?? false;
 $limitOneResponse = $settings['limit_one_response'] ?? true;
 $isQuiz = $settings['is_quiz'] ?? false;
 $confirmationMessage = $settings['confirmation_message'] ?? 'Your response has been recorded.';
-$showQuestionNumbers = $settings['show_question_numbers'] ?? true;
+$showQuestionNumbers = $settings['show_question_numbers'] ?? false;
 $onePageAtATime = $settings['one_page_at_a_time'] ?? false;
 $showTimer = $settings['show_timer'] ?? false;
 $timeLimit = $settings['time_limit'] ?? 30;
@@ -25,6 +25,21 @@ $allowEditing = $settings['allow_editing'] ?? false;
 $releaseGrade = $settings['release_grade'] ?? 'immediately';
 $allowViewResponse = $settings['allow_view_response'] ?? true;
 $allowPartialPoints = $settings['allow_partial_points'] ?? true;
+
+if (!function_exists('renderFormattedText')) {
+    function renderFormattedText($text) {
+        $text = (string) $text;
+        if (preg_match('/<\/?[a-z][\s\S]*>/i', $text)) {
+            return strip_tags($text, '<b><strong><i><em><u><br><div><p>');
+        }
+
+        $text = e($text);
+        $text = preg_replace('/\*\*(.+?)\*\*/s', '<strong>$1</strong>', $text);
+        $text = preg_replace('/__(.+?)__/s', '<u>$1</u>', $text);
+        $text = preg_replace('/\*(.+?)\*/s', '<em>$1</em>', $text);
+        return nl2br($text);
+    }
+}
 
 // Determine if correct answers should be shown on the form
 $showCorrectAnswers = ($releaseGrade == 'immediately');
@@ -72,6 +87,10 @@ $isLoggedIn = auth()->check();
     .take-form-shell { box-shadow:0 18px 50px rgba(15,23,42,.08); }
     .take-question { background:#fff; border:1px solid #e2e8f0; }
     .take-question:focus-within { border-color:#93c5fd; box-shadow:0 0 0 3px rgba(37,99,235,.08); }
+    .auto-grow-textarea {
+        overflow: hidden;
+        resize: none;
+    }
     @media (max-width:640px) {
         .take-form-header, .take-form-body, .take-form-footer { padding-left:1rem; padding-right:1rem; }
         .take-question { padding:1rem; }
@@ -112,7 +131,7 @@ $isLoggedIn = auth()->check();
             </div>
             <div class="mt-4">
                 <h1 class="text-3xl font-bold text-white mb-2">{{ $form->title }}</h1>
-                <p class="text-indigo-100">{{ $form->description }}</p>
+                <p class="text-indigo-100 whitespace-pre-line">{{ $form->description }}</p>
             </div>
         </div>
 
@@ -205,13 +224,13 @@ $isLoggedIn = auth()->check();
 
                     @if($isSection)
                     <div class="section-card bg-gray-50 rounded-xl p-6 border-l-4 border-indigo-500">
-                        <h2 class="text-2xl font-bold text-gray-800">{{ $questionText }}</h2>
+                        <h2 class="text-2xl font-bold text-gray-800 leading-relaxed">{!! renderFormattedText($questionText) !!}</h2>
                         @if(!empty($question['description']))
-                        <p class="text-gray-600 mt-2">{{ $question['description'] }}</p>
+                        <p class="text-gray-600 mt-2 leading-relaxed">{!! renderFormattedText($question['description']) !!}</p>
                         @endif
                         @if($questionType === 'section_break')
                         <div class="mt-4 border-t border-gray-300 pt-4">
-                            <span class="text-xs text-gray-400">Section break</span>
+                          
                         </div>
                         @endif
                     </div>
@@ -220,26 +239,16 @@ $isLoggedIn = auth()->check();
                     <div class="question-card take-question rounded-xl p-6 transition-all duration-300" data-question="{{ $originalIndex }}">
                         <div class="flex items-start justify-between mb-4">
                             <div class="flex items-center gap-3">
-                                @if($showQuestionNumbers)
-                                <div class="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 font-bold text-sm">
-                                    {{ $questionCounter }}
-                                </div>
-                                @endif
-                                <label class="text-lg font-semibold text-gray-800">
-                                    {{ $questionText }}
+                                <label class="text-lg font-semibold text-gray-800 leading-relaxed block">
+                                    {!! renderFormattedText($questionText) !!}
                                     @if($isRequired)
                                     <span class="text-red-500 text-sm ml-1">*</span>
                                     @endif
                                 </label>
                             </div>
-                            @if($isQuiz && isset($points) && $points > 0)
-                            <span class="text-xs bg-gray-200 text-gray-600 px-2 py-1 rounded-full">
-                                <i class="fas fa-star mr-1"></i> {{ $points }} pts
-                            </span>
-                            @endif
                         </div>
 
-                        <div class="take-answer {{ $showQuestionNumbers ? 'ml-11' : '' }}">
+                        <div class="take-answer">
                             @if($questionType == 'short_answer')
                             <input type="text"
                                 name="question_{{ $originalIndex }}"
@@ -251,10 +260,11 @@ $isLoggedIn = auth()->check();
                             @elseif($questionType == 'paragraph')
                             <textarea name="question_{{ $originalIndex }}"
                                 rows="4"
-                                class="question-input w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
+                                class="question-input auto-grow-textarea w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
                                 placeholder="Write your detailed answer here..."
                                 {{ $isRequired ? 'required' : '' }}
-                                data-question-index="{{ $originalIndex }}"></textarea>
+                                data-question-index="{{ $originalIndex }}"
+                                oninput="autoResizeTextarea(this)"></textarea>
 
                             @elseif($questionType == 'multiple_choice')
                             <div class="space-y-3">
@@ -285,7 +295,7 @@ $isLoggedIn = auth()->check();
                                     <p class="text-xs text-gray-500 flex items-center gap-1">
                                         <i class="fas fa-info-circle text-blue-400"></i>
                                         @if($correctAnswerCount > 0)
-                                            <span class="font-medium text-indigo-600">Select exactly {{ $correctAnswerCount }}</span>
+                                            <span class="font-medium text-indigo-600">Select {{ $correctAnswerCount }}</span>
                                             <span class="text-gray-400 text-[10px]">({{ $correctAnswerCount }} of {{ count($options) }} options)</span>
                                         @else
                                             Select all that apply
@@ -323,7 +333,7 @@ $isLoggedIn = auth()->check();
                                 @if($correctAnswerCount > 0)
                                 <div id="checkboxWarning_{{ $originalIndex }}" class="hidden mt-2 text-xs text-amber-700 bg-amber-50 p-2.5 rounded-lg border border-amber-200 flex items-start gap-2">
                                     <i class="fas fa-exclamation-triangle text-amber-500 mt-0.5"></i>
-                                    <span id="warningMessage_{{ $originalIndex }}">Please select exactly {{ $correctAnswerCount }}</span>
+                                    <span id="warningMessage_{{ $originalIndex }}">Please select {{ $correctAnswerCount }}</span>
                                 </div>
                                 @endif
                             </div>
@@ -442,7 +452,7 @@ $isLoggedIn = auth()->check();
                                     <p class="text-xs text-gray-500 flex items-center gap-1">
                                         <i class="fas fa-info-circle text-blue-400"></i>
                                         @if($gridCorrectCount > 0)
-                                            <span class="font-medium text-indigo-600">Select exactly {{ $gridCorrectCount }} across all rows</span>
+                                            <span class="font-medium text-indigo-600">Select {{ $gridCorrectCount }} across all rows</span>
                                         @else
                                             Select all that apply
                                         @endif
@@ -489,7 +499,7 @@ $isLoggedIn = auth()->check();
                                 @if($gridCorrectCount > 0)
                                 <div id="gridWarning_{{ $originalIndex }}" class="hidden mt-2 text-xs text-amber-700 bg-amber-50 p-2.5 rounded-lg border border-amber-200 flex items-start gap-2">
                                     <i class="fas fa-exclamation-triangle text-amber-500 mt-0.5"></i>
-                                    <span id="gridWarningMessage_{{ $originalIndex }}">Please select exactly {{ $gridCorrectCount }} across all rows.</span>
+                                    <span id="gridWarningMessage_{{ $originalIndex }}">Please select {{ $gridCorrectCount }} across all rows.</span>
                                 </div>
                                 @endif
                             </div>
@@ -517,12 +527,12 @@ $isLoggedIn = auth()->check();
             <div class="take-form-footer bg-white px-8 py-6 border-t">
                 <div class="flex justify-between items-center">
                     <div class="text-sm text-gray-500">
-                        <i class="fas fa-bible mr-1"></i> Philippians 4:13
+                    
                         @if($allowEditing)
                         <span class="ml-2 text-xs text-blue-600">(Editing allowed after submission)</span>
                         @endif
                         @if($isQuiz && $allowPartialPoints)
-                        <span class="ml-2 text-xs text-green-600">"I can do all things through Christ who strengthens me."</span>
+                      
                         @endif
                     </div>
                     <button type="submit" id="submitBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-semibold transition flex items-center gap-2">
@@ -981,6 +991,9 @@ $isLoggedIn = auth()->check();
     document.addEventListener('DOMContentLoaded', function() {
         updateProgress();
         loadAutoSavedData();
+        document.querySelectorAll('.auto-grow-textarea').forEach(function(textarea) {
+            autoResizeTextarea(textarea);
+        });
         
         // Add validation to form submit
         const form = document.getElementById('formSubmission');
@@ -993,6 +1006,12 @@ $isLoggedIn = auth()->check();
             });
         }
     });
+
+    function autoResizeTextarea(textarea) {
+        if (!textarea) return;
+        textarea.style.height = 'auto';
+        textarea.style.height = textarea.scrollHeight + 'px';
+    }
 
     // Add input event listeners for auto-save
     document.querySelectorAll('input, textarea, select').forEach(function(input) {

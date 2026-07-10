@@ -18,45 +18,24 @@
         $managedFormsCount = collect($allForms ?? [])->count();
     @endphp
 
-    {{-- Stats --}}
-    @if($canBrowseForms)
-    <div class="grid grid-cols-3 gap-2 sm:gap-3 mb-4 sm:mb-6">
-        <div class="bg-blue-50 rounded-lg sm:rounded-xl p-2 sm:p-4 text-center min-w-0">
-            <p class="text-xl sm:text-3xl font-bold text-blue-600 leading-tight">{{ $stats['total_forms'] ?? 0 }}</p>
-            <p class="text-[9px] sm:text-xs text-gray-600 leading-tight mt-1">TOTAL FORMS</p>
-        </div>
-        <div class="bg-green-50 rounded-lg sm:rounded-xl p-2 sm:p-4 text-center min-w-0">
-            <p class="text-xl sm:text-3xl font-bold text-green-600 leading-tight">{{ $stats['my_attempts'] ?? 0 }}</p>
-            <p class="text-[9px] sm:text-xs text-gray-600 leading-tight mt-1">ATTEMPTS</p>
-        </div>
-        <div class="bg-purple-50 rounded-lg sm:rounded-xl p-2 sm:p-4 text-center min-w-0">
-            <p class="text-xl sm:text-3xl font-bold text-purple-600 leading-tight">{{ number_format($stats['best_avg'] ?? 0, 1) }}%</p>
-            <p class="text-[9px] sm:text-xs text-gray-600 leading-tight mt-1">BEST SCORE</p>
-        </div>
-    </div>
-    @endif
-
     {{-- Form Actions --}}
     <div class="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-3 mb-6">
         <div class="grid w-full grid-cols-2 gap-1 rounded-xl border border-gray-200 bg-gray-50 p-1 sm:inline-flex sm:w-auto">
             @if($canBrowseForms)
             <button onclick="showFormSection('available')" id="form-section-available" class="section-btn whitespace-nowrap px-3 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white">
                 <i class="fas fa-clipboard-list mr-1.5"></i> Available
-                <span class="section-count ml-1 rounded-full px-1.5 py-0.5 text-[10px]">{{ $availableCount }}</span>
             </button>
             @endif
             
             @if($canViewOwnResults)
             <button onclick="showFormSection('results')" id="form-section-results" class="section-btn whitespace-nowrap px-3 py-2 rounded-lg text-sm font-medium text-gray-600">
                 <i class="fas fa-chart-line mr-1.5"></i> My Results
-                <span class="section-count ml-1 rounded-full px-1.5 py-0.5 text-[10px]">{{ $myResultsCount }}</span>
             </button>
             @endif
             
             @if($canManageForms || $isSuperAdmin)
             <button onclick="showFormSection('manage')" id="form-section-manage" class="section-btn whitespace-nowrap px-3 py-2 rounded-lg text-sm font-medium text-gray-600">
                 <i class="fas fa-sliders-h mr-1.5"></i> Manage
-                <span class="section-count ml-1 rounded-full px-1.5 py-0.5 text-[10px]">{{ $managedFormsCount }}</span>
             </button>
             @endif
             @if($canViewReports || $isSuperAdmin)
@@ -95,16 +74,22 @@
                 }
                 $questionsCount = collect($questions)->reject(fn($question) => in_array($question['type'] ?? '', ['title_section', 'section_break']))->count();
                 $createdDate = isset($form->created_at) ? \Carbon\Carbon::parse($form->created_at)->format('F j, Y') : 'Date unknown';
-                $hasTaken = isset($mySubmissions) && $mySubmissions->contains('form_id', $form->id);
+                $latestSubmission = isset($mySubmissions) ? $mySubmissions->firstWhere('form_id', $form->id) : null;
+                $hasTaken = !is_null($latestSubmission);
+                $cardUrl = $hasTaken
+                    ? route('forms.results', ['id' => $form->id, 'submission_id' => $latestSubmission->id])
+                    : route('forms.take', $form->id);
                 
-                // Determine button state
-                $buttonDisabled = $hasTaken && $limitOneResponse;
-                $buttonText = $hasTaken ? ($limitOneResponse ? 'Submitted' : 'Fill Again') : 'Open Form';
-                $buttonIcon = $hasTaken ? ($limitOneResponse ? 'fa-circle-check' : 'fa-rotate-right') : 'fa-arrow-right';
-                $buttonColor = $buttonDisabled ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700';
             @endphp
             @if($isPublished)
-            <div class="available-form-card rounded-xl p-4 sm:p-5 mb-3 transition-all duration-200">
+            <div
+                class="available-form-card rounded-xl p-4 sm:p-5 mb-3 transition-all duration-200 cursor-pointer hover:shadow-md hover:border-blue-200"
+                role="button"
+                tabindex="0"
+                onclick="window.location.href='{{ $cardUrl }}'"
+                onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); window.location.href='{{ $cardUrl }}'; }"
+                aria-label="{{ $hasTaken ? 'View results for ' . $form->title : 'Open form ' . $form->title }}"
+                >
                 <div class="grid grid-cols-1 sm:grid-cols-[minmax(0,520px)_auto] sm:items-center gap-3 sm:gap-6">
                     <div class="min-w-0">
                         <div class="flex items-center gap-2 mb-2">
@@ -120,34 +105,6 @@
                             </span>
                             @endif
                         </div>
-                        <p class="text-sm text-slate-500 mb-3 leading-relaxed">{{ Str::limit($form->description ?? 'No description', 150) }}</p>
-                        <div class="flex flex-wrap gap-x-4 gap-y-2 text-xs text-slate-500">
-                            <span class="flex items-center gap-1">
-                                <i class="fas fa-question-circle text-blue-500"></i>
-                                {{ $questionsCount }} {{ Str::plural('question', $questionsCount) }}
-                            </span>
-                            <span class="flex items-center gap-1">
-                                <i class="fas fa-calendar-alt text-gray-400"></i>
-                                Created: {{ $createdDate }}
-                            </span>
-                            @if(isset($form->updated_at) && $form->updated_at != $form->created_at)
-                            <span class="flex items-center gap-1">
-                                <i class="fas fa-edit text-gray-400"></i>
-                                Updated: {{ \Carbon\Carbon::parse($form->updated_at)->format('F j, Y') }}
-                            </span>
-                            @endif
-                        </div>
-                    </div>
-                    <div>
-                        @if($buttonDisabled)
-                            <button disabled class="justify-self-start bg-slate-200 text-slate-500 px-4 py-2 rounded-lg text-sm inline-flex items-center gap-2 cursor-not-allowed">
-                                <i class="fas {{ $buttonIcon }}"></i> {{ $buttonText }}
-                            </button>
-                        @else
-                            <a href="{{ route('forms.take', $form->id) }}" class="justify-self-start bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition inline-flex items-center gap-2 shadow-sm">
-                                <span>{{ $buttonText }}</span><i class="fas {{ $buttonIcon }} text-xs"></i>
-                            </a>
-                        @endif
                     </div>
                 </div>
             </div>
@@ -239,14 +196,11 @@
                             if (!empty($userAnswers)) {
                                 $totalCorrect = count($correctAnswers);
                                 $correctSelected = count(array_intersect($userAnswers, $correctAnswers));
-                                $incorrectSelected = count(array_diff($userAnswers, $correctAnswers));
                                 $isExactMatch = $correctSelected === $totalCorrect
-                                    && $incorrectSelected === 0
                                     && count($userAnswers) === $totalCorrect;
                                 
                                 if ($allowPartialPoints && $correctSelected > 0) {
-                                    $credit = max(0, $correctSelected - $incorrectSelected);
-                                    $earnedPoints += ($credit / $totalCorrect) * $points;
+                                    $earnedPoints += ($correctSelected / $totalCorrect) * $points;
                                 } elseif (!$allowPartialPoints && $isExactMatch) {
                                     $earnedPoints += $points;
                                 }
@@ -289,27 +243,37 @@
                         if (isset($question['correctAnswers']) && is_array($question['correctAnswers'])) {
                             $rows = $question['rows'] ?? [];
                             $gridAnswers = is_array($answer) ? $answer : [];
-                            
+                            $totalCorrect = 0;
+                            $correctSelected = 0;
+                            $allExact = true;
+
                             foreach ($rows as $rowIndex => $row) {
                                 $rowKey = 'question_' . $index . '_' . $rowIndex;
                                 $userRowAnswers = isset($gridAnswers[$rowKey]) ? (array)$gridAnswers[$rowKey] : [];
-                                $correctRowAnswers = $question['correctAnswers'][$rowIndex] ?? [];
-                                
-                                if (!empty($correctRowAnswers) && !empty($userRowAnswers)) {
-                                    $correctRowAnswers = array_values(array_unique($correctRowAnswers));
+                                $correctRowAnswers = array_values(array_unique((array) ($question['correctAnswers'][$rowIndex] ?? [])));
+
+                                if (!empty($correctRowAnswers)) {
                                     $userRowAnswers = array_values(array_unique($userRowAnswers));
                                     $correctCount = count(array_intersect($correctRowAnswers, $userRowAnswers));
                                     $incorrectCount = count(array_diff($userRowAnswers, $correctRowAnswers));
                                     $rowExact = $correctCount === count($correctRowAnswers)
                                         && $incorrectCount === 0
                                         && count($userRowAnswers) === count($correctRowAnswers);
-                                    if ($allowPartialPoints && $correctCount > 0) {
-                                        $credit = max(0, $correctCount - $incorrectCount);
-                                        $earnedPoints += ($credit / count($correctRowAnswers)) * ($points / max(1, count($rows)));
-                                    } elseif (!$allowPartialPoints && $rowExact) {
-                                        $earnedPoints += $points / count($rows);
+
+                                    $totalCorrect += count($correctRowAnswers);
+                                    $correctSelected += $correctCount;
+                                    if (!$rowExact) {
+                                        $allExact = false;
                                     }
                                 }
+                            }
+
+                            if ($allowPartialPoints) {
+                                if ($totalCorrect > 0 && $correctSelected > 0) {
+                                    $earnedPoints += ($correctSelected / $totalCorrect) * $points;
+                                }
+                            } elseif ($allExact && $totalCorrect > 0) {
+                                $earnedPoints += $points;
                             }
                         }
                     }
@@ -317,22 +281,26 @@
             }
             
             $earnedPoints = round($earnedPoints, 2);
-            $displayScore = $totalPoints > 0 ? round(($earnedPoints / $totalPoints) * 100, 1) : ($submission->score ?? 0);
+            $displayPoints = number_format($earnedPoints, 1);
+            $displayTotalPoints = rtrim(rtrim(number_format($totalPoints, 2, '.', ''), '0'), '.');
             if (!empty($submissionManualGrades) && $submission->score !== null) {
-                $displayScore = (float) $submission->score;
                 $earnedPoints = $totalPoints > 0
-                    ? round(($displayScore / 100) * $totalPoints, 2)
+                    ? round(((float) $submission->score / 100) * $totalPoints, 2)
                     : 0;
+                $displayPoints = number_format($earnedPoints, 1);
             }
-            $formattedScore = number_format($displayScore, 1);
             
         @endphp
-        <div class="border rounded-lg p-3 sm:p-4 mb-3 hover:shadow-md transition">
+        <div class="border rounded-lg p-3 sm:p-4 mb-3 hover:shadow-md transition cursor-pointer"
+             role="button"
+             tabindex="0"
+             onclick="viewFormResult({{ $submission->form_id ?? 0 }}, {{ $submission->id ?? 0 }})"
+             onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); viewFormResult({{ $submission->form_id ?? 0 }}, {{ $submission->id ?? 0 }}); }"
+             aria-label="View details for {{ $submission->form->title ?? 'Form result' }}">
             <div class="grid grid-cols-1 sm:grid-cols-[minmax(0,420px)_auto] sm:items-center gap-3 sm:gap-6">
                 <div>
                     <h4 class="font-semibold text-gray-800">{{ $submission->form->title ?? 'Form' }}</h4>
                     <div class="flex flex-wrap gap-x-3 gap-y-1 mt-1 text-xs text-gray-500">
-                        <span><i class="fas fa-question-circle"></i> {{ $questionsCount }} questions</span>
                         <span>
                             <i class="fas fa-calendar-check"></i>
                             Submitted {{ isset($submission->submitted_at) ? \Carbon\Carbon::parse($submission->submitted_at)->format('M d, Y \a\t h:i A') : 'N/A' }}
@@ -341,19 +309,12 @@
                 </div>
                 <div class="flex flex-wrap items-center gap-3">
                     @if($showResultScore)
-                    <p class="text-xl font-bold text-blue-700">{{ $formattedScore }}%</p>
+                    <p class="text-xl font-bold text-blue-700">{{ $displayPoints }} / {{ $displayTotalPoints }}</p>
                     @elseif($releaseGrade === 'later')
                     <p class="text-sm font-semibold text-amber-600"><i class="fas fa-clock mr-1"></i> Pending review</p>
                     @else
                     <p class="text-sm font-semibold text-gray-500"><i class="fas fa-lock mr-1"></i> Score private</p>
                     @endif
-                    @if($showResultScore)
-                    <span class="text-xs text-gray-400">{{ number_format($earnedPoints, 1) }} / {{ $totalPoints }} pts</span>
-                    @endif
-                    <button onclick="viewFormResult({{ $submission->form_id ?? 0 }}, {{ $submission->id ?? 0 }})"
-                            class="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-100">
-                        Details <i class="fas fa-arrow-right text-[10px]"></i>
-                    </button>
                 </div>
             </div>
         </div>
@@ -376,10 +337,8 @@
                 <thead class="bg-gray-50">
                     <tr>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Title</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Questions</th>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Submissions</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Limit</th>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                     </tr>
                 </thead>
@@ -400,67 +359,60 @@
                         }
                         $questionsCount = collect($questions)->reject(fn($question) => in_array($question['type'] ?? '', ['title_section', 'section_break']))->count();
                         $submissionsCount = $form->submissions_count ?? 0;
+                        $createdDate = isset($form->created_at) ? \Carbon\Carbon::parse($form->created_at)->format('F j, Y') : 'Date unknown';
+                        $updatedDate = isset($form->updated_at) ? \Carbon\Carbon::parse($form->updated_at)->format('F j, Y') : null;
                     @endphp
-                    <tr class="border-t hover:bg-gray-50" id="form-row-{{ $form->id }}">
+                    <tr class="border-t hover:bg-gray-50 cursor-pointer" id="form-row-{{ $form->id }}" onclick="editForm({{ $form->id }})" role="button" tabindex="0" aria-label="Edit form {{ $form->title }}">
                         <td class="px-4 py-3" data-label="Form">
                             <div>
                                 <p class="font-medium text-gray-800">{{ $form->title }}</p>
-                                <p class="text-xs text-gray-500">{{ Str::limit($form->description ?? '', 50) }}</p>
+                                <div class="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+                                    <span class="flex items-center gap-1">
+                                        <i class="fas fa-calendar-alt text-gray-400"></i>
+                                        Created: {{ $createdDate }}
+                                    </span>
+                                    @if($updatedDate && $updatedDate !== $createdDate)
+                                    <span class="flex items-center gap-1">
+                                        <i class="fas fa-edit text-gray-400"></i>
+                                        Updated: {{ $updatedDate }}
+                                    </span>
+                                    @endif
+                                </div>
                             </div>
                         </td>
-                        <td class="px-4 py-3 text-sm text-gray-500 text-center" data-label="Questions">{{ $questionsCount }}</td>
                         <td class="px-4 py-3" data-label="Status">
-                            <span id="status-badge-{{ $form->id }}" class="px-2 py-1 text-xs rounded-full 
-                                {{ $isPublished ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500' }}">
-                                {{ $isPublished ? 'Published' : 'Draft' }}
-                            </span>
-                        </td>
-                        <td class="px-4 py-3 text-sm text-gray-500 text-center" data-label="Submissions">{{ $submissionsCount }}</td>
-                        <td class="px-4 py-3" data-label="Response limit">
-                            <span class="px-2 py-1 text-xs rounded-full {{ $limitOneResponse ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500' }}">
-                                {{ $limitOneResponse ? '1 Response' : 'Multiple' }}
-                            </span>
-                        </td>
-                        <td class="px-4 py-3" data-label="Actions">
-                            <div class="flex gap-2 flex-wrap">
-                                @if($isPublished)
-                                <button type="button"
-                                    data-share-url="{{ route('forms.take', $form->id) }}"
-                                    data-share-title="{{ $form->title }}"
-                                    onclick="shareFormLink(this.dataset.shareUrl, this.dataset.shareTitle)"
-                                    class="text-sky-600 hover:text-sky-800"
-                                    title="Share answer link">
-                                    <i class="fas fa-share-nodes"></i>
-                                </button>
-                                @else
-                                <button type="button" disabled class="cursor-not-allowed text-gray-300" title="Publish this form before sharing">
-                                    <i class="fas fa-share-nodes"></i>
-                                </button>
-                                @endif
-
-                                @if($canPublishForms || $isSuperAdmin)
-                                <button onclick="togglePublish({{ $form->id }})" 
+                            @if($canPublishForms || $isSuperAdmin)
+                                <button onclick="event.stopPropagation(); togglePublish({{ $form->id }})" 
                                     id="publish-btn-{{ $form->id }}"
-                                    class="px-2 py-1 text-xs rounded transition
+                                    class="px-2 py-1 text-xs rounded-full transition whitespace-nowrap
                                         {{ $isPublished ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' : 'bg-green-100 text-green-700 hover:bg-green-200' }}">
                                     {{ $isPublished ? 'Unpublish' : 'Publish' }}
                                 </button>
-                                @endif
-                                
-                                @if($canEditForms || $isSuperAdmin)
-                                <button onclick="editForm({{ $form->id }})" class="text-blue-600 hover:text-blue-800" title="Edit">
-                                    <i class="fas fa-edit"></i>
+                            @else
+                                <span id="status-badge-{{ $form->id }}" class="px-2 py-1 text-xs rounded-full 
+                                    {{ $isPublished ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500' }}">
+                                    {{ $isPublished ? 'Published' : 'Draft' }}
+                                </span>
+                            @endif
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-500 text-center" data-label="Submissions">{{ $submissionsCount }}</td>
+                        <td class="px-4 py-3" data-label="Actions">
+                            <div class="flex gap-2 flex-wrap">
+                                <button type="button"
+                                    onclick="event.stopPropagation(); duplicateForm({{ $form->id }})"
+                                    class="text-sky-600 hover:text-sky-800"
+                                    title="Duplicate form">
+                                    <i class="fas fa-copy"></i>
                                 </button>
-                                @endif
-                                
+
                                 @if($canViewResults || $canManageForms || $isSuperAdmin)
-                                <button onclick="viewSubmissions({{ $form->id }})" class="text-purple-600 hover:text-purple-800" title="Submissions">
+                                <button onclick="event.stopPropagation(); viewSubmissions({{ $form->id }})" class="text-purple-600 hover:text-purple-800" title="Submissions">
                                     <i class="fas fa-users"></i>
                                 </button>
                                 @endif
                                 
                                 @if($canDeleteForms || $isSuperAdmin)
-                                <button onclick="deleteForm({{ $form->id }})" class="text-red-600 hover:text-red-800" title="Delete">
+                                <button onclick="event.stopPropagation(); deleteForm({{ $form->id }})" class="text-red-600 hover:text-red-800" title="Delete">
                                     <i class="fas fa-trash"></i>
                                 </button>
                                 @endif
@@ -627,32 +579,31 @@ window.viewSubmissions = function(id) {
     window.location.href = `/forms/manage/${id}/submissions`;
 };
 
-window.shareFormLink = async function(url, title) {
-    const shareText = `${title}\n${url}`;
-
+window.duplicateForm = async function(id) {
     try {
-        if (navigator.share) {
-            await navigator.share({
-                title: title,
-                text: shareText
-            });
-            return;
+        const response = await fetch(`/forms/manage/${id}/duplicate`, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            }
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            showNotification('Form duplicated successfully!', 'success');
+            if (data.redirect_url) {
+                window.location.href = data.redirect_url;
+            } else if (data.form_id) {
+                window.location.href = `/forms/manage/${data.form_id}/edit`;
+            }
+        } else {
+            showNotification('Error: ' + (data.message || 'Unable to duplicate form'), 'error');
         }
-
-        await navigator.clipboard.writeText(shareText);
-        showNotification('Form title and link copied.', 'success');
     } catch (error) {
-        if (error.name === 'AbortError') return;
-
-        const input = document.createElement('textarea');
-        input.value = shareText;
-        input.style.position = 'fixed';
-        input.style.opacity = '0';
-        document.body.appendChild(input);
-        input.select();
-        document.execCommand('copy');
-        input.remove();
-        showNotification('Form title and link copied.', 'success');
+        console.error('Duplicate error:', error);
+        showNotification('Error duplicating form', 'error');
     }
 };
 
@@ -667,6 +618,7 @@ window.viewFormResult = function(formId, submissionId) {
 // ==================== TOGGLE PUBLISH ====================
 window.togglePublish = function(formId) {
     const publishBtn = document.getElementById(`publish-btn-${formId}`);
+    if (!publishBtn) return;
     const originalText = publishBtn.textContent;
     publishBtn.disabled = true;
     publishBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
@@ -685,33 +637,26 @@ window.togglePublish = function(formId) {
     .then(response => response.json())
     .then(data => {
         publishBtn.disabled = false;
-        publishBtn.textContent = originalText;
         
         if (data.success) {
             const isPublished = data.is_published;
-            const statusBadge = document.getElementById(`status-badge-${formId}`);
             
             if (isPublished) {
                 publishBtn.textContent = 'Unpublish';
                 publishBtn.classList.remove('bg-green-100', 'text-green-700');
                 publishBtn.classList.add('bg-yellow-100', 'text-yellow-700');
-                statusBadge.textContent = 'Published';
-                statusBadge.classList.remove('bg-gray-100', 'text-gray-500');
-                statusBadge.classList.add('bg-green-100', 'text-green-700');
                 showNotification('Form published successfully!', 'success');
             } else {
                 publishBtn.textContent = 'Publish';
                 publishBtn.classList.remove('bg-yellow-100', 'text-yellow-700');
                 publishBtn.classList.add('bg-green-100', 'text-green-700');
-                statusBadge.textContent = 'Draft';
-                statusBadge.classList.remove('bg-green-100', 'text-green-700');
-                statusBadge.classList.add('bg-gray-100', 'text-gray-500');
                 showNotification('Form unpublished', 'info');
             }
             
             refreshAvailableForms();
             refreshManageRow(formId, data.form);
         } else {
+            publishBtn.textContent = originalText;
             showNotification('Error: ' + (data.message || 'Unknown error'), 'error');
         }
     })
@@ -729,11 +674,11 @@ function refreshManageRow(formId, formData) {
     
     if (formData) {
         const isPublished = formData.settings && formData.settings.is_published;
-        const statusBadge = document.getElementById(`status-badge-${formId}`);
+        const publishBtn = document.getElementById(`publish-btn-${formId}`);
         
-        if (statusBadge) {
-            statusBadge.textContent = isPublished ? 'Published' : 'Draft';
-            statusBadge.className = `px-2 py-1 text-xs rounded-full ${isPublished ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`;
+        if (publishBtn) {
+            publishBtn.textContent = isPublished ? 'Unpublish' : 'Publish';
+            publishBtn.className = `px-2 py-1 text-xs rounded-full transition whitespace-nowrap ${isPublished ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' : 'bg-green-100 text-green-700 hover:bg-green-200'}`;
         }
     }
 }
@@ -791,18 +736,18 @@ function refreshAvailableForms() {
                         }
                     }
                     
-                    const createdDate = form.created_at ? new Date(form.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'Date unknown';
-                    const hasTaken = data.mySubmissions && data.mySubmissions.includes(form.id);
+                    const latestSubmissionId = data.mySubmissionIds ? data.mySubmissionIds[form.id] : null;
+                    const hasTaken = Boolean(latestSubmissionId);
                     const limitOneResponse = settings && settings.limit_one_response !== false;
-                    const description = form.description || 'No description';
-                    
-                    const buttonDisabled = hasTaken && limitOneResponse;
-                    const buttonText = hasTaken ? (limitOneResponse ? 'Submitted' : 'Fill Again') : 'Open Form';
-                    const buttonIcon = hasTaken ? (limitOneResponse ? 'fa-circle-check' : 'fa-rotate-right') : 'fa-arrow-right';
-                    const buttonColor = buttonDisabled ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700';
+                    const cardUrl = hasTaken ? `/forms/${form.id}/results?submission_id=${latestSubmissionId}` : `/forms/${form.id}/take`;
                     
                     html += `
-                        <div class="available-form-card rounded-xl p-4 sm:p-5 mb-3 transition-all duration-200">
+                        <div class="available-form-card rounded-xl p-4 sm:p-5 mb-3 transition-all duration-200 cursor-pointer hover:shadow-md hover:border-blue-200"
+                            role="button"
+                            tabindex="0"
+                            onclick="window.location.href='${cardUrl}'"
+                            onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); window.location.href='${cardUrl}'; }"
+                            aria-label="${hasTaken ? 'View results for ' + escapeHtml(form.title) : 'Open form ' + escapeHtml(form.title)}">
                             <div class="grid grid-cols-1 sm:grid-cols-[minmax(0,520px)_auto] sm:items-center gap-3 sm:gap-6">
                                 <div class="min-w-0">
                                     <div class="flex items-center gap-2 mb-2">
@@ -810,21 +755,6 @@ function refreshAvailableForms() {
                                         ${hasTaken ? `<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full"><i class="fas fa-check-circle"></i> Completed</span>` : ''}
                                         ${limitOneResponse ? `<span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full"><i class="fas fa-lock"></i> Limit 1</span>` : ''}
                                     </div>
-                                    <p class="text-sm text-slate-500 mb-3 leading-relaxed">${escapeHtml(description.substring(0, 150))}</p>
-                                    <div class="flex flex-wrap gap-x-4 gap-y-2 text-xs text-slate-500">
-                                        <span class="flex items-center gap-1"><i class="fas fa-question-circle text-blue-500"></i> ${questionsCount} ${questionsCount === 1 ? 'question' : 'questions'}</span>
-                                        <span class="flex items-center gap-1"><i class="fas fa-calendar-alt text-gray-400"></i> Created: ${createdDate}</span>
-                                    </div>
-                                </div>
-                                <div>
-                                    ${buttonDisabled ? 
-                                        `<button disabled class="justify-self-start bg-slate-200 text-slate-500 px-4 py-2 rounded-lg text-sm inline-flex items-center gap-2 cursor-not-allowed">
-                                            <i class="fas ${buttonIcon}"></i> ${buttonText}
-                                        </button>` :
-                                        `<a href="/forms/${form.id}/take" class="justify-self-start bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition inline-flex items-center gap-2 shadow-sm">
-                                            <span>${buttonText}</span><i class="fas ${buttonIcon} text-xs"></i>
-                                        </a>`
-                                    }
                                 </div>
                             </div>
                         </div>

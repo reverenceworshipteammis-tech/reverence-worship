@@ -15,7 +15,7 @@
                         <i class="fas fa-arrow-left"></i> Back to Manage Forms
                     </a>
                     <h1 class="text-xl sm:text-2xl font-bold text-slate-900">{{ $form->title }}</h1>
-                    <p class="text-slate-500 text-sm mt-1">Review submitted answers and release results.</p>
+                  
                 </div>
                 <div class="flex items-center gap-3">
                     <span class="bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full text-sm font-semibold">
@@ -30,8 +30,8 @@
             $settings = json_decode($form->settings, true) ?? [];
             $isQuiz = $settings['is_quiz'] ?? false;
             $releaseGrade = $settings['release_grade'] ?? 'immediately';
-            $allowExport = $settings['allow_export'] ?? true;
             $includeTimestamps = $settings['include_timestamps'] ?? true;
+            $submittedCellIndex = $isQuiz ? 3 : 2;
             
             // Ensure $questions is defined
             if (!isset($questions) || !$questions) {
@@ -40,12 +40,10 @@
             
             // Calculate total points for this form
             $formTotalPoints = 0;
-            $formQuestionCount = 0;
             if (is_array($questions)) {
                 foreach($questions as $q) {
                     $qType = $q['type'] ?? 'short_answer';
                     if ($qType != 'title_section' && $qType != 'section_break') {
-                        $formQuestionCount++;
                         $formTotalPoints += isset($q['points']) ? (int)$q['points'] : 1;
                     }
                 }
@@ -58,6 +56,7 @@
             foreach($submissions as $sub) {
                 // Decode the answers
                 $answers = json_decode($sub->answers, true);
+                $manualGrades = json_decode($sub->manual_grades ?? '[]', true) ?: [];
                 $earned = 0;
                 $allowPartialPoints = $settings['allow_partial_points'] ?? true;
                 
@@ -98,7 +97,7 @@
                                     
                                     if ($allowPartialPoints && $correctSelected > 0) {
                                         $earned += ($correctSelected / $totalCorrect) * $points;
-                                    } elseif (!$allowPartialPoints && $correctSelected == $totalCorrect) {
+                                    } elseif (!$allowPartialPoints && $correctSelected == $totalCorrect && count($userAnswers) === $totalCorrect) {
                                         $earned += $points;
                                     }
                                 }
@@ -140,33 +139,45 @@
                             if (isset($question['correctAnswers']) && is_array($question['correctAnswers'])) {
                                 $rows = $question['rows'] ?? [];
                                 $gridAnswers = is_array($answer) ? $answer : [];
+                                $totalCorrect = 0;
+                                $correctSelected = 0;
+                                $allExact = true;
                                 
                                 foreach ($rows as $rowIndex => $row) {
                                     $rowKey = 'question_' . $index . '_' . $rowIndex;
                                     $userRowAnswers = isset($gridAnswers[$rowKey]) ? (array)$gridAnswers[$rowKey] : [];
-                                    $correctRowAnswers = $question['correctAnswers'][$rowIndex] ?? [];
+                                    $correctRowAnswers = array_values(array_unique((array) ($question['correctAnswers'][$rowIndex] ?? [])));
                                     
-                                    if (!empty($correctRowAnswers) && !empty($userRowAnswers)) {
-                                        $correctCount = 0;
-                                        foreach ($correctRowAnswers as $correctAns) {
-                                            if (in_array($correctAns, $userRowAnswers)) {
-                                                $correctCount++;
-                                            }
-                                        }
-                                        if ($allowPartialPoints && $correctCount > 0) {
-                                            $earned += ($correctCount / count($correctRowAnswers)) * ($points / count($rows));
-                                        } elseif (!$allowPartialPoints && $correctCount == count($correctRowAnswers)) {
-                                            $earned += $points / count($rows);
+                                    if (!empty($correctRowAnswers)) {
+                                        $selected = array_values(array_unique($userRowAnswers));
+                                        $correctCount = count(array_intersect($correctRowAnswers, $selected));
+                                        $incorrectCount = count(array_diff($selected, $correctRowAnswers));
+                                        $rowExact = $correctCount === count($correctRowAnswers)
+                                            && $incorrectCount === 0
+                                            && count($selected) === count($correctRowAnswers);
+
+                                        $totalCorrect += count($correctRowAnswers);
+                                        $correctSelected += $correctCount;
+                                        if (!$rowExact) {
+                                            $allExact = false;
                                         }
                                     }
+                                }
+
+                                if ($allowPartialPoints) {
+                                    if ($totalCorrect > 0 && $correctSelected > 0) {
+                                        $earned += ($correctSelected / $totalCorrect) * $points;
+                                    }
+                                } elseif ($allExact && $totalCorrect > 0) {
+                                    $earned += $points;
                                 }
                             }
                         }
                     }
                 }
                 
-                // The stored score includes any manager's manual grading overrides.
-                $sub->earned_points = $sub->score !== null
+                // Prefer manual grading when present; otherwise use the live auto-score.
+                $sub->earned_points = !empty($manualGrades) && $sub->score !== null
                     ? round(((float) $sub->score / 100) * $formTotalPoints, 2)
                     : round($earned, 2);
                 $sub->total_points = $formTotalPoints;
@@ -301,34 +312,6 @@
             @endif
         </div>
         
-        <div class="grid grid-cols-2 gap-px border-b border-slate-200 bg-slate-200 sm:grid-cols-4">
-            <div class="bg-white p-3 sm:p-4">
-                <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Responses</p>
-                <p class="mt-1 text-xl font-bold text-slate-800">{{ count($submissions) }}</p>
-            </div>
-            <div class="bg-white p-3 sm:p-4">
-                <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Questions</p>
-                <p class="mt-1 text-xl font-bold text-slate-800">{{ $formQuestionCount }}</p>
-            </div>
-            @if($releaseGrade === 'later')
-            <div class="bg-white p-3 sm:p-4">
-                <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Pending review</p>
-                <p class="mt-1 text-xl font-bold text-amber-600">{{ $pendingCount }}</p>
-            </div>
-            <div class="bg-white p-3 sm:p-4">
-                <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Released</p>
-                <p class="mt-1 text-xl font-bold text-green-600">{{ $releasedCount }}</p>
-            </div>
-            @else
-            <div class="col-span-2 bg-white p-3 sm:p-4">
-                <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Result policy</p>
-                <p class="mt-1 text-sm font-semibold text-slate-700">
-                    {{ $releaseGrade === 'immediately' ? 'Available immediately' : 'Results remain private' }}
-                </p>
-            </div>
-            @endif
-        </div>
-
         <!-- Filters -->
         <div class="border-b bg-slate-50 p-3 sm:p-4">
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(220px,1fr)_180px_180px_auto]">
@@ -363,11 +346,17 @@
                     </select>
                 </div>
                 @endif
-                <div class="flex items-end">
+                <div class="flex items-end justify-end gap-2">
                     <button type="button" onclick="resetSubmissionFilters()"
-                        class="w-full rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 lg:w-auto">
+                        class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 whitespace-nowrap">
                         <i class="fas fa-rotate-left mr-1"></i> Reset
                     </button>
+                    @if(count($submissions) > 0)
+                    <button type="button" onclick="exportSubmissions()"
+                        class="rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-100 whitespace-nowrap">
+                        <i class="fas fa-download mr-1"></i> Export
+                    </button>
+                    @endif
                 </div>
             </div>
             <div class="mt-3 text-xs text-slate-500" id="resultCount">
@@ -518,15 +507,6 @@
             </table>
         </div>
         
-        <!-- Footer -->
-        @if($allowExport && count($submissions) > 0)
-        <div class="border-t bg-slate-50 px-4 py-3 sm:px-6">
-            <button type="button" onclick="exportSubmissions()"
-                class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-blue-300 hover:text-blue-700">
-                <i class="fas fa-download text-xs"></i> Export CSV
-            </button>
-        </div>
-        @endif
     </div>
 </div>
 
@@ -952,57 +932,55 @@ function confirmBulkUnrelease() {
     });
 }
 
-// ==================== EXPORT FUNCTION ====================
+// ==================== EXPORT / DELETE FUNCTIONS ====================
 function exportSubmissions() {
     const rows = document.querySelectorAll('.submission-row');
-    let csv = [];
-    
-    @if($isQuiz)
-    csv.push(['#', 'User', 'Email', 'Marks', 'Submitted', 'Status', 'Released'].join(','));
-    @else
-    csv.push(['#', 'User', 'Email', 'Submitted'].join(','));
-    @endif
-    
+    const csv = [];
+    const escapeCsv = (value) => `"${String(value ?? '').replace(/"/g, '""').trim()}"`;
+    const isQuiz = @json($isQuiz);
+    const submittedCellIndex = {{ $submittedCellIndex }};
+
+    if (isQuiz) {
+        csv.push(['No', 'Names', 'Marks', 'Submission Time'].join(','));
+    } else {
+        csv.push(['No', 'Names', 'Submission Time'].join(','));
+    }
+
     rows.forEach((row, index) => {
         if (row.style.display === 'none') return;
-        
+
         const cells = row.querySelectorAll('td');
-        let rowData = [];
-        
+        const rowData = [];
+
         rowData.push(index + 1);
-        rowData.push(`"${cells[1]?.textContent?.trim() || ''}"`);
-        rowData.push(`"${cells[1]?.querySelector('.text-xs')?.textContent?.trim() || ''}"`);
-        
-        @if($isQuiz)
-        const marksText = cells[2]?.textContent?.trim() || '';
-        rowData.push(`"${marksText}"`);
-        const submittedText = cells[3]?.textContent?.trim() || '';
-        rowData.push(submittedText);
-        const statusText = cells[4]?.textContent?.trim() || '';
-        rowData.push(statusText);
-        const releasedText = row.dataset.released === 'true' ? 'Released' : 'Pending';
-        rowData.push(releasedText);
-        @else
-        rowData.push(cells[2]?.textContent?.trim() || '');
-        @endif
-        
+        rowData.push(escapeCsv(cells[1]?.querySelector('p')?.textContent || ''));
+
+        if (isQuiz) {
+            const marksText = cells[2]?.textContent?.replace(/\s+/g, ' ').trim() || '';
+            rowData.push(escapeCsv(marksText));
+        }
+
+        const submittedDate = cells[submittedCellIndex]?.querySelector('.fa-calendar-alt')?.parentElement?.textContent?.replace(/\s+/g, ' ').trim()
+            || cells[submittedCellIndex]?.textContent?.replace(/\s+/g, ' ').trim()
+            || '';
+        rowData.push(escapeCsv(submittedDate));
+
         csv.push(rowData.join(','));
     });
-    
+
     const blob = new Blob(['\uFEFF' + csv.join('\n')], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', 'submissions_{{ $form->title }}.csv');
+    link.setAttribute('download', 'submissions_{{ Str::slug($form->title) }}.csv');
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    
+
     showNotification('Export completed.', 'success');
 }
 
-// ==================== DELETE FUNCTIONS ====================
 function deleteSubmission(id) {
     deleteTargetId = id;
     document.getElementById('deleteConfirmModal').classList.remove('hidden');

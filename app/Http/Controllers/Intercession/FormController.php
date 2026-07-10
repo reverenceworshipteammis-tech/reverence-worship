@@ -69,94 +69,12 @@ class FormController extends Controller
                             $points = isset($question['points']) ? (int)$question['points'] : 1;
                             $totalPoints += $points;
 
-                            $answerKey = 'question_' . $index;
-                            $answer = $answers[$answerKey] ?? null;
-
-                            // Calculate earned points for this question
-                            if ($questionType == 'multiple_choice' || $questionType == 'dropdown') {
-                                if (isset($question['correctAnswer']) && $question['correctAnswer'] !== '') {
-                                    if ($answer == $question['correctAnswer']) {
-                                        $earnedPoints += $points;
-                                    }
-                                }
-                            } elseif ($questionType == 'checkboxes') {
-                                if (isset($question['correctAnswers']) && is_array($question['correctAnswers']) && !empty($question['correctAnswers'])) {
-                                    $correctAnswers = $question['correctAnswers'];
-                                    $userAnswers = is_array($answer) ? $answer : [];
-
-                                    if (!empty($userAnswers)) {
-                                        $totalCorrect = count($correctAnswers);
-                                        $correctSelected = 0;
-
-                                        foreach ($userAnswers as $userAnswer) {
-                                            if (in_array($userAnswer, $correctAnswers)) {
-                                                $correctSelected++;
-                                            }
-                                        }
-
-                                        if ($correctSelected > 0) {
-                                            $earnedPoints += ($correctSelected / $totalCorrect) * $points;
-                                        }
-                                    }
-                                }
-                            } elseif ($questionType == 'short_answer' || $questionType == 'paragraph') {
-                                if (isset($question['correctAnswer']) && $question['correctAnswer'] !== '') {
-                                    if (strtolower(trim($answer)) == strtolower(trim($question['correctAnswer']))) {
-                                        $earnedPoints += $points;
-                                    }
-                                }
-                            } elseif ($questionType == 'date' || $questionType == 'time') {
-                                if (isset($question['correctAnswer']) && $question['correctAnswer'] !== '') {
-                                    if ($answer == $question['correctAnswer']) {
-                                        $earnedPoints += $points;
-                                    }
-                                }
-                            } elseif ($questionType == 'linear_scale' || $questionType == 'rating') {
-                                if ($answer !== null && $answer !== '') {
-                                    $earnedPoints += $points;
-                                }
-                            } elseif ($questionType == 'multiple_choice_grid') {
-                                if (isset($question['correctAnswers']) && is_array($question['correctAnswers'])) {
-                                    $rows = $question['rows'] ?? [];
-                                    $gridAnswers = is_array($answer) ? $answer : [];
-
-                                    foreach ($rows as $rowIndex => $row) {
-                                        $rowKey = 'question_' . $index . '_' . $rowIndex;
-                                        $userRowAnswer = $gridAnswers[$rowKey] ?? null;
-                                        $correctRowAnswer = $question['correctAnswers'][$rowIndex] ?? null;
-
-                                        if ($correctRowAnswer !== null && $correctRowAnswer !== '') {
-                                            if ($userRowAnswer == $correctRowAnswer) {
-                                                $earnedPoints += $points / count($rows);
-                                            }
-                                        }
-                                    }
-                                }
-                            } elseif ($questionType == 'checkbox_grid') {
-                                if (isset($question['correctAnswers']) && is_array($question['correctAnswers'])) {
-                                    $rows = $question['rows'] ?? [];
-                                    $rowPoints = count($rows) > 0 ? $points / count($rows) : 0;
-                                    $gridAnswers = is_array($answer) ? $answer : [];
-
-                                    foreach ($rows as $rowIndex => $row) {
-                                        $rowKey = 'question_' . $index . '_' . $rowIndex;
-                                        $userRowAnswers = isset($gridAnswers[$rowKey]) ? (array)$gridAnswers[$rowKey] : [];
-                                        $correctRowAnswers = $question['correctAnswers'][$rowIndex] ?? [];
-
-                                        if (!empty($correctRowAnswers) && !empty($userRowAnswers)) {
-                                            $correctCount = 0;
-                                            foreach ($correctRowAnswers as $correctAns) {
-                                                if (in_array($correctAns, $userRowAnswers)) {
-                                                    $correctCount++;
-                                                }
-                                            }
-                                            if ($correctCount > 0) {
-                                                $earnedPoints += ($correctCount / count($correctRowAnswers)) * $rowPoints;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                            $earnedPoints += $this->calculateAutomaticQuestionPoints(
+                                $question,
+                                $index,
+                                $answers,
+                                $allowPartialPoints
+                            );
                         }
 
                         // Calculate score percentage for this submission
@@ -425,7 +343,25 @@ class FormController extends Controller
                 }
             }
 
+            $existingForm = DB::table('forms')->where('id', $id)->first();
+            $existingSettings = [];
+            if ($existingForm) {
+                $existingSettings = json_decode($existingForm->settings, true);
+                if (!is_array($existingSettings)) {
+                    $existingSettings = [];
+                }
+            }
+
             $settings = $data['settings'] ?? [];
+            if (!is_array($settings)) {
+                $settings = [];
+            }
+
+            if (!array_key_exists('is_published', $settings) && array_key_exists('is_published', $existingSettings)) {
+                $settings['is_published'] = $existingSettings['is_published'];
+            }
+
+            $settings = array_merge($existingSettings, $settings);
 
             DB::table('forms')->where('id', $id)->update([
                 'title' => $title,
@@ -469,6 +405,58 @@ class FormController extends Controller
             return redirect()->back()->with('success', 'Form deleted successfully');
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    // ==================== DUPLICATE ====================
+    public function duplicate($id)
+    {
+        if (!auth()->user()->canAccess('intercession', 'create-forms') && !auth()->user()->canAccess('intercession', 'edit-forms')) {
+            return response()->json(['success' => false, 'message' => 'Permission denied'], 403);
+        }
+
+        try {
+            $form = DB::table('forms')->where('id', $id)->first();
+            if (!$form) {
+                return response()->json(['success' => false, 'message' => 'Form not found'], 404);
+            }
+
+            $questions = json_decode($form->questions, true);
+            if (!is_array($questions)) {
+                $questions = [];
+            }
+
+            $settings = json_decode($form->settings, true);
+            if (!is_array($settings)) {
+                $settings = [];
+            }
+
+            $baseTitle = $form->title ?: 'Untitled form';
+            $copyTitle = $baseTitle . ' (Copy)';
+
+            $newId = DB::table('forms')->insertGetId([
+                'title' => $copyTitle,
+                'description' => $form->description ?? '',
+                'questions' => json_encode($questions),
+                'settings' => json_encode(array_merge($settings, ['is_published' => false])),
+                'is_active' => true,
+                'created_by' => auth()->id(),
+                'created_at' => now(),
+                'updated_at' => now()
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'form_id' => $newId,
+                'message' => 'Form duplicated successfully',
+                'redirect_url' => url("/forms/manage/{$newId}/edit")
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Form duplicate error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 
@@ -624,9 +612,8 @@ class FormController extends Controller
                                     && $incorrectSelected === 0
                                     && count($userAnswers) === $totalCorrect;
 
-                                if ($allowPartialPoints && $correctSelected > 0) {
-                                    $credit = max(0, $correctSelected - $incorrectSelected);
-                                    $earnedPoints += ($credit / $totalCorrect) * $points;
+                                if ($allowPartialPoints && $totalCorrect > 0 && $correctSelected > 0) {
+                                    $earnedPoints += ($correctSelected / $totalCorrect) * $points;
                                 } elseif (!$allowPartialPoints && $isExactMatch) {
                                     $earnedPoints += $points;
                                 }
@@ -706,8 +693,9 @@ class FormController extends Controller
                     elseif ($questionType == 'checkbox_grid') {
                         if (isset($question['correctAnswers']) && is_array($question['correctAnswers'])) {
                             $rows = $question['rows'] ?? [];
-                            $rowPoints = count($rows) > 0 ? $points / count($rows) : 0;
-                            $gridEarned = 0;
+                            $totalCorrect = 0;
+                            $correctSelected = 0;
+                            $isExactMatch = true;
 
                             foreach ($rows as $rowIndex => $row) {
                                 $rowKey = 'question_' . $index . '_' . $rowIndex;
@@ -718,28 +706,28 @@ class FormController extends Controller
                                     $answers[$rowKey] = $userRowAnswers;
                                 }
 
-                                $rowEarned = 0;
-                                if (!empty($correctRowAnswers) && !empty($userRowAnswers)) {
-                                    $userRowAnswers = array_values(array_unique($userRowAnswers));
-                                    $correctRowAnswers = array_values(array_unique($correctRowAnswers));
-                                    $correctCount = count(array_intersect($userRowAnswers, $correctRowAnswers));
-                                    $incorrectCount = count(array_diff($userRowAnswers, $correctRowAnswers));
-                                    $rowExact = $correctCount === count($correctRowAnswers)
-                                        && $incorrectCount === 0
-                                        && count($userRowAnswers) === count($correctRowAnswers);
+                                $correctRowAnswers = array_values(array_unique((array) $correctRowAnswers));
+                                $userRowAnswers = array_values(array_unique((array) $userRowAnswers));
+                                $rowTotalCorrect = count($correctRowAnswers);
+                                $rowCorrectSelected = count(array_intersect($userRowAnswers, $correctRowAnswers));
+                                $rowIncorrectSelected = count(array_diff($userRowAnswers, $correctRowAnswers));
+                                $rowExact = $rowTotalCorrect > 0
+                                    && $rowCorrectSelected === $rowTotalCorrect
+                                    && $rowIncorrectSelected === 0
+                                    && count($userRowAnswers) === $rowTotalCorrect;
 
-                                    if ($allowPartialPoints && $correctCount > 0) {
-                                        $credit = max(0, $correctCount - $incorrectCount);
-                                        $rowEarned = ($credit / count($correctRowAnswers)) * $rowPoints;
-                                    } elseif (!$allowPartialPoints && $rowExact) {
-                                        $rowEarned = $rowPoints;
-                                    }
+                                $totalCorrect += $rowTotalCorrect;
+                                $correctSelected += $rowCorrectSelected;
+                                if (!$rowExact) {
+                                    $isExactMatch = false;
                                 }
-
-                                $gridEarned += $rowEarned;
                             }
 
-                            $earnedPoints += $gridEarned;
+                            if ($allowPartialPoints && $totalCorrect > 0 && $correctSelected > 0) {
+                                $earnedPoints += ($correctSelected / $totalCorrect) * $points;
+                            } elseif (!$allowPartialPoints && $isExactMatch) {
+                                $earnedPoints += $points;
+                            }
                         }
                     }
                 }
@@ -932,7 +920,7 @@ class FormController extends Controller
                 return $exact ? $points : 0;
             }
 
-            return round((max(0, $correctCount - $incorrectCount) / count($correct)) * $points, 2);
+            return round(($correctCount / count($correct)) * $points, 2);
         }
 
         if (in_array($type, ['linear_scale', 'rating'], true)) {
@@ -946,40 +934,61 @@ class FormController extends Controller
         if (in_array($type, ['multiple_choice_grid', 'checkbox_grid'], true)) {
             $rows = $question['rows'] ?? [];
             $correctAnswers = $question['correctAnswers'] ?? [];
-            $rowPoints = count($rows) ? $points / count($rows) : 0;
-            $earned = 0;
             $nestedAnswers = is_array($answer) ? $answer : [];
+
+            if ($type === 'multiple_choice_grid') {
+                $rowPoints = count($rows) ? $points / count($rows) : 0;
+                $earned = 0;
+
+                foreach ($rows as $rowIndex => $row) {
+                    $rowKey = $answerKey . '_' . $rowIndex;
+                    $userRowAnswer = $answers[$rowKey] ?? ($nestedAnswers[$rowKey] ?? null);
+                    $correctRowAnswer = $correctAnswers[$rowIndex] ?? null;
+
+                    if ($correctRowAnswer !== null && $correctRowAnswer !== '' && $userRowAnswer == $correctRowAnswer) {
+                        $earned += $rowPoints;
+                    }
+                }
+
+                return round($earned, 2);
+            }
+
+            $totalCorrect = 0;
+            $correctSelected = 0;
+            $allExact = true;
 
             foreach ($rows as $rowIndex => $row) {
                 $rowKey = $answerKey . '_' . $rowIndex;
                 $userRowAnswer = $answers[$rowKey] ?? ($nestedAnswers[$rowKey] ?? null);
-                $correctRowAnswer = $correctAnswers[$rowIndex] ?? null;
-
-                if ($type === 'multiple_choice_grid') {
-                    if ($correctRowAnswer !== null && $correctRowAnswer !== '' && $userRowAnswer == $correctRowAnswer) {
-                        $earned += $rowPoints;
-                    }
-                    continue;
-                }
+                $correctRowAnswer = $correctAnswers[$rowIndex] ?? [];
 
                 $correct = is_array($correctRowAnswer) ? array_values(array_unique($correctRowAnswer)) : [];
                 $selected = is_array($userRowAnswer) ? array_values(array_unique($userRowAnswer)) : [];
-                if (!$correct || !$selected) {
+
+                if (!$correct) {
                     continue;
                 }
 
-                $correctCount = count(array_intersect($selected, $correct));
-                $incorrectCount = count(array_diff($selected, $correct));
-                $exact = $correctCount === count($correct)
-                    && $incorrectCount === 0
+                $rowCorrectCount = count(array_intersect($selected, $correct));
+                $rowIncorrectCount = count(array_diff($selected, $correct));
+                $rowExact = $rowCorrectCount === count($correct)
+                    && $rowIncorrectCount === 0
                     && count($selected) === count($correct);
 
-                $earned += $allowPartialPoints
-                    ? (max(0, $correctCount - $incorrectCount) / count($correct)) * $rowPoints
-                    : ($exact ? $rowPoints : 0);
+                $totalCorrect += count($correct);
+                $correctSelected += $rowCorrectCount;
+                if (!$rowExact) {
+                    $allExact = false;
+                }
             }
 
-            return round($earned, 2);
+            if (!$allowPartialPoints) {
+                return $allExact && $totalCorrect > 0 ? $points : 0;
+            }
+
+            return $totalCorrect > 0 && $correctSelected > 0
+                ? round(($correctSelected / $totalCorrect) * $points, 2)
+                : 0;
         }
 
         return 0;
@@ -1179,13 +1188,21 @@ class FormController extends Controller
                 ->get();
             $mySubmissions = DB::table('form_submissions')
                 ->where('user_id', auth()->id())
-                ->pluck('form_id')
-                ->toArray();
+                ->orderBy('submitted_at', 'desc')
+                ->select('form_id', 'id')
+                ->get();
+
+            $mySubmissionIds = [];
+            foreach ($mySubmissions as $submission) {
+                if (!isset($mySubmissionIds[$submission->form_id])) {
+                    $mySubmissionIds[$submission->form_id] = $submission->id;
+                }
+            }
 
             return response()->json([
                 'success' => true,
                 'forms' => $forms,
-                'mySubmissions' => $mySubmissions,
+                'mySubmissionIds' => $mySubmissionIds,
                 'canCreate' => auth()->user()->canAccess('intercession', 'create-forms')
             ]);
         } catch (\Exception $e) {
@@ -1386,52 +1403,69 @@ class FormController extends Controller
                 // ... (keep existing checkboxes logic)
             } elseif ($questionType == 'checkbox_grid') {
                 $rows = $question['rows'] ?? [];
-                $rowPoints = count($rows) > 0 ? $points / count($rows) : 0;
                 $gridEarned = 0;
                 $gridDetails = [];
+                $totalCorrect = 0;
+                $correctSelected = 0;
+                $allExact = true;
+
+                foreach ($rows as $rowIndex => $row) {
+                    $correctRowAnswers = array_values(array_unique((array) ($question['correctAnswers'][$rowIndex] ?? [])));
+                    $totalCorrect += count($correctRowAnswers);
+                }
 
                 foreach ($rows as $rowIndex => $row) {
                     $rowKey = 'question_' . $index . '_' . $rowIndex;
                     $userRowAnswers = isset($answers[$rowKey]) ? (array)$answers[$rowKey] : [];
-                    $correctRowAnswers = $question['correctAnswers'][$rowIndex] ?? [];
+                    $correctRowAnswers = array_values(array_unique((array) ($question['correctAnswers'][$rowIndex] ?? [])));
+                    $selected = array_values(array_unique($userRowAnswers));
+                    $correctCount = count(array_intersect($selected, $correctRowAnswers));
+                    $incorrectCount = count(array_diff($selected, $correctRowAnswers));
+                    $rowExact = !empty($correctRowAnswers)
+                        && $correctCount === count($correctRowAnswers)
+                        && $incorrectCount === 0
+                        && count($selected) === count($correctRowAnswers);
+
+                    $correctSelected += $correctCount;
+                    if (!empty($correctRowAnswers) && !$rowExact) {
+                        $allExact = false;
+                    }
+
                     $rowEarned = 0;
-                    $correctCount = 0;
-
-                    if (!empty($correctRowAnswers) && !empty($userRowAnswers)) {
-                        foreach ($correctRowAnswers as $correctAns) {
-                            if (in_array($correctAns, $userRowAnswers)) {
-                                $correctCount++;
-                            }
-                        }
-
-                        if ($allowPartialPoints && $correctCount > 0) {
-                            $rowEarned = ($correctCount / count($correctRowAnswers)) * $rowPoints;
-                        } elseif (!$allowPartialPoints && $correctCount == count($correctRowAnswers)) {
-                            $rowEarned = $rowPoints;
-                        }
+                    if ($allowPartialPoints) {
+                        $rowEarned = $totalCorrect > 0
+                            ? round(($correctCount / $totalCorrect) * $points, 2)
+                            : 0;
+                    } elseif ($rowExact) {
+                        $rowEarned = $points;
                     }
 
                     $gridEarned += $rowEarned;
                     $gridDetails[] = [
                         'row' => $row,
-                        'user_answer' => json_encode($userRowAnswers),
+                        'user_answer' => json_encode($selected),
                         'correct_answer' => json_encode($correctRowAnswers),
                         'correct_count' => $correctCount,
                         'total_correct' => count($correctRowAnswers),
-                        'row_points' => $rowPoints,
+                        'row_points' => $totalCorrect > 0
+                            ? round(($points * count($correctRowAnswers)) / $totalCorrect, 2)
+                            : 0,
                         'earned' => $rowEarned,
-                        'status' => $rowEarned > 0 ? ($rowEarned == $rowPoints ? '✅ Full' : '⚠️ Partial') : '❌ Wrong'
+                        'status' => $rowExact ? '✅ Full' : ($correctCount > 0 ? '⚠️ Partial' : '❌ Wrong'),
                     ];
                 }
 
+                $gridEarned = $allowPartialPoints
+                    ? ($totalCorrect > 0 && $correctSelected > 0 ? round(($correctSelected / $totalCorrect) * $points, 2) : 0)
+                    : ($allExact && $totalCorrect > 0 ? $points : 0);
                 $earned = $gridEarned;
                 $details = [
                     'type' => $questionType,
                     'points' => $points,
-                    'row_points' => $rowPoints,
+                    'row_points' => $points,
                     'rows' => $gridDetails,
                     'earned' => $earned,
-                    'status' => $earned > 0 ? ($earned == $points ? '✅ Full' : '⚠️ Partial') : '❌ Wrong'
+                    'status' => $earned > 0 ? ($earned == $points ? '✅ Full' : '⚠️ Partial') : '❌ Wrong',
                 ];
             }
 

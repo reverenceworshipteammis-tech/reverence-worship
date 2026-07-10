@@ -43,6 +43,7 @@ Route::middleware('auth')->prefix('forms')->name('forms.')->group(function () {
     Route::get('/manage/{id}/edit', [FormController::class, 'edit'])->name('manage.edit');
     Route::put('/manage/{id}', [FormController::class, 'update'])->name('manage.update');
     Route::delete('/manage/{id}', [FormController::class, 'destroy'])->name('manage.delete');
+    Route::post('/manage/{id}/duplicate', [FormController::class, 'duplicate'])->name('manage.duplicate');
     Route::post('/manage/{id}/toggle-publish', [FormController::class, 'togglePublish'])->name('manage.toggle-publish');
     Route::get('/manage/{id}/submissions', [FormController::class, 'submissions'])->name('manage.submissions');
     Route::get('/manage/{formId}/submissions/{submissionId}/review', [FormController::class, 'reviewSubmission'])
