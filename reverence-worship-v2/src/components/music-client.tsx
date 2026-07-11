@@ -2,11 +2,14 @@
 
 import { FormEvent, useMemo, useState, useTransition } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import {
+  CalendarDays,
   ChevronLeft,
   ChevronRight,
   Download,
   Eye,
+  EyeOff,
   FileText,
   GalleryHorizontal,
   ImageIcon,
@@ -18,6 +21,7 @@ import {
   Plus,
   Search,
   Settings,
+  Star,
   Trash2,
   Upload,
   Users,
@@ -27,12 +31,23 @@ import {
   addSongToPlaylist,
   createPlaylist,
   createSong,
+  deleteBoardItem,
+  deleteFeaturedImage,
   deleteGalleryPhoto,
   deletePlaylist,
   deleteSong,
   deleteServiceTeam,
+  deleteYoutubeVideo,
   generateServiceTeams,
   restoreServiceTeam,
+  saveBoardItem,
+  saveFeaturedImage,
+  saveYoutubeVideo,
+  toggleBoardItemPin,
+  toggleBoardItemPublish,
+  toggleFeaturedImageHero,
+  toggleFeaturedImagePublish,
+  toggleYoutubePublish,
   updatePlaylist,
   updateSong,
   updateGalleryPhoto,
@@ -103,12 +118,44 @@ type ServiceTeam = {
   members: ServiceTeamMember[];
 };
 
+type BoardItem = {
+  id: number;
+  title: string;
+  content: string;
+  type: string;
+  eventDate: string | null;
+  eventDateValue: string;
+  isPublished: boolean;
+  isPinned: boolean;
+};
+
+type YoutubeVideo = {
+  id: number;
+  title: string;
+  youtubeId: string;
+  isPublished: boolean;
+  sortOrder: number;
+};
+
+type FeaturedImage = {
+  id: number;
+  title: string;
+  imagePath: string;
+  description: string | null;
+  isPublished: boolean;
+  isHero: boolean;
+  sortOrder: number;
+};
+
 type MusicClientProps = {
   playlists: Playlist[];
   songs: Song[];
   gallery: GalleryPhoto[];
   singers: Singer[];
   serviceTeams: ServiceTeam[];
+  boardItems: BoardItem[];
+  youtubeVideos: YoutubeVideo[];
+  featuredImages: FeaturedImage[];
 };
 
 const tabs = [
@@ -276,17 +323,31 @@ function downloadGenerationCsv(generation: ServiceTeam) {
   URL.revokeObjectURL(url);
 }
 
-export function MusicClient({ playlists, songs, gallery, singers, serviceTeams }: MusicClientProps) {
+export function MusicClient({
+  playlists,
+  songs,
+  gallery,
+  singers,
+  serviceTeams,
+  boardItems,
+  youtubeVideos,
+  featuredImages,
+}: MusicClientProps) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState("playlist");
+  const [boardTab, setBoardTab] = useState<"youtube" | "featured" | "events">("youtube");
   const [songSearch, setSongSearch] = useState("");
   const [gallerySearch, setGallerySearch] = useState("");
   const [gallerySort, setGallerySort] = useState("newest");
   const [singerSearch, setSingerSearch] = useState("");
   const [message, setMessage] = useState<string | null>(null);
-  const [modal, setModal] = useState<null | "song" | "playlist" | "galleryUpload" | "groupsGenerate" | "groupsSettings" | "groupsPrevious">(null);
+  const [modal, setModal] = useState<null | "song" | "playlist" | "galleryUpload" | "groupsGenerate" | "groupsSettings" | "groupsPrevious" | "youtube" | "featured" | "boardItem">(null);
   const [editingSong, setEditingSong] = useState<Song | null>(null);
   const [editingPlaylist, setEditingPlaylist] = useState<Playlist | null>(null);
   const [editingPhoto, setEditingPhoto] = useState<GalleryPhoto | null>(null);
+  const [editingYoutube, setEditingYoutube] = useState<YoutubeVideo | null>(null);
+  const [editingFeatured, setEditingFeatured] = useState<FeaturedImage | null>(null);
+  const [editingBoardItem, setEditingBoardItem] = useState<BoardItem | null>(null);
   const [viewingPlaylist, setViewingPlaylist] = useState<Playlist | null>(null);
   const [viewingGeneration, setViewingGeneration] = useState<ServiceTeam | null>(null);
   const [lyricsSong, setLyricsSong] = useState<Song | null>(null);
@@ -336,7 +397,10 @@ export function MusicClient({ playlists, songs, gallery, singers, serviceTeams }
     startTransition(async () => {
       const result = await action();
       setMessage(result.message);
-      if (result.ok) close?.();
+      if (result.ok) {
+        close?.();
+        router.refresh();
+      }
     });
   }
 
@@ -395,6 +459,27 @@ export function MusicClient({ playlists, songs, gallery, singers, serviceTeams }
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     runAction(() => generateServiceTeams(formData), () => setModal(null));
+  }
+
+  function submitYoutube(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    if (editingYoutube) formData.set("id", String(editingYoutube.id));
+    runAction(() => saveYoutubeVideo(formData), () => { setModal(null); setEditingYoutube(null); });
+  }
+
+  function submitFeatured(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    if (editingFeatured) formData.set("id", String(editingFeatured.id));
+    runAction(() => saveFeaturedImage(formData), () => { setModal(null); setEditingFeatured(null); });
+  }
+
+  function submitBoardItem(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    if (editingBoardItem) formData.set("id", String(editingBoardItem.id));
+    runAction(() => saveBoardItem(formData), () => { setModal(null); setEditingBoardItem(null); });
   }
 
   const lightboxPhoto = lightboxIndex === null ? null : filteredGallery[lightboxIndex];
@@ -552,6 +637,144 @@ export function MusicClient({ playlists, songs, gallery, singers, serviceTeams }
               <button type="button" onClick={() => setModal("galleryUpload")} className="mt-3 text-sm text-blue-600 hover:text-blue-800">Upload your first photo</button>
             </div>
           )}
+        </div>
+      ) : activeTab === "board" ? (
+        <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm sm:p-6">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-lg font-bold text-gray-800">Landing Page Content Manager</h3>
+          </div>
+
+          <div className="mb-5 overflow-hidden rounded-lg border border-gray-200 bg-white">
+            <nav className="flex overflow-x-auto border-b border-gray-200">
+              {[
+                { id: "youtube", label: "Video", icon: Music },
+                { id: "featured", label: "Image", icon: ImageIcon },
+                { id: "events", label: "Events & Updates", icon: CalendarDays },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setBoardTab(tab.id as "youtube" | "featured" | "events")}
+                  className={`flex shrink-0 items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold ${
+                    boardTab === tab.id ? "border-black text-black" : "border-transparent text-gray-500"
+                  }`}
+                >
+                  <tab.icon className="size-4" aria-hidden />
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
+          </div>
+
+          {boardTab === "youtube" ? (
+            <section className="rounded-xl border p-3 sm:p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h4 className="font-semibold text-gray-700">YouTube Videos</h4>
+                <button type="button" onClick={() => { setEditingYoutube(null); setModal("youtube"); }} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700">
+                  <Plus className="size-4" aria-hidden /> Add YouTube Video
+                </button>
+              </div>
+              <div className="max-h-96 space-y-2 overflow-y-auto">
+                {youtubeVideos.length > 0 ? youtubeVideos.map((video) => (
+                  <div key={video.id} className="rounded-xl border p-3 transition hover:bg-gray-50">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row">
+                        <a href={`https://www.youtube.com/watch?v=${video.youtubeId}`} target="_blank" rel="noopener noreferrer" className="relative h-28 w-full shrink-0 overflow-hidden rounded-lg bg-gray-900 sm:h-20 sm:w-32">
+                          <Image src={`https://i.ytimg.com/vi/${video.youtubeId}/mqdefault.jpg`} alt={video.title} fill sizes="128px" className="object-cover" />
+                        </a>
+                        <div className="min-w-0">
+                          <h5 className="break-words font-medium text-gray-800">{video.title}</h5>
+                          <span className="mt-1 inline-block rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{video.isPublished ? "Published" : "Draft"}</span>
+                          <p className="mt-1 break-all text-xs text-gray-500">YouTube ID: {video.youtubeId}</p>
+                        </div>
+                      </div>
+                      <div className="flex justify-end gap-3 border-t pt-2 sm:border-t-0 sm:pt-0">
+                        <button type="button" onClick={() => runAction(() => toggleYoutubePublish(video.id))} className="text-black hover:text-gray-600" title="Publish/Hide">{video.isPublished ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button>
+                        <button type="button" onClick={() => { setEditingYoutube(video); setModal("youtube"); }} className="text-black hover:text-gray-600" title="Edit"><Pencil className="size-4" /></button>
+                        <button type="button" onClick={() => runAction(() => deleteYoutubeVideo(video.id))} className="text-black hover:text-gray-600" title="Delete"><Trash2 className="size-4" /></button>
+                      </div>
+                    </div>
+                  </div>
+                )) : <div className="py-8 text-center text-sm text-gray-500">No YouTube videos added yet</div>}
+              </div>
+            </section>
+          ) : null}
+
+          {boardTab === "featured" ? (
+            <section className="rounded-xl border p-3 sm:p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h4 className="font-semibold text-gray-700">Featured Images</h4>
+                <button type="button" onClick={() => { setEditingFeatured(null); setModal("featured"); }} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700">
+                  <Upload className="size-4" aria-hidden /> Upload
+                </button>
+              </div>
+              <div className="max-h-96 space-y-2 overflow-y-auto">
+                {featuredImages.length > 0 ? featuredImages.map((image) => (
+                  <div key={image.id} className="rounded-xl border p-3 transition hover:bg-gray-50">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="flex min-w-0 flex-1 items-start gap-3">
+                        <div className="relative size-16 shrink-0 overflow-hidden rounded-lg bg-gray-100">
+                          <Image src={image.imagePath} alt={image.title} fill sizes="64px" className="object-cover" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h5 className="break-words font-medium text-gray-800">{image.title}</h5>
+                            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{image.isPublished ? "Published" : "Draft"}</span>
+                            {image.isHero ? <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-black">Hero</span> : null}
+                          </div>
+                          {image.description ? <p className="mt-1 line-clamp-2 text-xs text-gray-500">{image.description}</p> : null}
+                        </div>
+                      </div>
+                      <div className="flex justify-end gap-3 border-t pt-2 sm:border-t-0 sm:pt-0">
+                        <button type="button" onClick={() => runAction(() => toggleFeaturedImageHero(image.id))} className="text-black hover:text-gray-600" title="Hero"><Star className={`size-4 ${image.isHero ? "fill-black" : ""}`} /></button>
+                        <button type="button" onClick={() => runAction(() => toggleFeaturedImagePublish(image.id))} className="text-black hover:text-gray-600" title="Publish/Hide">{image.isPublished ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button>
+                        <button type="button" onClick={() => { setEditingFeatured(image); setModal("featured"); }} className="text-black hover:text-gray-600" title="Edit"><Pencil className="size-4" /></button>
+                        <button type="button" onClick={() => runAction(() => deleteFeaturedImage(image.id))} className="text-black hover:text-gray-600" title="Delete"><Trash2 className="size-4" /></button>
+                      </div>
+                    </div>
+                  </div>
+                )) : <div className="py-8 text-center text-sm text-gray-500">No featured images added yet</div>}
+              </div>
+            </section>
+          ) : null}
+
+          {boardTab === "events" ? (
+            <section className="rounded-xl border p-3 sm:p-4">
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div>
+                  <h4 className="font-semibold text-gray-700">Events & Updates</h4>
+                  <p className="text-xs text-gray-500">Published items appear on the public landing page.</p>
+                </div>
+                <button type="button" onClick={() => { setEditingBoardItem(null); setModal("boardItem"); }} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700">
+                  <Plus className="size-4" aria-hidden /> Add
+                </button>
+              </div>
+              <div className="max-h-[32rem] space-y-3 overflow-y-auto">
+                {boardItems.length > 0 ? boardItems.map((item) => (
+                  <article key={item.id} className="rounded-lg border p-4 hover:bg-gray-50">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="mb-1 flex flex-wrap items-center gap-2">
+                          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs capitalize text-black">{item.type}</span>
+                          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-black">{item.isPublished ? "Published" : "Draft"}</span>
+                          {item.isPinned ? <span className="text-xs text-black">Pinned</span> : null}
+                        </div>
+                        <h5 className="font-semibold text-gray-800">{item.title}</h5>
+                        {item.eventDate ? <p className="mt-1 text-xs text-black">{item.eventDate}</p> : null}
+                        <p className="mt-2 line-clamp-3 text-sm text-gray-600">{item.content}</p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <button type="button" onClick={() => runAction(() => toggleBoardItemPublish(item.id))} className="text-black hover:text-gray-600" title="Publish/Hide">{item.isPublished ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button>
+                        <button type="button" onClick={() => runAction(() => toggleBoardItemPin(item.id))} className="text-black hover:text-gray-600" title="Pin/Unpin"><Star className={`size-4 ${item.isPinned ? "fill-black" : ""}`} /></button>
+                        <button type="button" onClick={() => { setEditingBoardItem(item); setModal("boardItem"); }} className="text-black hover:text-gray-600" title="Edit"><Pencil className="size-4" /></button>
+                        <button type="button" onClick={() => runAction(() => deleteBoardItem(item.id))} className="text-black hover:text-gray-600" title="Delete"><Trash2 className="size-4" /></button>
+                      </div>
+                    </div>
+                  </article>
+                )) : <div className="py-10 text-center text-sm text-gray-500">No events or updates yet.</div>}
+              </div>
+            </section>
+          ) : null}
         </div>
       ) : activeTab !== "playlist" ? (
         <div className="rounded-2xl border border-gray-100 bg-white p-8 text-center shadow-sm">
@@ -836,6 +1059,97 @@ export function MusicClient({ playlists, songs, gallery, singers, serviceTeams }
               ))}
             </div>
           </div>
+        </Modal>
+      ) : null}
+
+      {modal === "youtube" ? (
+        <Modal title={editingYoutube ? "Edit YouTube Video" : "Add YouTube Video"} onClose={() => { setModal(null); setEditingYoutube(null); }}>
+          <form onSubmit={submitYoutube} className="space-y-4 p-5">
+            <label>
+              <span className="mb-1 block text-sm font-medium text-gray-700">Title *</span>
+              <input name="title" defaultValue={editingYoutube?.title ?? ""} required className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </label>
+            <label>
+              <span className="mb-1 block text-sm font-medium text-gray-700">YouTube video link *</span>
+              <input name="youtubeLink" type="text" defaultValue={editingYoutube ? `https://www.youtube.com/watch?v=${editingYoutube.youtubeId}` : ""} required placeholder="https://www.youtube.com/watch?v=..." className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <span className="mt-1 block text-xs text-gray-500">Paste the full YouTube, Shorts, Live, Embed, or youtu.be link.</span>
+            </label>
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input name="isPublished" type="checkbox" defaultChecked={editingYoutube?.isPublished ?? false} className="rounded border-gray-300 text-black" />
+              Publish on landing page
+            </label>
+            <div className="flex justify-end gap-2 border-t pt-4">
+              <button type="button" onClick={() => { setModal(null); setEditingYoutube(null); }} className="rounded-lg border px-4 py-2 text-gray-700 hover:bg-gray-50">Cancel</button>
+              <button disabled={isPending} type="submit" className="rounded-lg bg-black px-4 py-2 font-semibold text-white hover:bg-gray-800 disabled:opacity-60">Save Video</button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
+
+      {modal === "featured" ? (
+        <Modal title={editingFeatured ? "Edit Featured Image" : "Add Featured Image"} onClose={() => { setModal(null); setEditingFeatured(null); }}>
+          <form onSubmit={submitFeatured} className="space-y-4 p-5">
+            <label>
+              <span className="mb-1 block text-sm font-medium text-gray-700">Title *</span>
+              <input name="title" defaultValue={editingFeatured?.title ?? ""} required className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </label>
+            <label>
+              <span className="mb-1 block text-sm font-medium text-gray-700">Image {editingFeatured ? "(Optional)" : "*"}</span>
+              <input name="image" type="file" accept="image/*" required={!editingFeatured} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            </label>
+            <label>
+              <span className="mb-1 block text-sm font-medium text-gray-700">Description</span>
+              <textarea name="description" defaultValue={editingFeatured?.description ?? ""} rows={3} className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </label>
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input name="isPublished" type="checkbox" defaultChecked={editingFeatured?.isPublished ?? false} className="rounded border-gray-300 text-black" />
+              Publish on landing page
+            </label>
+            <div className="flex justify-end gap-2 border-t pt-4">
+              <button type="button" onClick={() => { setModal(null); setEditingFeatured(null); }} className="rounded-lg border px-4 py-2 text-gray-700 hover:bg-gray-50">Cancel</button>
+              <button disabled={isPending} type="submit" className="rounded-lg bg-black px-4 py-2 font-semibold text-white hover:bg-gray-800 disabled:opacity-60">Save Image</button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
+
+      {modal === "boardItem" ? (
+        <Modal title={editingBoardItem ? "Edit Board Item" : "New Board Item"} onClose={() => { setModal(null); setEditingBoardItem(null); }}>
+          <form onSubmit={submitBoardItem} className="space-y-4 p-5">
+            <label>
+              <span className="mb-1 block text-sm font-medium text-gray-700">Type *</span>
+              <select name="type" defaultValue={editingBoardItem?.type ?? "event"} className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="event">Event</option>
+                <option value="update">Update</option>
+              </select>
+            </label>
+            <label>
+              <span className="mb-1 block text-sm font-medium text-gray-700">Title *</span>
+              <input name="title" defaultValue={editingBoardItem?.title ?? ""} required className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </label>
+            <label>
+              <span className="mb-1 block text-sm font-medium text-gray-700">Event date and time</span>
+              <input name="eventDate" type="datetime-local" defaultValue={editingBoardItem?.eventDateValue ?? ""} className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </label>
+            <label>
+              <span className="mb-1 block text-sm font-medium text-gray-700">Details *</span>
+              <textarea name="content" defaultValue={editingBoardItem?.content ?? ""} required rows={5} className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </label>
+            <div className="flex flex-wrap gap-5">
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input name="isPublished" type="checkbox" defaultChecked={editingBoardItem?.isPublished ?? false} className="rounded border-gray-300 text-black" />
+                Publish on landing page
+              </label>
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input name="isPinned" type="checkbox" defaultChecked={editingBoardItem?.isPinned ?? false} className="rounded border-gray-300 text-black" />
+                Pin to top
+              </label>
+            </div>
+            <div className="flex justify-end gap-2 border-t pt-4">
+              <button type="button" onClick={() => { setModal(null); setEditingBoardItem(null); }} className="rounded-lg border px-4 py-2 text-gray-700 hover:bg-gray-50">Cancel</button>
+              <button disabled={isPending} type="submit" className="rounded-lg bg-black px-4 py-2 font-semibold text-white hover:bg-gray-800 disabled:opacity-60">Save Item</button>
+            </div>
+          </form>
         </Modal>
       ) : null}
 

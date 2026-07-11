@@ -10,10 +10,20 @@ function formatDate(date: Date) {
   }).format(date);
 }
 
+function formatDateTime(date: Date) {
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 export default async function MusicPage() {
   await requireUser();
 
-  const [playlists, songs, gallery, singers, serviceTeams] = await Promise.all([
+  const [playlists, songs, gallery, singers, serviceTeams, boardItems, youtubeVideos, featuredImages] = await Promise.all([
     prisma.playlist.findMany({
       orderBy: { createdAt: "desc" },
       include: {
@@ -52,6 +62,15 @@ export default async function MusicPage() {
           include: { user: true },
         },
       },
+    }),
+    prisma.publicBoardItem.findMany({
+      orderBy: [{ isPinned: "desc" }, { createdAt: "desc" }],
+    }),
+    prisma.landingYoutubeVideo.findMany({
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
+    }),
+    prisma.landingFeaturedImage.findMany({
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
     }),
   ]);
 
@@ -123,6 +142,32 @@ export default async function MusicPage() {
               }
             : null,
         })),
+      }))}
+      boardItems={boardItems.map((item) => ({
+        id: item.id,
+        title: item.title,
+        content: item.content,
+        type: item.type,
+        eventDate: item.eventDate ? formatDateTime(item.eventDate) : null,
+        eventDateValue: item.eventDate ? item.eventDate.toISOString().slice(0, 16) : "",
+        isPublished: item.isPublished,
+        isPinned: item.isPinned,
+      }))}
+      youtubeVideos={youtubeVideos.map((video) => ({
+        id: video.id,
+        title: video.title,
+        youtubeId: video.youtubeId,
+        isPublished: video.isPublished,
+        sortOrder: video.sortOrder,
+      }))}
+      featuredImages={featuredImages.map((image) => ({
+        id: image.id,
+        title: image.title,
+        imagePath: image.imagePath,
+        description: image.description,
+        isPublished: image.isPublished,
+        isHero: image.isHero,
+        sortOrder: image.sortOrder,
       }))}
     />
   );

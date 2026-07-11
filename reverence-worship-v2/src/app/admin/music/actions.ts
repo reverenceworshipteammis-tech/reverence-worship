@@ -19,6 +19,47 @@ function readNumber(formData: FormData, key: string) {
   return Number.isFinite(number) ? number : null;
 }
 
+function readBoolean(formData: FormData, key: string) {
+  const value = formData.get(key);
+  return value === "on" || value === "1" || value === "true";
+}
+
+function extractYouTubeId(input: string) {
+  try {
+    const url = new URL(input);
+    if (url.hostname === "youtu.be") return url.pathname.slice(1);
+    if (url.pathname.startsWith("/shorts/")) return url.pathname.split("/")[2];
+    if (url.pathname.startsWith("/live/")) return url.pathname.split("/")[2];
+    if (url.pathname.startsWith("/embed/")) return url.pathname.split("/")[2];
+    return url.searchParams.get("v") || input;
+  } catch {
+    return input;
+  }
+}
+
+async function saveUploadedImage(file: File, folder: "gallery" | "landing") {
+  if (!file.type.startsWith("image/")) {
+    throw new Error("Only image files are allowed.");
+  }
+
+  const uploadDir = path.join(process.cwd(), "public", "uploads", folder);
+  await mkdir(uploadDir, { recursive: true });
+
+  const extension = path.extname(file.name) || ".jpg";
+  const baseName = path
+    .basename(file.name, extension)
+    .replace(/[^a-z0-9]+/gi, "-")
+    .replace(/^-|-$/g, "")
+    .toLowerCase();
+  const filename = `${Date.now()}-${crypto.randomUUID()}-${baseName || "image"}${extension}`;
+  const diskPath = path.join(uploadDir, filename);
+  const bytes = await file.arrayBuffer();
+
+  await writeFile(diskPath, Buffer.from(bytes));
+
+  return `/uploads/${folder}/${filename}`;
+}
+
 export async function createSong(formData: FormData) {
   const user = await requireUser();
   const title = readString(formData, "title");
@@ -213,9 +254,6 @@ export async function uploadGalleryPhotos(formData: FormData) {
     return { ok: false, message: "Select at least one photo." };
   }
 
-  const uploadDir = path.join(process.cwd(), "public", "uploads", "gallery");
-  await mkdir(uploadDir, { recursive: true });
-
   const created = [];
 
   for (const file of files) {
@@ -223,21 +261,12 @@ export async function uploadGalleryPhotos(formData: FormData) {
       return { ok: false, message: "Only image files are allowed." };
     }
 
-    const bytes = await file.arrayBuffer();
-    const extension = path.extname(file.name) || ".jpg";
-    const baseName = path
-      .basename(file.name, extension)
-      .replace(/[^a-z0-9]+/gi, "-")
-      .replace(/^-|-$/g, "")
-      .toLowerCase();
-    const filename = `${Date.now()}-${crypto.randomUUID()}-${baseName || "photo"}${extension}`;
-    const diskPath = path.join(uploadDir, filename);
-
-    await writeFile(diskPath, Buffer.from(bytes));
+    const imagePath = await saveUploadedImage(file, "gallery");
+    const baseName = path.basename(file.name, path.extname(file.name));
 
     created.push({
       title: caption || baseName || "Untitled",
-      imagePath: `/uploads/gallery/${filename}`,
+      imagePath,
       description: caption,
       eventDate: new Date(),
       createdBy: user.id,
@@ -504,4 +533,192 @@ export async function deleteServiceTeam(serviceTeamId: number) {
   revalidatePath("/admin/music");
 
   return { ok: true, message: "Service team deleted successfully." };
+}
+
+export async function saveBoardItem(formData: FormData) {
+  const user = await requireUser();
+  const id = readNumber(formData, "id");
+  const title = readString(formData, "title");
+  const content = readString(formData, "content");
+  const type = readString(formData, "type") || "update";
+  const eventDate = readString(formData, "eventDate");
+
+  if (!title || !content) {
+    return { ok: false, message: "Title and details are required." };
+  }
+
+  if (!["event", "update"].includes(type)) {
+    return { ok: false, message: "Invalid board item type." };
+  }
+
+  const data = {
+    title,
+    content,
+    type,
+    eventDate: type === "event" && eventDate ? new Date(eventDate) : null,
+    isPublished: readBoolean(formData, "isPublished"),
+    isPinned: readBoolean(formData, "isPinned"),
+  };
+
+  if (id) {
+    await prisma.publicBoardItem.update({ where: { id }, data });
+  } else {
+    await prisma.publicBoardItem.create({ data: { ...data, createdBy: user.id } });
+  }
+
+  revalidatePath("/admin/music");
+
+  return { ok: true, message: id ? "Board item updated." : "Board item created." };
+}
+
+export async function toggleBoardItemPublish(id: number) {
+  await requireUser();
+  const item = await prisma.publicBoardItem.findUnique({ where: { id }, select: { isPublished: true } });
+  if (!item) return { ok: false, message: "Board item not found." };
+  await prisma.publicBoardItem.update({ where: { id }, data: { isPublished: !item.isPublished } });
+  revalidatePath("/admin/music");
+  return { ok: true, message: "Board item updated." };
+}
+
+export async function toggleBoardItemPin(id: number) {
+  await requireUser();
+  const item = await prisma.publicBoardItem.findUnique({ where: { id }, select: { isPinned: true } });
+  if (!item) return { ok: false, message: "Board item not found." };
+  await prisma.publicBoardItem.update({ where: { id }, data: { isPinned: !item.isPinned } });
+  revalidatePath("/admin/music");
+  return { ok: true, message: "Board item updated." };
+}
+
+export async function deleteBoardItem(id: number) {
+  await requireUser();
+  await prisma.publicBoardItem.delete({ where: { id } });
+  revalidatePath("/admin/music");
+  return { ok: true, message: "Board item deleted." };
+}
+
+export async function saveYoutubeVideo(formData: FormData) {
+  const user = await requireUser();
+  const id = readNumber(formData, "id");
+  const title = readString(formData, "title");
+  const youtubeLink = readString(formData, "youtubeLink");
+
+  if (!title || !youtubeLink) {
+    return { ok: false, message: "Title and YouTube link are required." };
+  }
+
+  const data = {
+    title,
+    youtubeId: extractYouTubeId(youtubeLink),
+    isPublished: readBoolean(formData, "isPublished"),
+  };
+
+  if (id) {
+    await prisma.landingYoutubeVideo.update({ where: { id }, data });
+  } else {
+    const maxOrder = await prisma.landingYoutubeVideo.aggregate({ _max: { sortOrder: true } });
+    await prisma.landingYoutubeVideo.create({
+      data: { ...data, sortOrder: (maxOrder._max.sortOrder ?? 0) + 1, createdBy: user.id },
+    });
+  }
+
+  revalidatePath("/admin/music");
+
+  return { ok: true, message: id ? "YouTube video updated." : "YouTube video added." };
+}
+
+export async function toggleYoutubePublish(id: number) {
+  await requireUser();
+  const video = await prisma.landingYoutubeVideo.findUnique({ where: { id }, select: { isPublished: true } });
+  if (!video) return { ok: false, message: "Video not found." };
+  await prisma.landingYoutubeVideo.update({ where: { id }, data: { isPublished: !video.isPublished } });
+  revalidatePath("/admin/music");
+  return { ok: true, message: "Video updated." };
+}
+
+export async function deleteYoutubeVideo(id: number) {
+  await requireUser();
+  await prisma.landingYoutubeVideo.delete({ where: { id } });
+  revalidatePath("/admin/music");
+  return { ok: true, message: "Video deleted." };
+}
+
+export async function saveFeaturedImage(formData: FormData) {
+  const user = await requireUser();
+  const id = readNumber(formData, "id");
+  const title = readString(formData, "title");
+  const description = readString(formData, "description");
+  const file = formData.get("image");
+
+  if (!title) {
+    return { ok: false, message: "Image title is required." };
+  }
+
+  let imagePath: string | undefined;
+  if (file instanceof File && file.size > 0) {
+    imagePath = await saveUploadedImage(file, "landing");
+  }
+
+  if (id) {
+    const current = await prisma.landingFeaturedImage.findUnique({ where: { id }, select: { imagePath: true } });
+    await prisma.landingFeaturedImage.update({
+      where: { id },
+      data: {
+        title,
+        description,
+        isPublished: readBoolean(formData, "isPublished"),
+        ...(imagePath ? { imagePath } : {}),
+      },
+    });
+    if (imagePath && current?.imagePath?.startsWith("/uploads/landing/")) {
+      await unlink(path.join(process.cwd(), "public", current.imagePath)).catch(() => undefined);
+    }
+  } else {
+    if (!imagePath) return { ok: false, message: "Select an image to upload." };
+    const maxOrder = await prisma.landingFeaturedImage.aggregate({ _max: { sortOrder: true } });
+    await prisma.landingFeaturedImage.create({
+      data: {
+        title,
+        description,
+        imagePath,
+        isPublished: readBoolean(formData, "isPublished"),
+        sortOrder: (maxOrder._max.sortOrder ?? 0) + 1,
+        createdBy: user.id,
+      },
+    });
+  }
+
+  revalidatePath("/admin/music");
+
+  return { ok: true, message: id ? "Featured image updated." : "Featured image added." };
+}
+
+export async function toggleFeaturedImagePublish(id: number) {
+  await requireUser();
+  const image = await prisma.landingFeaturedImage.findUnique({ where: { id }, select: { isPublished: true, isHero: true } });
+  if (!image) return { ok: false, message: "Image not found." };
+  const willPublish = !image.isPublished;
+  await prisma.landingFeaturedImage.update({ where: { id }, data: { isPublished: willPublish, isHero: willPublish ? image.isHero : false } });
+  revalidatePath("/admin/music");
+  return { ok: true, message: "Featured image updated." };
+}
+
+export async function toggleFeaturedImageHero(id: number) {
+  await requireUser();
+  const image = await prisma.landingFeaturedImage.findUnique({ where: { id }, select: { isHero: true, isPublished: true } });
+  if (!image) return { ok: false, message: "Image not found." };
+  const isHero = !image.isHero;
+  await prisma.landingFeaturedImage.update({ where: { id }, data: { isHero, isPublished: isHero ? true : image.isPublished } });
+  revalidatePath("/admin/music");
+  return { ok: true, message: isHero ? "Image added to hero." : "Image removed from hero." };
+}
+
+export async function deleteFeaturedImage(id: number) {
+  await requireUser();
+  const image = await prisma.landingFeaturedImage.findUnique({ where: { id }, select: { imagePath: true } });
+  if (image?.imagePath?.startsWith("/uploads/landing/")) {
+    await unlink(path.join(process.cwd(), "public", image.imagePath)).catch(() => undefined);
+  }
+  await prisma.landingFeaturedImage.delete({ where: { id } });
+  revalidatePath("/admin/music");
+  return { ok: true, message: "Featured image deleted." };
 }

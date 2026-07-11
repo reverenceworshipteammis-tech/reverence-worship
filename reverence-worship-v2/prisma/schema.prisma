@@ -69,6 +69,11 @@ model User {
   createdGallery PhotoGallery[] @relation("CreatedGallery")
   createdServiceTeams ServiceTeam[] @relation("CreatedServiceTeams")
   teamMemberships TeamMember[]
+  createdBoardItems PublicBoardItem[] @relation("CreatedBoardItems")
+  createdLandingVideos LandingYoutubeVideo[] @relation("CreatedLandingVideos")
+  createdFeaturedImages LandingFeaturedImage[] @relation("CreatedFeaturedImages")
+  createdSpiritualForms SpiritualForm[] @relation("CreatedSpiritualForms")
+  formSubmissions FormSubmission[]
 
   @@index([status])
   @@index([membershipType])
@@ -258,6 +263,99 @@ model TeamMember {
   @@index([serviceTeamId])
   @@index([userId])
   @@map("team_members")
+}
+
+model PublicBoardItem {
+  id          Int       @id @default(autoincrement())
+  title       String
+  content     String
+  isPinned    Boolean   @default(false) @map("is_pinned")
+  createdBy   Int?      @map("created_by")
+  type        String    @default("update")
+  eventDate   DateTime? @map("event_date")
+  isPublished Boolean   @default(false) @map("is_published")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  creator User? @relation("CreatedBoardItems", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([createdBy])
+  @@index([isPublished])
+  @@index([isPinned, createdAt])
+  @@map("public_board")
+}
+
+model LandingYoutubeVideo {
+  id          Int      @id @default(autoincrement())
+  title       String
+  youtubeId   String   @map("youtube_id")
+  isPublished Boolean  @default(false) @map("is_published")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdBy   Int?     @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  creator User? @relation("CreatedLandingVideos", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([createdBy])
+  @@index([sortOrder])
+  @@map("landing_youtube_videos")
+}
+
+model LandingFeaturedImage {
+  id          Int      @id @default(autoincrement())
+  title       String
+  imagePath   String   @map("image_path")
+  description String?
+  isPublished Boolean  @default(false) @map("is_published")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdBy   Int?     @map("created_by")
+  isHero      Boolean  @default(false) @map("is_hero")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  creator User? @relation("CreatedFeaturedImages", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([createdBy])
+  @@index([sortOrder])
+  @@map("landing_featured_images")
+}
+
+model SpiritualForm {
+  id          Int      @id @default(autoincrement())
+  title       String
+  description String?
+  questions   Json     @default("[]")
+  settings    Json     @default("{}")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdBy   Int?     @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  creator     User?            @relation("CreatedSpiritualForms", fields: [createdBy], references: [id], onDelete: SetNull)
+  submissions FormSubmission[]
+
+  @@index([createdBy])
+  @@index([isActive])
+  @@map("forms")
+}
+
+model FormSubmission {
+  id          Int      @id @default(autoincrement())
+  formId      Int      @map("form_id")
+  userId      Int?     @map("user_id")
+  answers     Json     @default("{}")
+  score       Float?
+  submittedAt DateTime @default(now()) @map("submitted_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  form SpiritualForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  user User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([formId])
+  @@index([userId])
+  @@map("form_submissions")
 }
 
 model Role {

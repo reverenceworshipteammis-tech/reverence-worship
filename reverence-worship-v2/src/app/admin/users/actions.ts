@@ -44,6 +44,29 @@ const updateUserSchema = z.object({
   occupation: z.string().optional(),
   skills: z.string().optional(),
   status: z.enum(["active", "pending", "inactive"]),
+  password: z.string().optional(),
+  passwordConfirmation: z.string().optional(),
+}).superRefine((data, context) => {
+  const password = data.password?.trim() ?? "";
+  const confirmation = data.passwordConfirmation?.trim() ?? "";
+
+  if (!password && !confirmation) return;
+
+  if (password.length < 6) {
+    context.addIssue({
+      code: "custom",
+      message: "Password must be at least 6 characters.",
+      path: ["password"],
+    });
+  }
+
+  if (password !== confirmation) {
+    context.addIssue({
+      code: "custom",
+      message: "Passwords do not match.",
+      path: ["passwordConfirmation"],
+    });
+  }
 });
 
 export type UserActionState = {
@@ -189,6 +212,9 @@ export async function updateUserAction(
     return { ok: false, message: "Another user already uses this email." };
   }
 
+  const password = parsed.data.password?.trim();
+  const passwordHash = password ? await bcrypt.hash(password, 12) : undefined;
+
   await prisma.user.update({
     where: { id: parsed.data.userId },
     data: {
@@ -207,6 +233,7 @@ export async function updateUserAction(
       skills: parsed.data.skills || null,
       status: parsed.data.status,
       emailVerifiedAt: parsed.data.status === "active" ? new Date() : null,
+      ...(passwordHash ? { passwordHash } : {}),
     },
   });
 

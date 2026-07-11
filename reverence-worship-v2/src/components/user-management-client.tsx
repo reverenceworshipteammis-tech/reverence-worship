@@ -637,6 +637,18 @@ export function UserManagementClient({
                 </select>
                 <input name="occupation" defaultValue={editUser.occupation || ""} placeholder="Occupation" className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 <textarea name="skills" defaultValue={editUser.skills || ""} placeholder="Skills / Talents" rows={2} className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 sm:col-span-2" />
+                <div className="border-t pt-3 sm:col-span-2">
+                  <h3 className="text-sm font-bold text-gray-700">Security</h3>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-gray-700">New Password (Optional)</label>
+                  <input name="password" type="password" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  <p className="mt-1 text-xs text-gray-500">Leave blank to keep current password</p>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-gray-700">Confirm New Password</label>
+                  <input name="passwordConfirmation" type="password" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
               </div>
               <div className="mt-4 flex justify-end gap-2 border-t pt-4">
                 <button type="button" onClick={() => setEditUser(null)} className="rounded-lg bg-gray-100 px-4 py-2 text-sm text-gray-700 hover:bg-gray-200">Cancel</button>
