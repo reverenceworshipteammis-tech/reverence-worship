@@ -66,6 +66,14 @@ model User {
   assignedFamilyTasks FamilyTask[] @relation("AssignedFamilyTasks")
   createdActionPlans ActionPlan[] @relation("CreatedActionPlans")
   assignedActionPlanTasks ActionPlanTask[] @relation("AssignedActionPlanTasks")
+  attendanceRecords AttendanceRecord[] @relation("AttendanceUser")
+  markedAttendanceRecords AttendanceRecord[] @relation("AttendanceMarker")
+  completedAttendanceSessions AttendanceSession[] @relation("AttendanceSessionCompleter")
+  permissionRequests PermissionRequest[] @relation("PermissionRequester")
+  approvedPermissionRequests PermissionRequest[] @relation("PermissionApprover")
+  disciplineRecords DisciplineRecord[] @relation("DisciplineUser")
+  recordedDisciplineRecords DisciplineRecord[] @relation("DisciplineRecorder")
+  resolvedDisciplineRecords DisciplineRecord[] @relation("DisciplineResolver")
   createdPlaylists Playlist[] @relation("CreatedPlaylists")
   createdSongs Song[] @relation("CreatedSongs")
   createdGallery PhotoGallery[] @relation("CreatedGallery")
@@ -215,6 +223,112 @@ model ActionPlanTask {
   @@index([assignedTo])
   @@index([status])
   @@map("action_plan_tasks")
+}
+
+model AttendanceRecord {
+  id               Int       @id @default(autoincrement())
+  userId           Int       @map("user_id")
+  sessionDate      DateTime  @map("session_date") @db.Date
+  sessionType      String    @map("session_type")
+  status           String    @default("present")
+  checkInTime      DateTime? @map("check_in_time") @db.Time
+  checkOutTime     DateTime? @map("check_out_time") @db.Time
+  lateMinutes      Int       @default(0) @map("late_minutes")
+  notes            String?
+  markedBy         Int?      @map("marked_by")
+  communicated     Boolean   @default(false)
+  disciplinePoints Int       @default(0) @map("discipline_points")
+  onTime           Boolean   @default(false) @map("on_time")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  user   User  @relation("AttendanceUser", fields: [userId], references: [id], onDelete: Cascade)
+  marker User? @relation("AttendanceMarker", fields: [markedBy], references: [id], onDelete: SetNull)
+
+  @@unique([userId, sessionDate, sessionType])
+  @@index([userId, sessionDate])
+  @@index([sessionDate])
+  @@index([sessionType])
+  @@map("attendance_records")
+}
+
+model AttendanceSession {
+  sessionDate DateTime @map("session_date") @db.Date
+  sessionType String   @map("session_type")
+  isCompleted Boolean  @default(false) @map("is_completed")
+  completedAt DateTime? @map("completed_at")
+  completedBy Int?     @map("completed_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  completer User? @relation("AttendanceSessionCompleter", fields: [completedBy], references: [id], onDelete: SetNull)
+
+  @@id([sessionDate, sessionType])
+  @@index([sessionDate])
+  @@map("attendance_sessions")
+}
+
+model PermissionRequest {
+  id              Int       @id @default(autoincrement())
+  userId          Int       @map("user_id")
+  type            String
+  startDate       DateTime  @map("start_date") @db.Date
+  endDate         DateTime  @map("end_date") @db.Date
+  reason          String
+  status          String    @default("pending")
+  approvedBy      Int?      @map("approved_by")
+  approvedAt      DateTime? @map("approved_at")
+  rejectionReason String?   @map("rejection_reason")
+  attachmentUrl   String?   @map("attachment_url")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  user     User  @relation("PermissionRequester", fields: [userId], references: [id], onDelete: Cascade)
+  approver User? @relation("PermissionApprover", fields: [approvedBy], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([status])
+  @@map("permission_requests")
+}
+
+model DisciplineSection {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  records DisciplineRecord[]
+
+  @@map("discipline_sections")
+}
+
+model DisciplineRecord {
+  id            Int       @id @default(autoincrement())
+  userId        Int       @map("user_id")
+  sectionId     Int?      @map("section_id")
+  title         String
+  description   String?
+  points        Int       @default(0)
+  type          String?
+  status        String    @default("active")
+  recordedBy    Int?      @map("recorded_by")
+  resolvedBy    Int?      @map("resolved_by")
+  resolvedAt    DateTime? @map("resolved_at")
+  resolvedNotes String?   @map("resolved_notes")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  user     User               @relation("DisciplineUser", fields: [userId], references: [id], onDelete: Cascade)
+  section  DisciplineSection? @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  recorder User?              @relation("DisciplineRecorder", fields: [recordedBy], references: [id], onDelete: SetNull)
+  resolver User?              @relation("DisciplineResolver", fields: [resolvedBy], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([status])
+  @@index([sectionId])
+  @@map("discipline_records")
 }
 
 model Playlist {

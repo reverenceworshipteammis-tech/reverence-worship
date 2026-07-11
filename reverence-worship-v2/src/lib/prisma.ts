@@ -12,7 +12,13 @@ const adapter = new PrismaPg({
 const existingPrisma = globalForPrisma.prisma;
 
 export const prisma =
-  existingPrisma && "actionPlan" in existingPrisma && "actionPlanTask" in existingPrisma
+  existingPrisma &&
+  "actionPlan" in existingPrisma &&
+  "actionPlanTask" in existingPrisma &&
+  "attendanceRecord" in existingPrisma &&
+  "attendanceSession" in existingPrisma &&
+  "permissionRequest" in existingPrisma &&
+  "disciplineRecord" in existingPrisma
     ? existingPrisma
     : new PrismaClient({ adapter });
 
