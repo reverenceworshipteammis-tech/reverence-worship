@@ -70,7 +70,7 @@ export function SettingsClient({ values }: { values: SettingsValues }) {
     <div className="mx-auto max-w-7xl space-y-6 px-2 py-4 sm:px-4 sm:py-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-800">System Settings</h1>
-        <p className="mt-1 text-sm text-gray-500">Configure system-wide settings and preferences</p>
+       
       </div>
 
       <div className="flex flex-wrap gap-3">

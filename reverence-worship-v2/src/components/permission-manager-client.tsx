@@ -230,7 +230,7 @@ export function PermissionManagerClient({
             Access control
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Permission Manager</h1>
-          <p className="mt-1 text-sm text-gray-500">Create roles and assign page actions.</p>
+         
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={exportRoles} className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50">

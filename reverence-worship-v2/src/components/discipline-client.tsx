@@ -236,7 +236,7 @@ export function DisciplineClient({
     { id: "permission", label: "Permission Requests", icon: MailOpen },
     { id: "discipline-records", label: "Discipline Records", icon: BookOpen },
     { id: "action-plans", label: "Action Plans", icon: ClipboardList },
-    { id: "reports", label: "Reports", icon: FileText },
+    
   ];
 
   function applyRange() {

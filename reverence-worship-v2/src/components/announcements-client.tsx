@@ -162,7 +162,7 @@ export function AnnouncementsClient({
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Announcement Management</h1>
-          <p className="mt-1 text-sm text-gray-500">Create and manage messages sent to members, roles, or selected users.</p>
+        
         </div>
         <button type="button" onClick={openCompose} className="inline-flex w-fit items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700">
           <Plus className="size-4" />
@@ -176,13 +176,7 @@ export function AnnouncementsClient({
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <StatCard label="Total" value={stats.total} />
-        <StatCard label="Active" value={stats.active} tone="green" />
-        <StatCard label="Scheduled" value={stats.scheduled} tone="blue" />
-        <StatCard label="Draft" value={stats.draft} tone="amber" />
-        <StatCard label="Expired" value={stats.expired} tone="rose" />
-      </div>
+    
 
       <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b px-4 py-3 lg:flex-row lg:items-center lg:justify-between">

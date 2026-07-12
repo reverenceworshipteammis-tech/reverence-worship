@@ -391,7 +391,7 @@ export function SocialFellowshipClient({
           <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h1 className="text-xl font-bold text-gray-800">Family Tasks</h1>
-              <p className="mt-1 text-sm text-gray-500">Manage tasks with subtasks and track progress</p>
+             
             </div>
             <button
               type="button"
@@ -532,7 +532,7 @@ export function SocialFellowshipClient({
           <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h1 className="text-xl font-bold text-gray-800">Action Plans</h1>
-              <p className="mt-1 text-sm text-gray-500">Plan family activities, milestones, budgets, and progress</p>
+              
             </div>
             <button
               type="button"

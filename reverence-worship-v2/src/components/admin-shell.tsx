@@ -8,12 +8,10 @@ import {
   Bell,
   ChartLine,
   ChevronDown,
-  ClipboardList,
   Gavel,
   Gauge,
   HandCoins,
   HandHeart,
-  History,
   Home,
   Lock,
   LogOut,
@@ -41,44 +39,22 @@ type NavItem = {
 
 const navGroups: Array<{ label: string; items: NavItem[] }> = [
   {
-    label: "Main",
+    label: "",
     items: [
       { label: "Dashboard", href: "/admin/dashboard", icon: Gauge },
       { label: "User Management", href: "/admin/users", icon: Users },
-    ],
-  },
-  {
-    label: "Member Area",
-    items: [
       { label: "My Family", href: "/admin/family", icon: Home },
       { label: "My Contributions", href: "/admin/contributions", icon: HandCoins },
       { label: "My Profile", href: "/admin/profile", icon: User },
       { label: "My Performance", href: "/admin/performance", icon: BarChart3 },
-    ],
-  },
-  {
-    label: "Departments",
-    items: [
       { label: "Music and Evangelism DPT", href: "/admin/music", icon: Music },
-      { label: "Intercession and spiritual growth", href: "/admin/intercession", icon: HandHeart },
+      { label: "Intercession & spiritual DPT", href: "/admin/intercession", icon: HandHeart },
       { label: "Social Fellowship DPT", href: "/admin/social-fellowship", icon: HandHeart },
-      { label: "Discipline Management DPT", href: "/admin/discipline", icon: Gavel },
-      { label: "Financial Management DPT", href: "/admin/finance", icon: ChartLine },
-    ],
-  },
-  {
-    label: "Communication",
-    items: [
-      { label: "Admin Announcements", href: "/admin/announcements", icon: Megaphone },
-      { label: "Reports", href: "/admin/reports", icon: ClipboardList },
-    ],
-  },
-  {
-    label: "System",
-    items: [
+      { label: "Discipline  DPT", href: "/admin/discipline", icon: Gavel },
+      { label: "Financial  DPT", href: "/admin/finance", icon: ChartLine },
+      { label: "Announcements", href: "/admin/announcements", icon: Megaphone },
       { label: "Permission Manager", href: "/admin/permissions", icon: Lock },
       { label: "Settings", href: "/admin/settings", icon: Settings },
-      { label: "System Logs", href: "/admin/logs", icon: History },
     ],
   },
 ];
@@ -150,7 +126,7 @@ export function AdminShell({
               priority
             />
             <h2 className="sidebar-logo-text text-md font-bold text-white">
-              Reverence Worship Team
+              Reverence <br />Worship Team
             </h2>
           </div>
 

@@ -25,7 +25,6 @@ const systemCountLabels = [
   "Payments",
   "Expenses",
   "Discipline",
-  "Requests",
 ] as const;
 
 export default async function AdminDashboardPage() {
@@ -115,7 +114,7 @@ export default async function AdminDashboardPage() {
           </p>
           <h1 className="mt-1 text-xl font-bold text-white sm:text-2xl">Dashboard</h1>
           <p className="mt-1 text-sm text-blue-50">
-            Welcome back, {user.name}. Monitor access, users, approvals, and system records.
+            Welcome back, {user.name}.
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
@@ -167,13 +166,7 @@ export default async function AdminDashboardPage() {
 
       <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-[1.35fr_0.65fr]">
         <section className="admin-panel">
-          <div className="admin-panel-header">
-            <div>
-              <h2 className="admin-panel-title">System Attention</h2>
-              <p className="admin-panel-subtitle">Important items that may need admin review</p>
-            </div>
-          </div>
-
+         
           <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2">
             {attentionItems.map((item) => (
               <Link key={item.label} href={item.href} className="attention-item">
@@ -194,7 +187,7 @@ export default async function AdminDashboardPage() {
           <div className="admin-panel-header">
             <div>
               <h2 className="admin-panel-title">Quick Actions</h2>
-              <p className="admin-panel-subtitle">Common admin tasks</p>
+            
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3 p-4">
@@ -214,7 +207,7 @@ export default async function AdminDashboardPage() {
         <div className="admin-panel-header">
           <div>
             <h2 className="admin-panel-title">System Counts</h2>
-            <p className="admin-panel-subtitle">Records across the main modules</p>
+          
           </div>
         </div>
         <div className="grid grid-cols-2 gap-2.5 p-3 md:grid-cols-4 xl:grid-cols-5">
