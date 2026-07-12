@@ -16,6 +16,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { createSpiritualFormFromBuilder, updateSpiritualFormFromBuilder } from "@/app/admin/intercession/actions";
+import { MobileTabDropdown } from "@/components/mobile-tab-dropdown";
 
 type QuestionType =
   | "short_answer"
@@ -25,6 +26,8 @@ type QuestionType =
   | "dropdown"
   | "linear_scale"
   | "rating"
+  | "multiple_choice_grid"
+  | "checkbox_grid"
   | "date"
   | "time"
   | "title_section"
@@ -40,6 +43,9 @@ type BuilderQuestion = {
   points: number;
   correctAnswer: string;
   correctAnswers: string[];
+  rows: string[];
+  columns: string[];
+  gridCorrectAnswers: Record<string, string | string[]>;
   min: number;
   max: number;
 };
@@ -69,7 +75,7 @@ export type IntercessionBuilderInitialData = {
   id?: number;
   title?: string;
   description?: string | null;
-  questions?: Partial<BuilderQuestion & { text?: string; correctAnswers?: unknown }>[];
+  questions?: Partial<BuilderQuestion & { text?: string; correctAnswers?: unknown; rows?: unknown; columns?: unknown }>[];
   settings?: Partial<BuilderSettings>;
 };
 
@@ -81,11 +87,22 @@ const questionTypes: Array<{ value: QuestionType; label: string }> = [
   { value: "dropdown", label: "Dropdown" },
   { value: "linear_scale", label: "Linear scale" },
   { value: "rating", label: "Rating" },
+  { value: "multiple_choice_grid", label: "Multiple choice grid" },
+  { value: "checkbox_grid", label: "Checkbox grid" },
   { value: "date", label: "Date" },
   { value: "time", label: "Time" },
 ];
 
-function newQuestion(type: QuestionType = "paragraph"): BuilderQuestion {
+function asGridCorrectAnswers(value: unknown): Record<string, string | string[]> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const entries = Object.entries(value as Record<string, unknown>).map(([key, item]) => [
+    key,
+    Array.isArray(item) ? item.filter((answer): answer is string => typeof answer === "string") : typeof item === "string" ? item : "",
+  ]);
+  return Object.fromEntries(entries);
+}
+
+function newQuestion(type: QuestionType = "short_answer"): BuilderQuestion {
   return {
     id: crypto.randomUUID(),
     type,
@@ -96,15 +113,18 @@ function newQuestion(type: QuestionType = "paragraph"): BuilderQuestion {
     points: 1,
     correctAnswer: "",
     correctAnswers: [],
+    rows: ["Row 1"],
+    columns: ["Column 1"],
+    gridCorrectAnswers: {},
     min: 1,
     max: type === "rating" ? 5 : 5,
   };
 }
 
-function normalizeQuestion(question: Partial<BuilderQuestion & { text?: string; correctAnswers?: unknown }>): BuilderQuestion {
-  const type = question.type && ["short_answer", "paragraph", "multiple_choice", "checkboxes", "dropdown", "linear_scale", "rating", "date", "time", "title_section", "section_break"].includes(question.type)
+function normalizeQuestion(question: Partial<BuilderQuestion & { text?: string; correctAnswers?: unknown; rows?: unknown; columns?: unknown }>): BuilderQuestion {
+  const type = question.type && ["short_answer", "paragraph", "multiple_choice", "checkboxes", "dropdown", "linear_scale", "rating", "multiple_choice_grid", "checkbox_grid", "date", "time", "title_section", "section_break"].includes(question.type)
     ? question.type
-    : "paragraph";
+    : "short_answer";
   const correctAnswers = Array.isArray(question.correctAnswers)
     ? question.correctAnswers.filter((answer): answer is string => typeof answer === "string")
     : [];
@@ -119,6 +139,9 @@ function normalizeQuestion(question: Partial<BuilderQuestion & { text?: string; 
     points: Number(question.points ?? 1),
     correctAnswer: typeof question.correctAnswer === "string" ? question.correctAnswer : "",
     correctAnswers,
+    rows: Array.isArray(question.rows) && question.rows.length ? question.rows.filter((row): row is string => typeof row === "string") : ["Row 1"],
+    columns: Array.isArray(question.columns) && question.columns.length ? question.columns.filter((column): column is string => typeof column === "string") : ["Column 1"],
+    gridCorrectAnswers: asGridCorrectAnswers(question.correctAnswers),
     min: Number(question.min ?? 1),
     max: Number(question.max ?? 5),
   };
@@ -171,7 +194,11 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
         options: question.options.filter(Boolean),
         points: question.points,
         correctAnswer: question.correctAnswer || null,
-        correctAnswers: question.correctAnswers.length ? question.correctAnswers : null,
+        correctAnswers: ["multiple_choice_grid", "checkbox_grid"].includes(question.type)
+          ? question.gridCorrectAnswers
+          : question.correctAnswers.length ? question.correctAnswers : null,
+        rows: question.rows.filter(Boolean),
+        columns: question.columns.filter(Boolean),
         min: question.min,
         max: question.max,
       })),
@@ -182,7 +209,7 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
     setQuestions((current) => current.map((question) => (question.id === id ? { ...question, ...patch } : question)));
   }
 
-  function addQuestion(type: QuestionType = "paragraph", afterId = selectedQuestionId) {
+  function addQuestion(type: QuestionType = "short_answer", afterId = selectedQuestionId) {
     const question = newQuestion(type);
     setQuestions((current) => {
       if (!afterId) return [...current, question];
@@ -197,7 +224,7 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
     setQuestions((current) => {
       const index = current.findIndex((question) => question.id === id);
       if (index === -1) return current;
-      const copy = { ...current[index], id: crypto.randomUUID(), label: `${current[index].label} copy`, options: [...current[index].options], correctAnswers: [...current[index].correctAnswers] };
+      const copy = { ...current[index], id: crypto.randomUUID(), label: `${current[index].label} copy`, options: [...current[index].options], correctAnswers: [...current[index].correctAnswers], rows: [...current[index].rows], columns: [...current[index].columns], gridCorrectAnswers: { ...current[index].gridCorrectAnswers } };
       return [...current.slice(0, index + 1), copy, ...current.slice(index + 1)];
     });
   }
@@ -323,7 +350,7 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
                     dragging={draggingQuestionId === question.id}
                     onSelect={() => setSelectedQuestionId(question.id)}
                     onChange={(patch) => updateQuestion(question.id, patch)}
-                    onAddQuestion={() => addQuestion("paragraph", question.id)}
+                    onAddQuestion={() => addQuestion("short_answer", question.id)}
                     onAddTitle={() => addQuestion("title_section", question.id)}
                     onAddSection={() => addQuestion("section_break", question.id)}
                     onDuplicate={() => duplicateQuestion(question.id)}
@@ -592,6 +619,9 @@ function QuestionCard({
               </select>
             </div>
           )}
+          {["multiple_choice_grid", "checkbox_grid"].includes(question.type) && (
+            <GridQuestionEditor question={question} onChange={onChange} />
+          )}
         </div>
       )}
 
@@ -666,6 +696,147 @@ function CorrectAnswerBox({
   );
 }
 
+function GridQuestionEditor({
+  question,
+  onChange,
+}: {
+  question: BuilderQuestion;
+  onChange: (patch: Partial<BuilderQuestion>) => void;
+}) {
+  function updateRow(index: number, value: string) {
+    const rows = [...question.rows];
+    rows[index] = value;
+    onChange({ rows });
+  }
+
+  function updateColumn(index: number, value: string) {
+    const previous = question.columns[index];
+    const columns = [...question.columns];
+    columns[index] = value;
+    const gridCorrectAnswers = Object.fromEntries(
+      Object.entries(question.gridCorrectAnswers).map(([rowIndex, answer]) => {
+        if (typeof answer === "string") return [rowIndex, answer === previous ? value : answer];
+        return [rowIndex, answer.map((item) => (item === previous ? value : item))];
+      }),
+    );
+    onChange({ columns, gridCorrectAnswers });
+  }
+
+  function setSingleCorrect(rowIndex: number, value: string) {
+    onChange({ gridCorrectAnswers: { ...question.gridCorrectAnswers, [rowIndex]: value } });
+  }
+
+  function setCheckboxCorrect(rowIndex: number, value: string, checked: boolean) {
+    const current = question.gridCorrectAnswers[rowIndex];
+    const currentValues = Array.isArray(current) ? current : [];
+    const nextValues = checked ? Array.from(new Set([...currentValues, value])) : currentValues.filter((item) => item !== value);
+    onChange({ gridCorrectAnswers: { ...question.gridCorrectAnswers, [rowIndex]: nextValues } });
+  }
+
+  return (
+    <div className="rounded-lg bg-gray-50 p-3">
+      <div className="grid gap-4 md:grid-cols-2">
+        <GridList
+          title="Rows"
+          items={question.rows}
+          addLabel="Add row"
+          onChange={updateRow}
+          onAdd={() => onChange({ rows: [...question.rows, `Row ${question.rows.length + 1}`] })}
+          onRemove={(index) => onChange({ rows: question.rows.length > 1 ? question.rows.filter((_, rowIndex) => rowIndex !== index) : question.rows })}
+        />
+        <GridList
+          title="Columns"
+          items={question.columns}
+          addLabel="Add column"
+          onChange={updateColumn}
+          onAdd={() => onChange({ columns: [...question.columns, `Column ${question.columns.length + 1}`] })}
+          onRemove={(index) => onChange({ columns: question.columns.length > 1 ? question.columns.filter((_, columnIndex) => columnIndex !== index) : question.columns })}
+        />
+      </div>
+      <div className="mt-4 border-t border-gray-200 pt-3">
+        <p className="mb-2 text-xs font-semibold text-gray-600">
+          {question.type === "checkbox_grid" ? "Correct Answers (select all that apply per row)" : "Correct Answers (per row)"}
+        </p>
+        <div className="space-y-3">
+          {question.rows.map((row, rowIndex) => (
+            <div key={`${question.id}-row-correct-${rowIndex}`} className="rounded-lg border border-gray-200 bg-white p-3">
+              <p className="mb-2 text-sm font-medium text-gray-700">{row || `Row ${rowIndex + 1}`}</p>
+              {question.type === "multiple_choice_grid" ? (
+                <select
+                  value={typeof question.gridCorrectAnswers[rowIndex] === "string" ? (question.gridCorrectAnswers[rowIndex] as string) : ""}
+                  onChange={(event) => setSingleCorrect(rowIndex, event.target.value)}
+                  className="w-full rounded-md border border-gray-200 px-2 py-2 text-sm"
+                >
+                  <option value="">None</option>
+                  {question.columns.map((column) => (
+                    <option key={column} value={column}>{column}</option>
+                  ))}
+                </select>
+              ) : (
+                <div className="flex flex-wrap gap-3">
+                  {question.columns.map((column) => {
+                    const selected = Array.isArray(question.gridCorrectAnswers[rowIndex]) && question.gridCorrectAnswers[rowIndex].includes(column);
+                    return (
+                      <label key={column} className="inline-flex items-center gap-2 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          onChange={(event) => setCheckboxCorrect(rowIndex, column, event.target.checked)}
+                          className="rounded border-gray-300 text-green-600"
+                        />
+                        {column}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GridList({
+  title,
+  items,
+  addLabel,
+  onChange,
+  onAdd,
+  onRemove,
+}: {
+  title: string;
+  items: string[];
+  addLabel: string;
+  onChange: (index: number, value: string) => void;
+  onAdd: () => void;
+  onRemove: (index: number) => void;
+}) {
+  return (
+    <div>
+      <p className="mb-2 text-xs font-semibold text-gray-600">{title}</p>
+      <div className="space-y-2">
+        {items.map((item, index) => (
+          <div key={`${title}-${index}`} className="flex items-center gap-2">
+            <input
+              value={item}
+              onChange={(event) => onChange(index, event.target.value)}
+              className="min-w-0 flex-1 rounded-md border border-gray-200 px-2 py-1 text-sm"
+            />
+            <button type="button" onClick={() => onRemove(index)} className="text-xs font-semibold text-red-500 hover:text-red-700">
+              Remove
+            </button>
+          </div>
+        ))}
+      </div>
+      <button type="button" onClick={onAdd} className="mt-2 text-xs font-semibold text-indigo-600 hover:underline">
+        {addLabel}
+      </button>
+    </div>
+  );
+}
+
 function SettingsPanel({
   settings,
   setSettings,
@@ -709,7 +880,10 @@ function SettingsPanel({
   return (
     <div className="mx-auto max-w-5xl overflow-hidden rounded-xl border border-gray-200 bg-white">
       <div className="border-b border-gray-200 px-5">
-        <nav className="flex gap-6 overflow-x-auto">
+        <div className="py-3 md:hidden">
+          <MobileTabDropdown tabs={tabs} value={activeTab} onChange={(tab) => setActiveTab(tab as SettingsTab)} tone="indigo" />
+        </div>
+        <nav className="hidden gap-6 overflow-x-auto md:flex">
           {tabs.map((tab) => (
             <button
               key={tab.id}

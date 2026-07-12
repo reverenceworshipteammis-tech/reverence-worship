@@ -1,5 +1,5 @@
 import { IntercessionClient } from "@/components/intercession-client";
-import { requireUser } from "@/lib/auth";
+import { getUserPermissionSet, permissionSetHas, requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 function formatDate(date: Date) {
@@ -8,6 +8,10 @@ function formatDate(date: Date) {
     day: "2-digit",
     year: "numeric",
   }).format(date);
+}
+
+function formatDateValue(date: Date | null) {
+  return date ? date.toISOString().slice(0, 10) : "";
 }
 
 function asObject(value: unknown) {
@@ -31,8 +35,20 @@ function asQuestions(value: unknown) {
 
 export default async function IntercessionPage() {
   const user = await requireUser();
+  const permissions = await getUserPermissionSet(user);
+  const intercessionPermissions = {
+    canSubmitForms: permissionSetHas(permissions, "intercession", "submit-forms"),
+    canCreateForms: permissionSetHas(permissions, "intercession", "create-forms"),
+    canEditForms: permissionSetHas(permissions, "intercession", "edit-forms"),
+    canDeleteForms: permissionSetHas(permissions, "intercession", "delete-forms"),
+    canViewSubmissions: permissionSetHas(permissions, "intercession", "view-submissions"),
+    canExportReports: permissionSetHas(permissions, "intercession", "export-reports"),
+    canReadBible: permissionSetHas(permissions, "intercession", "read-bible"),
+    canManageActionPlans: permissionSetHas(permissions, "intercession", "manage-action-plans"),
+  };
+  const canLoadReports = intercessionPermissions.canViewSubmissions || intercessionPermissions.canExportReports;
 
-  const [forms, mySubmissions, users, allSubmissions] = await Promise.all([
+  const [forms, mySubmissions, users, allSubmissions, actionPlans] = await Promise.all([
     prisma.spiritualForm.findMany({
       orderBy: { createdAt: "desc" },
       include: {
@@ -47,20 +63,34 @@ export default async function IntercessionPage() {
         form: true,
       },
     }),
-    prisma.user.findMany({
-      where: { status: "active" },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true, email: true },
-    }),
-    prisma.formSubmission.findMany({
-      select: {
-        id: true,
-        formId: true,
-        userId: true,
-        score: true,
-        submittedAt: true,
-      },
-    }),
+    canLoadReports
+      ? prisma.user.findMany({
+          where: { status: "active" },
+          orderBy: { name: "asc" },
+          select: { id: true, name: true, email: true },
+        })
+      : Promise.resolve([]),
+    canLoadReports
+      ? prisma.formSubmission.findMany({
+          select: {
+            id: true,
+            formId: true,
+            userId: true,
+            score: true,
+            submittedAt: true,
+          },
+        })
+      : Promise.resolve([]),
+    intercessionPermissions.canManageActionPlans
+      ? prisma.actionPlan.findMany({
+          where: { department: "intercession" },
+          orderBy: [{ year: "desc" }, { createdAt: "desc" }],
+          include: {
+            creator: { select: { name: true } },
+            tasks: { orderBy: [{ deadline: "asc" }, { createdAt: "asc" }] },
+          },
+        })
+      : Promise.resolve([]),
   ]);
 
   const serializedForms = forms.map((form) => {
@@ -85,6 +115,7 @@ export default async function IntercessionPage() {
 
   return (
     <IntercessionClient
+      permissions={intercessionPermissions}
       forms={serializedForms}
       mySubmissions={mySubmissions.map((submission) => {
         const questions = asQuestions(submission.form.questions);
@@ -130,6 +161,34 @@ export default async function IntercessionPage() {
           status: totalForms === 0 || submittedPublishedCount === 0 ? "Not Started" : submittedPublishedCount === totalForms ? "Complete" : "Partial",
         };
       })}
+      actionPlans={actionPlans.map((plan) => ({
+        id: plan.id,
+        title: plan.title,
+        description: plan.description,
+        startDate: formatDate(plan.startDate),
+        startDateRaw: formatDateValue(plan.startDate),
+        dueDate: formatDate(plan.dueDate),
+        dueDateRaw: formatDateValue(plan.dueDate),
+        status: plan.status,
+        progress: plan.progress,
+        year: plan.year,
+        createdByName: plan.creator?.name ?? "System",
+        createdAt: formatDate(plan.createdAt),
+        tasks: plan.tasks.map((task) => ({
+          id: task.id,
+          actionPlanId: task.actionPlanId,
+          taskName: task.taskName,
+          activity: task.activity,
+          targetMilestone: task.targetMilestone,
+          estimatedBudget: Number(task.estimatedBudget ?? 0),
+          startDate: task.startDate ? formatDate(task.startDate) : "",
+          startDateRaw: formatDateValue(task.startDate),
+          deadline: task.deadline ? formatDate(task.deadline) : "",
+          deadlineRaw: formatDateValue(task.deadline),
+          progress: task.progress,
+          status: task.status,
+        })),
+      }))}
     />
   );
 }

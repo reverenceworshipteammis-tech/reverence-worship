@@ -12,6 +12,10 @@ type SessionPayload = {
   userId: number;
 };
 
+export type PermissionKey =
+  | "*"
+  | `${string}.${string}`;
+
 function authSecret() {
   const secret = process.env.AUTH_SECRET;
 
@@ -82,8 +86,55 @@ export async function requireAdminUser() {
   const user = await requireUser();
   const roleNames = user.roles.map((userRole) => userRole.role.name);
 
-  if (!roleNames.includes("super-admin") && !roleNames.includes("admin")) {
+  const workspaceRoles = new Set([
+    "super-admin",
+    "admin",
+    "music-dpt",
+    "social-dpt",
+    "discipline-dpt",
+    "intercession-dpt",
+  ]);
+
+  if (!roleNames.some((roleName) => workspaceRoles.has(roleName))) {
     redirect("/");
+  }
+
+  return user;
+}
+
+export async function getUserPermissionSet(user: Awaited<ReturnType<typeof requireUser>>) {
+  const roleNames = user.roles.map((userRole) => userRole.role.name);
+
+  if (roleNames.includes("super-admin")) {
+    return new Set<PermissionKey>(["*"]);
+  }
+
+  const roleIds = user.roles.map((userRole) => userRole.roleId);
+  if (roleIds.length === 0) return new Set<PermissionKey>();
+
+  const permissions = await prisma.rolePageFeature.findMany({
+    where: { roleId: { in: roleIds } },
+    include: {
+      page: { select: { name: true } },
+      feature: { select: { name: true } },
+    },
+  });
+
+  return new Set<PermissionKey>(
+    permissions.map((permission) => `${permission.page.name}.${permission.feature.name}` as PermissionKey),
+  );
+}
+
+export function permissionSetHas(permissions: Set<PermissionKey>, page: string, feature: string) {
+  return permissions.has("*") || permissions.has(`${page}.${feature}` as PermissionKey);
+}
+
+export async function requirePermission(page: string, feature: string, redirectTo = "/admin/dashboard") {
+  const user = await requireUser();
+  const permissions = await getUserPermissionSet(user);
+
+  if (!permissionSetHas(permissions, page, feature)) {
+    redirect(redirectTo);
   }
 
   return user;

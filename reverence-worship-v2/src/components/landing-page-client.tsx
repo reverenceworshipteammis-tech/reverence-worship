@@ -39,6 +39,43 @@ function truncate(value: string, length: number) {
   return value.length > length ? `${value.slice(0, length - 1)}...` : value;
 }
 
+function SocialIcon({ name }: { name: "instagram" | "youtube" | "spotify" | "apple" }) {
+  if (name === "instagram") {
+    return (
+      <svg viewBox="0 0 24 24" className="size-5" aria-hidden="true">
+        <rect x="4" y="4" width="16" height="16" rx="5" fill="none" stroke="currentColor" strokeWidth="2" />
+        <circle cx="12" cy="12" r="3.5" fill="none" stroke="currentColor" strokeWidth="2" />
+        <circle cx="17" cy="7" r="1.2" fill="currentColor" />
+      </svg>
+    );
+  }
+
+  if (name === "youtube") {
+    return (
+      <svg viewBox="0 0 24 24" className="size-5" aria-hidden="true">
+        <path d="M21 8.2a3 3 0 0 0-2.1-2.1C17 5.6 12 5.6 12 5.6s-5 0-6.9.5A3 3 0 0 0 3 8.2 31 31 0 0 0 2.5 12a31 31 0 0 0 .5 3.8 3 3 0 0 0 2.1 2.1c1.9.5 6.9.5 6.9.5s5 0 6.9-.5a3 3 0 0 0 2.1-2.1 31 31 0 0 0 .5-3.8 31 31 0 0 0-.5-3.8Z" fill="none" stroke="currentColor" strokeWidth="1.8" />
+        <path d="m10 9 5.2 3-5.2 3V9Z" fill="currentColor" />
+      </svg>
+    );
+  }
+
+  if (name === "spotify") {
+    return (
+      <svg viewBox="0 0 24 24" className="size-5" aria-hidden="true">
+        <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2" />
+        <path d="M7.8 9.3c3-.9 6.5-.5 8.8.9M8.4 12.1c2.5-.7 5.2-.4 7.1.7M9 14.8c1.9-.5 3.9-.3 5.4.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" className="size-5" aria-hidden="true">
+      <path d="M15.2 4.2c.8-.9 1.3-2.1 1.2-3.2-1.2.1-2.4.8-3.2 1.7-.7.8-1.3 2-1.2 3 1.2.1 2.4-.6 3.2-1.5Z" fill="currentColor" />
+      <path d="M19.7 17.2c-.5 1.1-.8 1.6-1.5 2.6-1 1.5-2.4 3.3-4.1 3.3-1.6 0-2-.9-4.1-.9-2.2 0-2.6.9-4.1.9-1.8 0-3.1-1.7-4.1-3.1C-1 15.8.4 8.3 4 8.1c1.8 0 3 .9 4 .9s2.8-1.1 4.8-.9c.8 0 3 .3 4.4 2.4-3.9 2.1-3.3 7.1.5 8.7Z" fill="currentColor" transform="translate(2 0) scale(.86)" />
+    </svg>
+  );
+}
+
 export function LandingPageClient({ dashboardHref, videos, pictures, events }: LandingPageClientProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [heroIndex, setHeroIndex] = useState(0);
@@ -58,29 +95,33 @@ export function LandingPageClient({ dashboardHref, videos, pictures, events }: L
   return (
     <main className="min-h-screen bg-white text-slate-900">
       <header className="fixed inset-x-0 top-0 z-50 border-y border-white/15 bg-blue-600/75 text-white shadow-lg backdrop-blur">
-        <div className="mx-auto flex min-h-16 w-[min(1080px,calc(100%-28px))] items-center justify-between gap-5">
-          <a href="#home" className="inline-flex items-center gap-3">
-            <Image src="/logo.png" alt="Reverence Worship logo" width={42} height={42} className="rounded-xl bg-slate-900 p-1" priority />
+        <div className="relative mx-auto flex min-h-[58px] w-[min(100%,calc(100%-18px))] items-center gap-2 overflow-visible md:min-h-16 md:w-[min(1080px,calc(100%-28px))] md:gap-5">
+          <a href="#home" className="inline-flex shrink-0 items-center gap-2 md:gap-3">
+            <Image src="/logo.png" alt="Reverence Worship logo" width={42} height={42} className="size-[34px] rounded-[10px] bg-slate-900 p-1 md:size-[42px] md:rounded-xl" priority />
             <span className="leading-none">
-              <span className="block text-base font-extrabold tracking-tight">REVERENCE</span>
-              <span className="mt-1 block text-[10px] font-bold uppercase tracking-[0.24em] text-blue-100">Worship Team</span>
+              <span className="block text-[13px] font-extrabold tracking-tight md:text-base">REVERENCE</span>
+              <span className="mt-1 block text-[8px] font-bold uppercase tracking-[0.16em] text-blue-100 md:text-[10px] md:tracking-[0.24em]">Worship Team</span>
             </span>
           </a>
 
-          <button type="button" onClick={() => setMenuOpen((current) => !current)} className="inline-flex size-9 items-center justify-center rounded-lg border border-white/25 bg-white/10 md:hidden" aria-label="Open navigation">
-            <Menu className="size-5" aria-hidden />
-          </button>
-
-          <nav className={`${menuOpen ? "flex" : "hidden"} absolute right-4 top-[calc(100%+8px)] w-60 flex-wrap justify-end gap-2 rounded-2xl border border-white/20 bg-blue-600/95 p-3 text-sm shadow-xl backdrop-blur md:static md:flex md:w-auto md:flex-nowrap md:items-center md:gap-6 md:border-0 md:bg-transparent md:p-0 md:shadow-none`}>
-            <a href="#home" onClick={() => setMenuOpen(false)} className="rounded-full px-3 py-2 hover:bg-white/10">Home</a>
-            <a href="#about" onClick={() => setMenuOpen(false)} className="rounded-full px-3 py-2 hover:bg-white/10">About us</a>
-            <a href="#music" onClick={() => setMenuOpen(false)} className="rounded-full px-3 py-2 hover:bg-white/10">Music</a>
-            <a href="#pictures" onClick={() => setMenuOpen(false)} className="rounded-full px-3 py-2 hover:bg-white/10">Pictures</a>
-            <a href="#events" onClick={() => setMenuOpen(false)} className="rounded-full px-3 py-2 hover:bg-white/10">Events</a>
-            <Link href={dashboardHref ?? "/login"} className="rounded-full border border-white/50 px-4 py-2 hover:bg-white/10">
+          <nav
+            className={`${menuOpen ? "absolute right-0 top-[calc(100%+8px)] z-60 flex w-[min(230px,calc(100vw-18px))] flex-wrap justify-end rounded-2xl border border-white/20 bg-blue-600/95 p-2.5 shadow-xl backdrop-blur" : "ml-auto flex items-center justify-end"} gap-2 whitespace-nowrap text-xs md:static md:ml-auto md:flex md:w-auto md:flex-nowrap md:items-center md:gap-6 md:border-0 md:bg-transparent md:p-0 md:text-sm md:shadow-none`}
+            aria-label="Primary navigation"
+          >
+            <a href="#home" onClick={() => setMenuOpen(false)} className={`${menuOpen ? "inline-flex" : "hidden"} rounded-full px-2 py-1.5 hover:bg-white/10 md:inline-flex md:px-3 md:py-2`}>Home</a>
+            <a href="#about" onClick={() => setMenuOpen(false)} className={`${menuOpen ? "inline-flex" : "hidden"} rounded-full px-2 py-1.5 hover:bg-white/10 md:inline-flex md:px-3 md:py-2`}>About us</a>
+            <a href="#music" onClick={() => setMenuOpen(false)} className={`${menuOpen ? "inline-flex" : "hidden"} rounded-full px-2 py-1.5 hover:bg-white/10 md:inline-flex md:px-3 md:py-2`}>Music</a>
+            <a href="#pictures" onClick={() => setMenuOpen(false)} className={`${menuOpen ? "inline-flex" : "hidden"} rounded-full px-2 py-1.5 hover:bg-white/10 md:inline-flex md:px-3 md:py-2`}>Pictures</a>
+            <a href="#events" onClick={() => setMenuOpen(false)} className={`${menuOpen ? "inline-flex" : "hidden"} rounded-full px-2 py-1.5 hover:bg-white/10 md:inline-flex md:px-3 md:py-2`}>Events</a>
+            <a href="#join" onClick={() => setMenuOpen(false)} className="inline-flex rounded-full bg-white/10 px-2 py-1.5 hover:bg-white/15 md:bg-transparent md:px-3 md:py-2">Join us</a>
+            <Link href={dashboardHref ?? "/login"} className="inline-flex rounded-full border border-white/50 bg-white/10 px-2.5 py-1.5 hover:bg-white/15 md:bg-transparent md:px-4 md:py-2">
               {dashboardHref ? "Dashboard" : "Login"}
             </Link>
           </nav>
+
+          <button type="button" onClick={() => setMenuOpen((current) => !current)} className="inline-flex size-[34px] shrink-0 items-center justify-center rounded-[10px] border border-white/25 bg-white/10 md:hidden" aria-label="Open navigation" aria-expanded={menuOpen}>
+            <Menu className="size-5" aria-hidden />
+          </button>
         </div>
       </header>
 
@@ -203,35 +244,61 @@ export function LandingPageClient({ dashboardHref, videos, pictures, events }: L
         </div>
       </section>
 
-      <footer className="bg-gradient-to-br from-blue-800 via-blue-900 to-blue-950 py-16 text-blue-100">
+      <footer className="bg-gradient-to-br from-[#0f2f7a] via-blue-900 to-blue-950 pt-16 pb-7 text-blue-100">
         <div className="mx-auto w-[min(1080px,calc(100%-28px))]">
-          <div className="grid gap-10 md:grid-cols-[1.55fr_0.75fr_1fr]">
+          <div className="grid gap-10 md:grid-cols-[1.55fr_0.75fr_1fr] md:gap-[70px]">
             <section>
-              <h2 className="text-2xl font-bold text-white">Reverence Worship Team</h2>
-              <p className="mt-5 max-w-xl leading-7"><strong className="block text-white">Psalm 96:7-9</strong>Give praise to the Lord, you who belong to all peoples; give glory to him and take up his praise.</p>
-              <div className="mt-6 flex gap-5">
-                <a className="font-semibold hover:text-white" href="https://www.instagram.com/reverenceworshipteam" target="_blank" rel="noopener noreferrer">Instagram</a>
-                <a className="font-semibold hover:text-white" href="https://youtube.com/@reverenceworshipteam1234?si=2yOG2-JTGfu06eaM" target="_blank" rel="noopener noreferrer">YouTube</a>
-                <a className="font-semibold hover:text-white" href="https://open.spotify.com/artist/2CqE0wMXxmVrzaOvUsWvbM" target="_blank" rel="noopener noreferrer">Spotify</a>
-                <a className="font-semibold hover:text-white" href="https://music.apple.com/ca/artist/reverence-worship-team/1788741166" target="_blank" rel="noopener noreferrer">Apple Music</a>
+              <h2 className="mb-6 text-[1.65rem] font-bold text-white">Reverence Worship Team</h2>
+              <p className="max-w-xl leading-7">
+                <strong className="mb-1.5 block text-white">Psalm 96:7-9</strong>
+                Give praise to the Lord, you who belong to all peoples; give glory to him and take up his praise.
+                Come and tell of his glory, you who have been called to a holy people. Give thanks to the Lord and enter his gates with praise.
+              </p>
+              <div className="mt-6 flex gap-[18px]" aria-label="Social media">
+                <a className="grid size-8 place-items-center rounded-full border border-blue-100/25 text-xs font-bold text-blue-100 transition hover:-translate-y-0.5 hover:border-white hover:text-white" href="https://www.instagram.com/reverenceworshipteam" target="_blank" rel="noopener noreferrer" aria-label="Instagram">
+                  <SocialIcon name="instagram" />
+                </a>
+                <a className="grid size-8 place-items-center rounded-full border border-blue-100/25 text-xs font-bold text-blue-100 transition hover:-translate-y-0.5 hover:border-white hover:text-white" href="https://youtube.com/@reverenceworshipteam1234?si=2yOG2-JTGfu06eaM" target="_blank" rel="noopener noreferrer" aria-label="YouTube">
+                  <SocialIcon name="youtube" />
+                </a>
+                <a className="grid size-8 place-items-center rounded-full border border-blue-100/25 text-xs font-bold text-blue-100 transition hover:-translate-y-0.5 hover:border-white hover:text-white" href="https://open.spotify.com/artist/2CqE0wMXxmVrzaOvUsWvbM" target="_blank" rel="noopener noreferrer" aria-label="Spotify">
+                  <SocialIcon name="spotify" />
+                </a>
+                <a className="grid size-8 place-items-center rounded-full border border-blue-100/25 text-xs font-bold text-blue-100 transition hover:-translate-y-0.5 hover:border-white hover:text-white" href="https://music.apple.com/ca/artist/reverence-worship-team/1788741166" target="_blank" rel="noopener noreferrer" aria-label="Apple Music">
+                  <SocialIcon name="apple" />
+                </a>
               </div>
             </section>
             <section>
-              <h3 className="font-bold text-white">Quick Links</h3>
-              <nav className="mt-5 grid gap-3">
-                {["Home", "About us", "Music", "Pictures", "Events", "Join us"].map((item) => <a key={item} href={`#${item.toLowerCase().replace(" us", "").replace("home", "home")}`}>{item}</a>)}
+              <h3 className="mb-5 font-bold text-white">Quick Links</h3>
+              <nav className="grid gap-[13px]" aria-label="Footer navigation">
+                <a className="w-max transition hover:pl-1 hover:text-blue-400" href="#home">Home</a>
+                <a className="w-max transition hover:pl-1 hover:text-blue-400" href="#about">About Us</a>
+                <a className="w-max transition hover:pl-1 hover:text-blue-400" href="#join">Join Us</a>
+                <a className="w-max transition hover:pl-1 hover:text-blue-400" href="#music">Music</a>
+                <a className="w-max transition hover:pl-1 hover:text-blue-400" href="#pictures">Pictures</a>
+                <a className="w-max transition hover:pl-1 hover:text-blue-400" href="#events">Events</a>
               </nav>
             </section>
             <section>
-              <h3 className="font-bold text-white">Contact</h3>
-              <div className="mt-5 grid gap-4">
-                <a className="flex items-start gap-3" href="mailto:worshipteamkicukiro@gmail.com"><Mail className="mt-1 size-4 text-blue-300" /> worshipteamkicukiro@gmail.com</a>
-                <a className="flex items-start gap-3" href="tel:+250788000000"><Phone className="mt-1 size-4 text-blue-300" /> +250 788 000 000</a>
-                <p className="flex items-start gap-3"><MapPin className="mt-1 size-4 text-blue-300" /> Kicukiro, Kigali, Rwanda</p>
+              <h3 className="mb-5 font-bold text-white">Contact</h3>
+              <div className="grid gap-4">
+                <a className="flex items-start gap-3 leading-6" href="mailto:worshipteamkicukiro@gmail.com">
+                  <Mail className="mt-1 size-[18px] shrink-0 text-blue-300" aria-hidden />
+                  <span>worshipteamkicukiro@gmail.com</span>
+                </a>
+                <div className="flex items-start gap-3 leading-6">
+                  <MapPin className="mt-1 size-[18px] shrink-0 text-blue-300" aria-hidden />
+                  <span>23JX +43M, Kicukiro, Kigali, Rwanda</span>
+                </div>
+                <a className="flex items-start gap-3 leading-6" href="tel:+250788880574">
+                  <Phone className="mt-1 size-[18px] shrink-0 text-blue-300" aria-hidden />
+                  <span>+250788880574 / 0784462768 / 0781520618</span>
+                </a>
               </div>
             </section>
           </div>
-          <div className="mt-10 flex flex-col justify-between gap-3 border-t border-blue-100/20 pt-5 text-xs md:flex-row">
+          <div className="mt-[38px] flex flex-col justify-between gap-5 border-t border-blue-100/20 pt-[18px] text-xs md:flex-row">
             <span>© {new Date().getFullYear()} Reverence Worship Team. All rights reserved.</span>
             <span>Built for worship, service, and community.</span>
           </div>

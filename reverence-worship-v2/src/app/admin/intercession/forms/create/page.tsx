@@ -1,8 +1,8 @@
 import { IntercessionFormBuilder } from "@/components/intercession-form-builder";
-import { requireUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 
 export default async function CreateIntercessionFormPage() {
-  await requireUser();
+  await requirePermission("intercession", "create-forms", "/admin/intercession");
 
   return <IntercessionFormBuilder />;
 }

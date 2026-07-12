@@ -3,6 +3,8 @@
 import { FormEvent, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
+  AlertTriangle,
+  CheckCircle2,
   Download,
   Edit,
   Layers,
@@ -55,6 +57,14 @@ type Result = {
   message: string;
 };
 
+type ConfirmAction = {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  tone?: "danger" | "primary";
+  action: () => Promise<Result>;
+};
+
 const featureOrder: Record<string, number> = {
   view: 1,
   create: 2,
@@ -63,6 +73,17 @@ const featureOrder: Record<string, number> = {
   approve: 5,
   export: 6,
 };
+
+function featureSortValue(name: string) {
+  if (featureOrder[name] !== undefined) return featureOrder[name];
+  if (name.startsWith("view")) return 1;
+  if (name.startsWith("submit") || name.startsWith("create") || name.startsWith("record") || name.startsWith("mark") || name.startsWith("manage")) return 2;
+  if (name.startsWith("edit") || name.startsWith("change") || name.startsWith("complete") || name.startsWith("resolve") || name.startsWith("publish")) return 3;
+  if (name.startsWith("delete")) return 4;
+  if (name.startsWith("approve")) return 5;
+  if (name.startsWith("export") || name.startsWith("import")) return 6;
+  return 50;
+}
 
 export function PermissionManagerClient({
   roles,
@@ -82,6 +103,7 @@ export function PermissionManagerClient({
   const [selectedFeatureIds, setSelectedFeatureIds] = useState<Set<number>>(new Set());
   const [expandedPageIds, setExpandedPageIds] = useState<Set<number>>(new Set());
   const [result, setResult] = useState<Result | null>(null);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [pending, startTransition] = useTransition();
 
   const assignmentsByRole = useMemo(() => {
@@ -101,7 +123,7 @@ export function PermissionManagerClient({
     const needle = permissionSearch.trim().toLowerCase();
     return pages.filter((page) => {
       if (!page.features.length) return false;
-      return !needle || `${page.label} ${page.name} ${page.features.map((feature) => `${feature.label} ${feature.name}`).join(" ")}`.toLowerCase().includes(needle);
+      return !needle || `${page.label} ${page.name} ${page.features.map((feature) => `${feature.label} ${feature.name} ${feature.description ?? ""}`).join(" ")}`.toLowerCase().includes(needle);
     });
   }, [pages, permissionSearch]);
 
@@ -132,11 +154,23 @@ export function PermissionManagerClient({
   }
 
   function removeRole(role: RoleItem) {
-    if (!window.confirm(`Delete role "${role.displayName}"? This will remove all permissions for this role.`)) return;
+    setConfirmAction({
+      title: "Delete Role",
+      message: `Delete role "${role.displayName}"? This will remove all permissions assigned to this role.`,
+      confirmLabel: "Delete Role",
+      action: () => deleteRole(role.id),
+    });
+  }
+
+  function executeConfirm() {
+    if (!confirmAction) return;
     startTransition(async () => {
-      const response = await deleteRole(role.id);
+      const response = await confirmAction.action();
       setResult(response);
-      if (response.ok) router.refresh();
+      if (response.ok) {
+        setConfirmAction(null);
+        router.refresh();
+      }
     });
   }
 
@@ -250,9 +284,7 @@ export function PermissionManagerClient({
       </div>
 
       {result && (
-        <div className={`mb-4 rounded-lg border px-4 py-3 text-sm ${result.ok ? "border-green-100 bg-green-50 text-green-700" : "border-red-100 bg-red-50 text-red-700"}`}>
-          {result.message}
-        </div>
+        <PermissionNotice notice={result} onClose={() => setResult(null)} />
       )}
 
       <section className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
@@ -375,7 +407,7 @@ export function PermissionManagerClient({
               <div className="overflow-hidden rounded-lg border border-gray-200">
                 {visiblePages.map((page) => {
                   const featureIds = page.features.map((feature) => feature.id);
-                  const sortedFeatures = [...page.features].sort((a, b) => (featureOrder[a.name] ?? 50) - (featureOrder[b.name] ?? 50));
+                  const sortedFeatures = [...page.features].sort((a, b) => featureSortValue(a.name) - featureSortValue(b.name) || a.label.localeCompare(b.label));
                   const allSelected = featureIds.length > 0 && featureIds.every((id) => selectedFeatureIds.has(id));
                   const expanded = expandedPageIds.has(page.id);
 
@@ -407,14 +439,19 @@ export function PermissionManagerClient({
                             <input type="checkbox" checked={allSelected} onChange={() => togglePage(page)} className="rounded border-gray-300" />
                             Select all
                           </label>
-                          <div className="flex flex-wrap gap-x-5 gap-y-2">
+                          <div className="grid gap-2 md:grid-cols-2">
                             {sortedFeatures.map((feature) => (
-                              <label key={feature.id} className="inline-flex cursor-pointer items-center gap-2 text-sm">
-                                <input type="checkbox" checked={selectedFeatureIds.has(feature.id)} onChange={() => toggleFeature(feature.id)} className="rounded border-gray-300" />
-                                <span className={`flex size-6 items-center justify-center rounded-md ${featureTone(feature.name)}`}>
+                              <label key={feature.id} className="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm transition hover:border-blue-200 hover:bg-blue-50/40">
+                                <input type="checkbox" checked={selectedFeatureIds.has(feature.id)} onChange={() => toggleFeature(feature.id)} className="mt-1 rounded border-gray-300" />
+                                <span className={`mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md ${featureTone(feature.name)}`}>
                                   {feature.name.slice(0, 1).toUpperCase()}
                                 </span>
-                                <span>{feature.label}</span>
+                                <span className="min-w-0">
+                                  <span className="block font-semibold text-gray-800">{feature.label}</span>
+                                  {feature.description ? (
+                                    <span className="mt-0.5 block text-xs leading-5 text-gray-500">{feature.description}</span>
+                                  ) : null}
+                                </span>
                               </label>
                             ))}
                           </div>
@@ -435,15 +472,90 @@ export function PermissionManagerClient({
           </div>
         </div>
       )}
+
+      {confirmAction ? (
+        <PermissionConfirmModal
+          confirm={confirmAction}
+          pending={pending}
+          onCancel={() => setConfirmAction(null)}
+          onConfirm={executeConfirm}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function PermissionNotice({ notice, onClose }: { notice: Result; onClose: () => void }) {
+  const Icon = notice.ok ? CheckCircle2 : AlertTriangle;
+
+  return (
+    <div
+      className={`mb-4 flex items-start gap-3 rounded-xl border px-4 py-3 text-sm shadow-sm ${
+        notice.ok ? "border-green-200 bg-green-50 text-green-800" : "border-red-200 bg-red-50 text-red-800"
+      }`}
+      role="status"
+    >
+      <span className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full ${notice.ok ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"}`}>
+        <Icon className="size-4" aria-hidden="true" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="font-semibold">{notice.ok ? "Success" : "Notice"}</p>
+        <p className="mt-0.5 leading-5">{notice.message}</p>
+      </div>
+      <button type="button" onClick={onClose} className="rounded-lg p-1 text-current opacity-60 transition hover:bg-white/70 hover:opacity-100" aria-label="Close notice">
+        <X className="size-4" aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
+function PermissionConfirmModal({
+  confirm,
+  pending,
+  onCancel,
+  onConfirm,
+}: {
+  confirm: ConfirmAction;
+  pending: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const danger = confirm.tone !== "primary";
+
+  return (
+    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-md overflow-hidden rounded-xl bg-white shadow-2xl">
+        <div className={`flex items-center gap-3 px-5 py-4 ${danger ? "bg-red-50" : "bg-blue-50"}`}>
+          <span className={`flex size-10 shrink-0 items-center justify-center rounded-full ${danger ? "bg-red-100 text-red-600" : "bg-blue-100 text-blue-600"}`}>
+            {danger ? <AlertTriangle className="size-5" aria-hidden="true" /> : <CheckCircle2 className="size-5" aria-hidden="true" />}
+          </span>
+          <div>
+            <h2 className="text-base font-bold text-gray-900">{confirm.title}</h2>
+            <p className="text-xs text-gray-500">Permission Manager</p>
+          </div>
+        </div>
+        <div className="px-5 py-4">
+          <p className="text-sm leading-6 text-gray-600">{confirm.message}</p>
+        </div>
+        <div className="flex justify-end gap-2 border-t bg-gray-50 px-5 py-4">
+          <button type="button" onClick={onCancel} disabled={pending} className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-gray-700 ring-1 ring-gray-200 hover:bg-gray-100 disabled:opacity-60">
+            Cancel
+          </button>
+          <button type="button" onClick={onConfirm} disabled={pending} className={`rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 ${danger ? "bg-red-600 hover:bg-red-700" : "bg-blue-600 hover:bg-blue-700"}`}>
+            {pending ? "Please wait..." : confirm.confirmLabel}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
 
 function featureTone(name: string) {
-  if (name === "view") return "bg-emerald-50 text-emerald-600";
-  if (name === "create") return "bg-blue-50 text-blue-600";
-  if (name === "edit") return "bg-amber-50 text-amber-600";
-  if (name === "delete") return "bg-red-50 text-red-600";
-  if (name === "approve") return "bg-indigo-50 text-indigo-600";
+  if (name.startsWith("view") || name.startsWith("read")) return "bg-emerald-50 text-emerald-600";
+  if (name.startsWith("create") || name.startsWith("submit") || name.startsWith("record") || name.startsWith("mark") || name.startsWith("manage")) return "bg-blue-50 text-blue-600";
+  if (name.startsWith("edit") || name.startsWith("change") || name.startsWith("complete") || name.startsWith("resolve") || name.startsWith("publish")) return "bg-amber-50 text-amber-600";
+  if (name.startsWith("delete")) return "bg-red-50 text-red-600";
+  if (name.startsWith("approve")) return "bg-indigo-50 text-indigo-600";
+  if (name.startsWith("export") || name.startsWith("import")) return "bg-purple-50 text-purple-600";
   return "bg-gray-50 text-gray-600";
 }

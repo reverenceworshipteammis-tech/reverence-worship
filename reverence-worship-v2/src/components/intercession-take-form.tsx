@@ -12,6 +12,8 @@ type TakeQuestion = {
   description: string;
   required: boolean;
   options: string[];
+  rows: string[];
+  columns: string[];
   min: number;
   max: number;
 };
@@ -256,13 +258,19 @@ function QuestionField({
           ))}
         </div>
       )}
+      {question.type === "multiple_choice_grid" && (
+        <GridAnswerTable question={question} name={name} required={question.required} onAnswered={onAnswered} multiple={false} />
+      )}
+      {question.type === "checkbox_grid" && (
+        <GridAnswerTable question={question} name={name} required={question.required} onAnswered={onAnswered} multiple />
+      )}
       {question.type === "date" && (
         <input type="date" name={name} required={question.required} onChange={(event) => onAnswered(Boolean(event.target.value))} className="rounded-lg border border-gray-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
       )}
       {question.type === "time" && (
         <input type="time" name={name} required={question.required} onChange={(event) => onAnswered(Boolean(event.target.value))} className="rounded-lg border border-gray-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
       )}
-      {!["short_answer", "paragraph", "multiple_choice", "checkboxes", "dropdown", "linear_scale", "rating", "date", "time"].includes(question.type) && (
+      {!["short_answer", "paragraph", "multiple_choice", "checkboxes", "dropdown", "linear_scale", "rating", "multiple_choice_grid", "checkbox_grid", "date", "time"].includes(question.type) && (
         <div className="flex items-center gap-2 rounded-lg bg-gray-50 p-3 text-sm text-gray-500">
           <Lock className="size-4" aria-hidden="true" />
           Unsupported question type.
@@ -270,4 +278,65 @@ function QuestionField({
       )}
     </div>
   );
+}
+
+function GridAnswerTable({
+  question,
+  name,
+  required,
+  multiple,
+  onAnswered,
+}: {
+  question: TakeQuestion;
+  name: string;
+  required: boolean;
+  multiple: boolean;
+  onAnswered: (answered: boolean) => void;
+}) {
+  const rows = question.rows.length ? question.rows : ["Row 1"];
+  const columns = question.columns.length ? question.columns : ["Column 1"];
+
+  function updateAnswered(form: HTMLFormElement | null) {
+    if (!form) return onAnswered(false);
+    const hasAnswer = rows.some((_, rowIndex) => formDataHasValue(new FormData(form), `${name}_${rowIndex}`));
+    onAnswered(hasAnswer);
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-lg border border-gray-200">
+      <table className="min-w-full text-sm">
+        <thead className="bg-gray-50">
+          <tr>
+            <th className="px-3 py-2 text-left font-medium text-gray-500">Row</th>
+            {columns.map((column) => (
+              <th key={column} className="px-3 py-2 text-center font-medium text-gray-500">{column}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100 bg-white">
+          {rows.map((row, rowIndex) => (
+            <tr key={`${name}-${rowIndex}`}>
+              <td className="px-3 py-2 font-medium text-gray-700">{row}</td>
+              {columns.map((column) => (
+                <td key={column} className="px-3 py-2 text-center">
+                  <input
+                    type={multiple ? "checkbox" : "radio"}
+                    name={`${name}_${rowIndex}`}
+                    value={column}
+                    required={required && !multiple}
+                    onChange={(event) => updateAnswered(event.currentTarget.form)}
+                    className={multiple ? "rounded border-gray-300 text-indigo-600" : "text-indigo-600"}
+                  />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function formDataHasValue(formData: FormData, key: string) {
+  return formData.getAll(key).some((value) => String(value).trim() !== "");
 }

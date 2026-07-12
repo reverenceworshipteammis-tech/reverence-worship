@@ -4,8 +4,10 @@ import { useMemo, useState, useTransition } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
+  AlertTriangle,
   BarChart3,
   Calculator,
+  CheckCircle2,
   ChartPie,
   ClipboardList,
   CreditCard,
@@ -42,6 +44,7 @@ import {
   saveSponsor,
   updateFinancePayment,
 } from "@/app/admin/finance/actions";
+import { MobileTabDropdown } from "@/components/mobile-tab-dropdown";
 
 type UserOption = {
   id: number;
@@ -178,6 +181,19 @@ type FinanceTermSetting = {
   termPercentages: Record<string, number>;
 };
 
+type FinanceNotice = {
+  ok: boolean;
+  message: string;
+};
+
+type ConfirmAction = {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  tone?: "danger" | "primary";
+  action: () => Promise<void>;
+};
+
 export function FinanceClient({
   year,
   users,
@@ -233,9 +249,7 @@ export function FinanceClient({
 
       <div className="relative z-40 overflow-visible rounded-lg border border-gray-200 bg-white shadow-sm">
         <div className="p-2 md:hidden">
-          <select value={activeTab} onChange={(event) => setActiveTab(event.target.value)} className="h-10 w-full max-w-[280px] rounded-lg border border-gray-300 bg-white px-3 text-sm font-medium text-gray-800">
-            {tabs.map((tab) => <option key={tab.id} value={tab.id}>{tab.label}</option>)}
-          </select>
+          <MobileTabDropdown tabs={tabs} value={activeTab} onChange={setActiveTab} />
         </div>
         <div className="hidden border-b border-gray-200 md:block">
           <nav className="flex flex-wrap">
@@ -332,6 +346,7 @@ function FinanceActionPlansTab({ currentYear, actionPlans }: { currentYear: numb
   const [taskModal, setTaskModal] = useState<{ plan: ActionPlan; task?: ActionPlanTask } | null>(null);
   const [viewPlan, setViewPlan] = useState<ActionPlan | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; message: string } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [pending, startTransition] = useTransition();
 
   const filteredPlans = useMemo(() => {
@@ -399,20 +414,34 @@ function FinanceActionPlansTab({ currentYear, actionPlans }: { currentYear: numb
   }
 
   function removePlan(plan: ActionPlan) {
-    if (!window.confirm(`Delete "${plan.title}"?`)) return;
-    startTransition(async () => {
-      const result = await deleteFinanceActionPlan(plan.id);
-      setMessage(result);
-      if (result.ok) router.refresh();
+    setConfirmAction({
+      title: "Delete Action Plan",
+      message: `Delete "${plan.title}" and all of its tasks? This action cannot be undone.`,
+      confirmLabel: "Delete Plan",
+      action: async () => {
+        const result = await deleteFinanceActionPlan(plan.id);
+        setMessage(result);
+        if (result.ok) {
+          setConfirmAction(null);
+          router.refresh();
+        }
+      },
     });
   }
 
   function removeTask(task: ActionPlanTask) {
-    if (!window.confirm("Are you sure you want to delete this task?")) return;
-    startTransition(async () => {
-      const result = await deleteFinanceActionPlanTask(task.id);
-      setMessage(result);
-      if (result.ok) router.refresh();
+    setConfirmAction({
+      title: "Delete Task",
+      message: `Delete "${task.activity || task.taskName}" from this action plan?`,
+      confirmLabel: "Delete Task",
+      action: async () => {
+        const result = await deleteFinanceActionPlanTask(task.id);
+        setMessage(result);
+        if (result.ok) {
+          setConfirmAction(null);
+          router.refresh();
+        }
+      },
     });
   }
 
@@ -457,9 +486,7 @@ function FinanceActionPlansTab({ currentYear, actionPlans }: { currentYear: numb
       </div>
 
       {message && (
-        <div className={`rounded-lg border px-4 py-3 text-sm ${message.ok ? "border-green-100 bg-green-50 text-green-700" : "border-red-100 bg-red-50 text-red-700"}`}>
-          {message.message}
-        </div>
+        <FinanceNoticeBanner notice={message} onClose={() => setMessage(null)} />
       )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -683,6 +710,15 @@ function FinanceActionPlansTab({ currentYear, actionPlans }: { currentYear: numb
           </div>
         </Modal>
       )}
+
+      {confirmAction ? (
+        <FinanceConfirmModal
+          confirm={confirmAction}
+          pending={pending}
+          onCancel={() => setConfirmAction(null)}
+          onConfirm={() => startTransition(confirmAction.action)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -716,6 +752,71 @@ function actionPlanStatusBadge(status: string) {
   if (status === "completed") return "bg-green-100 text-green-700";
   if (status === "in_progress") return "bg-blue-100 text-blue-700";
   return "bg-yellow-100 text-yellow-700";
+}
+
+function FinanceNoticeBanner({ notice, onClose }: { notice: FinanceNotice; onClose: () => void }) {
+  const Icon = notice.ok ? CheckCircle2 : AlertTriangle;
+
+  return (
+    <div
+      className={`flex items-start gap-3 rounded-xl border px-4 py-3 text-sm shadow-sm ${
+        notice.ok ? "border-green-200 bg-green-50 text-green-800" : "border-red-200 bg-red-50 text-red-800"
+      }`}
+      role="status"
+    >
+      <span className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full ${notice.ok ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"}`}>
+        <Icon className="size-4" aria-hidden="true" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="font-semibold">{notice.ok ? "Success" : "Notice"}</p>
+        <p className="mt-0.5 leading-5">{notice.message}</p>
+      </div>
+      <button type="button" onClick={onClose} className="rounded-lg p-1 text-current opacity-60 transition hover:bg-white/70 hover:opacity-100" aria-label="Close notice">
+        <X className="size-4" aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
+function FinanceConfirmModal({
+  confirm,
+  pending,
+  onCancel,
+  onConfirm,
+}: {
+  confirm: ConfirmAction;
+  pending: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const danger = confirm.tone !== "primary";
+
+  return (
+    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-md overflow-hidden rounded-xl bg-white shadow-2xl">
+        <div className={`flex items-center gap-3 px-5 py-4 ${danger ? "bg-red-50" : "bg-blue-50"}`}>
+          <span className={`flex size-10 shrink-0 items-center justify-center rounded-full ${danger ? "bg-red-100 text-red-600" : "bg-blue-100 text-blue-600"}`}>
+            {danger ? <AlertTriangle className="size-5" aria-hidden="true" /> : <CheckCircle2 className="size-5" aria-hidden="true" />}
+          </span>
+          <div>
+            <h2 className="text-base font-bold text-gray-900">{confirm.title}</h2>
+            <p className="text-xs text-gray-500">Financial Management DPT</p>
+          </div>
+        </div>
+        <div className="px-5 py-4">
+          <p className="text-sm leading-6 text-gray-600">{confirm.message}</p>
+        </div>
+        <div className="flex justify-end gap-2 border-t bg-gray-50 px-5 py-4">
+          <button type="button" onClick={onCancel} disabled={pending} className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-gray-700 ring-1 ring-gray-200 hover:bg-gray-100 disabled:opacity-60">
+            Cancel
+          </button>
+          <button type="button" onClick={onConfirm} disabled={pending} className={`rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 ${danger ? "bg-red-600 hover:bg-red-700" : "bg-blue-600 hover:bg-blue-700"}`}>
+            {pending ? "Please wait..." : confirm.confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function FinanceSettingsTab({ currentYear, settings }: { currentYear: number; settings: FinanceTermSetting[] }) {
@@ -897,9 +998,7 @@ function FinanceSettingsTab({ currentYear, settings }: { currentYear: number; se
           </div>
 
           {result ? (
-            <div className={`rounded-lg border px-3 py-2 text-sm ${result.ok ? "border-emerald-100 bg-emerald-50 text-emerald-700" : "border-red-100 bg-red-50 text-red-700"}`}>
-              {result.message}
-            </div>
+            <FinanceNoticeBanner notice={result} onClose={() => setResult(null)} />
           ) : null}
         </div>
 
@@ -952,6 +1051,7 @@ function FinanceContributionsTab({
   const [paymentModalUser, setPaymentModalUser] = useState<UserOption | null>(null);
   const [detailRow, setDetailRow] = useState<ContributionRow | null>(null);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [pending, startTransition] = useTransition();
 
   const years = useMemo(() => {
@@ -1068,12 +1168,19 @@ function FinanceContributionsTab({
   }
 
   function deleteRow(row: ContributionRow) {
-    if (!confirm(`Delete contribution and payments for ${row.user.name} in ${selectedYear}?`)) return;
-    setResult(null);
-    startTransition(async () => {
-      const response = await deleteMemberContributionForYear(row.user.id, selectedYear);
-      setResult(response);
-      if (response.ok) router.refresh();
+    setConfirmAction({
+      title: "Delete Contribution",
+      message: `Delete contribution and payments for ${row.user.name} in ${selectedYear}? This action cannot be undone.`,
+      confirmLabel: "Delete Contribution",
+      action: async () => {
+        setResult(null);
+        const response = await deleteMemberContributionForYear(row.user.id, selectedYear);
+        setResult(response);
+        if (response.ok) {
+          setConfirmAction(null);
+          router.refresh();
+        }
+      },
     });
   }
 
@@ -1136,9 +1243,7 @@ function FinanceContributionsTab({
       <p className="text-xs text-gray-500">{rows.length} contribution records found</p>
 
       {result ? (
-        <div className={`rounded-lg border px-3 py-2 text-sm ${result.ok ? "border-emerald-100 bg-emerald-50 text-emerald-700" : "border-red-100 bg-red-50 text-red-700"}`}>
-          {result.message}
-        </div>
+        <FinanceNoticeBanner notice={result} onClose={() => setResult(null)} />
       ) : null}
 
       <div className="overflow-x-auto">
@@ -1226,6 +1331,14 @@ function FinanceContributionsTab({
       {detailRow ? (
         <DetailsModal row={detailRow} payments={paymentsForYear.filter((payment) => payment.userId === detailRow.user.id)} onClose={() => setDetailRow(null)} />
       ) : null}
+      {confirmAction ? (
+        <FinanceConfirmModal
+          confirm={confirmAction}
+          pending={pending}
+          onCancel={() => setConfirmAction(null)}
+          onConfirm={() => startTransition(confirmAction.action)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1248,6 +1361,7 @@ function FinancePaymentsTab({
   const [detailPayment, setDetailPayment] = useState<Payment | null>(null);
   const [editPayment, setEditPayment] = useState<Payment | null>(null);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [pending, startTransition] = useTransition();
   const numberOfTerms = termSettings.find((setting) => setting.currentYear === currentYear)?.numberOfTerms ?? 3;
   const termNumbers = Array.from({ length: numberOfTerms }, (_, index) => index + 1);
@@ -1304,12 +1418,19 @@ function FinancePaymentsTab({
   }
 
   function deletePayment(payment: Payment) {
-    if (!confirm(`Delete payment for ${payment.userName} (${formatCurrency(payment.amount)})?`)) return;
-    setResult(null);
-    startTransition(async () => {
-      const response = await deleteFinancePayment(payment.id);
-      setResult(response);
-      if (response.ok) router.refresh();
+    setConfirmAction({
+      title: "Delete Payment",
+      message: `Delete payment for ${payment.userName} (${formatCurrency(payment.amount)})? This action cannot be undone.`,
+      confirmLabel: "Delete Payment",
+      action: async () => {
+        setResult(null);
+        const response = await deleteFinancePayment(payment.id);
+        setResult(response);
+        if (response.ok) {
+          setConfirmAction(null);
+          router.refresh();
+        }
+      },
     });
   }
 
@@ -1361,9 +1482,7 @@ function FinancePaymentsTab({
       </div>
 
       {result ? (
-        <div className={`rounded-lg border px-3 py-2 text-sm ${result.ok ? "border-emerald-100 bg-emerald-50 text-emerald-700" : "border-red-100 bg-red-50 text-red-700"}`}>
-          {result.message}
-        </div>
+        <FinanceNoticeBanner notice={result} onClose={() => setResult(null)} />
       ) : null}
 
       <div className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
@@ -1424,6 +1543,14 @@ function FinancePaymentsTab({
           onSubmit={submitEdit}
         />
       ) : null}
+      {confirmAction ? (
+        <FinanceConfirmModal
+          confirm={confirmAction}
+          pending={pending}
+          onCancel={() => setConfirmAction(null)}
+          onConfirm={() => startTransition(confirmAction.action)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1445,6 +1572,7 @@ function FinanceExpensesTab({
   const [expenseModalOpen, setExpenseModalOpen] = useState(false);
   const [detailExpense, setDetailExpense] = useState<Expense | null>(null);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [pending, startTransition] = useTransition();
 
   const filteredExpenses = useMemo(() => {
@@ -1499,22 +1627,37 @@ function FinanceExpensesTab({
   }
 
   function approveRow(expense: Expense) {
-    if (!confirm("Approve this expense?")) return;
-    setResult(null);
-    startTransition(async () => {
-      const response = await approveExpense(expense.id);
-      setResult(response);
-      if (response.ok) router.refresh();
+    setConfirmAction({
+      title: "Approve Expense",
+      message: `Approve this expense for ${formatCurrency(expense.amount)}?`,
+      confirmLabel: "Approve",
+      tone: "primary",
+      action: async () => {
+        setResult(null);
+        const response = await approveExpense(expense.id);
+        setResult(response);
+        if (response.ok) {
+          setConfirmAction(null);
+          router.refresh();
+        }
+      },
     });
   }
 
   function deleteRow(expense: Expense) {
-    if (!confirm("Delete this expense?")) return;
-    setResult(null);
-    startTransition(async () => {
-      const response = await deleteExpense(expense.id);
-      setResult(response);
-      if (response.ok) router.refresh();
+    setConfirmAction({
+      title: "Delete Expense",
+      message: `Delete this expense for ${formatCurrency(expense.amount)}? This action cannot be undone.`,
+      confirmLabel: "Delete Expense",
+      action: async () => {
+        setResult(null);
+        const response = await deleteExpense(expense.id);
+        setResult(response);
+        if (response.ok) {
+          setConfirmAction(null);
+          router.refresh();
+        }
+      },
     });
   }
 
@@ -1598,9 +1741,7 @@ function FinanceExpensesTab({
       </div>
 
       {result ? (
-        <div className={`rounded-lg border px-3 py-2 text-sm ${result.ok ? "border-emerald-100 bg-emerald-50 text-emerald-700" : "border-red-100 bg-red-50 text-red-700"}`}>
-          {result.message}
-        </div>
+        <FinanceNoticeBanner notice={result} onClose={() => setResult(null)} />
       ) : null}
 
       <div className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
@@ -1648,6 +1789,14 @@ function FinanceExpensesTab({
       {detailExpense ? (
         <ExpenseDetailsModal expense={detailExpense} onClose={() => setDetailExpense(null)} />
       ) : null}
+      {confirmAction ? (
+        <FinanceConfirmModal
+          confirm={confirmAction}
+          pending={pending}
+          onCancel={() => setConfirmAction(null)}
+          onConfirm={() => startTransition(confirmAction.action)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1661,6 +1810,7 @@ function FinanceSponsorsTab({ currentYear, sponsors }: { currentYear: number; sp
   const [paymentSponsor, setPaymentSponsor] = useState<Sponsor | null>(null);
   const [historySponsor, setHistorySponsor] = useState<Sponsor | null>(null);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [pending, startTransition] = useTransition();
   const fromYear = Number(fromDate.slice(0, 4));
   const toYear = Number(toDate.slice(0, 4));
@@ -1716,12 +1866,19 @@ function FinanceSponsorsTab({ currentYear, sponsors }: { currentYear: number; sp
   }
 
   function removeSponsor(sponsor: Sponsor) {
-    if (!confirm(`Delete "${sponsor.name}" and all associated payments?`)) return;
-    setResult(null);
-    startTransition(async () => {
-      const response = await deleteSponsor(sponsor.id);
-      setResult(response);
-      if (response.ok) router.refresh();
+    setConfirmAction({
+      title: "Delete Sponsor",
+      message: `Delete "${sponsor.name}" and all associated payments? This action cannot be undone.`,
+      confirmLabel: "Delete Sponsor",
+      action: async () => {
+        setResult(null);
+        const response = await deleteSponsor(sponsor.id);
+        setResult(response);
+        if (response.ok) {
+          setConfirmAction(null);
+          router.refresh();
+        }
+      },
     });
   }
 
@@ -1792,9 +1949,7 @@ function FinanceSponsorsTab({ currentYear, sponsors }: { currentYear: number; sp
       </div>
 
       {result ? (
-        <div className={`rounded-lg border px-3 py-2 text-sm ${result.ok ? "border-emerald-100 bg-emerald-50 text-emerald-700" : "border-red-100 bg-red-50 text-red-700"}`}>
-          {result.message}
-        </div>
+        <FinanceNoticeBanner notice={result} onClose={() => setResult(null)} />
       ) : null}
 
       <div className="overflow-x-auto">
@@ -1849,6 +2004,14 @@ function FinanceSponsorsTab({ currentYear, sponsors }: { currentYear: number; sp
       ) : null}
       {historySponsor ? (
         <SponsorHistoryModal sponsor={historySponsor} payments={historySponsor.payments.filter((payment) => payment.year === currentYear)} currentYear={currentYear} onClose={() => setHistorySponsor(null)} />
+      ) : null}
+      {confirmAction ? (
+        <FinanceConfirmModal
+          confirm={confirmAction}
+          pending={pending}
+          onCancel={() => setConfirmAction(null)}
+          onConfirm={() => startTransition(confirmAction.action)}
+        />
       ) : null}
     </div>
   );

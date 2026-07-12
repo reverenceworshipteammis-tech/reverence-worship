@@ -19,6 +19,7 @@ import {
   saveDisciplineSession,
   savePermissionRequest,
 } from "@/app/admin/discipline/actions";
+import { MobileTabDropdown } from "@/components/mobile-tab-dropdown";
 
 type DisciplineStats = {
   permissionRequests: number;
@@ -753,7 +754,10 @@ export function DisciplineClient({
   return (
     <div className="mx-auto max-w-7xl space-y-4 px-2 py-4 sm:px-4 sm:py-6">
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm">
-        <nav className="flex flex-wrap border-b border-gray-200">
+        <div className="border-b border-gray-200 p-3 md:hidden">
+          <MobileTabDropdown tabs={tabs} value={activeTab} onChange={setActiveTab} />
+        </div>
+        <nav className="hidden flex-wrap border-b border-gray-200 md:flex">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const selected = activeTab === tab.id;

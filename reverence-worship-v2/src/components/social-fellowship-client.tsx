@@ -3,6 +3,7 @@
 import { FormEvent, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
+  AlertTriangle,
   Calendar,
   CheckCircle2,
   ClipboardList,
@@ -33,6 +34,7 @@ import {
   updateSocialActionPlan,
   updateSocialTask,
 } from "@/app/admin/social-fellowship/actions";
+import { MobileTabDropdown } from "@/components/mobile-tab-dropdown";
 
 type FamilyMember = {
   id: number;
@@ -145,6 +147,19 @@ type ActionPlanTaskDraft = {
   assignedTo: string;
 };
 
+type SocialNotice = {
+  ok: boolean;
+  message: string;
+};
+
+type ConfirmAction = {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  tone?: "danger" | "primary";
+  action: () => Promise<{ ok: boolean; message: string }>;
+};
+
 function emptyActionPlanTask(): ActionPlanTaskDraft {
   return {
     taskName: "",
@@ -184,7 +199,8 @@ export function SocialFellowshipClient({
   const [actionPlanStatusFilter, setActionPlanStatusFilter] = useState("all");
   const [actionPlanFamilyFilter, setActionPlanFamilyFilter] = useState("all");
   const [actionPlanPriorityFilter, setActionPlanPriorityFilter] = useState("all");
-  const [message, setMessage] = useState<string | null>(null);
+  const [notice, setNotice] = useState<SocialNotice | null>(null);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [modal, setModal] = useState<null | "family" | "members" | "assign" | "task" | "viewTask" | "actionPlan" | "viewActionPlan">(null);
   const [viewingFamily, setViewingFamily] = useState<SocialFamily | null>(null);
   const [viewingTask, setViewingTask] = useState<SocialTask | null>(null);
@@ -262,11 +278,57 @@ export function SocialFellowshipClient({
   function runAction(action: () => Promise<{ ok: boolean; message: string }>, close?: () => void) {
     startTransition(async () => {
       const result = await action();
-      setMessage(result.message);
+      setNotice(result);
       if (result.ok) {
         close?.();
         router.refresh();
       }
+    });
+  }
+
+  function executeConfirm() {
+    if (!confirmAction) return;
+    runAction(confirmAction.action, () => setConfirmAction(null));
+  }
+
+  function askConfirm(confirm: ConfirmAction) {
+    setConfirmAction(confirm);
+  }
+
+  function confirmDeleteTask(task: SocialTask) {
+    askConfirm({
+      title: "Delete Task",
+      message: `Delete "${task.title}" and all of its subtasks? This action cannot be undone.`,
+      confirmLabel: "Delete Task",
+      action: () => deleteSocialTask(task.id),
+    });
+  }
+
+  function confirmDeleteActionPlan(plan: SocialActionPlan) {
+    askConfirm({
+      title: "Delete Action Plan",
+      message: `Delete "${plan.title}" and all of its tasks? This action cannot be undone.`,
+      confirmLabel: "Delete Plan",
+      action: () => deleteSocialActionPlan(plan.id),
+    });
+  }
+
+  function confirmDeleteFamily(family: SocialFamily) {
+    askConfirm({
+      title: "Delete Family",
+      message: `Delete "${family.name}" from Social Fellowship? This will remove the family record for this year.`,
+      confirmLabel: "Delete Family",
+      action: () => deleteSocialFamily(family.id),
+    });
+  }
+
+  function confirmRemoveUser(user: SocialUser) {
+    if (!user.familyId) return;
+    askConfirm({
+      title: "Remove User",
+      message: `Remove ${user.name} from ${user.familyName ?? "this family"} for ${selectedYear}?`,
+      confirmLabel: "Remove User",
+      action: () => removeUserFromSocialFamily(user.id, user.familyId!),
     });
   }
 
@@ -365,7 +427,10 @@ export function SocialFellowshipClient({
   return (
     <div className="mx-auto max-w-7xl space-y-4 px-2 py-4 sm:px-4 sm:py-6">
       <div className="relative z-10 overflow-visible rounded-lg border border-gray-200 bg-white shadow-sm">
-        <nav className="flex flex-wrap border-b border-gray-200">
+        <div className="border-b border-gray-200 p-3 md:hidden">
+          <MobileTabDropdown tabs={tabs} value={activeTab} onChange={setActiveTab} tone="gray" />
+        </div>
+        <nav className="hidden flex-wrap border-b border-gray-200 md:flex">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const selected = activeTab === tab.id;
@@ -386,6 +451,8 @@ export function SocialFellowshipClient({
         </nav>
       </div>
 
+      {notice ? <SocialNoticeBanner notice={notice} onClose={() => setNotice(null)} /> : null}
+
       {activeTab === "tasks" ? (
         <section className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm sm:p-6">
           <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -402,8 +469,6 @@ export function SocialFellowshipClient({
               New Task
             </button>
           </div>
-
-          {message && <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-700">{message}</div>}
 
           <div className="mb-6 grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div>
@@ -508,7 +573,7 @@ export function SocialFellowshipClient({
                         <button type="button" onClick={() => openTaskModal(task)} className="rounded-lg border border-gray-200 px-3 py-2 text-gray-500 hover:text-blue-600" title="Edit">
                           <FileText className="size-4" />
                         </button>
-                        <button type="button" onClick={() => runAction(() => deleteSocialTask(task.id))} className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-red-500 hover:text-red-600" title="Delete">
+                        <button type="button" onClick={() => confirmDeleteTask(task)} className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-red-500 hover:text-red-600" title="Delete">
                           <Trash2 className="size-4" />
                         </button>
                       </div>
@@ -543,8 +608,6 @@ export function SocialFellowshipClient({
               Create New Action Plan
             </button>
           </div>
-
-          {message && <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-700">{message}</div>}
 
           <div className="mb-6 grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div>
@@ -661,7 +724,7 @@ export function SocialFellowshipClient({
                         <button type="button" onClick={() => openActionPlanModal(plan)} className="rounded-lg border border-gray-200 px-3 py-2 text-gray-500 hover:text-blue-600" title="Edit">
                           <FileText className="size-4" />
                         </button>
-                        <button type="button" onClick={() => runAction(() => deleteSocialActionPlan(plan.id))} className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-red-500 hover:text-red-600" title="Delete">
+                        <button type="button" onClick={() => confirmDeleteActionPlan(plan)} className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-red-500 hover:text-red-600" title="Delete">
                           <Trash2 className="size-4" />
                         </button>
                       </div>
@@ -704,8 +767,6 @@ export function SocialFellowshipClient({
               </label>
             </div>
           </div>
-
-          {message && <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-700">{message}</div>}
 
           <label className="relative mb-6 block">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" aria-hidden="true" />
@@ -753,7 +814,7 @@ export function SocialFellowshipClient({
                       {user.isAssignedInYear && user.familyId ? (
                         <button
                           type="button"
-                          onClick={() => runAction(() => removeUserFromSocialFamily(user.id, user.familyId!))}
+                          onClick={() => confirmRemoveUser(user)}
                           className="inline-flex items-center gap-1 text-red-600 hover:text-red-800"
                           title={`Remove from family in ${selectedYear}`}
                         >
@@ -799,7 +860,7 @@ export function SocialFellowshipClient({
                 <p className="mt-2 text-sm text-gray-500">{[user.province, user.district, user.sector].filter(Boolean).join(", ") || "Not specified"}</p>
                 <div className="mt-4">
                   {user.isAssignedInYear && user.familyId ? (
-                    <button type="button" onClick={() => runAction(() => removeUserFromSocialFamily(user.id, user.familyId!))} className="w-full rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+                    <button type="button" onClick={() => confirmRemoveUser(user)} className="w-full rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
                       Remove
                     </button>
                   ) : (
@@ -858,8 +919,6 @@ export function SocialFellowshipClient({
             </div>
           </div>
 
-          {message && <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-700">{message}</div>}
-
           <label className="relative mb-6 block">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" aria-hidden="true" />
             <input
@@ -905,7 +964,7 @@ export function SocialFellowshipClient({
                       </button>
                       <button
                         type="button"
-                        onClick={() => runAction(() => deleteSocialFamily(family.id))}
+                        onClick={() => confirmDeleteFamily(family)}
                         className="inline-flex items-center rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600 hover:text-red-700"
                         aria-label="Delete family"
                         title="Delete family"
@@ -1536,7 +1595,7 @@ export function SocialFellowshipClient({
             <div className="flex items-start justify-between gap-4 border-b px-5 py-4">
               <div>
                 <h2 className="text-lg font-bold text-gray-900">{viewingActionPlan.title}</h2>
-                <p className="mt-1 text-sm text-gray-500">{viewingActionPlan.familyName ?? "All families"} • {viewingActionPlan.startDate} - {viewingActionPlan.dueDate}</p>
+                <p className="mt-1 text-sm text-gray-500">{viewingActionPlan.familyName ?? "All families"} - {viewingActionPlan.startDate} - {viewingActionPlan.dueDate}</p>
               </div>
               <button
                 type="button"
@@ -1629,6 +1688,80 @@ export function SocialFellowshipClient({
           </div>
         </div>
       )}
+
+      {confirmAction ? (
+        <SocialConfirmModal
+          confirm={confirmAction}
+          pending={isPending}
+          onCancel={() => setConfirmAction(null)}
+          onConfirm={executeConfirm}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function SocialNoticeBanner({ notice, onClose }: { notice: SocialNotice; onClose: () => void }) {
+  const Icon = notice.ok ? CheckCircle2 : AlertTriangle;
+
+  return (
+    <div
+      className={`flex items-start gap-3 rounded-xl border px-4 py-3 text-sm shadow-sm ${
+        notice.ok ? "border-green-200 bg-green-50 text-green-800" : "border-red-200 bg-red-50 text-red-800"
+      }`}
+      role="status"
+    >
+      <span className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full ${notice.ok ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"}`}>
+        <Icon className="size-4" aria-hidden="true" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="font-semibold">{notice.ok ? "Success" : "Notice"}</p>
+        <p className="mt-0.5 leading-5">{notice.message}</p>
+      </div>
+      <button type="button" onClick={onClose} className="rounded-lg p-1 text-current opacity-60 transition hover:bg-white/70 hover:opacity-100" aria-label="Close notice">
+        <X className="size-4" aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
+function SocialConfirmModal({
+  confirm,
+  pending,
+  onCancel,
+  onConfirm,
+}: {
+  confirm: ConfirmAction;
+  pending: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const danger = confirm.tone !== "primary";
+
+  return (
+    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-md overflow-hidden rounded-xl bg-white shadow-2xl">
+        <div className={`flex items-center gap-3 px-5 py-4 ${danger ? "bg-red-50" : "bg-blue-50"}`}>
+          <span className={`flex size-10 shrink-0 items-center justify-center rounded-full ${danger ? "bg-red-100 text-red-600" : "bg-blue-100 text-blue-600"}`}>
+            {danger ? <AlertTriangle className="size-5" aria-hidden="true" /> : <CheckCircle2 className="size-5" aria-hidden="true" />}
+          </span>
+          <div>
+            <h2 className="text-base font-bold text-gray-900">{confirm.title}</h2>
+            <p className="text-xs text-gray-500">Social Fellowship DPT</p>
+          </div>
+        </div>
+        <div className="px-5 py-4">
+          <p className="text-sm leading-6 text-gray-600">{confirm.message}</p>
+        </div>
+        <div className="flex justify-end gap-2 border-t bg-gray-50 px-5 py-4">
+          <button type="button" onClick={onCancel} disabled={pending} className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-gray-700 ring-1 ring-gray-200 hover:bg-gray-100 disabled:opacity-60">
+            Cancel
+          </button>
+          <button type="button" onClick={onConfirm} disabled={pending} className={`rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 ${danger ? "bg-red-600 hover:bg-red-700" : "bg-blue-600 hover:bg-blue-700"}`}>
+            {pending ? "Please wait..." : confirm.confirmLabel}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

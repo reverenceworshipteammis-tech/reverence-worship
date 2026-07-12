@@ -20,10 +20,14 @@ function formatDateTime(date: Date) {
   }).format(date);
 }
 
+function formatDateValue(date: Date | null) {
+  return date ? date.toISOString().slice(0, 10) : "";
+}
+
 export default async function MusicPage() {
   await requireUser();
 
-  const [playlists, songs, gallery, singers, serviceTeams, boardItems, youtubeVideos, featuredImages] = await Promise.all([
+  const [playlists, songs, gallery, singers, serviceTeams, boardItems, youtubeVideos, featuredImages, actionPlans] = await Promise.all([
     prisma.playlist.findMany({
       orderBy: { createdAt: "desc" },
       include: {
@@ -71,6 +75,14 @@ export default async function MusicPage() {
     }),
     prisma.landingFeaturedImage.findMany({
       orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
+    }),
+    prisma.actionPlan.findMany({
+      where: { department: "music-ministry" },
+      orderBy: [{ year: "desc" }, { createdAt: "desc" }],
+      include: {
+        creator: { select: { name: true } },
+        tasks: { orderBy: [{ deadline: "asc" }, { createdAt: "asc" }] },
+      },
     }),
   ]);
 
@@ -168,6 +180,34 @@ export default async function MusicPage() {
         isPublished: image.isPublished,
         isHero: image.isHero,
         sortOrder: image.sortOrder,
+      }))}
+      actionPlans={actionPlans.map((plan) => ({
+        id: plan.id,
+        title: plan.title,
+        description: plan.description,
+        startDate: formatDate(plan.startDate),
+        startDateRaw: formatDateValue(plan.startDate),
+        dueDate: formatDate(plan.dueDate),
+        dueDateRaw: formatDateValue(plan.dueDate),
+        status: plan.status,
+        progress: plan.progress,
+        year: plan.year,
+        createdByName: plan.creator?.name ?? "System",
+        createdAt: formatDate(plan.createdAt),
+        tasks: plan.tasks.map((task) => ({
+          id: task.id,
+          actionPlanId: task.actionPlanId,
+          taskName: task.taskName,
+          activity: task.activity,
+          targetMilestone: task.targetMilestone,
+          estimatedBudget: Number(task.estimatedBudget ?? 0),
+          startDate: task.startDate ? formatDate(task.startDate) : "",
+          startDateRaw: formatDateValue(task.startDate),
+          deadline: task.deadline ? formatDate(task.deadline) : "",
+          deadlineRaw: formatDateValue(task.deadline),
+          progress: task.progress,
+          status: task.status,
+        })),
       }))}
     />
   );

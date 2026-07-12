@@ -60,6 +60,7 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
       },
     }),
     prisma.role.findMany({
+      where: { name: { not: "super-admin" } },
       orderBy: { displayName: "asc" },
       select: {
         id: true,
@@ -72,17 +73,18 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
       prisma.user.count({ where: { status: "active" } }),
       prisma.user.count({ where: { status: "inactive" } }),
       prisma.user.count({ where: { status: "pending" } }),
+      prisma.user.count({ where: { membershipType: "permanent" } }),
       prisma.user.count({ where: { gender: "male" } }),
       prisma.user.count({ where: { gender: "female" } }),
     ]),
   ]);
 
-  const [total, active, inactive, pending, male, female] = stats;
+  const [total, active, inactive, pending, permanent, male, female] = stats;
 
   return (
     <UserManagementClient
       roles={roles}
-      stats={{ total, active, inactive, pending, male, female }}
+      stats={{ total, active, inactive, pending, permanent, male, female }}
       users={users.map((user) => ({
         id: user.id,
         name: user.name,

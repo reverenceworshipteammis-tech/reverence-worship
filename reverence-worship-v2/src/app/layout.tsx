@@ -16,6 +16,14 @@ const playfair = Playfair_Display({
 export const metadata: Metadata = {
   title: "Reverence Worship",
   description: "Ministry management for Reverence Worship.",
+  icons: {
+    icon: [
+      { url: "/icon.png", type: "image/png" },
+      { url: "/logo.png", type: "image/png" },
+    ],
+    shortcut: "/icon.png",
+    apple: "/logo.png",
+  },
 };
 
 export default function RootLayout({

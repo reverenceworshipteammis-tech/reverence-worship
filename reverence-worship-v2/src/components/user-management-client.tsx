@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useActionState, useMemo, useState, useTransition } from "react";
 import {
+  AlertTriangle,
   CheckCircle2,
   Clock3,
   Download,
@@ -58,6 +59,7 @@ type Stats = {
   active: number;
   inactive: number;
   pending: number;
+  permanent: number;
   male: number;
   female: number;
 };
@@ -67,6 +69,7 @@ const statCards = [
   { key: "active", label: "Active", icon: UserCheck, iconClass: "bg-green-100 text-green-600", valueClass: "text-green-600" },
   { key: "inactive", label: "Inactive", icon: UserRoundX, iconClass: "bg-red-100 text-red-600", valueClass: "text-red-600" },
   { key: "pending", label: "Pending", icon: Clock3, iconClass: "bg-yellow-100 text-yellow-600", valueClass: "text-yellow-600" },
+  { key: "permanent", label: "Permanent", icon: Users, iconClass: "bg-indigo-100 text-indigo-600", valueClass: "text-indigo-600" },
   { key: "male", label: "Male", icon: Mars, iconClass: "bg-blue-100 text-blue-600", valueClass: "text-blue-600" },
   { key: "female", label: "Female", icon: Venus, iconClass: "bg-pink-100 text-pink-600", valueClass: "text-pink-600" },
 ] as const;
@@ -93,6 +96,14 @@ function statusBadge(status: UserRow["status"]) {
   return "bg-red-100 text-red-700";
 }
 
+function displayRoles(user: UserRow) {
+  return user.roles.filter((role) => role.name !== "super-admin");
+}
+
+function hasFullSystemAccess(user: UserRow) {
+  return user.roles.some((role) => role.name === "super-admin");
+}
+
 export function UserManagementClient({
   users,
   roles,
@@ -108,7 +119,8 @@ export function UserManagementClient({
   const [viewUser, setViewUser] = useState<UserRow | null>(null);
   const [editUser, setEditUser] = useState<UserRow | null>(null);
   const [rolesUser, setRolesUser] = useState<UserRow | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<UserActionState | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{ user: UserRow; action: string } | null>(null);
   const [isPending, startTransition] = useTransition();
   const [createState, createAction] = useActionState<UserActionState, FormData>(
     createUserAction,
@@ -189,19 +201,19 @@ export function UserManagementClient({
       return;
     }
 
-    const ok = window.confirm(
-      `${action[0].toUpperCase()}${action.slice(1)} ${user.name}?`,
-    );
+    setConfirmAction({ user, action });
+  }
 
-    if (!ok) return;
-
+  function executeConfirmedAction() {
+    if (!confirmAction) return;
     const formData = new FormData();
-    formData.set("userId", String(user.id));
-    formData.set("action", action);
+    formData.set("userId", String(confirmAction.user.id));
+    formData.set("action", confirmAction.action);
 
     startTransition(async () => {
       const result = await runUserTableAction(formData);
-      setMessage(result.message ?? null);
+      setMessage(result);
+      setConfirmAction(null);
       router.refresh();
     });
   }
@@ -215,15 +227,25 @@ export function UserManagementClient({
 
     startTransition(async () => {
       const result = await updateUserRoleAction(formData);
-      setMessage(result.message ?? null);
+      setMessage(result);
       router.refresh();
     });
   }
 
+  const visibleNotice = message?.message
+    ? message
+    : createState.message
+      ? createState
+      : editState.message
+        ? editState
+        : rolesState.message
+          ? rolesState
+          : null;
+
   return (
     <div className="mx-auto max-w-7xl px-2 sm:px-4">
-      <div className="mb-4 grid grid-cols-2 gap-2 sm:mb-6 sm:grid-cols-3 sm:gap-3 lg:grid-cols-6">
-        {statCards.map((stat) => {
+      <div className="mb-4 grid grid-cols-2 gap-2 sm:mb-6 sm:grid-cols-3 sm:gap-3 lg:grid-cols-6 2xl:grid-cols-7">
+        {statCards.filter((stat) => stat.key !== "pending" || stats.pending > 0).map((stat) => {
           const Icon = stat.icon;
           return (
             <div
@@ -364,16 +386,12 @@ export function UserManagementClient({
         </form>
       </div>
 
-      {(message || createState.message || editState.message || rolesState.message) && (
-        <div
-          className={`mb-4 rounded-lg border px-4 py-3 text-sm ${
-            createState.ok === false || editState.ok === false || rolesState.ok === false
-              ? "border-red-200 bg-red-50 text-red-700"
-              : "border-green-200 bg-green-50 text-green-700"
-          }`}
-        >
-          {message || createState.message || editState.message || rolesState.message}
-        </div>
+      {visibleNotice?.message && (
+        <UserNotice
+          ok={visibleNotice.ok !== false}
+          message={visibleNotice.message}
+          onClose={() => setMessage(null)}
+        />
       )}
 
       <div className="overflow-hidden rounded-xl bg-white shadow-sm">
@@ -402,7 +420,11 @@ export function UserManagementClient({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 bg-white">
-              {users.map((user) => (
+              {users.map((user) => {
+                const visibleRoles = displayRoles(user);
+                const fullSystemAccess = hasFullSystemAccess(user);
+
+                return (
                 <tr key={user.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3">
                     <div className="flex items-center">
@@ -418,12 +440,12 @@ export function UserManagementClient({
                   <td className="px-4 py-3 text-sm text-gray-500">{user.phone || "-"}</td>
                   <td className="px-4 py-3">
                     <select
-                      defaultValue={user.roles[0]?.id ?? ""}
+                      defaultValue={visibleRoles[0]?.id ?? ""}
                       onChange={(event) => handleRoleChange(user.id, event.target.value)}
-                      disabled={isPending}
+                      disabled={isPending || fullSystemAccess}
                       className="rounded-full border border-blue-200 bg-blue-100 px-2 py-1 text-xs text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
-                      <option value="">No Role</option>
+                      <option value="">{fullSystemAccess ? "Full System Access" : "No Role"}</option>
                       {roles.map((role) => (
                         <option key={role.id} value={role.id}>
                           {role.displayName}
@@ -449,16 +471,17 @@ export function UserManagementClient({
                       <option value="">Action</option>
                       <option value="view">View Details</option>
                       <option value="edit">Edit User</option>
-                      {user.status === "pending" && <option value="approve">Approve User</option>}
-                      {user.status === "pending" && <option value="reject">Reject User</option>}
+                  {user.status === "pending" && <option value="approve">Approve User</option>}
+                  {user.status === "pending" && <option value="reject">Reject User</option>}
                       {user.status === "active" && <option value="deactivate">Deactivate User</option>}
                       {user.status === "inactive" && <option value="activate">Activate User</option>}
-                      <option value="roles">Manage Roles</option>
+                      {!fullSystemAccess && <option value="roles">Manage Roles</option>}
                       <option value="delete">Delete User</option>
                     </select>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
               {users.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
@@ -471,7 +494,11 @@ export function UserManagementClient({
         </div>
 
         <div className="block divide-y divide-gray-200 md:hidden">
-          {users.map((user) => (
+          {users.map((user) => {
+            const visibleRoles = displayRoles(user);
+            const fullSystemAccess = hasFullSystemAccess(user);
+
+            return (
             <div key={user.id} className="p-4 transition hover:bg-gray-50">
               <div className="mb-3 flex items-start justify-between">
                 <div className="flex items-center gap-2">
@@ -495,9 +522,10 @@ export function UserManagementClient({
                   <option value="view">View</option>
                   <option value="edit">Edit</option>
                   {user.status === "pending" && <option value="approve">Approve</option>}
+                  {user.status === "pending" && <option value="reject">Reject</option>}
                   {user.status === "active" && <option value="deactivate">Deactivate</option>}
                   {user.status === "inactive" && <option value="activate">Activate</option>}
-                  <option value="roles">Roles</option>
+                  {!fullSystemAccess && <option value="roles">Roles</option>}
                   <option value="delete">Delete</option>
                 </select>
               </div>
@@ -508,7 +536,7 @@ export function UserManagementClient({
                 </div>
                 <div>
                   <span className="text-gray-500">Role:</span>{" "}
-                  <span className="text-gray-700">{user.roles[0]?.displayName || "-"}</span>
+                  <span className="text-gray-700">{fullSystemAccess ? "Full System Access" : visibleRoles[0]?.displayName || "-"}</span>
                 </div>
                 <div>
                   <span className="text-gray-500">Status:</span>{" "}
@@ -522,7 +550,8 @@ export function UserManagementClient({
                 </div>
               </div>
             </div>
-          ))}
+            );
+          })}
           {users.length === 0 && <p className="p-8 text-center text-gray-500">No users found</p>}
         </div>
       </div>
@@ -548,7 +577,12 @@ export function UserManagementClient({
                     <span className={`rounded-full px-2.5 py-1 text-xs capitalize ${statusBadge(viewUser.status)}`}>
                       {viewUser.status}
                     </span>
-                    {viewUser.roles.map((role) => (
+                    {hasFullSystemAccess(viewUser) ? (
+                      <span className="rounded-full bg-gray-900 px-2.5 py-1 text-xs text-white">
+                        Full System Access
+                      </span>
+                    ) : null}
+                    {displayRoles(viewUser).map((role) => (
                       <span key={role.id} className="rounded-full bg-blue-100 px-2.5 py-1 text-xs text-blue-700">
                         {role.displayName}
                       </span>
@@ -603,6 +637,16 @@ export function UserManagementClient({
             </div>
           </div>
         </div>
+      )}
+
+      {confirmAction && (
+        <ActionNoticeModal
+          user={confirmAction.user}
+          action={confirmAction.action}
+          pending={isPending}
+          onCancel={() => setConfirmAction(null)}
+          onConfirm={executeConfirmedAction}
+        />
       )}
 
       {editUser && (
@@ -811,6 +855,108 @@ export function UserManagementClient({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function UserNotice({ ok, message, onClose }: { ok: boolean; message: string; onClose: () => void }) {
+  const Icon = ok ? CheckCircle2 : AlertTriangle;
+
+  return (
+    <div
+      className={`mb-4 flex items-start gap-3 rounded-xl border px-4 py-3 text-sm shadow-sm ${
+        ok ? "border-green-200 bg-green-50 text-green-800" : "border-red-200 bg-red-50 text-red-800"
+      }`}
+      role="status"
+    >
+      <span className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full ${ok ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"}`}>
+        <Icon className="size-4" aria-hidden="true" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="font-semibold">{ok ? "Success" : "Notice"}</p>
+        <p className="mt-0.5 text-sm leading-5">{message}</p>
+      </div>
+      <button type="button" onClick={onClose} className="rounded-lg p-1 text-current opacity-60 transition hover:bg-white/70 hover:opacity-100" aria-label="Close notice">
+        <X className="size-4" aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
+function actionCopy(action: string, user: UserRow) {
+  const actionLabel = action[0].toUpperCase() + action.slice(1);
+  const destructive = action === "delete" || action === "reject" || action === "deactivate";
+
+  return {
+    destructive,
+    title: `${actionLabel} User`,
+    message:
+      action === "delete"
+        ? `This will permanently delete ${user.name}. This action cannot be undone.`
+        : action === "reject"
+          ? `This will reject ${user.name}'s registration and remove the user from the system.`
+          : action === "deactivate"
+            ? `This will deactivate ${user.name}'s account. They will no longer be active.`
+            : action === "approve"
+              ? `This will approve ${user.name}'s registration and activate the account.`
+              : `This will ${action} ${user.name}'s account.`,
+    confirmLabel:
+      action === "delete"
+        ? "Delete User"
+        : action === "reject"
+          ? "Reject User"
+          : action === "deactivate"
+            ? "Deactivate"
+            : action === "approve"
+              ? "Approve User"
+              : actionLabel,
+  };
+}
+
+function ActionNoticeModal({
+  user,
+  action,
+  pending,
+  onCancel,
+  onConfirm,
+}: {
+  user: UserRow;
+  action: string;
+  pending: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const copy = actionCopy(action, user);
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-md overflow-hidden rounded-xl bg-white shadow-2xl">
+        <div className={`flex items-center gap-3 px-5 py-4 ${copy.destructive ? "bg-red-50" : "bg-blue-50"}`}>
+          <span className={`flex size-10 shrink-0 items-center justify-center rounded-full ${copy.destructive ? "bg-red-100 text-red-600" : "bg-blue-100 text-blue-600"}`}>
+            {copy.destructive ? <AlertTriangle className="size-5" aria-hidden="true" /> : <CheckCircle2 className="size-5" aria-hidden="true" />}
+          </span>
+          <div>
+            <h2 className="text-base font-bold text-gray-900">{copy.title}</h2>
+            <p className="text-xs text-gray-500">{user.email}</p>
+          </div>
+        </div>
+        <div className="px-5 py-4">
+          <p className="text-sm leading-6 text-gray-600">{copy.message}</p>
+        </div>
+        <div className="flex justify-end gap-2 border-t bg-gray-50 px-5 py-4">
+          <button type="button" onClick={onCancel} disabled={pending} className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-gray-700 ring-1 ring-gray-200 hover:bg-gray-100">
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={pending}
+            className={`rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 ${copy.destructive ? "bg-red-600 hover:bg-red-700" : "bg-blue-600 hover:bg-blue-700"}`}
+          >
+            {pending ? "Please wait..." : copy.confirmLabel}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

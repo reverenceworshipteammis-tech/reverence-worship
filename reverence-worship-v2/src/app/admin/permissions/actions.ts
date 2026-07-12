@@ -126,6 +126,8 @@ export async function saveRolePermissions(formData: FormData) {
   ]);
 
   revalidatePath("/admin/permissions");
+  revalidatePath("/admin");
+  revalidatePath("/admin/intercession");
   return { ok: true, message: "Permissions saved successfully." };
 }
 

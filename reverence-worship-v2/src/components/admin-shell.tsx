@@ -2,12 +2,13 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
   Bell,
   ChartLine,
   ChevronDown,
+  ClipboardList,
   Gavel,
   Gauge,
   HandCoins,
@@ -19,15 +20,23 @@ import {
   Megaphone,
   Music,
   Settings,
+  UserCheck,
   User,
   Users,
   type LucideIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState, useTransition } from "react";
+import {
+  getAdminNotifications,
+  markAdminNotificationRead,
+  markAllAdminNotificationsRead,
+  type AdminNotification,
+} from "@/app/admin/notifications/actions";
 
 type AdminUser = {
   name: string;
   email: string;
+  roles: string[];
 };
 
 type NavItem = {
@@ -44,6 +53,7 @@ const navGroups: Array<{ label: string; items: NavItem[] }> = [
       { label: "Dashboard", href: "/admin/dashboard", icon: Gauge },
       { label: "User Management", href: "/admin/users", icon: Users },
       { label: "My Family", href: "/admin/family", icon: Home },
+      { label: "Parent Dashboard", href: "/admin/parent", icon: Home },
       { label: "My Contributions", href: "/admin/contributions", icon: HandCoins },
       { label: "My Profile", href: "/admin/profile", icon: User },
       { label: "My Performance", href: "/admin/performance", icon: BarChart3 },
@@ -64,8 +74,53 @@ const mobileNavItems = [
   { label: "Users", href: "/admin/users", icon: Users },
   { label: "Music", href: "/admin/music", icon: Music },
   { label: "Growth", href: "/admin/intercession", icon: HandHeart },
+  { label: "Giving", href: "/admin/contributions", icon: HandCoins },
+  { label: "Profile", href: "/admin/profile", icon: User },
+  { label: "Progress", href: "/admin/performance", icon: BarChart3 },
   { label: "Settings", href: "/admin/settings", icon: Settings },
 ];
+
+const memberNavItems = new Set([
+  "/admin/dashboard",
+  "/admin/family",
+  "/admin/contributions",
+  "/admin/profile",
+  "/admin/performance",
+  "/admin/intercession",
+]);
+
+const roleNavItems: Record<string, string[]> = {
+  admin: [
+    "/admin/dashboard",
+    "/admin/users",
+    "/admin/music",
+    "/admin/intercession",
+    "/admin/social-fellowship",
+    "/admin/discipline",
+    "/admin/finance",
+    "/admin/announcements",
+  ],
+  "music-dpt": ["/admin/dashboard", "/admin/music", "/admin/announcements"],
+  "social-dpt": ["/admin/dashboard", "/admin/social-fellowship", "/admin/announcements"],
+  "discipline-dpt": ["/admin/dashboard", "/admin/discipline", "/admin/announcements"],
+  "intercession-dpt": ["/admin/dashboard", "/admin/intercession", "/admin/announcements"],
+};
+
+function navGroupsForRoles(roles: string[]) {
+  if (roles.includes("super-admin")) return navGroups;
+
+  const allowedItems = new Set(memberNavItems);
+  roles.forEach((role) => {
+    roleNavItems[role]?.forEach((href) => allowedItems.add(href));
+  });
+
+  return navGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => allowedItems.has(item.href)),
+    }))
+    .filter((group) => group.items.length > 0);
+}
 
 export function AdminShell({
   user,
@@ -78,7 +133,70 @@ export function AdminShell({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
+  const [notifications, setNotifications] = useState<AdminNotification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notificationsLoaded, setNotificationsLoaded] = useState(false);
+  const [notificationError, setNotificationError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
   const pathname = usePathname();
+  const router = useRouter();
+  const visibleNavGroups = navGroupsForRoles(user.roles);
+  const visibleMobileNavItems = mobileNavItems.filter((item) =>
+    visibleNavGroups.some((group) => group.items.some((navItem) => navItem.href === item.href)),
+  ).slice(0, 5);
+  const canViewAnnouncementsPage = user.roles.some((role) =>
+    ["super-admin", "admin", "music-dpt", "social-dpt", "discipline-dpt", "intercession-dpt"].includes(role),
+  );
+  const currentPageTitle =
+    visibleNavGroups
+      .flatMap((group) => group.items)
+      .filter((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))
+      .sort((a, b) => b.href.length - a.href.length)[0]?.label ?? "Admin";
+
+  function loadNotifications() {
+    setNotificationError(null);
+    startTransition(async () => {
+      const result = await getAdminNotifications();
+      if (result.ok) {
+        setNotifications(result.notifications);
+        setUnreadCount(result.unreadCount);
+        setNotificationsLoaded(true);
+      } else {
+        setNotificationError("Could not load notifications.");
+      }
+    });
+  }
+
+  useEffect(() => {
+    const timeout = window.setTimeout(loadNotifications, 0);
+    return () => window.clearTimeout(timeout);
+  }, []);
+
+  function openNotificationDropdown() {
+    setNotificationOpen((current) => {
+      const next = !current;
+      if (next && !notificationsLoaded) loadNotifications();
+      return next;
+    });
+    setUserMenuOpen(false);
+  }
+
+  function handleNotificationClick(notification: AdminNotification) {
+    setNotificationOpen(false);
+    startTransition(async () => {
+      await markAdminNotificationRead(notification.type, notification.sourceId);
+      setNotifications((current) => current.filter((item) => item.id !== notification.id));
+      setUnreadCount((current) => Math.max(0, current - (notification.readAt ? 0 : 1)));
+      router.push(notification.link);
+    });
+  }
+
+  function handleMarkAllRead() {
+    startTransition(async () => {
+      await markAllAdminNotificationsRead();
+      loadNotifications();
+    });
+  }
 
   return (
     <main className="admin-app min-h-screen bg-[#f3f4f6] text-gray-900">
@@ -131,7 +249,7 @@ export function AdminShell({
           </div>
 
           <nav className="admin-sidebar-nav flex-1 overflow-y-auto px-3 py-3">
-            {navGroups.map((group) => (
+            {visibleNavGroups.map((group) => (
               <div key={group.label} className="admin-nav-group">
                 <p className="admin-nav-heading">{group.label}</p>
                 <div className="space-y-1">
@@ -190,7 +308,7 @@ export function AdminShell({
               >
                 <Menu className="size-5" aria-hidden="true" />
               </button>
-              <h1 className="text-2xl font-bold text-gray-800">Super Admin Dashboard</h1>
+              <h1 className="text-2xl font-bold text-gray-800">{currentPageTitle}</h1>
             </div>
 
             <div className="flex items-center gap-2">
@@ -199,23 +317,72 @@ export function AdminShell({
                   className="admin-notification-bell relative text-gray-600 hover:text-gray-800"
                   type="button"
                   aria-label="Notifications"
-                  onClick={() => {
-                    setNotificationOpen((current) => !current);
-                    setUserMenuOpen(false);
-                  }}
+                  onClick={openNotificationDropdown}
                 >
                   <Bell className="size-5" aria-hidden="true" />
-                  <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-red-500 ring-2 ring-white" />
+                  {unreadCount > 0 ? (
+                    <span className="absolute -right-1 -top-1 flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white ring-2 ring-white">
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
+                  ) : null}
                 </button>
 
                 {notificationOpen && (
                   <div className="admin-notification-dropdown">
-                    <div className="border-b border-gray-200 px-4 py-3">
+                    <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
                       <h4 className="font-semibold text-gray-800">Notifications</h4>
+                      {unreadCount > 0 ? (
+                        <button
+                          type="button"
+                          onClick={handleMarkAllRead}
+                          className="text-xs font-semibold text-blue-600 hover:text-blue-800"
+                          disabled={pending}
+                        >
+                          Mark all read
+                        </button>
+                      ) : null}
                     </div>
-                    <div className="px-5 py-8 text-center text-gray-400">
-                      <Bell className="mx-auto mb-2 size-8 opacity-50" aria-hidden="true" />
-                      <p className="text-sm">No notifications</p>
+                    <div className="max-h-96 overflow-y-auto">
+                      {pending && !notificationsLoaded ? (
+                        <div className="px-5 py-8 text-center text-gray-400">
+                          <Bell className="mx-auto mb-2 size-8 opacity-50" aria-hidden="true" />
+                          <p className="text-sm">Loading notifications...</p>
+                        </div>
+                      ) : notificationError ? (
+                        <div className="px-5 py-8 text-center text-red-500">
+                          <Bell className="mx-auto mb-2 size-8 opacity-50" aria-hidden="true" />
+                          <p className="text-sm">{notificationError}</p>
+                        </div>
+                      ) : notifications.length === 0 ? (
+                        <div className="px-5 py-8 text-center text-gray-400">
+                          <Bell className="mx-auto mb-2 size-8 opacity-50" aria-hidden="true" />
+                          <p className="text-sm">No notifications</p>
+                        </div>
+                      ) : (
+                        notifications.map((notification) => (
+                          <button
+                            key={notification.id}
+                            type="button"
+                            className={`flex w-full items-start gap-3 border-b border-gray-100 px-4 py-3 text-left transition hover:bg-gray-50 ${
+                              notification.readAt ? "" : "bg-blue-50/60"
+                            }`}
+                            onClick={() => handleNotificationClick(notification)}
+                          >
+                            <NotificationTypeIcon type={notification.type} />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-semibold text-gray-800">{notification.title}</span>
+                              <span className="mt-0.5 line-clamp-2 block text-xs leading-5 text-gray-500">{notification.message}</span>
+                              <span className="mt-1 block text-[11px] font-medium text-gray-400">{formatTimeAgo(notification.createdAt)}</span>
+                            </span>
+                            {!notification.readAt ? <span className="mt-2 size-2 rounded-full bg-blue-500" /> : null}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                    <div className="border-t border-gray-200 px-4 py-3 text-center">
+                      <Link href={canViewAnnouncementsPage ? "/admin/announcements" : "/admin/dashboard"} className="text-sm font-semibold text-blue-600 hover:text-blue-800" onClick={() => setNotificationOpen(false)}>
+                        View all announcements
+                      </Link>
                     </div>
                   </div>
                 )}
@@ -272,7 +439,7 @@ export function AdminShell({
       </div>
 
       <nav className="admin-mobile-footer">
-        {mobileNavItems.map((item) => (
+        {visibleMobileNavItems.map((item) => (
           <Link key={item.href} href={item.href} className="admin-mobile-footer-item">
             <item.icon className="size-5" aria-hidden="true" />
             <span>{item.label}</span>
@@ -281,4 +448,45 @@ export function AdminShell({
       </nav>
     </main>
   );
+}
+
+function NotificationTypeIcon({ type }: { type: AdminNotification["type"] }) {
+  const config: Record<AdminNotification["type"], { icon: LucideIcon; className: string }> = {
+    announcement: { icon: Megaphone, className: "bg-blue-100 text-blue-600" },
+    form: { icon: ClipboardList, className: "bg-purple-100 text-purple-600" },
+    pending_user: { icon: UserCheck, className: "bg-green-100 text-green-600" },
+    task: { icon: ClipboardList, className: "bg-amber-100 text-amber-600" },
+    permission: { icon: Gavel, className: "bg-red-100 text-red-600" },
+    expense_approval: { icon: HandCoins, className: "bg-emerald-100 text-emerald-600" },
+  };
+  const item = config[type];
+  const Icon = item.icon;
+
+  return (
+    <span className={`flex size-9 shrink-0 items-center justify-center rounded-full ${item.className}`}>
+      <Icon className="size-4" aria-hidden="true" />
+    </span>
+  );
+}
+
+function formatTimeAgo(value: string) {
+  const created = new Date(value).getTime();
+  const diffSeconds = Math.max(0, Math.floor((Date.now() - created) / 1000));
+
+  if (diffSeconds < 60) return "Just now";
+
+  const diffMinutes = Math.floor(diffSeconds / 60);
+  if (diffMinutes < 60) return `${diffMinutes} minute${diffMinutes === 1 ? "" : "s"} ago`;
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? "" : "s"} ago`;
+
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays} day${diffDays === 1 ? "" : "s"} ago`;
+
+  return new Intl.DateTimeFormat("en", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(value));
 }

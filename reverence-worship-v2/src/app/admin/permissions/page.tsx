@@ -7,6 +7,7 @@ export default async function PermissionManagerPage() {
 
   const [roles, pages, assignments] = await Promise.all([
     prisma.role.findMany({
+      where: { name: { not: "super-admin" } },
       orderBy: [{ isSystem: "desc" }, { displayName: "asc" }],
       include: {
         users: true,

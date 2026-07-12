@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 function readString(formData: FormData, key: string) {
@@ -14,13 +14,23 @@ function readBoolean(formData: FormData, key: string) {
   return value === "on" || value === "1" || value === "true";
 }
 
+function dateOnly(value: string) {
+  return new Date(`${value}T12:00:00.000Z`);
+}
+
+function boundedProgress(value: FormDataEntryValue | null) {
+  const parsed = Number(value ?? 0);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.min(100, Math.round(parsed)));
+}
+
 function readValues(formData: FormData, key: string) {
   return formData.getAll(key).filter((value): value is string => typeof value === "string");
 }
 
 function buildQuestions(formData: FormData) {
   const questionText = readString(formData, "questionText");
-  const questionType = readString(formData, "questionType") ?? "paragraph";
+  const questionType = readString(formData, "questionType") ?? "short_answer";
   const required = readBoolean(formData, "questionRequired");
 
   if (!questionText) return [];
@@ -66,8 +76,155 @@ function readJsonObject(formData: FormData, key: string) {
   }
 }
 
+async function syncIntercessionActionPlanProgress(actionPlanId: number) {
+  const tasks = await prisma.actionPlanTask.findMany({
+    where: { actionPlanId },
+    select: { progress: true },
+  });
+  const progress = tasks.length ? Math.round(tasks.reduce((sum, task) => sum + task.progress, 0) / tasks.length) : 0;
+  const status = progress === 100 ? "completed" : progress > 0 ? "in_progress" : "pending";
+
+  await prisma.actionPlan.update({
+    where: { id: actionPlanId, department: "intercession" },
+    data: { progress, status },
+  });
+}
+
+export async function saveIntercessionActionPlan(formData: FormData) {
+  const user = await requirePermission("intercession", "manage-action-plans", "/admin/intercession");
+  const id = Number(readString(formData, "id"));
+  const title = readString(formData, "title");
+  const description = readString(formData, "description");
+  const startDateValue = readString(formData, "startDate");
+  const dueDateValue = readString(formData, "dueDate");
+  const year = Number(readString(formData, "year") || new Date().getFullYear());
+
+  if (!title || !startDateValue || !dueDateValue) {
+    return { ok: false, message: "Action plan name, start date, and completion date are required." };
+  }
+
+  if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+    return { ok: false, message: "Please select a valid year." };
+  }
+
+  if (Number.isFinite(id) && id > 0) {
+    await prisma.actionPlan.update({
+      where: { id, department: "intercession" },
+      data: {
+        title,
+        description,
+        startDate: dateOnly(startDateValue),
+        dueDate: dateOnly(dueDateValue),
+        year,
+      },
+    });
+  } else {
+    await prisma.actionPlan.create({
+      data: {
+        title,
+        description,
+        startDate: dateOnly(startDateValue),
+        dueDate: dateOnly(dueDateValue),
+        department: "intercession",
+        year,
+        createdBy: user.id,
+      },
+    });
+  }
+
+  revalidatePath("/admin/intercession");
+  return { ok: true, message: id ? "Action plan updated successfully." : "Action plan created successfully." };
+}
+
+export async function deleteIntercessionActionPlan(id: number) {
+  await requirePermission("intercession", "manage-action-plans", "/admin/intercession");
+
+  if (!Number.isInteger(id) || id <= 0) {
+    return { ok: false, message: "Action plan not found." };
+  }
+
+  await prisma.actionPlan.delete({ where: { id, department: "intercession" } });
+  revalidatePath("/admin/intercession");
+  return { ok: true, message: "Action plan deleted successfully." };
+}
+
+export async function saveIntercessionActionPlanTask(formData: FormData) {
+  await requirePermission("intercession", "manage-action-plans", "/admin/intercession");
+  const id = Number(readString(formData, "id"));
+  const actionPlanId = Number(readString(formData, "actionPlanId"));
+  const activity = readString(formData, "activity");
+  const targetMilestone = readString(formData, "targetMilestone");
+  const estimatedBudget = readString(formData, "estimatedBudget") || "0";
+  const startDateValue = readString(formData, "startDate");
+  const deadlineValue = readString(formData, "deadline");
+  const progress = boundedProgress(formData.get("progress"));
+
+  if (!Number.isInteger(actionPlanId) || actionPlanId <= 0 || !activity || !targetMilestone || !deadlineValue) {
+    return { ok: false, message: "Action plan, activity, milestone, and deadline are required." };
+  }
+
+  const plan = await prisma.actionPlan.findUnique({
+    where: { id: actionPlanId, department: "intercession" },
+    select: { id: true },
+  });
+
+  if (!plan) {
+    return { ok: false, message: "Action plan not found." };
+  }
+
+  const status = progress >= 100 ? "completed" : progress > 0 ? "in_progress" : "pending";
+  const data = {
+    actionPlanId,
+    taskName: activity,
+    activity,
+    targetMilestone,
+    estimatedBudget,
+    startDate: startDateValue ? dateOnly(startDateValue) : null,
+    deadline: dateOnly(deadlineValue),
+    progress,
+    status,
+    startedAt: progress > 0 ? new Date() : null,
+    completedAt: progress >= 100 ? new Date() : null,
+  };
+
+  if (Number.isFinite(id) && id > 0) {
+    await prisma.actionPlanTask.update({
+      where: { id },
+      data,
+    });
+  } else {
+    await prisma.actionPlanTask.create({ data });
+  }
+
+  await syncIntercessionActionPlanProgress(actionPlanId);
+  revalidatePath("/admin/intercession");
+  return { ok: true, message: id ? "Task updated successfully." : "Task created successfully." };
+}
+
+export async function deleteIntercessionActionPlanTask(id: number) {
+  await requirePermission("intercession", "manage-action-plans", "/admin/intercession");
+
+  if (!Number.isInteger(id) || id <= 0) {
+    return { ok: false, message: "Task not found." };
+  }
+
+  const task = await prisma.actionPlanTask.findUnique({
+    where: { id },
+    select: { actionPlanId: true, actionPlan: { select: { department: true } } },
+  });
+
+  if (!task || task.actionPlan.department !== "intercession") {
+    return { ok: false, message: "Task not found." };
+  }
+
+  await prisma.actionPlanTask.delete({ where: { id } });
+  await syncIntercessionActionPlanProgress(task.actionPlanId);
+  revalidatePath("/admin/intercession");
+  return { ok: true, message: "Task deleted successfully." };
+}
+
 export async function createSpiritualForm(formData: FormData) {
-  const user = await requireUser();
+  const user = await requirePermission("intercession", "create-forms", "/admin/intercession");
   const title = readString(formData, "title");
 
   if (!title) {
@@ -99,7 +256,7 @@ export async function createSpiritualForm(formData: FormData) {
 }
 
 export async function createSpiritualFormFromBuilder(formData: FormData) {
-  const user = await requireUser();
+  const user = await requirePermission("intercession", "create-forms", "/admin/intercession");
   const title = readString(formData, "title");
 
   if (!title) {
@@ -132,7 +289,7 @@ export async function createSpiritualFormFromBuilder(formData: FormData) {
 }
 
 export async function updateSpiritualFormFromBuilder(formId: number, formData: FormData) {
-  await requireUser();
+  await requirePermission("intercession", "edit-forms", "/admin/intercession");
   const title = readString(formData, "title");
 
   if (!title) {
@@ -169,7 +326,7 @@ export async function updateSpiritualFormFromBuilder(formId: number, formData: F
 }
 
 export async function updateSpiritualForm(formId: number, formData: FormData) {
-  await requireUser();
+  await requirePermission("intercession", "edit-forms", "/admin/intercession");
   const title = readString(formData, "title");
 
   if (!title) {
@@ -204,7 +361,7 @@ export async function updateSpiritualForm(formId: number, formData: FormData) {
 }
 
 export async function toggleSpiritualFormPublish(formId: number) {
-  await requireUser();
+  await requirePermission("intercession", "edit-forms", "/admin/intercession");
 
   const form = await prisma.spiritualForm.findUnique({
     where: { id: formId },
@@ -234,7 +391,7 @@ export async function toggleSpiritualFormPublish(formId: number) {
 }
 
 export async function deleteSpiritualForm(formId: number) {
-  await requireUser();
+  await requirePermission("intercession", "delete-forms", "/admin/intercession");
 
   await prisma.spiritualForm.delete({
     where: { id: formId },
@@ -246,7 +403,7 @@ export async function deleteSpiritualForm(formId: number) {
 }
 
 export async function submitSpiritualForm(formId: number, formData: FormData) {
-  const user = await requireUser();
+  const user = await requirePermission("intercession", "submit-forms", "/admin/intercession");
 
   const form = await prisma.spiritualForm.findUnique({
     where: { id: formId },
@@ -272,11 +429,21 @@ export async function submitSpiritualForm(formId: number, formData: FormData) {
   }
 
   const questions = Array.isArray(form.questions) ? form.questions : [];
-  const answers = questions.reduce<Record<string, string | string[]>>((carry, question, index) => {
+  const answers = questions.reduce<Record<string, string | string[] | Record<string, string | string[]>>>((carry, question, index) => {
     const questionObject = question && typeof question === "object" && !Array.isArray(question) ? (question as Record<string, unknown>) : {};
     const key = `question_${index}`;
     if (questionObject.type === "checkboxes") {
       carry[key] = readValues(formData, key);
+    } else if (questionObject.type === "multiple_choice_grid" || questionObject.type === "checkbox_grid") {
+      const rows = Array.isArray(questionObject.rows) ? questionObject.rows : [];
+      carry[key] = rows.reduce<Record<string, string | string[]>>((rowCarry, _row, rowIndex) => {
+        const rowKey = `${key}_${rowIndex}`;
+        rowCarry[rowKey] =
+          questionObject.type === "checkbox_grid"
+            ? readValues(formData, rowKey)
+            : readString(formData, rowKey) ?? "";
+        return rowCarry;
+      }, {});
     } else {
       carry[key] = readString(formData, key) ?? "";
     }
@@ -295,4 +462,65 @@ export async function submitSpiritualForm(formId: number, formData: FormData) {
   revalidatePath("/admin/intercession");
 
   return { ok: true, message: "Form submitted successfully." };
+}
+
+export async function saveSubmissionManualReview(formData: FormData) {
+  await requirePermission("intercession", "view-submissions", "/admin/intercession");
+
+  const submissionId = Number(readString(formData, "submissionId"));
+  const gradesRaw = readString(formData, "grades");
+
+  if (!Number.isInteger(submissionId) || submissionId <= 0) {
+    return { ok: false, message: "Invalid submission." };
+  }
+
+  if (!gradesRaw) {
+    return { ok: false, message: "Review data is required." };
+  }
+
+  let grades: Array<{ questionIndex: number; correct: boolean; points: number }> = [];
+  try {
+    const parsed = JSON.parse(gradesRaw) as unknown;
+    if (Array.isArray(parsed)) {
+      grades = parsed
+        .map((item) => {
+          if (!item || typeof item !== "object") return null;
+          const record = item as Record<string, unknown>;
+          const questionIndex = Number(record.questionIndex);
+          const points = Number(record.points);
+          return {
+            questionIndex,
+            correct: Boolean(record.correct),
+            points: Number.isFinite(points) && points > 0 ? points : 1,
+          };
+        })
+        .filter((item): item is { questionIndex: number; correct: boolean; points: number } =>
+          item !== null && Number.isInteger(item.questionIndex),
+        );
+    }
+  } catch {
+    return { ok: false, message: "Invalid review data." };
+  }
+
+  if (grades.length === 0) {
+    return { ok: false, message: "Tick at least one answer before saving review." };
+  }
+
+  const totalPoints = grades.reduce((sum, grade) => sum + grade.points, 0);
+  const earnedPoints = grades.reduce((sum, grade) => sum + (grade.correct ? grade.points : 0), 0);
+  const score = totalPoints > 0 ? Math.round((earnedPoints / totalPoints) * 1000) / 10 : null;
+
+  const submission = await prisma.formSubmission.update({
+    where: { id: submissionId },
+    data: {
+      manualGrades: grades,
+      score,
+    },
+    select: { formId: true },
+  });
+
+  revalidatePath("/admin/intercession");
+  revalidatePath(`/admin/intercession/forms/${submission.formId}/submissions`);
+
+  return { ok: true, message: "Manual review saved." };
 }

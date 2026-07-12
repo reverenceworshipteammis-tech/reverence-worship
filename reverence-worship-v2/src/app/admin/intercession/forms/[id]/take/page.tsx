@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { IntercessionTakeForm } from "@/components/intercession-take-form";
-import { requireUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 function asObject(value: unknown) {
@@ -22,6 +22,8 @@ function asQuestions(value: unknown) {
       description: typeof item.description === "string" ? item.description : "",
       required: item.required !== false,
       options: asStringArray(item.options),
+      rows: asStringArray(item.rows),
+      columns: asStringArray(item.columns),
       min: Number(item.min ?? 1),
       max: Number(item.max ?? 5),
     };
@@ -45,7 +47,7 @@ export default async function TakeIntercessionFormPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const user = await requireUser();
+  const user = await requirePermission("intercession", "submit-forms", "/admin/intercession");
   const { id } = await params;
   const formId = Number(id);
 

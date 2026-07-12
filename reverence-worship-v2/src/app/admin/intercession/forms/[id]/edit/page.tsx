@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { IntercessionBuilderInitialData, IntercessionFormBuilder } from "@/components/intercession-form-builder";
-import { requireUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 function asObject(value: unknown) {
@@ -16,7 +16,7 @@ export default async function EditIntercessionFormPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requireUser();
+  await requirePermission("intercession", "edit-forms", "/admin/intercession");
   const { id } = await params;
   const formId = Number(id);
 

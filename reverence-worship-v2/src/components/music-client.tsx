@@ -4,7 +4,9 @@ import { FormEvent, useMemo, useState, useTransition } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
+  AlertTriangle,
   CalendarDays,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Download,
@@ -34,6 +36,8 @@ import {
   deleteBoardItem,
   deleteFeaturedImage,
   deleteGalleryPhoto,
+  deleteMusicActionPlan,
+  deleteMusicActionPlanTask,
   deletePlaylist,
   deleteSong,
   deleteServiceTeam,
@@ -42,6 +46,8 @@ import {
   restoreServiceTeam,
   saveBoardItem,
   saveFeaturedImage,
+  saveMusicActionPlan,
+  saveMusicActionPlanTask,
   saveYoutubeVideo,
   toggleBoardItemPin,
   toggleBoardItemPublish,
@@ -54,6 +60,7 @@ import {
   updateSingerSettings,
   uploadGalleryPhotos,
 } from "@/app/admin/music/actions";
+import { MobileTabDropdown } from "@/components/mobile-tab-dropdown";
 
 type Song = {
   id: number;
@@ -147,6 +154,37 @@ type FeaturedImage = {
   sortOrder: number;
 };
 
+type MusicActionPlanTask = {
+  id: number;
+  actionPlanId: number;
+  taskName: string;
+  activity: string | null;
+  targetMilestone: string | null;
+  estimatedBudget: number;
+  startDate: string;
+  startDateRaw: string;
+  deadline: string;
+  deadlineRaw: string;
+  progress: number;
+  status: string;
+};
+
+type MusicActionPlan = {
+  id: number;
+  title: string;
+  description: string | null;
+  startDate: string;
+  startDateRaw: string;
+  dueDate: string;
+  dueDateRaw: string;
+  status: string;
+  progress: number;
+  year: number;
+  createdByName: string;
+  createdAt: string;
+  tasks: MusicActionPlanTask[];
+};
+
 type MusicClientProps = {
   playlists: Playlist[];
   songs: Song[];
@@ -156,6 +194,20 @@ type MusicClientProps = {
   boardItems: BoardItem[];
   youtubeVideos: YoutubeVideo[];
   featuredImages: FeaturedImage[];
+  actionPlans: MusicActionPlan[];
+};
+
+type MusicNotice = {
+  ok: boolean;
+  message: string;
+};
+
+type ConfirmAction = {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  tone?: "danger" | "primary";
+  action: () => Promise<{ ok: boolean; message: string }>;
 };
 
 const tabs = [
@@ -166,18 +218,26 @@ const tabs = [
   { id: "actionPlan", label: "Action Plans", icon: FileText },
 ];
 
+const boardTabs = [
+  { id: "youtube", label: "Video", icon: Music },
+  { id: "featured", label: "Image", icon: ImageIcon },
+  { id: "events", label: "Events & Updates", icon: CalendarDays },
+] as const;
+
 function Modal({
   title,
   children,
   onClose,
+  width = "max-w-2xl",
 }: {
   title: string;
   children: React.ReactNode;
   onClose: () => void;
+  width?: string;
 }) {
   return (
     <div className="fixed inset-0 z-[100] overflow-y-auto bg-slate-950/50 px-3 py-6 backdrop-blur-sm">
-      <div className="mx-auto max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+      <div className={`mx-auto overflow-hidden rounded-2xl bg-white shadow-2xl ${width}`}>
         <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
           <h3 className="text-lg font-bold text-gray-800">{title}</h3>
           <button className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600" type="button" onClick={onClose}>
@@ -185,6 +245,107 @@ function Modal({
           </button>
         </div>
         {children}
+      </div>
+    </div>
+  );
+}
+
+function ActionPlanStat({ label, value, tone = "gray" }: { label: string; value: number | string; tone?: "gray" | "green" | "blue" | "purple" | "amber" }) {
+  const colors = {
+    gray: "bg-gray-50 text-gray-800",
+    green: "bg-green-50 text-green-700",
+    blue: "bg-blue-50 text-blue-700",
+    purple: "bg-purple-50 text-purple-700",
+    amber: "bg-amber-50 text-amber-700",
+  };
+
+  return (
+    <div className={`rounded-lg border border-gray-100 p-3 ${colors[tone]}`}>
+      <p className="text-xs font-semibold uppercase text-gray-500">{label}</p>
+      <p className="mt-1 text-xl font-bold">{value}</p>
+    </div>
+  );
+}
+
+function PlanDetail({ label, value }: { label: string; value: number | string }) {
+  return (
+    <div className="rounded-lg bg-gray-50 p-3">
+      <p className="text-xs text-gray-500">{label}</p>
+      <p className="text-sm font-medium capitalize text-gray-800">{value}</p>
+    </div>
+  );
+}
+
+function actionPlanStatusBadge(status: string) {
+  if (status === "completed") return "bg-green-100 text-green-700";
+  if (status === "in_progress") return "bg-blue-100 text-blue-700";
+  return "bg-yellow-100 text-yellow-700";
+}
+
+function formatCurrency(value: number) {
+  return `RWF ${value.toLocaleString()}`;
+}
+
+function MusicNoticeBanner({ notice, onClose }: { notice: MusicNotice; onClose: () => void }) {
+  const Icon = notice.ok ? CheckCircle2 : AlertTriangle;
+
+  return (
+    <div
+      className={`mb-4 flex items-start gap-3 rounded-xl border px-4 py-3 text-sm shadow-sm ${
+        notice.ok ? "border-green-200 bg-green-50 text-green-800" : "border-red-200 bg-red-50 text-red-800"
+      }`}
+      role="status"
+    >
+      <span className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full ${notice.ok ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"}`}>
+        <Icon className="size-4" aria-hidden />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="font-semibold">{notice.ok ? "Success" : "Notice"}</p>
+        <p className="mt-0.5 leading-5">{notice.message}</p>
+      </div>
+      <button type="button" onClick={onClose} className="rounded-lg p-1 text-current opacity-60 transition hover:bg-white/70 hover:opacity-100" aria-label="Close notice">
+        <X className="size-4" aria-hidden />
+      </button>
+    </div>
+  );
+}
+
+function MusicConfirmModal({
+  confirm,
+  pending,
+  onCancel,
+  onConfirm,
+}: {
+  confirm: ConfirmAction;
+  pending: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const danger = confirm.tone !== "primary";
+
+  return (
+    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-md overflow-hidden rounded-xl bg-white shadow-2xl">
+        <div className={`flex items-center gap-3 px-5 py-4 ${danger ? "bg-red-50" : "bg-blue-50"}`}>
+          <span className={`flex size-10 shrink-0 items-center justify-center rounded-full ${danger ? "bg-red-100 text-red-600" : "bg-blue-100 text-blue-600"}`}>
+            {danger ? <AlertTriangle className="size-5" aria-hidden /> : <CheckCircle2 className="size-5" aria-hidden />}
+          </span>
+          <div>
+            <h2 className="text-base font-bold text-gray-900">{confirm.title}</h2>
+            <p className="text-xs text-gray-500">Music and Evangelism DPT</p>
+          </div>
+        </div>
+        <div className="px-5 py-4">
+          <p className="text-sm leading-6 text-gray-600">{confirm.message}</p>
+        </div>
+        <div className="flex justify-end gap-2 border-t bg-gray-50 px-5 py-4">
+          <button type="button" onClick={onCancel} disabled={pending} className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-gray-700 ring-1 ring-gray-200 hover:bg-gray-100 disabled:opacity-60">
+            Cancel
+          </button>
+          <button type="button" onClick={onConfirm} disabled={pending} className={`rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 ${danger ? "bg-red-600 hover:bg-red-700" : "bg-blue-600 hover:bg-blue-700"}`}>
+            {pending ? "Please wait..." : confirm.confirmLabel}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -332,6 +493,7 @@ export function MusicClient({
   boardItems,
   youtubeVideos,
   featuredImages,
+  actionPlans,
 }: MusicClientProps) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("playlist");
@@ -340,7 +502,10 @@ export function MusicClient({
   const [gallerySearch, setGallerySearch] = useState("");
   const [gallerySort, setGallerySort] = useState("newest");
   const [singerSearch, setSingerSearch] = useState("");
-  const [message, setMessage] = useState<string | null>(null);
+  const [actionPlanSearch, setActionPlanSearch] = useState("");
+  const [actionPlanStatus, setActionPlanStatus] = useState("all");
+  const [notice, setNotice] = useState<MusicNotice | null>(null);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [modal, setModal] = useState<null | "song" | "playlist" | "galleryUpload" | "groupsGenerate" | "groupsSettings" | "groupsPrevious" | "youtube" | "featured" | "boardItem">(null);
   const [editingSong, setEditingSong] = useState<Song | null>(null);
   const [editingPlaylist, setEditingPlaylist] = useState<Playlist | null>(null);
@@ -348,6 +513,9 @@ export function MusicClient({
   const [editingYoutube, setEditingYoutube] = useState<YoutubeVideo | null>(null);
   const [editingFeatured, setEditingFeatured] = useState<FeaturedImage | null>(null);
   const [editingBoardItem, setEditingBoardItem] = useState<BoardItem | null>(null);
+  const [planModal, setPlanModal] = useState<MusicActionPlan | "new" | null>(null);
+  const [taskModal, setTaskModal] = useState<{ plan: MusicActionPlan; task?: MusicActionPlanTask } | null>(null);
+  const [viewPlan, setViewPlan] = useState<MusicActionPlan | null>(null);
   const [viewingPlaylist, setViewingPlaylist] = useState<Playlist | null>(null);
   const [viewingGeneration, setViewingGeneration] = useState<ServiceTeam | null>(null);
   const [lyricsSong, setLyricsSong] = useState<Song | null>(null);
@@ -392,16 +560,43 @@ export function MusicClient({
 
   const latestGeneration = serviceTeams[0] ?? null;
   const latestTeams = latestGeneration ? groupTeamMembers(latestGeneration.members) : {};
+  const filteredActionPlans = useMemo(() => {
+    const query = actionPlanSearch.trim().toLowerCase();
+    return actionPlans.filter((plan) => {
+      const matchesSearch = !query || `${plan.title} ${plan.description ?? ""} ${plan.createdByName}`.toLowerCase().includes(query);
+      const matchesStatus = actionPlanStatus === "all" || plan.status === actionPlanStatus;
+      return matchesSearch && matchesStatus;
+    });
+  }, [actionPlans, actionPlanSearch, actionPlanStatus]);
+  const actionPlanSummary = useMemo(() => {
+    const tasks = actionPlans.flatMap((plan) => plan.tasks);
+    return {
+      totalPlans: actionPlans.length,
+      completed: actionPlans.filter((plan) => plan.status === "completed").length,
+      inProgress: actionPlans.filter((plan) => plan.status === "in_progress").length,
+      totalTasks: tasks.length,
+      totalBudget: tasks.reduce((sum, task) => sum + task.estimatedBudget, 0),
+    };
+  }, [actionPlans]);
 
   function runAction(action: () => Promise<{ ok: boolean; message: string }>, close?: () => void) {
     startTransition(async () => {
       const result = await action();
-      setMessage(result.message);
+      setNotice(result);
       if (result.ok) {
         close?.();
         router.refresh();
       }
     });
+  }
+
+  function askConfirm(confirm: ConfirmAction) {
+    setConfirmAction(confirm);
+  }
+
+  function executeConfirm() {
+    if (!confirmAction) return;
+    runAction(confirmAction.action, () => setConfirmAction(null));
   }
 
   function submitCreateSong(event: FormEvent<HTMLFormElement>) {
@@ -482,17 +677,47 @@ export function MusicClient({
     runAction(() => saveBoardItem(formData), () => { setModal(null); setEditingBoardItem(null); });
   }
 
+  function submitActionPlan(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    if (planModal && planModal !== "new") formData.set("id", String(planModal.id));
+    runAction(() => saveMusicActionPlan(formData), () => setPlanModal(null));
+  }
+
+  function submitActionPlanTask(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!taskModal) return;
+    const formData = new FormData(event.currentTarget);
+    formData.set("actionPlanId", String(taskModal.plan.id));
+    if (taskModal.task) formData.set("id", String(taskModal.task.id));
+    runAction(() => saveMusicActionPlanTask(formData), () => setTaskModal(null));
+  }
+
+  function removeActionPlan(plan: MusicActionPlan) {
+    askConfirm({
+      title: "Delete Action Plan",
+      message: `Delete "${plan.title}" and all of its tasks? This action cannot be undone.`,
+      confirmLabel: "Delete Plan",
+      action: () => deleteMusicActionPlan(plan.id),
+    });
+  }
+
+  function removeActionPlanTask(task: MusicActionPlanTask) {
+    askConfirm({
+      title: "Delete Task",
+      message: `Delete "${task.activity || task.taskName}" from this action plan?`,
+      confirmLabel: "Delete Task",
+      action: () => deleteMusicActionPlanTask(task.id),
+    });
+  }
+
   const lightboxPhoto = lightboxIndex === null ? null : filteredGallery[lightboxIndex];
 
   return (
     <div className="mx-auto max-w-7xl px-2 sm:px-4">
       <div className="mb-4 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
         <div className="md:hidden p-2">
-          <select value={activeTab} onChange={(event) => setActiveTab(event.target.value)} className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
-            {tabs.map((tab) => (
-              <option key={tab.id} value={tab.id}>{tab.label}</option>
-            ))}
-          </select>
+          <MobileTabDropdown tabs={tabs} value={activeTab} onChange={setActiveTab} />
         </div>
         <nav className="hidden flex-wrap md:flex">
           {tabs.map((tab) => (
@@ -504,7 +729,7 @@ export function MusicClient({
         </nav>
       </div>
 
-      {message ? <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">{message}</div> : null}
+      {notice ? <MusicNoticeBanner notice={notice} onClose={() => setNotice(null)} /> : null}
 
       {activeTab === "groups" ? (
         <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm sm:p-6">
@@ -610,7 +835,7 @@ export function MusicClient({
                         <button type="button" onClick={() => setEditingPhoto(photo)} className="rounded-full bg-white p-1.5 shadow-md hover:bg-gray-100" title="Edit Photo">
                           <Pencil className="size-3.5 text-blue-600" aria-hidden />
                         </button>
-                        <button type="button" onClick={() => runAction(() => deleteGalleryPhoto(photo.id))} className="rounded-full bg-white p-1.5 shadow-md hover:bg-gray-100" title="Delete Photo">
+                        <button type="button" onClick={() => askConfirm({ title: "Delete Photo", message: `Delete "${photo.title || "this photo"}" from the gallery?`, confirmLabel: "Delete Photo", action: () => deleteGalleryPhoto(photo.id) })} className="rounded-full bg-white p-1.5 shadow-md hover:bg-gray-100" title="Delete Photo">
                           <Trash2 className="size-3.5 text-red-600" aria-hidden />
                         </button>
                       </div>
@@ -645,16 +870,15 @@ export function MusicClient({
           </div>
 
           <div className="mb-5 overflow-hidden rounded-lg border border-gray-200 bg-white">
-            <nav className="flex overflow-x-auto border-b border-gray-200">
-              {[
-                { id: "youtube", label: "Video", icon: Music },
-                { id: "featured", label: "Image", icon: ImageIcon },
-                { id: "events", label: "Events & Updates", icon: CalendarDays },
-              ].map((tab) => (
+            <div className="border-b border-gray-200 p-3 md:hidden">
+              <MobileTabDropdown tabs={boardTabs} value={boardTab} onChange={(tab) => setBoardTab(tab as "youtube" | "featured" | "events")} />
+            </div>
+            <nav className="hidden overflow-x-auto border-b border-gray-200 md:flex">
+              {boardTabs.map((tab) => (
                 <button
                   key={tab.id}
                   type="button"
-                  onClick={() => setBoardTab(tab.id as "youtube" | "featured" | "events")}
+                  onClick={() => setBoardTab(tab.id)}
                   className={`flex shrink-0 items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold ${
                     boardTab === tab.id ? "border-black text-black" : "border-transparent text-gray-500"
                   }`}
@@ -691,7 +915,7 @@ export function MusicClient({
                       <div className="flex justify-end gap-3 border-t pt-2 sm:border-t-0 sm:pt-0">
                         <button type="button" onClick={() => runAction(() => toggleYoutubePublish(video.id))} className="text-black hover:text-gray-600" title="Publish/Hide">{video.isPublished ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button>
                         <button type="button" onClick={() => { setEditingYoutube(video); setModal("youtube"); }} className="text-black hover:text-gray-600" title="Edit"><Pencil className="size-4" /></button>
-                        <button type="button" onClick={() => runAction(() => deleteYoutubeVideo(video.id))} className="text-black hover:text-gray-600" title="Delete"><Trash2 className="size-4" /></button>
+                        <button type="button" onClick={() => askConfirm({ title: "Delete YouTube Video", message: `Delete "${video.title}" from the landing page videos?`, confirmLabel: "Delete Video", action: () => deleteYoutubeVideo(video.id) })} className="text-black hover:text-gray-600" title="Delete"><Trash2 className="size-4" /></button>
                       </div>
                     </div>
                   </div>
@@ -729,7 +953,7 @@ export function MusicClient({
                         <button type="button" onClick={() => runAction(() => toggleFeaturedImageHero(image.id))} className="text-black hover:text-gray-600" title="Hero"><Star className={`size-4 ${image.isHero ? "fill-black" : ""}`} /></button>
                         <button type="button" onClick={() => runAction(() => toggleFeaturedImagePublish(image.id))} className="text-black hover:text-gray-600" title="Publish/Hide">{image.isPublished ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button>
                         <button type="button" onClick={() => { setEditingFeatured(image); setModal("featured"); }} className="text-black hover:text-gray-600" title="Edit"><Pencil className="size-4" /></button>
-                        <button type="button" onClick={() => runAction(() => deleteFeaturedImage(image.id))} className="text-black hover:text-gray-600" title="Delete"><Trash2 className="size-4" /></button>
+                        <button type="button" onClick={() => askConfirm({ title: "Delete Featured Image", message: `Delete "${image.title}" from featured images?`, confirmLabel: "Delete Image", action: () => deleteFeaturedImage(image.id) })} className="text-black hover:text-gray-600" title="Delete"><Trash2 className="size-4" /></button>
                       </div>
                     </div>
                   </div>
@@ -767,7 +991,7 @@ export function MusicClient({
                         <button type="button" onClick={() => runAction(() => toggleBoardItemPublish(item.id))} className="text-black hover:text-gray-600" title="Publish/Hide">{item.isPublished ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button>
                         <button type="button" onClick={() => runAction(() => toggleBoardItemPin(item.id))} className="text-black hover:text-gray-600" title="Pin/Unpin"><Star className={`size-4 ${item.isPinned ? "fill-black" : ""}`} /></button>
                         <button type="button" onClick={() => { setEditingBoardItem(item); setModal("boardItem"); }} className="text-black hover:text-gray-600" title="Edit"><Pencil className="size-4" /></button>
-                        <button type="button" onClick={() => runAction(() => deleteBoardItem(item.id))} className="text-black hover:text-gray-600" title="Delete"><Trash2 className="size-4" /></button>
+                        <button type="button" onClick={() => askConfirm({ title: "Delete Board Item", message: `Delete "${item.title}" from events and updates?`, confirmLabel: "Delete Item", action: () => deleteBoardItem(item.id) })} className="text-black hover:text-gray-600" title="Delete"><Trash2 className="size-4" /></button>
                       </div>
                     </div>
                   </article>
@@ -775,6 +999,118 @@ export function MusicClient({
               </div>
             </section>
           ) : null}
+        </div>
+      ) : activeTab === "actionPlan" ? (
+        <div className="space-y-5 rounded-lg border border-gray-100 bg-white p-4 shadow-sm sm:p-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="text-lg font-bold text-gray-800">Music Action Plans</h3>
+              <p className="text-sm text-gray-500">Track Music Ministry DPT plans, tasks, budgets, and progress.</p>
+            </div>
+            <button type="button" onClick={() => setPlanModal("new")} className="inline-flex w-fit items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+              <Plus className="size-4" />
+              Create New Action Plan
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <ActionPlanStat label="Plans" value={actionPlanSummary.totalPlans} />
+            <ActionPlanStat label="Completed" value={actionPlanSummary.completed} tone="green" />
+            <ActionPlanStat label="In Progress" value={actionPlanSummary.inProgress} tone="blue" />
+            <ActionPlanStat label="Tasks" value={actionPlanSummary.totalTasks} tone="purple" />
+            <ActionPlanStat label="Budget" value={formatCurrency(actionPlanSummary.totalBudget)} tone="amber" />
+          </div>
+
+          <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 md:flex-row md:items-center">
+            <label className="relative flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
+              <input value={actionPlanSearch} onChange={(event) => setActionPlanSearch(event.target.value)} placeholder="Search action plans..." className="h-10 w-full rounded-lg border border-gray-300 bg-white pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+            </label>
+            <select value={actionPlanStatus} onChange={(event) => setActionPlanStatus(event.target.value)} className="h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
+              <option value="all">All Statuses</option>
+              <option value="pending">Pending</option>
+              <option value="in_progress">In Progress</option>
+              <option value="completed">Completed</option>
+            </select>
+          </div>
+
+          <div className="space-y-4">
+            {filteredActionPlans.length ? filteredActionPlans.map((plan) => {
+              const totalBudget = plan.tasks.reduce((sum, task) => sum + task.estimatedBudget, 0);
+              return (
+                <article key={plan.id} className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-base font-semibold text-gray-900">{plan.title}</h3>
+                        <span className={`rounded-full px-2 py-1 text-xs font-medium capitalize ${actionPlanStatusBadge(plan.status)}`}>{plan.status.replace("_", " ")}</span>
+                      </div>
+                      <p className="mt-2 text-sm text-gray-600">{plan.description || "No description"}</p>
+                      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+                        <span>By {plan.createdByName}</span>
+                        <span>Start: {plan.startDate}</span>
+                        <span>Completion: {plan.dueDate}</span>
+                        <span>Tasks: {plan.tasks.length}</span>
+                        {totalBudget > 0 && <span>Budget: {formatCurrency(totalBudget)}</span>}
+                      </div>
+                      <div className="mt-4 flex max-w-md items-center gap-2">
+                        <div className="h-2 flex-1 rounded-full bg-gray-100">
+                          <div className="h-2 rounded-full bg-blue-600" style={{ width: `${Math.min(plan.progress, 100)}%` }} />
+                        </div>
+                        <span className="text-xs font-semibold text-gray-600">{plan.progress}%</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" onClick={() => setTaskModal({ plan })} className="rounded-lg bg-green-50 px-3 py-2 text-green-700 hover:bg-green-100" title="Create task"><Plus className="size-4" /></button>
+                      <button type="button" onClick={() => setViewPlan(plan)} className="rounded-lg border border-gray-200 px-3 py-2 text-gray-600 hover:bg-gray-50" title="View"><Eye className="size-4" /></button>
+                      <button type="button" onClick={() => setPlanModal(plan)} className="rounded-lg border border-gray-200 px-3 py-2 text-blue-600 hover:bg-blue-50" title="Edit"><Pencil className="size-4" /></button>
+                      <button type="button" onClick={() => removeActionPlan(plan)} className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-red-600 hover:bg-red-100" title="Delete"><Trash2 className="size-4" /></button>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 overflow-x-auto rounded-lg border border-gray-100">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
+                        <tr>
+                          <th className="px-3 py-2">Activity</th>
+                          <th className="px-3 py-2">Milestone</th>
+                          <th className="px-3 py-2">Budget</th>
+                          <th className="px-3 py-2">Deadline</th>
+                          <th className="px-3 py-2">Progress</th>
+                          <th className="px-3 py-2 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {plan.tasks.length ? plan.tasks.map((task) => (
+                          <tr key={task.id}>
+                            <td className="px-3 py-2 font-medium text-gray-800">{task.activity || task.taskName}</td>
+                            <td className="px-3 py-2 text-gray-600">{task.targetMilestone || "-"}</td>
+                            <td className="px-3 py-2 text-gray-600">{task.estimatedBudget ? formatCurrency(task.estimatedBudget) : "-"}</td>
+                            <td className="px-3 py-2 text-gray-600">{task.deadline || "-"}</td>
+                            <td className="px-3 py-2 text-gray-600">{task.progress}%</td>
+                            <td className="px-3 py-2">
+                              <div className="flex justify-end gap-3">
+                                <button type="button" onClick={() => setTaskModal({ plan, task })} className="text-blue-600 hover:text-blue-700">Edit</button>
+                                <button type="button" onClick={() => removeActionPlanTask(task)} className="text-red-600 hover:text-red-700">Delete</button>
+                              </div>
+                            </td>
+                          </tr>
+                        )) : (
+                          <tr><td colSpan={6} className="px-3 py-8 text-center text-gray-400">No tasks yet</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </article>
+              );
+            }) : (
+              <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 py-12 text-center">
+                <FileText className="mx-auto mb-3 size-10 text-gray-300" />
+                <p className="text-sm text-gray-500">No action plans found</p>
+                <button type="button" onClick={() => setPlanModal("new")} className="mt-3 text-sm font-medium text-blue-600 hover:text-blue-700">Create your first action plan</button>
+              </div>
+            )}
+          </div>
         </div>
       ) : activeTab !== "playlist" ? (
         <div className="rounded-2xl border border-gray-100 bg-white p-8 text-center shadow-sm">
@@ -833,7 +1169,7 @@ export function MusicClient({
                       <div className="flex shrink-0 gap-2">
                         <button type="button" onClick={() => setViewingPlaylist(playlist)} className="text-green-600 hover:text-green-800" title="View Songs"><Eye className="size-4" aria-hidden /></button>
                         <button type="button" onClick={() => setEditingPlaylist(playlist)} className="text-blue-600 hover:text-blue-800" title="Edit Playlist"><Pencil className="size-4" aria-hidden /></button>
-                        <button type="button" onClick={() => runAction(() => deletePlaylist(playlist.id))} className="text-red-600 hover:text-red-800" title="Delete Playlist"><Trash2 className="size-4" aria-hidden /></button>
+                      <button type="button" onClick={() => askConfirm({ title: "Delete Playlist", message: `Delete "${playlist.title}"? Songs will remain available, but this playlist will be removed.`, confirmLabel: "Delete Playlist", action: () => deletePlaylist(playlist.id) })} className="text-red-600 hover:text-red-800" title="Delete Playlist"><Trash2 className="size-4" aria-hidden /></button>
                       </div>
                     </div>
                   </div>
@@ -876,7 +1212,7 @@ export function MusicClient({
                       <div className="flex shrink-0 gap-2">
                         <button type="button" onClick={() => setLyricsSong(song)} className="text-green-600 hover:text-green-800" title="View Lyrics"><FileText className="size-4" aria-hidden /></button>
                         <button type="button" onClick={() => setEditingSong(song)} className="text-blue-600 hover:text-blue-800" title="Edit Song"><Pencil className="size-4" aria-hidden /></button>
-                        <button type="button" onClick={() => runAction(() => deleteSong(song.id))} className="text-red-600 hover:text-red-800" title="Delete Song"><Trash2 className="size-4" aria-hidden /></button>
+                        <button type="button" onClick={() => askConfirm({ title: "Delete Song", message: `Delete "${song.title}" from the music library?`, confirmLabel: "Delete Song", action: () => deleteSong(song.id) })} className="text-red-600 hover:text-red-800" title="Delete Song"><Trash2 className="size-4" aria-hidden /></button>
                       </div>
                     </div>
                   </div>
@@ -1023,7 +1359,7 @@ export function MusicClient({
                         <button type="button" onClick={() => setViewingGeneration(generation)} className="rounded-lg border px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">Details</button>
                         <button type="button" onClick={() => downloadGenerationCsv(generation)} className="rounded-lg border px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50">CSV</button>
                         <button type="button" onClick={() => runAction(() => restoreServiceTeam(generation.id), () => setModal(null))} className="rounded-lg border px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50">Restore</button>
-                        <button type="button" onClick={() => runAction(() => deleteServiceTeam(generation.id))} className="rounded-lg border px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50">Delete</button>
+                        <button type="button" onClick={() => askConfirm({ title: "Delete Service Team", message: `Delete "${generation.serviceName}" generation?`, confirmLabel: "Delete Team", action: () => deleteServiceTeam(generation.id) })} className="rounded-lg border px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50">Delete</button>
                       </div>
                     </div>
                   </div>
@@ -1199,6 +1535,124 @@ export function MusicClient({
             </div>
           </form>
         </Modal>
+      ) : null}
+
+      {planModal ? (
+        <Modal title={planModal === "new" ? "Create Action Plan" : "Edit Action Plan"} onClose={() => setPlanModal(null)} width="max-w-2xl">
+          <form onSubmit={submitActionPlan} className="space-y-4 p-5">
+            <input type="hidden" name="year" value={new Date().getFullYear()} />
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Action Plan Name *</label>
+              <input name="title" defaultValue={planModal === "new" ? "" : planModal.title} required placeholder="Enter action plan name" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Start Date *</label>
+                <input name="startDate" type="date" defaultValue={planModal === "new" ? "" : planModal.startDateRaw} required className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Completion Date *</label>
+                <input name="dueDate" type="date" defaultValue={planModal === "new" ? "" : planModal.dueDateRaw} required className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Description</label>
+              <textarea name="description" rows={3} defaultValue={planModal === "new" ? "" : planModal.description ?? ""} placeholder="Optional description" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+            </div>
+            <div className="flex justify-end gap-2 border-t border-gray-100 pt-4">
+              <button type="button" onClick={() => setPlanModal(null)} className="h-9 rounded-lg border border-gray-300 px-4 text-sm text-gray-700 transition hover:bg-gray-50">Cancel</button>
+              <button type="submit" disabled={isPending} className="h-9 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60">{isPending ? "Saving..." : planModal === "new" ? "Create Action Plan" : "Update Action Plan"}</button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
+
+      {taskModal ? (
+        <Modal title={taskModal.task ? `Edit Task for ${taskModal.plan.title}` : `Create Task for ${taskModal.plan.title}`} onClose={() => setTaskModal(null)} width="max-w-2xl">
+          <form onSubmit={submitActionPlanTask} className="space-y-4 p-5">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Action Plan</label>
+              <input value={taskModal.plan.title} readOnly className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-700" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Activity *</label>
+              <input name="activity" defaultValue={taskModal.task?.activity ?? taskModal.task?.taskName ?? ""} required placeholder="Enter activity" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Targeted Milestone *</label>
+              <input name="targetMilestone" defaultValue={taskModal.task?.targetMilestone ?? ""} required placeholder="Enter targeted milestone" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Start Date</label>
+                <input name="startDate" type="date" defaultValue={taskModal.task?.startDateRaw ?? ""} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Estimated Budget *</label>
+                <input name="estimatedBudget" type="number" min="0" step="0.01" defaultValue={taskModal.task?.estimatedBudget ?? ""} required placeholder="0.00" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Deadline *</label>
+                <input name="deadline" type="date" defaultValue={taskModal.task?.deadlineRaw ?? ""} required className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Progress *</label>
+                <input name="progress" type="number" min="0" max="100" defaultValue={taskModal.task?.progress ?? 0} required className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-gray-100 pt-4">
+              <button type="button" onClick={() => setTaskModal(null)} className="h-9 rounded-lg border border-gray-300 px-4 text-sm text-gray-700 transition hover:bg-gray-50">Cancel</button>
+              <button type="submit" disabled={isPending} className="h-9 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60">{isPending ? "Saving..." : taskModal.task ? "Update Task" : "Save Task"}</button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
+
+      {viewPlan ? (
+        <Modal title={viewPlan.title} onClose={() => setViewPlan(null)} width="max-w-3xl">
+          <div className="space-y-4 p-5">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <PlanDetail label="Status" value={viewPlan.status.replace("_", " ")} />
+              <PlanDetail label="Progress" value={`${viewPlan.progress}%`} />
+              <PlanDetail label="Tasks" value={viewPlan.tasks.length} />
+              <PlanDetail label="Budget" value={formatCurrency(viewPlan.tasks.reduce((sum, task) => sum + task.estimatedBudget, 0))} />
+            </div>
+            {viewPlan.description ? <p className="rounded-lg bg-gray-50 p-3 text-sm text-gray-600">{viewPlan.description}</p> : null}
+            <div className="overflow-x-auto rounded-lg border border-gray-100">
+              <table className="min-w-full text-sm">
+                <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
+                  <tr><th className="px-3 py-2">Activity</th><th className="px-3 py-2">Milestone</th><th className="px-3 py-2">Budget</th><th className="px-3 py-2">Deadline</th><th className="px-3 py-2">Progress</th></tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {viewPlan.tasks.length ? viewPlan.tasks.map((task) => (
+                    <tr key={task.id}>
+                      <td className="px-3 py-2 font-medium text-gray-800">{task.activity || task.taskName}</td>
+                      <td className="px-3 py-2 text-gray-600">{task.targetMilestone || "-"}</td>
+                      <td className="px-3 py-2 text-gray-600">{task.estimatedBudget ? formatCurrency(task.estimatedBudget) : "-"}</td>
+                      <td className="px-3 py-2 text-gray-600">{task.deadline || "-"}</td>
+                      <td className="px-3 py-2 text-gray-600">{task.progress}%</td>
+                    </tr>
+                  )) : <tr><td colSpan={5} className="px-3 py-8 text-center text-gray-400">No tasks yet</td></tr>}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex justify-end gap-2 border-t pt-4">
+              <button type="button" onClick={() => { setViewPlan(null); setPlanModal(viewPlan); }} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-blue-600 hover:bg-blue-50">Edit Plan</button>
+              <button type="button" onClick={() => setViewPlan(null)} className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700">Close</button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+
+      {confirmAction ? (
+        <MusicConfirmModal
+          confirm={confirmAction}
+          pending={isPending}
+          onCancel={() => setConfirmAction(null)}
+          onConfirm={executeConfirm}
+        />
       ) : null}
 
       {viewingPlaylist ? (

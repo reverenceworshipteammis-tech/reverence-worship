@@ -673,6 +673,7 @@ model FormSubmission {
   formId      Int      @map("form_id")
   userId      Int?     @map("user_id")
   answers     Json     @default("{}")
+  manualGrades Json?   @map("manual_grades")
   score       Float?
   submittedAt DateTime @default(now()) @map("submitted_at")
   createdAt   DateTime @default(now()) @map("created_at")

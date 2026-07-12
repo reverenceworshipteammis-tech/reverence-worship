@@ -9,6 +9,7 @@ import {
   updateGeneralSettings,
   updateSecuritySettings,
 } from "@/app/admin/settings/actions";
+import { MobileTabDropdown } from "@/components/mobile-tab-dropdown";
 
 export type SettingsValues = {
   appName: string;
@@ -108,7 +109,10 @@ export function SettingsClient({ values }: { values: SettingsValues }) {
 
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="border-b border-gray-200">
-          <nav className="flex overflow-x-auto">
+          <div className="p-3 md:hidden">
+            <MobileTabDropdown tabs={tabs} value={activeTab} onChange={(tab) => setActiveTab(tab as TabId)} />
+          </div>
+          <nav className="hidden overflow-x-auto md:flex">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               const active = activeTab === tab.id;

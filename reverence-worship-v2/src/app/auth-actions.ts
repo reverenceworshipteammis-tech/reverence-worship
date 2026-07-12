@@ -66,11 +66,7 @@ export async function loginAction(
 
   await createSession(user.id);
 
-  const isAdmin = user.roles.some(({ role }) =>
-    ["super-admin", "admin"].includes(role.name),
-  );
-
-  redirect(isAdmin ? "/admin/dashboard" : "/");
+  redirect("/admin/dashboard");
 }
 
 export async function registerAction(
@@ -105,6 +101,7 @@ export async function registerAction(
       dateOfBirth: new Date(parsed.data.dateOfBirth),
       gender: parsed.data.gender,
       maritalStatus: parsed.data.maritalStatus,
+      membershipType: "permanent",
       province: parsed.data.province,
       district: parsed.data.district,
       sector: parsed.data.sector,

@@ -24,6 +24,16 @@ function readBoolean(formData: FormData, key: string) {
   return value === "on" || value === "1" || value === "true";
 }
 
+function dateOnly(value: string) {
+  return new Date(`${value}T12:00:00.000Z`);
+}
+
+function boundedProgress(value: FormDataEntryValue | null) {
+  const parsed = Number(value ?? 0);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.min(100, Math.round(parsed)));
+}
+
 function extractYouTubeId(input: string) {
   try {
     const url = new URL(input);
@@ -84,6 +94,153 @@ export async function createSong(formData: FormData) {
   revalidatePath("/admin/music");
 
   return { ok: true, message: "Song added successfully." };
+}
+
+async function syncMusicActionPlanProgress(actionPlanId: number) {
+  const tasks = await prisma.actionPlanTask.findMany({
+    where: { actionPlanId },
+    select: { progress: true },
+  });
+  const progress = tasks.length ? Math.round(tasks.reduce((sum, task) => sum + task.progress, 0) / tasks.length) : 0;
+  const status = progress === 100 ? "completed" : progress > 0 ? "in_progress" : "pending";
+
+  await prisma.actionPlan.update({
+    where: { id: actionPlanId, department: "music-ministry" },
+    data: { progress, status },
+  });
+}
+
+export async function saveMusicActionPlan(formData: FormData) {
+  const user = await requireUser();
+  const id = Number(readString(formData, "id"));
+  const title = readString(formData, "title");
+  const description = readString(formData, "description");
+  const startDateValue = readString(formData, "startDate");
+  const dueDateValue = readString(formData, "dueDate");
+  const year = Number(readString(formData, "year") || new Date().getFullYear());
+
+  if (!title || !startDateValue || !dueDateValue) {
+    return { ok: false, message: "Action plan name, start date, and completion date are required." };
+  }
+
+  if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+    return { ok: false, message: "Please select a valid year." };
+  }
+
+  if (Number.isFinite(id) && id > 0) {
+    await prisma.actionPlan.update({
+      where: { id, department: "music-ministry" },
+      data: {
+        title,
+        description,
+        startDate: dateOnly(startDateValue),
+        dueDate: dateOnly(dueDateValue),
+        year,
+      },
+    });
+  } else {
+    await prisma.actionPlan.create({
+      data: {
+        title,
+        description,
+        startDate: dateOnly(startDateValue),
+        dueDate: dateOnly(dueDateValue),
+        department: "music-ministry",
+        year,
+        createdBy: user.id,
+      },
+    });
+  }
+
+  revalidatePath("/admin/music");
+  return { ok: true, message: id ? "Action plan updated successfully." : "Action plan created successfully." };
+}
+
+export async function deleteMusicActionPlan(id: number) {
+  await requireUser();
+
+  if (!Number.isInteger(id) || id <= 0) {
+    return { ok: false, message: "Action plan not found." };
+  }
+
+  await prisma.actionPlan.delete({ where: { id, department: "music-ministry" } });
+  revalidatePath("/admin/music");
+  return { ok: true, message: "Action plan deleted successfully." };
+}
+
+export async function saveMusicActionPlanTask(formData: FormData) {
+  await requireUser();
+  const id = Number(readString(formData, "id"));
+  const actionPlanId = Number(readString(formData, "actionPlanId"));
+  const activity = readString(formData, "activity");
+  const targetMilestone = readString(formData, "targetMilestone");
+  const estimatedBudget = readString(formData, "estimatedBudget") || "0";
+  const startDateValue = readString(formData, "startDate");
+  const deadlineValue = readString(formData, "deadline");
+  const progress = boundedProgress(formData.get("progress"));
+
+  if (!Number.isInteger(actionPlanId) || actionPlanId <= 0 || !activity || !targetMilestone || !deadlineValue) {
+    return { ok: false, message: "Action plan, activity, milestone, and deadline are required." };
+  }
+
+  const plan = await prisma.actionPlan.findUnique({
+    where: { id: actionPlanId, department: "music-ministry" },
+    select: { id: true },
+  });
+
+  if (!plan) {
+    return { ok: false, message: "Action plan not found." };
+  }
+
+  const status = progress >= 100 ? "completed" : progress > 0 ? "in_progress" : "pending";
+  const data = {
+    actionPlanId,
+    taskName: activity,
+    activity,
+    targetMilestone,
+    estimatedBudget,
+    startDate: startDateValue ? dateOnly(startDateValue) : null,
+    deadline: dateOnly(deadlineValue),
+    progress,
+    status,
+    startedAt: progress > 0 ? new Date() : null,
+    completedAt: progress >= 100 ? new Date() : null,
+  };
+
+  if (Number.isFinite(id) && id > 0) {
+    await prisma.actionPlanTask.update({
+      where: { id },
+      data,
+    });
+  } else {
+    await prisma.actionPlanTask.create({ data });
+  }
+
+  await syncMusicActionPlanProgress(actionPlanId);
+  revalidatePath("/admin/music");
+  return { ok: true, message: id ? "Task updated successfully." : "Task created successfully." };
+}
+
+export async function deleteMusicActionPlanTask(id: number) {
+  await requireUser();
+
+  if (!Number.isInteger(id) || id <= 0) {
+    return { ok: false, message: "Task not found." };
+  }
+
+  const task = await prisma.actionPlanTask.findUnique({
+    where: { id },
+    select: { actionPlanId: true, actionPlan: { select: { department: true } } },
+  });
+
+  if (!task || task.actionPlan.department !== "music-ministry") {
+    return { ok: false, message: "Task not found." };
+  }
+
+  await prisma.actionPlanTask.delete({ where: { id } });
+  await syncMusicActionPlanProgress(task.actionPlanId);
+  revalidatePath("/admin/music");
+  return { ok: true, message: "Task deleted successfully." };
 }
 
 export async function deleteSong(songId: number) {

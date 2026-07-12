@@ -74,6 +74,41 @@ export type UserActionState = {
   message?: string;
 };
 
+async function roleIdsWithMemberBase(roleIds: number[]) {
+  const uniqueRoleIds = [...new Set(roleIds.filter(Number.isFinite))];
+  const assignableRoleIds =
+    uniqueRoleIds.length > 0
+      ? (
+          await prisma.role.findMany({
+            where: { id: { in: uniqueRoleIds }, name: { not: "super-admin" } },
+            select: { id: true },
+          })
+        ).map((role) => role.id)
+      : [];
+
+  const normalizedRoleIds = [...new Set(assignableRoleIds)];
+
+  const memberRole = await prisma.role.findUnique({
+    where: { name: "member" },
+    select: { id: true },
+  });
+
+  if (memberRole && !normalizedRoleIds.includes(memberRole.id)) {
+    normalizedRoleIds.push(memberRole.id);
+  }
+
+  return normalizedRoleIds;
+}
+
+async function isSuperAdminUser(userId: number) {
+  const superAdminRole = await prisma.userRole.findFirst({
+    where: { userId, role: { name: "super-admin" } },
+    select: { userId: true },
+  });
+
+  return Boolean(superAdminRole);
+}
+
 export async function createUserAction(
   _previousState: UserActionState,
   formData: FormData,
@@ -94,10 +129,12 @@ export async function createUserAction(
   }
 
   const passwordHash = await bcrypt.hash(parsed.data.password, 12);
-  const roleIds = formData
-    .getAll("roles")
-    .map((roleId) => Number(roleId))
-    .filter(Number.isFinite);
+  const roleIds = await roleIdsWithMemberBase(
+    formData
+      .getAll("roles")
+      .map((roleId) => Number(roleId))
+      .filter(Number.isFinite),
+  );
 
   await prisma.user.create({
     data: {
@@ -181,8 +218,17 @@ export async function updateUserRoleAction(formData: FormData) {
     return { ok: false, message: "Invalid role update." };
   }
 
+  if (await isSuperAdminUser(userId)) {
+    return { ok: false, message: "Super Admin is internal and cannot be changed from roles." };
+  }
+
+  const roleIds = await roleIdsWithMemberBase([roleId]);
+
   await prisma.userRole.deleteMany({ where: { userId } });
-  await prisma.userRole.create({ data: { userId, roleId } });
+  await prisma.userRole.createMany({
+    data: roleIds.map((roleId) => ({ userId, roleId })),
+    skipDuplicates: true,
+  });
 
   revalidatePath("/admin/users");
 
@@ -250,13 +296,19 @@ export async function updateUserRolesAction(
   await requireAdminUser();
 
   const userId = Number(formData.get("userId"));
-  const roleIds = formData
-    .getAll("roles")
-    .map((roleId) => Number(roleId))
-    .filter(Number.isFinite);
+  const roleIds = await roleIdsWithMemberBase(
+    formData
+      .getAll("roles")
+      .map((roleId) => Number(roleId))
+      .filter(Number.isFinite),
+  );
 
   if (!Number.isFinite(userId)) {
     return { ok: false, message: "Invalid user." };
+  }
+
+  if (await isSuperAdminUser(userId)) {
+    return { ok: false, message: "Super Admin is internal and cannot be changed from roles." };
   }
 
   await prisma.userRole.deleteMany({ where: { userId } });
