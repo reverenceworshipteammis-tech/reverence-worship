@@ -1,10 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify, SignJWT } from "jose";
-import { SESSION_COOKIE, SESSION_IDLE_MAX_AGE_SECONDS } from "@/lib/auth";
+
+const SESSION_COOKIE = "reverence_session";
+const SESSION_IDLE_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 
 const authSecret = new TextEncoder().encode(process.env.AUTH_SECRET ?? "");
 
-export async function middleware(request) {
+export async function middleware(request: NextRequest) {
   const cookie = request.cookies.get(SESSION_COOKIE);
   if (!cookie?.value) {
     return NextResponse.next();
@@ -18,7 +20,7 @@ export async function middleware(request) {
 
     if (exp <= now) {
       const response = NextResponse.next();
-      response.cookies.delete(SESSION_COOKIE, { path: "/" });
+      response.cookies.delete({ name: SESSION_COOKIE, path: "/" });
       return response;
     }
 
@@ -39,7 +41,7 @@ export async function middleware(request) {
     return response;
   } catch {
     const response = NextResponse.next();
-    response.cookies.delete(SESSION_COOKIE, { path: "/" });
+    response.cookies.delete({ name: SESSION_COOKIE, path: "/" });
     return response;
   }
 }

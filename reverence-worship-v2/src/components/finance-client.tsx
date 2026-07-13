@@ -44,7 +44,6 @@ import {
   saveSponsor,
   updateFinancePayment,
 } from "@/app/admin/finance/actions";
-import { MobileTabDropdown } from "@/components/mobile-tab-dropdown";
 
 type UserOption = {
   id: number;
@@ -221,13 +220,13 @@ export function FinanceClient({
   const currentYearPayments = payments.filter((item) => item.year === year);
   const [activeTab, setActiveTab] = useState("overview");
   const tabs = [
-    { id: "overview", label: "Overview", icon: BarChart3 },
-    { id: "settings", label: "Settings", icon: Settings },
-    { id: "contributions", label: "Contributions", icon: HandCoins },
-    { id: "payments", label: "Payments", icon: CreditCard },
-    { id: "sponsors", label: "Sponsors", icon: Users },
-    { id: "expenses", label: "Expenses", icon: Receipt },
-    { id: "action-plans", label: "Action Plans", icon: ClipboardList },
+    { id: "overview", label: "Overview", mobileLabel: "Home", icon: BarChart3 },
+    { id: "settings", label: "Settings", mobileLabel: "Settings", icon: Settings },
+    { id: "contributions", label: "Contributions", mobileLabel: "Contrib.", icon: HandCoins },
+    { id: "payments", label: "Payments", mobileLabel: "Pay", icon: CreditCard },
+    { id: "sponsors", label: "Sponsors", mobileLabel: "Sponsors", icon: Users },
+    { id: "expenses", label: "Expenses", mobileLabel: "Expenses", icon: Receipt },
+    { id: "action-plans", label: "Action Plans", mobileLabel: "Plans", icon: ClipboardList },
   ];
 
   const stats = useMemo(() => {
@@ -248,8 +247,26 @@ export function FinanceClient({
       </div>
 
       <div className="relative z-40 overflow-visible rounded-lg border border-gray-200 bg-white shadow-sm">
-        <div className="p-2 md:hidden">
-          <MobileTabDropdown tabs={tabs} value={activeTab} onChange={setActiveTab} />
+        <div className="md:hidden">
+          <nav className="flex gap-1 overflow-x-auto px-2 py-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              const active = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex min-w-[68px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[11px] font-semibold transition ${
+                    active ? "bg-blue-600 text-white shadow-sm" : "bg-gray-50 text-gray-600 hover:bg-blue-50 hover:text-blue-700"
+                  }`}
+                >
+                  <Icon className="size-4" aria-hidden="true" />
+                  <span className="leading-none">{tab.mobileLabel}</span>
+                </button>
+              );
+            })}
+          </nav>
         </div>
         <div className="hidden border-b border-gray-200 md:block">
           <nav className="flex flex-wrap">

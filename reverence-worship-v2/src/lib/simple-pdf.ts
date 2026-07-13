@@ -122,7 +122,7 @@ export function createReportPdf(opts: {
     pageLines.push(`0.9 0.9 0.9 rg ${leftMargin} ${height - topMargin + 6} ${usableWidth} ${headerHeight} re f`);
 
     // header texts
-    let headerY = height - topMargin + 18;
+    const headerY = height - topMargin + 18;
     for (let ci = 0; ci < colCount; ci++) {
       const col = opts.columns[ci];
       pageLines.push(`BT /F2 9 Tf 1 0 0 1 ${colX + 2} ${headerY} Tm (${escapePdfText(col.label)}) Tj ET`);

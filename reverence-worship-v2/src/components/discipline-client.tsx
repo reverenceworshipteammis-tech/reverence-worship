@@ -324,6 +324,12 @@ export function DisciplineClient({
     if (!query) return true;
     return user.name.toLowerCase().includes(query) || user.email.toLowerCase().includes(query);
   });
+  const sessionDraftSummary = {
+    present: attendanceDrafts.filter((draft) => draft.present).length,
+    late: attendanceDrafts.filter((draft) => draft.present && !draft.onTime).length,
+    absent: attendanceDrafts.filter((draft) => !draft.present && !draft.hasOfficialPermission).length,
+    permission: attendanceDrafts.filter((draft) => draft.hasOfficialPermission).length,
+  };
 
   function exportSessionAttendance() {
     if (attendanceDrafts.length === 0) {
@@ -963,7 +969,7 @@ export function DisciplineClient({
                           <td className="px-5 py-3">
                             <div className="flex items-center justify-center gap-2">
                               <button type="button" onClick={() => openAttendanceSession(session.date, session.session)} className="rounded-lg border border-gray-200 px-3 py-2 text-xs text-blue-600 hover:bg-blue-50">View</button>
-                              {session.isCompleted && <span className="rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-400">Locked</span>}
+                              {session.isCompleted && <span className="rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-400">Completed</span>}
                               <button type="button" onClick={() => removeAttendanceSession(session.date, session.session)} className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-600 hover:bg-red-100">
                                 <Trash2 className="size-4" />
                               </button>
@@ -980,28 +986,30 @@ export function DisciplineClient({
                 </table>
               </div>
 
-              <div className="space-y-3 md:hidden">
+              <div className="space-y-2 md:hidden">
                 {attendanceSessions.length ? attendanceSessions.map((session) => {
                   const present = session.present + session.late;
                   const absent = session.absent + session.excused;
                   const rate = session.total ? Math.round((present / session.total) * 100) : 0;
                   return (
-                    <div key={session.key} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-                      <div className="flex items-start justify-between gap-3">
+                    <div key={session.key} className="rounded-lg border border-gray-100 bg-white p-2.5 shadow-sm">
+                      <div className="flex items-start justify-between gap-2">
                         <div>
-                          <p className="font-semibold text-slate-900">{session.session}</p>
-                          {session.isCompleted && <span className="mt-1 inline-block rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-700">Completed</span>}
-                          <p className="text-sm text-slate-500">{session.dateLabel}</p>
+                          <p className="text-sm font-semibold text-slate-900">{session.session}</p>
+                          <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                            {session.isCompleted && <span className="inline-block rounded-full bg-green-100 px-1.5 py-0.5 text-[11px] text-green-700">Completed</span>}
+                            <p className="text-xs text-slate-500">{session.dateLabel}</p>
+                          </div>
                         </div>
-                        <span className="text-lg font-bold text-emerald-600">{rate}%</span>
+                        <span className="text-base font-bold text-emerald-600">{rate}%</span>
                       </div>
-                      <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
-                        <div className="rounded-lg bg-emerald-50 p-2 text-emerald-700"><span className="block text-xs">Present</span><strong>{present}</strong></div>
-                        <div className="rounded-lg bg-rose-50 p-2 text-rose-700"><span className="block text-xs">Absent</span><strong>{absent}</strong></div>
+                      <div className="mt-2 grid grid-cols-2 gap-1.5 text-xs">
+                        <div className="rounded-md bg-emerald-50 px-2 py-1 text-emerald-700"><span className="mr-1">Present</span><strong>{present}</strong></div>
+                        <div className="rounded-md bg-rose-50 px-2 py-1 text-rose-700"><span className="mr-1">Absent</span><strong>{absent}</strong></div>
                       </div>
-                      <div className="mt-4 grid grid-cols-2 gap-2">
-                        <button type="button" onClick={() => openAttendanceSession(session.date, session.session)} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white">View</button>
-                        <button type="button" onClick={() => removeAttendanceSession(session.date, session.session)} className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">Delete</button>
+                      <div className="mt-2 grid grid-cols-2 gap-1.5">
+                        <button type="button" onClick={() => openAttendanceSession(session.date, session.session)} className="rounded-md bg-blue-600 px-2 py-1.5 text-xs font-medium text-white">View</button>
+                        <button type="button" onClick={() => removeAttendanceSession(session.date, session.session)} className="rounded-md border border-red-100 bg-red-50 px-2 py-1.5 text-xs font-medium text-red-700">Delete</button>
                       </div>
                     </div>
                   );
@@ -1406,8 +1414,8 @@ export function DisciplineClient({
       )}
 
       {sessionModal && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-3 sm:p-6">
-          <div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border bg-white shadow-xl">
+        <div className="fixed inset-0 z-50 grid place-items-stretch bg-black/40 p-0 sm:place-items-center sm:p-6">
+          <div className="flex h-[100dvh] w-full max-w-5xl flex-col overflow-hidden bg-white shadow-xl sm:h-auto sm:max-h-[90vh] sm:rounded-xl sm:border">
             <div className="flex items-center justify-between border-b px-4 py-3 sm:px-5">
               <div>
                 <h2 className="flex items-center gap-2 text-lg font-bold text-gray-900">
@@ -1421,14 +1429,33 @@ export function DisciplineClient({
               </button>
             </div>
 
-            <div className="flex-1 space-y-3 overflow-y-auto p-3 sm:p-4">
+            <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-3 sm:bg-white sm:p-4">
               {sessionReadOnly && (
                 <div className="rounded-lg bg-yellow-100 px-3 py-2 text-sm font-medium text-yellow-700">
                   This session is completed and cannot be edited.
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-4 gap-1.5 sm:hidden">
+                <div className="rounded-lg bg-blue-50 px-2 py-2 text-center">
+                  <p className="text-xs text-gray-600">Present</p>
+                  <p className="text-base font-bold text-blue-600">{sessionDraftSummary.present}</p>
+                </div>
+                <div className="rounded-lg bg-amber-50 px-2 py-2 text-center">
+                  <p className="text-xs text-gray-600">Late</p>
+                  <p className="text-base font-bold text-amber-600">{sessionDraftSummary.late}</p>
+                </div>
+                <div className="rounded-lg bg-rose-50 px-2 py-2 text-center">
+                  <p className="text-xs text-gray-600">Absent</p>
+                  <p className="text-base font-bold text-rose-600">{sessionDraftSummary.absent}</p>
+                </div>
+                <div className="rounded-lg bg-green-50 px-2 py-2 text-center">
+                  <p className="text-xs text-gray-600">Permission</p>
+                  <p className="text-base font-bold text-green-600">{sessionDraftSummary.permission}</p>
+                </div>
+              </div>
+
+              <div className="hidden grid-cols-2 gap-3 sm:grid">
                 <div className="rounded-xl bg-blue-50 p-3">
                   <p className="text-xs text-gray-600">Total Users</p>
                   <p className="text-xl font-bold text-blue-600">{users.length}</p>
@@ -1589,21 +1616,21 @@ export function DisciplineClient({
                   </table>
                 </div>
 
-                <div className="max-h-[45vh] space-y-3 overflow-y-auto p-3 md:hidden">
+                <div className="space-y-2 p-2 md:hidden">
                   {filteredSessionUsers.map((user) => {
                     const draft = attendanceDrafts.find((item) => item.userId === user.id);
                     if (!draft) return null;
                     const permission = permissionForUser(user.id);
                     return (
-                      <div key={user.id} className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
-                        <div className="mb-3">
+                      <div key={user.id} className="rounded-lg border border-gray-100 bg-white p-2.5 shadow-sm">
+                        <div className="mb-2">
                           <p className="text-sm font-semibold text-gray-900">
                             {user.name}
                             {draft.hasOfficialPermission && <span className="ml-2 rounded-full bg-green-100 px-1.5 py-0.5 text-xs text-green-700">Permission</span>}
                           </p>
                           <p className="text-xs text-gray-500">{user.email}</p>
                           {permission && (
-                            <div className="mt-2 rounded-lg bg-gray-50 p-2 text-xs">
+                            <div className="mt-1.5 rounded-lg bg-gray-50 p-1.5 text-xs">
                               <span className={`inline-flex rounded-full px-2 py-0.5 font-medium capitalize ${permissionStatusClass(permission.status)}`}>
                                 {permission.status} permission
                               </span>
@@ -1612,12 +1639,12 @@ export function DisciplineClient({
                             </div>
                           )}
                         </div>
-                        <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div className="grid grid-cols-2 gap-1.5 text-sm">
                           <ToggleField label="Present" value={draft.present} readOnly={sessionReadOnly} disabled={draft.disabled} onToggle={() => updateDraft(user.id, { present: !draft.present, status: !draft.present ? "present" : "absent" })} />
                           <ToggleField label="On Time" value={draft.onTime} readOnly={sessionReadOnly} disabled={draft.disabled} onToggle={() => updateDraft(user.id, { onTime: !draft.onTime })} />
                           <ToggleField label="Communicated" value={draft.communicated} readOnly={sessionReadOnly} onToggle={() => updateDraft(user.id, { communicated: !draft.communicated })} />
                           <ToggleField label="Discipline" value={draft.discipline} readOnly={sessionReadOnly} disabled={draft.disabled} onToggle={() => updateDraft(user.id, { discipline: !draft.discipline, disciplinePoints: !draft.discipline ? 1 : 0 })} />
-                          <div className="col-span-2 rounded-lg bg-gray-50 p-2 text-center font-bold">Total Points: {totalAttendancePoints(draft)}</div>
+                          <div className="col-span-2 rounded-lg bg-gray-50 px-2 py-1.5 text-center text-sm font-bold">Total Points: {totalAttendancePoints(draft)}</div>
                         </div>
                       </div>
                     );
@@ -1627,7 +1654,7 @@ export function DisciplineClient({
               </div>
             </div>
 
-            <div className="flex flex-col-reverse gap-3 border-t bg-white px-4 py-3 sm:flex-row sm:justify-end sm:px-5">
+            <div className="flex flex-col-reverse gap-2 border-t bg-white px-4 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] sm:flex-row sm:justify-end sm:gap-3 sm:px-5 sm:shadow-none">
               <button type="button" onClick={() => setSessionModal(false)} className="rounded-lg border px-4 py-2 text-sm text-gray-700">
                 Close
               </button>
@@ -2090,7 +2117,7 @@ function YesNoButton({ value, disabled = false, onToggle }: { value: boolean; di
       type="button"
       disabled={disabled}
       onClick={onToggle}
-      className={`min-w-12 rounded-md px-3 py-2 text-xs font-bold text-white transition ${
+      className={`min-h-8 min-w-12 rounded-md px-2.5 py-1.5 text-xs font-bold text-white transition sm:min-h-10 sm:min-w-16 sm:rounded-lg sm:px-4 sm:py-2 sm:text-sm ${
         value ? "bg-blue-600 hover:bg-blue-700" : "bg-gray-300 hover:bg-gray-400"
       } ${disabled ? "cursor-not-allowed opacity-80" : ""}`}
     >
@@ -2105,8 +2132,8 @@ function ReadonlyYesNo({ value }: { value: boolean }) {
 
 function ToggleField({ label, value, disabled = false, readOnly = false, onToggle }: { label: string; value: boolean; disabled?: boolean; readOnly?: boolean; onToggle: () => void }) {
   return (
-    <div className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2">
-      <span className="text-gray-600">{label}</span>
+    <div className="flex min-h-10 items-center justify-between gap-2 rounded-lg border border-gray-100 px-2 py-1.5 sm:min-h-12 sm:gap-3 sm:px-3 sm:py-2">
+      <span className="text-xs font-medium text-gray-700 sm:text-sm">{label}</span>
       {readOnly ? <ReadonlyYesNo value={value} /> : <YesNoButton value={value} disabled={disabled} onToggle={onToggle} />}
     </div>
   );
