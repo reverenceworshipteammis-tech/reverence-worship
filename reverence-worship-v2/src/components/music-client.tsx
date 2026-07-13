@@ -60,7 +60,7 @@ import {
   updateSingerSettings,
   uploadGalleryPhotos,
 } from "@/app/admin/music/actions";
-import { MobileTabDropdown } from "@/components/mobile-tab-dropdown";
+import { MobileTabScroller } from "@/components/mobile-tab-scroller";
 
 type Song = {
   id: number;
@@ -211,17 +211,17 @@ type ConfirmAction = {
 };
 
 const tabs = [
-  { id: "playlist", label: "Playlist", icon: ListMusic },
-  { id: "gallery", label: "Photo Gallery", icon: GalleryHorizontal },
-  { id: "groups", label: "Groups", icon: Users },
-  { id: "board", label: "Public Board", icon: MicVocal },
-  { id: "actionPlan", label: "Action Plans", icon: FileText },
+  { id: "playlist", label: "Playlist", mobileLabel: "Playlist", icon: ListMusic },
+  { id: "gallery", label: "Photo Gallery", mobileLabel: "Gallery", icon: GalleryHorizontal },
+  { id: "groups", label: "Groups", mobileLabel: "Groups", icon: Users },
+  { id: "board", label: "Public Board", mobileLabel: "Board", icon: MicVocal },
+  { id: "actionPlan", label: "Action Plans", mobileLabel: "Plans", icon: FileText },
 ];
 
 const boardTabs = [
-  { id: "youtube", label: "Video", icon: Music },
-  { id: "featured", label: "Image", icon: ImageIcon },
-  { id: "events", label: "Events & Updates", icon: CalendarDays },
+  { id: "youtube", label: "Video", mobileLabel: "Video", icon: Music },
+  { id: "featured", label: "Image", mobileLabel: "Image", icon: ImageIcon },
+  { id: "events", label: "Events & Updates", mobileLabel: "Events", icon: CalendarDays },
 ] as const;
 
 function Modal({
@@ -716,8 +716,8 @@ export function MusicClient({
   return (
     <div className="mx-auto max-w-7xl px-2 sm:px-4">
       <div className="mb-4 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
-        <div className="md:hidden p-2">
-          <MobileTabDropdown tabs={tabs} value={activeTab} onChange={setActiveTab} />
+        <div className="px-3 py-3 md:hidden">
+          <MobileTabScroller tabs={tabs} value={activeTab} onChange={setActiveTab} />
         </div>
         <nav className="hidden flex-wrap md:flex">
           {tabs.map((tab) => (
@@ -871,7 +871,7 @@ export function MusicClient({
 
           <div className="mb-5 overflow-hidden rounded-lg border border-gray-200 bg-white">
             <div className="border-b border-gray-200 p-3 md:hidden">
-              <MobileTabDropdown tabs={boardTabs} value={boardTab} onChange={(tab) => setBoardTab(tab as "youtube" | "featured" | "events")} />
+              <MobileTabScroller tabs={boardTabs} value={boardTab} onChange={(tab) => setBoardTab(tab as "youtube" | "featured" | "events")} />
             </div>
             <nav className="hidden overflow-x-auto border-b border-gray-200 md:flex">
               {boardTabs.map((tab) => (

@@ -36,6 +36,7 @@ import {
   updateSocialTask,
 } from "@/app/admin/social-fellowship/actions";
 import { MobileTabDropdown } from "@/components/mobile-tab-dropdown";
+import { MobileTabScroller } from "@/components/mobile-tab-scroller";
 
 type FamilyMember = {
   id: number;
@@ -446,17 +447,17 @@ export function SocialFellowshipClient({
   }
 
   const tabs = [
-    { id: "families", label: "Families", icon: Users },
-    { id: "users", label: "Users", icon: UserRound },
-    { id: "tasks", label: "Tasks", icon: ClipboardList },
-    { id: "actionPlans", label: "Action Plans", icon: ClipboardList },
+    { id: "families", label: "Families", mobileLabel: "Families", icon: Users },
+    { id: "users", label: "Users", mobileLabel: "Users", icon: UserRound },
+    { id: "tasks", label: "Tasks", mobileLabel: "Tasks", icon: ClipboardList },
+    { id: "actionPlans", label: "Action Plans", mobileLabel: "Plans", icon: ClipboardList },
   ];
 
   return (
     <div className="mx-auto max-w-7xl space-y-4 px-2 py-4 sm:px-4 sm:py-6">
       <div className="relative z-10 overflow-visible rounded-lg border border-gray-200 bg-white shadow-sm">
-        <div className="border-b border-gray-200 p-3 md:hidden">
-          <MobileTabDropdown tabs={tabs} value={activeTab} onChange={setActiveTab} tone="gray" />
+        <div className="px-3 py-3 md:hidden">
+          <MobileTabScroller tabs={tabs} value={activeTab} onChange={setActiveTab} />
         </div>
         <nav className="hidden flex-wrap border-b border-gray-200 md:flex">
           {tabs.map((tab) => {

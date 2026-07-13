@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BarChart3, BookOpen, CalendarCheck, CheckCircle2, ClipboardList, Clock, Edit, FileText, Filter, Gavel, Info, MailOpen, Play, Plus, Save, Search, Smile, Trash2, TriangleAlert, X, XCircle } from "lucide-react";
 import {
@@ -20,6 +20,7 @@ import {
   savePermissionRequest,
 } from "@/app/admin/discipline/actions";
 import { MobileTabDropdown } from "@/components/mobile-tab-dropdown";
+import { MobileTabScroller } from "@/components/mobile-tab-scroller";
 
 type DisciplineStats = {
   permissionRequests: number;
@@ -192,6 +193,8 @@ export function DisciplineClient({
   const [activeTab, setActiveTab] = useState("overview");
   const [from, setFrom] = useState(startDate);
   const [to, setTo] = useState(endDate);
+  const [showOverflowIndicator, setShowOverflowIndicator] = useState(false);
+  const tabNavRef = useRef<HTMLDivElement | null>(null);
   const [attendanceFrom, setAttendanceFrom] = useState(startDate);
   const [attendanceTo, setAttendanceTo] = useState(endDate);
   const [attendanceSessionFilter, setAttendanceSessionFilter] = useState("");
@@ -232,13 +235,23 @@ export function DisciplineClient({
   const [taskPlan, setTaskPlan] = useState<DisciplineActionPlan | null>(null);
 
   const tabs = [
-    { id: "overview", label: "Overview", icon: BarChart3 },
-    { id: "attendance", label: "Attendance", icon: CalendarCheck },
-    { id: "permission", label: "Permission Requests", icon: MailOpen },
-    { id: "discipline-records", label: "Discipline Records", icon: BookOpen },
-    { id: "action-plans", label: "Action Plans", icon: ClipboardList },
-    
+    { id: "overview", label: "Overview", mobileLabel: "Home", icon: BarChart3 },
+    { id: "attendance", label: "Attendance", mobileLabel: "Attend", icon: CalendarCheck },
+    { id: "permission", label: "Permission Requests", mobileLabel: "Requests", icon: MailOpen },
+    { id: "discipline-records", label: "Discipline Records", mobileLabel: "Records", icon: BookOpen },
+    { id: "action-plans", label: "Action Plans", mobileLabel: "Plans", icon: ClipboardList },
   ];
+
+  useEffect(() => {
+    const measure = () => {
+      if (!tabNavRef.current) return;
+      setShowOverflowIndicator(tabNavRef.current.scrollWidth > tabNavRef.current.clientWidth + 4);
+    };
+
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [tabs.length]);
 
   function applyRange() {
     const params = new URLSearchParams();
@@ -760,8 +773,8 @@ export function DisciplineClient({
   return (
     <div className="mx-auto max-w-7xl space-y-4 px-2 py-4 sm:px-4 sm:py-6">
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm">
-        <div className="border-b border-gray-200 p-3 md:hidden">
-          <MobileTabDropdown tabs={tabs} value={activeTab} onChange={setActiveTab} />
+        <div className="px-3 py-3 md:hidden">
+          <MobileTabScroller tabs={tabs} value={activeTab} onChange={setActiveTab} />
         </div>
         <nav className="hidden flex-wrap border-b border-gray-200 md:flex">
           {tabs.map((tab) => {
@@ -788,7 +801,7 @@ export function DisciplineClient({
 
           {activeTab === "overview" ? (
             <div className="space-y-6">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-4">
                 <StatCard label="Permission Requests" value={stats.permissionRequests} icon={MailOpen} color="indigo" />
                 <StatCard label="Attendance Sessions" value={stats.attendanceSessions} icon={CalendarCheck} color="purple" />
                 <StatCard label="Discipline Sessions" value={stats.disciplineSessions} icon={Gavel} color="blue" />
@@ -2048,21 +2061,19 @@ export function DisciplineClient({
 
 function StatCard({ label, value, icon: Icon, color }: { label: string; value: number | string; icon: typeof MailOpen; color: "indigo" | "purple" | "blue" | "green" }) {
   const colors = {
-    indigo: "bg-indigo-50 text-indigo-500",
-    purple: "bg-purple-50 text-purple-500",
-    blue: "bg-blue-50 text-blue-500",
-    green: "bg-green-50 text-green-500",
+    indigo: "bg-indigo-100 text-indigo-600",
+    purple: "bg-purple-100 text-purple-600",
+    blue: "bg-blue-100 text-blue-600",
+    green: "bg-emerald-100 text-emerald-600",
   };
   return (
-    <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-wide text-gray-500">{label}</p>
-          <p className="mt-1 text-2xl font-bold text-gray-800">{value}</p>
-        </div>
-        <div className={`flex size-10 items-center justify-center rounded-lg ${colors[color]}`}>
-          <Icon className="size-5" />
-        </div>
+    <div className="flex items-center gap-2 rounded-lg bg-white p-3 shadow-sm transition hover:shadow-md sm:p-4">
+      <div className={`flex size-8 shrink-0 items-center justify-center rounded-full ${colors[color]}`}>
+        <Icon className="size-4" />
+      </div>
+      <div>
+        <p className="text-[10px] uppercase tracking-wide text-gray-500 sm:text-[11px]">{label}</p>
+        <p className="mt-1 text-lg font-bold text-gray-900 sm:text-xl">{value}</p>
       </div>
     </div>
   );

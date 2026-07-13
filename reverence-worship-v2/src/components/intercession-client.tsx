@@ -37,6 +37,7 @@ import {
   toggleSpiritualFormPublish,
 } from "@/app/admin/intercession/actions";
 import { MobileTabDropdown } from "@/components/mobile-tab-dropdown";
+import { MobileTabScroller } from "@/components/mobile-tab-scroller";
 import { bibleBooks, bibleVersions } from "@/lib/bible-data";
 
 type Question = {
@@ -421,27 +422,27 @@ export function IntercessionClient({
   }
 
   const tabs = [
-    { id: "forms", label: "Forms", icon: FileText },
-    ...(permissions.canManageActionPlans ? [{ id: "actions", label: "Action Plans", icon: ListChecks }] : []),
-    ...(permissions.canReadBible ? [{ id: "bible", label: "Read Bible", icon: BookOpen }] : []),
+    { id: "forms", label: "Forms", mobileLabel: "Forms", icon: FileText },
+    ...(permissions.canManageActionPlans ? [{ id: "actions", label: "Action Plans", mobileLabel: "Plans", icon: ListChecks }] : []),
+    ...(permissions.canReadBible ? [{ id: "bible", label: "Read Bible", mobileLabel: "Bible", icon: BookOpen }] : []),
   ];
   const formSections = [
-    { id: "available" as const, label: "Available", icon: ClipboardList },
-    { id: "results" as const, label: "My Results", icon: CheckCircle2 },
+    { id: "available" as const, label: "Available", mobileLabel: "Avail", icon: ClipboardList },
+    { id: "results" as const, label: "My Results", mobileLabel: "Results", icon: CheckCircle2 },
     ...(canManageForms
       ? [
-          { id: "manage" as const, label: "Manage", icon: SlidersHorizontal },
+          { id: "manage" as const, label: "Manage", mobileLabel: "Manage", icon: SlidersHorizontal },
         ]
       : []),
-    ...(canViewReports ? [{ id: "reports" as const, label: "Reports", icon: BarChart3 }] : []),
+    ...(canViewReports ? [{ id: "reports" as const, label: "Reports", mobileLabel: "Reports", icon: BarChart3 }] : []),
   ];
   const activeFormSection = canManageForms || section === "available" || section === "results" ? section : "available";
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-4 px-2 py-3 sm:px-4 sm:py-5 lg:px-6">
       <div className="border-b border-gray-200">
-        <div className="pb-3 md:hidden">
-          <MobileTabDropdown tabs={tabs} value={activeTab} onChange={setActiveTab} />
+        <div className="px-3 py-3 md:hidden">
+          <MobileTabScroller tabs={tabs} value={activeTab} onChange={setActiveTab} />
         </div>
         <nav className="hidden gap-5 overflow-x-auto md:flex">
           {tabs.map((tab) => {
