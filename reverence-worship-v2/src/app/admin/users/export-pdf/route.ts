@@ -15,22 +15,21 @@ export async function GET(request: NextRequest) {
   const active = rows.filter((row) => row.status === "Active").length;
   const inactive = rows.filter((row) => row.status === "Inactive").length;
   const pending = rows.filter((row) => row.status === "Pending").length;
-  const lines: PdfTextLine[] = [
-    { text: "Users Report", x: 370, y: 560, size: 18, bold: true },
-    {
-      text: `Generated on: ${new Intl.DateTimeFormat("en", {
-        dateStyle: "long",
-        timeStyle: "medium",
-      }).format(new Date())}`,
-      x: 330,
-      y: 542,
-      size: 9,
-    },
-    { text: `Total Users: ${rows.length}`, x: 40, y: 515, size: 10, bold: true },
-    { text: `Active: ${active}`, x: 160, y: 515, size: 10, bold: true },
-    { text: `Inactive: ${inactive}`, x: 260, y: 515, size: 10, bold: true },
-    { text: `Pending: ${pending}`, x: 370, y: 515, size: 10, bold: true },
-  ];
+
+  const lines: PdfTextLine[] = [];
+
+  lines.push({ text: "Users Report", x: 370, y: 560, size: 18, bold: true });
+  lines.push({
+    text: `Generated on: ${new Intl.DateTimeFormat("en", { dateStyle: "long", timeStyle: "medium" }).format(new Date())}`,
+    x: 330,
+    y: 542,
+    size: 9,
+  });
+
+  lines.push({ text: `Total Users: ${rows.length}`, x: 40, y: 515, size: 10, bold: true });
+  lines.push({ text: `Active: ${active}`, x: 160, y: 515, size: 10, bold: true });
+  lines.push({ text: `Inactive: ${inactive}`, x: 260, y: 515, size: 10, bold: true });
+  lines.push({ text: `Pending: ${pending}`, x: 370, y: 515, size: 10, bold: true });
 
   const columns = [
     { label: "#", x: 40, width: 3 },
@@ -62,33 +61,17 @@ export async function GET(request: NextRequest) {
     ];
 
     columns.forEach((column, index) => {
-      lines.push({
-        text: pdfCell(values[index], column.width),
-        x: column.x,
-        y,
-        size: 7,
-      });
+      lines.push({ text: pdfCell(values[index], column.width), x: column.x, y, size: 7 });
     });
 
     y -= 14;
   });
 
   if (rows.length > 28) {
-    lines.push({
-      text: `Showing first 28 of ${rows.length} users. Use CSV export for the full dataset.`,
-      x: 40,
-      y: 70,
-      size: 8,
-      bold: true,
-    });
+    lines.push({ text: `Showing first 28 of ${rows.length} users. Use CSV export for the full dataset.`, x: 40, y: 70, size: 8, bold: true });
   }
 
-  lines.push({
-    text: "Reverence Worship Team - User Management Report",
-    x: 315,
-    y: 35,
-    size: 8,
-  });
+  lines.push({ text: "Reverence Worship Team - User Management Report", x: 315, y: 35, size: 8 });
 
   const filename = `users_report_${new Date().toISOString().slice(0, 19).replaceAll(":", "-")}.pdf`;
 

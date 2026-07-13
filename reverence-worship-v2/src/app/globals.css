@@ -744,16 +744,27 @@ input {
 
 @media (max-width: 1023px) {
   .admin-sidebar {
-    width: 280px;
-    transform: translateX(-100%);
+    width: 100%;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    transform: translateY(100%);
+    border-right: none;
+    border-top: 1px solid #e5e7eb;
+    border-radius: 16px 16px 0 0;
+    max-height: 80vh;
+    height: auto;
+    overflow-y: auto;
+    box-shadow: 0 -5px 20px rgba(0, 0, 0, 0.12);
   }
 
   .admin-sidebar.open {
-    transform: translateX(0);
+    transform: translateY(0);
   }
 
   .admin-sidebar.collapsed {
-    width: 280px;
+    width: 100%;
   }
 
   .admin-sidebar.collapsed .sidebar-logo-text,
@@ -787,6 +798,18 @@ input {
 
   .admin-main-content.expanded {
     margin-left: 0;
+  }
+
+  .admin-overlay.active {
+    position: fixed;
+    inset: 0;
+    z-index: 45;
+    display: block;
+    background: rgba(0, 0, 0, 0.35);
+  }
+
+  .admin-sidebar {
+    max-height: calc(100vh - 96px);
   }
 
   .admin-top-header > div {

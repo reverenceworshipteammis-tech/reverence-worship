@@ -151,6 +151,49 @@ export async function removeUserFromSocialFamily(userId: number, familyId: numbe
   return { ok: true, message: "User removed from family." };
 }
 
+export async function updateSocialFamilyParent(formData: FormData) {
+  await requireUser();
+  const familyId = readNumber(formData, "familyId");
+  const parentId = readNumber(formData, "parentId");
+
+  if (!familyId) return { ok: false, message: "Family is required." };
+
+  const family = await prisma.family.findUnique({ where: { id: familyId }, select: { parentId: true } });
+
+  if (parentId) {
+    const existingMember = await prisma.familyMember.findUnique({ where: { userId: parentId } });
+    if (existingMember && existingMember.familyId !== familyId) {
+      return { ok: false, message: "Selected parent is already assigned to another family." };
+    }
+
+    // create member if not exists
+    if (!existingMember) {
+      await prisma.familyMember.create({ data: { familyId, userId: parentId, role: "parent", status: "active" } });
+    } else if (existingMember.familyId === familyId) {
+      // update role to parent if already in same family
+      await prisma.familyMember.update({ where: { userId: parentId }, data: { role: "parent" } });
+    }
+
+    // demote old parent if different
+    if (family?.parentId && family.parentId !== parentId) {
+      await prisma.familyMember.updateMany({ where: { userId: family.parentId }, data: { role: "member" } });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: parentId }, select: { name: true } });
+    await prisma.family.update({ where: { id: familyId }, data: { parentId, parentName: user?.name ?? null } });
+  } else {
+    // remove parent
+    await prisma.family.update({ where: { id: familyId }, data: { parentId: null, parentName: null } });
+    if (family?.parentId) {
+      await prisma.familyMember.updateMany({ where: { userId: family.parentId }, data: { role: "member" } });
+    }
+  }
+
+  revalidatePath("/admin/social-fellowship");
+
+  return { ok: true, message: "Family parent updated." };
+}
+
 function readStringList(formData: FormData, key: string) {
   return formData.getAll(key).filter((value): value is string => typeof value === "string" && value.trim().length > 0);
 }

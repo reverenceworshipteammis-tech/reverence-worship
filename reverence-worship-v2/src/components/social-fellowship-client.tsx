@@ -32,6 +32,7 @@ import {
   toggleSocialActionPlanTask,
   toggleSocialSubtask,
   updateSocialActionPlan,
+  updateSocialFamilyParent,
   updateSocialTask,
 } from "@/app/admin/social-fellowship/actions";
 import { MobileTabDropdown } from "@/components/mobile-tab-dropdown";
@@ -201,7 +202,7 @@ export function SocialFellowshipClient({
   const [actionPlanPriorityFilter, setActionPlanPriorityFilter] = useState("all");
   const [notice, setNotice] = useState<SocialNotice | null>(null);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
-  const [modal, setModal] = useState<null | "family" | "members" | "assign" | "task" | "viewTask" | "actionPlan" | "viewActionPlan">(null);
+  const [modal, setModal] = useState<null | "family" | "members" | "assign" | "task" | "viewTask" | "actionPlan" | "viewActionPlan" | "editParent">(null);
   const [viewingFamily, setViewingFamily] = useState<SocialFamily | null>(null);
   const [viewingTask, setViewingTask] = useState<SocialTask | null>(null);
   const [editingTask, setEditingTask] = useState<SocialTask | null>(null);
@@ -319,6 +320,33 @@ export function SocialFellowshipClient({
       message: `Delete "${family.name}" from Social Fellowship? This will remove the family record for this year.`,
       confirmLabel: "Delete Family",
       action: () => deleteSocialFamily(family.id),
+    });
+  }
+
+  function openEditParentModal(family: SocialFamily) {
+    setViewingFamily(family);
+    setParentSearch("");
+    setSelectedParent(null);
+    setModal("editParent");
+  }
+
+  function submitEditParent(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!viewingFamily) return;
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    formData.set("familyId", String(viewingFamily.id));
+    if (selectedParent) {
+      formData.set("parentId", String(selectedParent.id));
+      formData.set("parentName", selectedParent.name);
+    } else {
+      formData.delete("parentId");
+      formData.delete("parentName");
+    }
+    runAction(() => updateSocialFamilyParent(formData), () => {
+      setModal(null);
+      setSelectedParent(null);
+      setParentSearch("");
     });
   }
 
@@ -971,6 +999,15 @@ export function SocialFellowshipClient({
                       >
                         <Trash2 className="size-4" aria-hidden="true" />
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => openEditParentModal(family)}
+                        className="inline-flex items-center gap-1 rounded-lg bg-yellow-50 px-3 py-2 text-sm font-medium text-yellow-700 hover:bg-yellow-100"
+                        title="Edit Parent"
+                      >
+                        <UserPlus className="size-4" aria-hidden="true" />
+                        Edit Parent
+                      </button>
                     </div>
                   </div>
                 </article>
@@ -1070,6 +1107,68 @@ export function SocialFellowshipClient({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {modal === "editParent" && viewingFamily && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-3 sm:p-6">
+          <div className="w-full max-w-lg rounded-2xl border bg-white p-4 shadow-2xl sm:p-6">
+            <div className="flex items-center justify-between border-b pb-4">
+              <h2 className="text-xl font-bold text-gray-800">Edit Family Parent</h2>
+              <button type="button" onClick={() => setModal(null)} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700" aria-label="Close">
+                <X className="size-5" />
+              </button>
+            </div>
+            <div className="mt-4">
+              <div className="rounded-xl bg-blue-50 p-4">
+                <h3 className="text-sm font-semibold text-gray-800">{viewingFamily.name}</h3>
+                <p className="text-xs text-gray-500">Current parent: {viewingFamily.parentName ?? "(none)"}</p>
+              </div>
+              <form onSubmit={submitEditParent} className="mt-4 space-y-4">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Search Parent</label>
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+                    <input value={parentSearch} onChange={(e) => setParentSearch(e.target.value)} placeholder="Search by name or email" className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-4 text-sm outline-none focus:border-gray-500 focus:ring-4 focus:ring-gray-100" />
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Select Parent</label>
+                  <div className="max-h-52 overflow-y-auto rounded-lg border border-gray-300 bg-white">
+                    {filteredParents.length ? (
+                      filteredParents.map((user) => (
+                        <button key={user.id} type="button" onClick={() => setSelectedParent(user)} className={`flex w-full items-center gap-3 border-b px-4 py-2 text-left transition hover:bg-gray-100 ${selectedParent?.id === user.id ? "bg-blue-50" : ""}`}>
+                          <span className="flex size-8 items-center justify-center rounded-full bg-gray-200">
+                            <UserRound className="size-4 text-gray-500" aria-hidden="true" />
+                          </span>
+                          <span>
+                            <span className="block text-sm font-medium text-gray-800">{user.name}</span>
+                            <span className="text-xs text-gray-500">{user.email}</span>
+                          </span>
+                        </button>
+                      ))
+                    ) : (
+                      <p className="px-4 py-6 text-center text-sm text-gray-500">No available users found</p>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Or remove parent</label>
+                  <div className="text-sm text-gray-600">Leave selection empty and submit to remove current parent.</div>
+                </div>
+                {selectedParent && (
+                  <div className="rounded-lg bg-gray-100 p-3 text-sm text-gray-700">
+                    Selected parent: <strong>{selectedParent.name}</strong>
+                    <button type="button" onClick={() => setSelectedParent(null)} className="float-right text-red-500 hover:text-red-700">Clear</button>
+                  </div>
+                )}
+                <div className="flex justify-end gap-3 border-t pt-4">
+                  <button type="button" onClick={() => setModal(null)} className="rounded-lg bg-gray-100 px-5 py-2 text-sm text-gray-700 hover:bg-gray-200">Cancel</button>
+                  <button disabled={isPending} className="rounded-lg bg-blue-800 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-900 disabled:opacity-60">{isPending ? "Saving..." : "Save Parent"}</button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}

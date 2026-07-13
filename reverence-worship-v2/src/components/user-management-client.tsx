@@ -8,7 +8,6 @@ import {
   Clock3,
   Download,
   FileText,
-  Filter,
   Mars,
   RotateCcw,
   Search,
@@ -347,13 +346,6 @@ export function UserManagementClient({
           </div>
 
           <div className="flex flex-wrap gap-2 sm:ml-auto">
-            <button
-              type="submit"
-              className="flex items-center gap-1 rounded-lg bg-blue-600 px-2 py-2 text-sm text-white transition hover:bg-blue-700 sm:px-3"
-            >
-              <Filter className="size-4" aria-hidden="true" />
-              <span className="hidden sm:inline">Filter</span>
-            </button>
             <button
               type="button"
               onClick={() => setCreateOpen(true)}

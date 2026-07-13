@@ -38,6 +38,7 @@ type AdminUser = {
   email: string;
   roles: string[];
   permissions: string[];
+  isParent?: boolean;
 };
 
 type NavItem = {
@@ -55,13 +56,13 @@ const navGroups: Array<{ label: string; items: NavItem[] }> = [
       { label: "Dashboard", href: "/admin/dashboard", page: "dashboard", icon: Gauge },
       { label: "User Management", href: "/admin/users", page: "users", icon: Users },
       { label: "My Family", href: "/admin/family", page: "family", icon: Home },
-      { label: "Parent Dashboard", href: "/admin/parent", page: "parent", icon: Home },
+      { label: "Parent Dashboard", href: "/admin/parent", page: "parent", icon: UserCheck },
       { label: "My Contributions", href: "/admin/contributions", page: "contributions", icon: HandCoins },
       { label: "My Profile", href: "/admin/profile", page: "profile", icon: User },
       { label: "My Performance", href: "/admin/performance", page: "performance", icon: BarChart3 },
       { label: "Music and Evangelism DPT", href: "/admin/music", page: "music-ministry", icon: Music },
       { label: "Intercession & spiritual DPT", href: "/admin/intercession", page: "intercession", icon: HandHeart },
-      { label: "Social Fellowship DPT", href: "/admin/social-fellowship", page: "social-fellowship", icon: HandHeart },
+      { label: "Social Fellowship DPT", href: "/admin/social-fellowship", page: "social-fellowship", icon: ClipboardList },
       { label: "Discipline  DPT", href: "/admin/discipline", page: "discipline", icon: Gavel },
       { label: "Financial  DPT", href: "/admin/finance", page: "finance", icon: ChartLine },
       { label: "Announcements", href: "/admin/announcements", page: "announcements", icon: Megaphone },
@@ -86,11 +87,13 @@ function hasPagePermission(permissions: string[], page: string) {
   return permissions.includes("*") || permissions.some((permission) => permission.startsWith(`${page}.`));
 }
 
-function navGroupsForPermissions(permissions: string[]) {
+function navGroupsForPermissions(permissions: string[], roles: string[], isParent: boolean) {
   return navGroups
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) => hasPagePermission(permissions, item.page)),
+      items: group.items.filter((item) =>
+        hasPagePermission(permissions, item.page) || (item.page === "parent" && roles.some((r) => r.toLowerCase() === "parent") && isParent),
+      ),
     }))
     .filter((group) => group.items.length > 0);
 }
@@ -113,9 +116,9 @@ export function AdminShell({
   const [pending, startTransition] = useTransition();
   const pathname = usePathname();
   const router = useRouter();
-  const visibleNavGroups = navGroupsForPermissions(user.permissions);
+  const visibleNavGroups = navGroupsForPermissions(user.permissions, user.roles, !!user.isParent);
   const visibleMobileNavItems = mobileNavItems.filter((item) =>
-    hasPagePermission(user.permissions, item.page) && visibleNavGroups.some((group) => group.items.some((navItem) => navItem.href === item.href)),
+    visibleNavGroups.some((group) => group.items.some((navItem) => navItem.href === item.href)),
   ).slice(0, 4);
   const canViewAnnouncementsPage = hasPagePermission(user.permissions, "announcements");
   const currentPageTitle =
@@ -171,7 +174,7 @@ export function AdminShell({
 
   return (
     <main className="admin-app min-h-screen bg-[#f3f4f6] text-gray-900">
-      {(userMenuOpen || notificationOpen) && (
+      {(userMenuOpen || notificationOpen || mobileOpen) && (
         <button
           className="fixed inset-0 z-30 cursor-default"
           type="button"
@@ -179,6 +182,7 @@ export function AdminShell({
           onClick={() => {
             setUserMenuOpen(false);
             setNotificationOpen(false);
+            setMobileOpen(false);
           }}
         />
       )}
@@ -401,16 +405,22 @@ export function AdminShell({
       </div>
 
       <nav className="admin-mobile-footer">
-        <button type="button" className="admin-mobile-footer-item admin-mobile-footer-menu" onClick={() => setMobileOpen(true)} aria-label="Open menu">
-          <Menu className="size-5" aria-hidden="true" />
-          <span>Menu</span>
-        </button>
         {visibleMobileNavItems.map((item) => (
-          <Link key={item.href} href={item.href} className="admin-mobile-footer-item">
+          <Link key={item.href} href={item.href} className="admin-mobile-footer-item" onClick={() => setMobileOpen(false)}>
             <item.icon className="size-5" aria-hidden="true" />
             <span>{item.label}</span>
           </Link>
         ))}
+        <button
+          type="button"
+          className="admin-mobile-footer-item admin-mobile-footer-menu"
+          onClick={() => setMobileOpen((current) => !current)}
+          aria-label={mobileOpen ? "Close menu" : "Open menu"}
+          aria-expanded={mobileOpen}
+        >
+          <Menu className="size-5" aria-hidden="true" />
+          <span>Menu</span>
+        </button>
       </nav>
     </main>
   );

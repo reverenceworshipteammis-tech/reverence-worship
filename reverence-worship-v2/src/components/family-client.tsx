@@ -239,7 +239,6 @@ export function FamilyClient({ family, members, tasks, taskStats }: FamilyClient
                   <th className="px-3 py-2 font-semibold">Subtasks</th>
                   <th className="px-3 py-2 font-semibold">Status</th>
                   <th className="px-3 py-2 font-semibold">Due date</th>
-                  <th className="px-3 py-2 font-semibold">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -274,24 +273,12 @@ export function FamilyClient({ family, members, tasks, taskStats }: FamilyClient
                         {task.dueDate}
                         {task.isOverdue ? <span className="ml-1">(Overdue)</span> : null}
                       </td>
-                      <td className="px-3 py-3">
-                        <select
-                          disabled={isPending}
-                          value=""
-                          onChange={(event) => updateStatus(task.id, event.target.value)}
-                          className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          <option value="">Update</option>
-                          <option value="pending">Pending</option>
-                          <option value="in-progress">In Progress</option>
-                          <option value="completed">Completed</option>
-                        </select>
-                      </td>
+                      
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={5} className="p-8 text-center text-sm text-gray-400">No tasks assigned</td>
+                    <td colSpan={4} className="p-8 text-center text-sm text-gray-400">No tasks assigned</td>
                   </tr>
                 )}
               </tbody>

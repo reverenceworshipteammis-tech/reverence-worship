@@ -1,0 +1,1 @@
+Applying patches: update AdminLayout to compute isParent, and update AdminShell to accept isParent and hide parent page unless isParent true.

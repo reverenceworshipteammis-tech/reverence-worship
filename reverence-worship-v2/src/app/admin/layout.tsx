@@ -1,5 +1,6 @@
 import { AdminShell } from "@/components/admin-shell";
 import { getUserPermissionSet, requireUser } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 
 export default async function AdminLayout({
   children,
@@ -10,8 +11,13 @@ export default async function AdminLayout({
   const roles = user.roles.map((userRole) => userRole.role.name);
   const permissions = Array.from(await getUserPermissionSet(user));
 
+  // determine whether the current user is associated as a parent
+  const parentMember = await prisma.familyMember.findFirst({ where: { userId: user.id, role: { equals: "parent", mode: "insensitive" } }, select: { id: true } });
+  const parentByFamily = await prisma.family.findFirst({ where: { parentId: user.id }, select: { id: true } });
+  const isParent = Boolean(parentMember || parentByFamily);
+
   return (
-    <AdminShell user={{ name: user.name, email: user.email, roles, permissions }}>
+    <AdminShell user={{ name: user.name, email: user.email, roles, permissions, isParent }}>
       {children}
     </AdminShell>
   );
