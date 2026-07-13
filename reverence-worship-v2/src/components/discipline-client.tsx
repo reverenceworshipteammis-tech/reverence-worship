@@ -19,7 +19,6 @@ import {
   saveDisciplineSession,
   savePermissionRequest,
 } from "@/app/admin/discipline/actions";
-import { MobileTabDropdown } from "@/components/mobile-tab-dropdown";
 import { MobileTabScroller } from "@/components/mobile-tab-scroller";
 
 type DisciplineStats = {

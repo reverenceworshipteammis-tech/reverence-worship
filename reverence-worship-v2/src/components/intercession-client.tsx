@@ -36,7 +36,6 @@ import {
   saveIntercessionActionPlanTask,
   toggleSpiritualFormPublish,
 } from "@/app/admin/intercession/actions";
-import { MobileTabDropdown } from "@/components/mobile-tab-dropdown";
 import { MobileTabScroller } from "@/components/mobile-tab-scroller";
 import { bibleBooks, bibleVersions } from "@/lib/bible-data";
 

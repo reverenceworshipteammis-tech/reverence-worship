@@ -9,7 +9,7 @@ import {
   toggleParentSubtask,
   updateParentTask,
 } from "@/app/admin/parent/actions";
-import { MobileTabDropdown } from "@/components/mobile-tab-dropdown";
+import { MobileTabScroller } from "@/components/mobile-tab-scroller";
 
 type ChildRow = {
   id: number;
@@ -160,7 +160,7 @@ export function ParentDashboardClient({ accessDenied, parentName, familyName, ch
 
       <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
         <div className="border-b border-gray-200 p-3 md:hidden">
-          <MobileTabDropdown tabs={parentTabs} value={activeTab} onChange={(tab) => setActiveTab(tab as ParentTab)} />
+          <MobileTabScroller tabs={parentTabs} value={activeTab} onChange={(tab) => setActiveTab(tab as ParentTab)} />
         </div>
         <nav className="-mb-px hidden gap-1 overflow-x-auto border-b border-gray-200 px-2 sm:px-0 md:flex">
           {parentTabs.map(({ id, label, icon: Icon }) => (

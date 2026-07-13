@@ -35,7 +35,6 @@ import {
   updateSocialFamilyParent,
   updateSocialTask,
 } from "@/app/admin/social-fellowship/actions";
-import { MobileTabDropdown } from "@/components/mobile-tab-dropdown";
 import { MobileTabScroller } from "@/components/mobile-tab-scroller";
 
 type FamilyMember = {
