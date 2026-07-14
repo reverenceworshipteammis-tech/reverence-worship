@@ -20,6 +20,7 @@ import {
   Users,
   X,
 } from "lucide-react";
+import { MobileTabScroller } from "@/components/mobile-tab-scroller";
 import {
   assignUserToSocialFamily,
   createSocialActionPlan,
@@ -35,7 +36,6 @@ import {
   updateSocialFamilyParent,
   updateSocialTask,
 } from "@/app/admin/social-fellowship/actions";
-import { MobileTabScroller } from "@/components/mobile-tab-scroller";
 
 type FamilyMember = {
   id: number;
@@ -202,8 +202,9 @@ export function SocialFellowshipClient({
   const [actionPlanPriorityFilter, setActionPlanPriorityFilter] = useState("all");
   const [notice, setNotice] = useState<SocialNotice | null>(null);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
-  const [modal, setModal] = useState<null | "family" | "members" | "assign" | "task" | "viewTask" | "actionPlan" | "viewActionPlan" | "editParent">(null);
+  const [modal, setModal] = useState<null | "family" | "members" | "assign" | "addUser" | "userDetails" | "task" | "viewTask" | "actionPlan" | "viewActionPlan" | "editParent">(null);
   const [viewingFamily, setViewingFamily] = useState<SocialFamily | null>(null);
+  const [viewingUser, setViewingUser] = useState<SocialUser | null>(null);
   const [viewingTask, setViewingTask] = useState<SocialTask | null>(null);
   const [editingTask, setEditingTask] = useState<SocialTask | null>(null);
   const [taskSubtasks, setTaskSubtasks] = useState<string[]>([""]);
@@ -211,6 +212,8 @@ export function SocialFellowshipClient({
   const [editingActionPlan, setEditingActionPlan] = useState<SocialActionPlan | null>(null);
   const [actionPlanTasks, setActionPlanTasks] = useState<ActionPlanTaskDraft[]>([emptyActionPlanTask()]);
   const [assigningUser, setAssigningUser] = useState<SocialUser | null>(null);
+  const [addUserSearch, setAddUserSearch] = useState("");
+  const [selectedAddUser, setSelectedAddUser] = useState<AvailableUser | null>(null);
   const [parentSearch, setParentSearch] = useState("");
   const [selectedParent, setSelectedParent] = useState<AvailableUser | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -230,6 +233,26 @@ export function SocialFellowshipClient({
     if (!normalized) return availableUsers;
     return availableUsers.filter((user) => [user.name, user.email].some((value) => value.toLowerCase().includes(normalized)));
   }, [availableUsers, parentSearch]);
+
+  const filteredFamilyParentCandidates = useMemo(() => {
+    if (!viewingFamily) return [];
+    const normalized = parentSearch.trim().toLowerCase();
+    const members = viewingFamily.members.map((member) => ({
+      id: member.user.id,
+      name: member.user.name,
+      email: member.user.email,
+      role: member.role,
+    }));
+
+    if (!normalized) return members;
+    return members.filter((member) => [member.name, member.email].some((value) => value.toLowerCase().includes(normalized)));
+  }, [parentSearch, viewingFamily]);
+
+  const filteredAvailableUsers = useMemo(() => {
+    const normalized = addUserSearch.trim().toLowerCase();
+    if (!normalized) return availableUsers;
+    return availableUsers.filter((user) => [user.name, user.email].some((value) => value.toLowerCase().includes(normalized)));
+  }, [availableUsers, addUserSearch]);
 
   const filteredUsers = useMemo(() => {
     const normalized = userSearch.trim().toLowerCase();
@@ -389,6 +412,21 @@ export function SocialFellowshipClient({
     });
   }
 
+  function submitAddUser(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    if (selectedAddUser) {
+      formData.set("userId", String(selectedAddUser.id));
+    }
+    runAction(() => assignUserToSocialFamily(formData), () => {
+      setModal(null);
+      setSelectedAddUser(null);
+      setAddUserSearch("");
+      form.reset();
+    });
+  }
+
   function openTaskModal(task?: SocialTask) {
     setEditingTask(task ?? null);
     setTaskSubtasks(task?.subtasks.map((subtask) => subtask.title) ?? [""]);
@@ -455,7 +493,7 @@ export function SocialFellowshipClient({
   return (
     <div className="mx-auto max-w-7xl space-y-4 px-2 py-4 sm:px-4 sm:py-6">
       <div className="relative z-10 overflow-visible rounded-lg border border-gray-200 bg-white shadow-sm">
-        <div className="px-3 py-3 md:hidden">
+        <div className="p-2 md:hidden">
           <MobileTabScroller tabs={tabs} value={activeTab} onChange={setActiveTab} />
         </div>
         <nav className="hidden flex-wrap border-b border-gray-200 md:flex">
@@ -793,6 +831,18 @@ export function SocialFellowshipClient({
                   ))}
                 </select>
               </label>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedAddUser(null);
+                  setAddUserSearch("");
+                  setModal("addUser");
+                }}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-800 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-900"
+              >
+                <UserPlus className="size-4" aria-hidden="true" />
+                Add User to Family
+              </button>
             </div>
           </div>
 
@@ -839,30 +889,44 @@ export function SocialFellowshipClient({
                       <span className="rounded-full bg-green-100 px-2 py-1 text-xs text-green-700">Active</span>
                     </td>
                     <td className="px-4 py-3">
-                      {user.isAssignedInYear && user.familyId ? (
-                        <button
-                          type="button"
-                          onClick={() => confirmRemoveUser(user)}
-                          className="inline-flex items-center gap-1 text-red-600 hover:text-red-800"
-                          title={`Remove from family in ${selectedYear}`}
-                        >
-                          <UserMinus className="size-4" />
-                          Remove
-                        </button>
-                      ) : (
+                      <div className="flex items-center gap-3">
                         <button
                           type="button"
                           onClick={() => {
-                            setAssigningUser(user);
-                            setModal("assign");
+                            setViewingUser(user);
+                            setModal("userDetails");
                           }}
-                          className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800"
-                          title={`Assign to family in ${selectedYear}`}
+                          className="inline-flex items-center gap-1 text-gray-600 hover:text-gray-900"
+                          title="View details"
                         >
-                          <UserPlus className="size-4" />
-                          Assign
+                          <FileText className="size-4" />
+                          Details
                         </button>
-                      )}
+                        {user.isAssignedInYear && user.familyId ? (
+                          <button
+                            type="button"
+                            onClick={() => confirmRemoveUser(user)}
+                            className="inline-flex items-center gap-1 text-red-600 hover:text-red-800"
+                            title={`Remove from family in ${selectedYear}`}
+                          >
+                            <UserMinus className="size-4" />
+                            Remove
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAssigningUser(user);
+                              setModal("assign");
+                            }}
+                            className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800"
+                            title={`Assign to family in ${selectedYear}`}
+                          >
+                            <UserPlus className="size-4" />
+                            Assign
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -886,9 +950,19 @@ export function SocialFellowshipClient({
                   )}
                 </div>
                 <p className="mt-2 text-sm text-gray-500">{[user.province, user.district, user.sector].filter(Boolean).join(", ") || "Not specified"}</p>
-                <div className="mt-4">
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setViewingUser(user);
+                      setModal("userDetails");
+                    }}
+                    className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700"
+                  >
+                    Details
+                  </button>
                   {user.isAssignedInYear && user.familyId ? (
-                    <button type="button" onClick={() => confirmRemoveUser(user)} className="w-full rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+                    <button type="button" onClick={() => confirmRemoveUser(user)} className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
                       Remove
                     </button>
                   ) : (
@@ -898,7 +972,7 @@ export function SocialFellowshipClient({
                         setAssigningUser(user);
                         setModal("assign");
                       }}
-                      className="w-full rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white"
+                      className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white"
                     >
                       Assign
                     </button>
@@ -915,19 +989,19 @@ export function SocialFellowshipClient({
           <p className="mt-1 text-sm text-gray-500">We will build this tab next.</p>
         </div>
       ) : (
-        <section className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm sm:p-6">
-          <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h1 className="text-xl font-bold text-gray-800">Families</h1>
+        <section className="rounded-xl border border-gray-100 bg-white p-2.5 shadow-sm sm:p-6">
+          <div className="mb-3 flex flex-col gap-3 sm:mb-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center justify-between gap-3 sm:block">
+              <h1 className="text-lg font-bold text-gray-800 sm:text-xl">Families</h1>
               <p className="mt-0.5 text-xs text-gray-400">Showing families for year: {selectedYear}</p>
             </div>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <label className="flex items-center gap-2 text-sm text-gray-600">
+            <div className="grid grid-cols-[1fr_auto] gap-2 sm:flex sm:flex-row sm:items-center sm:gap-3">
+              <label className="flex min-w-0 items-center gap-2 text-xs text-gray-600 sm:text-sm">
                 Year:
                 <select
                   value={selectedYear}
                   onChange={(event) => changeYear(Number(event.target.value))}
-                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                  className="h-9 min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-2 text-xs font-semibold text-gray-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:h-auto sm:px-3 sm:py-2 sm:text-sm sm:focus:ring-4"
                 >
                   {Array.from({ length: 9 }, (_, index) => new Date().getFullYear() - 4 + index).map((year) => (
                     <option key={year} value={year}>
@@ -939,74 +1013,75 @@ export function SocialFellowshipClient({
               <button
                 type="button"
                 onClick={() => setModal("family")}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-800 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-900"
+                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-blue-800 px-3 text-xs font-semibold text-white transition hover:bg-blue-900 sm:h-auto sm:gap-2 sm:px-4 sm:py-2 sm:text-sm"
               >
-                <Plus className="size-4" aria-hidden="true" />
-                Add Family
+                <Plus className="size-3.5 sm:size-4" aria-hidden="true" />
+                <span className="hidden min-[360px]:inline">Add Family</span>
+                <span className="sm:hidden">Add</span>
               </button>
             </div>
           </div>
 
-          <label className="relative mb-6 block">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+          <label className="relative mb-3 block sm:mb-6">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-gray-400 sm:left-3 sm:size-4" aria-hidden="true" />
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search families..."
-              className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-4 text-sm outline-none focus:border-gray-500 focus:ring-4 focus:ring-gray-100"
+              className="h-9 w-full rounded-lg border border-gray-300 py-0 pl-8 pr-3 text-xs outline-none focus:border-gray-500 focus:ring-2 focus:ring-gray-100 sm:h-auto sm:py-2 sm:pl-10 sm:pr-4 sm:text-sm sm:focus:ring-4"
             />
           </label>
 
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-2.5 sm:gap-4 md:grid-cols-2 lg:grid-cols-3">
             {filteredFamilies.length ? (
               filteredFamilies.map((family) => (
-                <article key={family.id} className="rounded-xl border border-gray-200 p-4 transition hover:shadow-lg">
+                <article key={family.id} className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition hover:shadow-lg sm:p-4">
                   <div className="mb-2 flex items-start justify-between gap-3">
-                    <h2 className="text-lg font-bold text-gray-800">{family.name}</h2>
-                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{family.membersCount} members</span>
+                    <h2 className="min-w-0 flex-1 truncate text-base font-bold text-gray-800 sm:text-lg">{family.name}</h2>
+                    <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-600 sm:text-xs">{family.membersCount} members</span>
                   </div>
                   {family.parentName && (
-                    <p className="mb-1 flex items-center gap-1 text-sm text-gray-500">
-                      <UserCheck className="size-4" aria-hidden="true" />
+                    <p className="mb-1 flex min-w-0 items-center gap-1 text-xs text-gray-500 sm:text-sm">
+                      <UserCheck className="size-3.5 shrink-0 sm:size-4" aria-hidden="true" />
                       Parent: {family.parentName}
                     </p>
                   )}
-                  {family.description && <p className="mt-2 line-clamp-2 text-sm text-gray-600">{family.description}</p>}
+                  {family.description && <p className="mt-2 line-clamp-2 text-xs leading-5 text-gray-600 sm:text-sm">{family.description}</p>}
                   {family.motto && <p className="mt-2 text-xs font-medium italic text-gray-400">{family.motto}</p>}
-                  <div className="mt-3 flex flex-col gap-3 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="mt-3 flex flex-col gap-2 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
                     <span className="flex items-center gap-1 text-xs text-gray-400">
                       <Calendar className="size-3.5" aria-hidden="true" />
                       {family.createdAt}
                     </span>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="grid grid-cols-[1fr_auto_auto] gap-2 sm:flex sm:flex-wrap">
                       <button
                         type="button"
                         onClick={() => {
                           setViewingFamily(family);
                           setModal("members");
                         }}
-                        className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100"
+                        className="inline-flex h-8 items-center justify-center gap-1 rounded-lg bg-blue-50 px-2.5 text-xs font-medium text-blue-700 hover:bg-blue-100 sm:h-auto sm:px-3 sm:py-2 sm:text-sm"
                       >
-                        <Eye className="size-4" aria-hidden="true" />
-                        View Members
+                        <Eye className="size-3.5 sm:size-4" aria-hidden="true" />
+                        Members
                       </button>
                       <button
                         type="button"
                         onClick={() => confirmDeleteFamily(family)}
-                        className="inline-flex items-center rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600 hover:text-red-700"
+                        className="inline-flex size-8 items-center justify-center rounded-lg border border-red-100 bg-red-50 text-red-600 hover:text-red-700 sm:h-auto sm:w-auto sm:px-3 sm:py-2"
                         aria-label="Delete family"
                         title="Delete family"
                       >
-                        <Trash2 className="size-4" aria-hidden="true" />
+                        <Trash2 className="size-3.5 sm:size-4" aria-hidden="true" />
                       </button>
                       <button
                         type="button"
                         onClick={() => openEditParentModal(family)}
-                        className="inline-flex items-center gap-1 rounded-lg bg-yellow-50 px-3 py-2 text-sm font-medium text-yellow-700 hover:bg-yellow-100"
-                        title="Edit Parent"
+                        className="inline-flex h-8 items-center justify-center gap-1 rounded-lg bg-yellow-50 px-2.5 text-xs font-medium text-yellow-700 hover:bg-yellow-100 sm:h-auto sm:px-3 sm:py-2 sm:text-sm"
+                        title="Change Parent"
                       >
-                        <UserPlus className="size-4" aria-hidden="true" />
-                        Edit Parent
+                        <UserPlus className="size-3.5 sm:size-4" aria-hidden="true" />
+                        <span className="hidden min-[380px]:inline">Parent</span>
                       </button>
                     </div>
                   </div>
@@ -1113,59 +1188,78 @@ export function SocialFellowshipClient({
 
       {modal === "editParent" && viewingFamily && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-3 sm:p-6">
-          <div className="w-full max-w-lg rounded-2xl border bg-white p-4 shadow-2xl sm:p-6">
-            <div className="flex items-center justify-between border-b pb-4">
-              <h2 className="text-xl font-bold text-gray-800">Edit Family Parent</h2>
+          <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-lg border bg-white p-4 shadow-2xl sm:p-5">
+            <div className="flex items-center justify-between border-b pb-3">
+              <h2 className="text-lg font-bold text-gray-800">Change Family Parent</h2>
               <button type="button" onClick={() => setModal(null)} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700" aria-label="Close">
                 <X className="size-5" />
               </button>
             </div>
             <div className="mt-4">
-              <div className="rounded-xl bg-blue-50 p-4">
-                <h3 className="text-sm font-semibold text-gray-800">{viewingFamily.name}</h3>
-                <p className="text-xs text-gray-500">Current parent: {viewingFamily.parentName ?? "(none)"}</p>
-              </div>
-              <form onSubmit={submitEditParent} className="mt-4 space-y-4">
+              <form onSubmit={submitEditParent} className="space-y-3">
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Search Parent</label>
+                  <p className="text-sm text-gray-600">
+                    <strong>Family:</strong> {viewingFamily.name}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-gray-50 p-3 text-sm text-gray-600">
+                  <Calendar className="mr-2 inline size-4 text-gray-400" aria-hidden="true" />
+                  Year: <strong>{selectedYear}</strong>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Current Parent</label>
+                  <p className="rounded-lg bg-gray-100 p-2 text-sm text-gray-500">
+                    <UserRound className="mr-1 inline size-4" aria-hidden="true" />
+                    {viewingFamily.parentName ?? "None"}
+                  </p>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Search Family Members</label>
                   <div className="relative">
                     <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" aria-hidden="true" />
-                    <input value={parentSearch} onChange={(e) => setParentSearch(e.target.value)} placeholder="Search by name or email" className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-4 text-sm outline-none focus:border-gray-500 focus:ring-4 focus:ring-gray-100" />
+                    <input value={parentSearch} onChange={(e) => setParentSearch(e.target.value)} placeholder="Search members by name or email..." className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-4 text-sm outline-none focus:border-gray-500 focus:ring-4 focus:ring-gray-100" />
                   </div>
                 </div>
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Select Parent</label>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Select New Parent</label>
                   <div className="max-h-52 overflow-y-auto rounded-lg border border-gray-300 bg-white">
-                    {filteredParents.length ? (
-                      filteredParents.map((user) => (
-                        <button key={user.id} type="button" onClick={() => setSelectedParent(user)} className={`flex w-full items-center gap-3 border-b px-4 py-2 text-left transition hover:bg-gray-100 ${selectedParent?.id === user.id ? "bg-blue-50" : ""}`}>
+                    {filteredFamilyParentCandidates.length ? (
+                      filteredFamilyParentCandidates.map((user) => {
+                        const isCurrentParent = user.role === "parent" || user.name === viewingFamily.parentName;
+                        return (
+                        <button key={user.id} type="button" onClick={() => setSelectedParent(user)} className={`flex w-full items-center gap-3 border-b px-4 py-2 text-left transition hover:bg-gray-100 ${selectedParent?.id === user.id || isCurrentParent ? "bg-gray-100" : ""}`}>
                           <span className="flex size-8 items-center justify-center rounded-full bg-gray-200">
                             <UserRound className="size-4 text-gray-500" aria-hidden="true" />
                           </span>
-                          <span>
-                            <span className="block text-sm font-medium text-gray-800">{user.name}</span>
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-medium text-gray-800">
+                              {user.name}
+                              {isCurrentParent ? <span className="ml-2 text-xs text-blue-500">(Current Parent)</span> : null}
+                            </span>
                             <span className="text-xs text-gray-500">{user.email}</span>
                           </span>
                         </button>
-                      ))
+                      );
+                    })
                     ) : (
-                      <p className="px-4 py-6 text-center text-sm text-gray-500">No available users found</p>
+                      <div className="px-4 py-8 text-center text-gray-500">
+                        <Users className="mx-auto mb-2 size-8 text-gray-300" aria-hidden="true" />
+                        <p className="text-sm">No members found in this family</p>
+                        <p className="mt-1 text-xs">Add members to the family first before assigning a parent</p>
+                      </div>
                     )}
                   </div>
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Or remove parent</label>
-                  <div className="text-sm text-gray-600">Leave selection empty and submit to remove current parent.</div>
+                  <p className="mt-1 text-xs text-gray-400">Click on a family member to assign them as the new parent</p>
                 </div>
                 {selectedParent && (
                   <div className="rounded-lg bg-gray-100 p-3 text-sm text-gray-700">
-                    Selected parent: <strong>{selectedParent.name}</strong>
+                    New parent: <strong>{selectedParent.name}</strong> <span className="text-gray-500">({selectedParent.email})</span>
                     <button type="button" onClick={() => setSelectedParent(null)} className="float-right text-red-500 hover:text-red-700">Clear</button>
                   </div>
                 )}
-                <div className="flex justify-end gap-3 border-t pt-4">
-                  <button type="button" onClick={() => setModal(null)} className="rounded-lg bg-gray-100 px-5 py-2 text-sm text-gray-700 hover:bg-gray-200">Cancel</button>
-                  <button disabled={isPending} className="rounded-lg bg-blue-800 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-900 disabled:opacity-60">{isPending ? "Saving..." : "Save Parent"}</button>
+                <div className="flex flex-col-reverse gap-3 border-t pt-3 sm:flex-row sm:justify-end">
+                  <button type="button" onClick={() => setModal(null)} className="rounded-lg border px-4 py-2 text-sm">Cancel</button>
+                  <button disabled={isPending} className="rounded-lg bg-blue-800 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-900 disabled:opacity-60">{isPending ? "Saving..." : "Change Parent"}</button>
                 </div>
               </form>
             </div>
@@ -1261,6 +1355,123 @@ export function SocialFellowshipClient({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {modal === "addUser" && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-3 sm:p-6">
+          <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl border bg-white p-4 shadow-2xl sm:p-6">
+            <div className="flex items-center justify-between border-b pb-4">
+              <h2 className="text-xl font-bold text-gray-800">Add User to Family</h2>
+              <button type="button" onClick={() => setModal(null)} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700" aria-label="Close">
+                <X className="size-5" />
+              </button>
+            </div>
+            <form onSubmit={submitAddUser} className="mt-4 space-y-4">
+              <div className="rounded-lg bg-gray-50 p-3 text-sm text-gray-600">
+                <Calendar className="mr-2 inline size-4 text-gray-400" aria-hidden="true" />
+                Year: <strong>{selectedYear}</strong>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Search User</label>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+                  <input
+                    value={addUserSearch}
+                    onChange={(event) => setAddUserSearch(event.target.value)}
+                    placeholder="Search for a user by name or email..."
+                    className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-4 text-sm outline-none focus:border-gray-500 focus:ring-4 focus:ring-gray-100"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Select User *</label>
+                <div className="max-h-52 overflow-y-auto rounded-lg border border-gray-300 bg-white">
+                  {filteredAvailableUsers.length ? (
+                    filteredAvailableUsers.map((user) => (
+                      <button
+                        key={user.id}
+                        type="button"
+                        onClick={() => setSelectedAddUser(user)}
+                        className={`flex w-full items-center gap-3 border-b px-4 py-2 text-left transition hover:bg-gray-100 ${
+                          selectedAddUser?.id === user.id ? "bg-blue-50" : ""
+                        }`}
+                      >
+                        <span className="flex size-8 items-center justify-center rounded-full bg-gray-200">
+                          <UserRound className="size-4 text-gray-500" aria-hidden="true" />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium text-gray-800">{user.name}</span>
+                          <span className="block truncate text-xs text-gray-500">{user.email}</span>
+                        </span>
+                      </button>
+                    ))
+                  ) : (
+                    <p className="px-4 py-6 text-center text-sm text-gray-500">No available users found</p>
+                  )}
+                </div>
+                <input type="hidden" name="userId" value={selectedAddUser?.id ?? ""} />
+                <p className="mt-1 text-xs text-gray-400">Only users not already in a family are shown</p>
+              </div>
+              {selectedAddUser && (
+                <div className="rounded-lg bg-gray-100 p-3 text-sm text-gray-700">
+                  Selected user: <strong>{selectedAddUser.name}</strong>
+                  <button type="button" onClick={() => setSelectedAddUser(null)} className="float-right text-red-500 hover:text-red-700">Clear</button>
+                </div>
+              )}
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Select Family *</label>
+                <select name="familyId" required className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-500 focus:ring-4 focus:ring-gray-100">
+                  <option value="">Select a family</option>
+                  {families.map((family) => (
+                    <option key={family.id} value={family.id}>{family.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Role</label>
+                <select name="role" defaultValue="member" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-500 focus:ring-4 focus:ring-gray-100">
+                  <option value="member">Member</option>
+                  <option value="parent">Parent</option>
+                  <option value="secretary">Secretary</option>
+                  <option value="coordinator">Coordinator</option>
+                </select>
+              </div>
+              <div className="flex flex-col-reverse gap-3 border-t pt-4 sm:flex-row sm:justify-end">
+                <button type="button" onClick={() => setModal(null)} className="rounded-lg bg-gray-100 px-5 py-2 text-sm text-gray-700 hover:bg-gray-200">Cancel</button>
+                <button disabled={isPending || !selectedAddUser} className="rounded-lg bg-blue-800 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-900 disabled:opacity-60">
+                  {isPending ? "Assigning..." : "Add User"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {modal === "userDetails" && viewingUser && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-3 sm:p-6">
+          <div className="w-full max-w-lg overflow-hidden rounded-2xl border bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b px-5 py-4">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">{viewingUser.name}</h2>
+                <p className="text-sm text-gray-500">{viewingUser.email}</p>
+              </div>
+              <button type="button" onClick={() => setModal(null)} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700" aria-label="Close">
+                <X className="size-5" />
+              </button>
+            </div>
+            <div className="space-y-3 p-5">
+              <UserDetailRow label="Phone" value={viewingUser.phone ?? "Not specified"} />
+              <UserDetailRow label="Family" value={viewingUser.familyName ?? `Unassigned in ${selectedYear}`} />
+              <UserDetailRow label="Role" value={viewingUser.role ?? "member"} />
+              <UserDetailRow label="Year" value={viewingUser.familyYear ? String(viewingUser.familyYear) : String(selectedYear)} />
+              <UserDetailRow label="Residence" value={[viewingUser.province, viewingUser.district, viewingUser.sector, viewingUser.village].filter(Boolean).join(", ") || "Not specified"} />
+              <UserDetailRow label="Status" value="Active" />
+            </div>
+            <div className="flex justify-end border-t px-5 py-4">
+              <button type="button" onClick={() => setModal(null)} className="rounded-lg bg-blue-800 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-900">Close</button>
+            </div>
           </div>
         </div>
       )}
@@ -1875,6 +2086,15 @@ function UserIdentity({ user }: { user: SocialUser }) {
         <p className="truncate text-sm font-semibold text-gray-900">{user.name}</p>
         <p className="truncate text-xs text-gray-500">{user.email}</p>
       </div>
+    </div>
+  );
+}
+
+function UserDetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+      <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">{label}</p>
+      <p className="mt-0.5 text-sm font-medium capitalize text-gray-800">{value}</p>
     </div>
   );
 }

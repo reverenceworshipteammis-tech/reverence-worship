@@ -675,6 +675,8 @@ model FormSubmission {
   answers     Json     @default("{}")
   manualGrades Json?   @map("manual_grades")
   score       Float?
+  isReleased  Boolean  @default(false) @map("is_released")
+  releasedAt  DateTime? @map("released_at")
   submittedAt DateTime @default(now()) @map("submitted_at")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")

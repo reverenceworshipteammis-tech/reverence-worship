@@ -161,3 +161,14 @@ export async function requirePermission(page: string, feature: string, redirectT
 
   return user;
 }
+
+export async function requireAnyPermission(page: string, features: string[], redirectTo = "/admin/dashboard") {
+  const user = await requireUser();
+  const permissions = await getUserPermissionSet(user);
+
+  if (!features.some((feature) => permissionSetHas(permissions, page, feature))) {
+    redirect(redirectTo);
+  }
+
+  return user;
+}

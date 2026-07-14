@@ -894,57 +894,57 @@ export function DisciplineClient({
               </div>
             </div>
           ) : activeTab === "attendance" ? (
-            <div className="space-y-6">
+            <div className="space-y-4 sm:space-y-6">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <h3 className="text-2xl font-bold text-gray-800">Attendance Management</h3>
+                <h3 className="text-xl font-bold text-gray-800 sm:text-2xl">Attendance Management</h3>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
+              <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-4">
                 <AttendanceStat label="Total Sessions" value={attendanceSessions.length} icon={CalendarCheck} tone="sky" />
                 <AttendanceStat label="Timeliness" value={`${presentAvg}%`} icon={CheckCircle2} tone="emerald" />
                 <AttendanceStat label="Late Avg" value={`${lateAvg}%`} icon={Clock} tone="amber" />
                 <AttendanceStat label="Absent Avg" value={`${absentAvg}%`} icon={XCircle} tone="rose" />
               </div>
 
-              <div className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm">
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-[180px_minmax(220px,1fr)_auto] md:items-end">
+              <div className="rounded-xl border border-blue-100 bg-white p-3 shadow-sm sm:rounded-2xl sm:p-4">
+                <div className="grid grid-cols-1 gap-2.5 md:grid-cols-[180px_minmax(220px,1fr)_auto] md:items-end">
                   <div>
                     <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Session Date</label>
-                    <input value={sessionDate} onChange={(event) => setSessionDate(event.target.value)} type="date" className="h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+                    <input value={sessionDate} onChange={(event) => setSessionDate(event.target.value)} type="date" className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 sm:h-11 sm:rounded-xl" />
                   </div>
                   <div>
                     <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Session Name</label>
-                    <input value={sessionType} onChange={(event) => setSessionType(event.target.value)} placeholder="Sunday Service" className="h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+                    <input value={sessionType} onChange={(event) => setSessionType(event.target.value)} placeholder="Sunday Service" className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 sm:h-11 sm:rounded-xl" />
                   </div>
-                  <button type="button" onClick={() => openAttendanceSession(sessionDate, sessionType)} className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white transition hover:bg-blue-700 md:w-auto">
+                  <button type="button" onClick={() => openAttendanceSession(sessionDate, sessionType)} className="inline-flex h-10 w-full items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700 sm:h-11 sm:rounded-xl md:w-auto">
                     <Play className="mr-2 size-4" />
                     Start Session
                   </button>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              <div className="grid grid-cols-2 items-end gap-2 sm:gap-3 lg:grid-cols-5">
                 <div>
                   <label className="mb-1 block text-xs text-gray-600">From</label>
-                  <input value={attendanceFrom} onChange={(event) => setAttendanceFrom(event.target.value)} type="date" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                  <input value={attendanceFrom} onChange={(event) => setAttendanceFrom(event.target.value)} type="date" className="h-9 w-full rounded-lg border border-gray-300 px-2 text-xs sm:h-auto sm:px-3 sm:py-2 sm:text-sm" />
                 </div>
                 <div>
                   <label className="mb-1 block text-xs text-gray-600">To</label>
-                  <input value={attendanceTo} onChange={(event) => setAttendanceTo(event.target.value)} type="date" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                  <input value={attendanceTo} onChange={(event) => setAttendanceTo(event.target.value)} type="date" className="h-9 w-full rounded-lg border border-gray-300 px-2 text-xs sm:h-auto sm:px-3 sm:py-2 sm:text-sm" />
                 </div>
-                <div>
+                <div className="col-span-2 lg:col-span-1">
                   <label className="mb-1 block text-xs text-gray-600">Session</label>
-                  <select value={attendanceSessionFilter} onChange={(event) => setAttendanceSessionFilter(event.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm">
+                  <select value={attendanceSessionFilter} onChange={(event) => setAttendanceSessionFilter(event.target.value)} className="h-9 w-full rounded-lg border border-gray-300 bg-white px-2 text-xs sm:h-auto sm:px-3 sm:py-2 sm:text-sm">
                     <option value="">All Sessions</option>
                     {sessionTypes.map((type) => (
                       <option key={type} value={type}>{type}</option>
                     ))}
                   </select>
                 </div>
-                <button type="button" onClick={() => setAttendanceSessionFilter("")} className="w-full rounded-lg bg-slate-100 px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-200">
+                <button type="button" onClick={() => setAttendanceSessionFilter("")} className="h-9 w-full rounded-lg bg-slate-100 px-3 text-xs text-slate-700 transition hover:bg-slate-200 sm:h-auto sm:px-4 sm:py-2 sm:text-sm">
                   Reset
                 </button>
-                <button type="button" className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-sky-100 px-4 py-2 text-sm text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-200">
+                <button type="button" className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-sky-100 px-3 text-xs text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-200 sm:h-auto sm:gap-2 sm:px-4 sm:py-2 sm:text-sm">
                   <FileText className="size-4" />
                   Export
                 </button>
@@ -998,30 +998,30 @@ export function DisciplineClient({
                 </table>
               </div>
 
-              <div className="space-y-2 md:hidden">
+              <div className="space-y-1.5 md:hidden">
                 {attendanceSessions.length ? attendanceSessions.map((session) => {
                   const present = session.present + session.late;
                   const absent = session.absent + session.excused;
                   const rate = session.total ? Math.round((present / session.total) * 100) : 0;
                   return (
-                    <div key={session.key} className="rounded-lg border border-gray-100 bg-white p-2.5 shadow-sm">
+                    <div key={session.key} className="rounded-lg border border-gray-100 bg-white p-2 shadow-sm">
                       <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900">{session.session}</p>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-slate-900">{session.session}</p>
                           <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
                             {session.isCompleted && <span className="inline-block rounded-full bg-green-100 px-1.5 py-0.5 text-[11px] text-green-700">Completed</span>}
                             <p className="text-xs text-slate-500">{session.dateLabel}</p>
                           </div>
                         </div>
-                        <span className="text-base font-bold text-emerald-600">{rate}%</span>
+                        <span className="shrink-0 rounded-md bg-emerald-50 px-2 py-1 text-sm font-bold text-emerald-600">{rate}%</span>
                       </div>
-                      <div className="mt-2 grid grid-cols-2 gap-1.5 text-xs">
+                      <div className="mt-1.5 grid grid-cols-2 gap-1.5 text-[11px]">
                         <div className="rounded-md bg-emerald-50 px-2 py-1 text-emerald-700"><span className="mr-1">Present</span><strong>{present}</strong></div>
                         <div className="rounded-md bg-rose-50 px-2 py-1 text-rose-700"><span className="mr-1">Absent</span><strong>{absent}</strong></div>
                       </div>
-                      <div className="mt-2 grid grid-cols-2 gap-1.5">
-                        <button type="button" onClick={() => openAttendanceSession(session.date, session.session)} className="rounded-md bg-blue-600 px-2 py-1.5 text-xs font-medium text-white">View</button>
-                        <button type="button" onClick={() => removeAttendanceSession(session.date, session.session)} className="rounded-md border border-red-100 bg-red-50 px-2 py-1.5 text-xs font-medium text-red-700">Delete</button>
+                      <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+                        <button type="button" onClick={() => openAttendanceSession(session.date, session.session)} className="rounded-md bg-blue-600 px-2 py-1 text-xs font-medium text-white">View</button>
+                        <button type="button" onClick={() => removeAttendanceSession(session.date, session.session)} className="rounded-md border border-red-100 bg-red-50 px-2 py-1 text-xs font-medium text-red-700">Delete</button>
                       </div>
                     </div>
                   );
@@ -1428,9 +1428,9 @@ export function DisciplineClient({
       {sessionModal && (
         <div className="fixed inset-0 z-50 grid place-items-stretch bg-black/40 p-0 sm:place-items-center sm:p-6">
           <div className="flex h-[100dvh] w-full max-w-5xl flex-col overflow-hidden bg-white shadow-xl sm:h-auto sm:max-h-[90vh] sm:rounded-xl sm:border">
-            <div className="flex items-center justify-between border-b px-4 py-3 sm:px-5">
-              <div>
-                <h2 className="flex items-center gap-2 text-lg font-bold text-gray-900">
+            <div className="flex items-center justify-between border-b px-3 py-2.5 sm:px-5 sm:py-3">
+              <div className="min-w-0">
+                <h2 className="flex items-center gap-2 text-base font-bold text-gray-900 sm:text-lg">
                   Mark Attendance
                   {sessionReadOnly && <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">Completed</span>}
                 </h2>
@@ -1441,29 +1441,29 @@ export function DisciplineClient({
               </button>
             </div>
 
-            <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-3 sm:bg-white sm:p-4">
+            <div className="flex-1 space-y-2 overflow-y-auto bg-slate-50 p-2.5 sm:space-y-3 sm:bg-white sm:p-4">
               {sessionReadOnly && (
-                <div className="rounded-lg bg-yellow-100 px-3 py-2 text-sm font-medium text-yellow-700">
+                <div className="rounded-lg bg-yellow-100 px-3 py-2 text-xs font-medium text-yellow-700 sm:text-sm">
                   This session is completed and cannot be edited.
                 </div>
               )}
 
-              <div className="grid grid-cols-4 gap-1.5 sm:hidden">
-                <div className="rounded-lg bg-blue-50 px-2 py-2 text-center">
-                  <p className="text-xs text-gray-600">Present</p>
-                  <p className="text-base font-bold text-blue-600">{sessionDraftSummary.present}</p>
+              <div className="grid grid-cols-4 gap-1 sm:hidden">
+                <div className="rounded-lg bg-blue-50 px-1 py-1.5 text-center">
+                  <p className="text-[10px] text-gray-600">Present</p>
+                  <p className="text-sm font-bold text-blue-600">{sessionDraftSummary.present}</p>
                 </div>
-                <div className="rounded-lg bg-amber-50 px-2 py-2 text-center">
-                  <p className="text-xs text-gray-600">Late</p>
-                  <p className="text-base font-bold text-amber-600">{sessionDraftSummary.late}</p>
+                <div className="rounded-lg bg-amber-50 px-1 py-1.5 text-center">
+                  <p className="text-[10px] text-gray-600">Late</p>
+                  <p className="text-sm font-bold text-amber-600">{sessionDraftSummary.late}</p>
                 </div>
-                <div className="rounded-lg bg-rose-50 px-2 py-2 text-center">
-                  <p className="text-xs text-gray-600">Absent</p>
-                  <p className="text-base font-bold text-rose-600">{sessionDraftSummary.absent}</p>
+                <div className="rounded-lg bg-rose-50 px-1 py-1.5 text-center">
+                  <p className="text-[10px] text-gray-600">Absent</p>
+                  <p className="text-sm font-bold text-rose-600">{sessionDraftSummary.absent}</p>
                 </div>
-                <div className="rounded-lg bg-green-50 px-2 py-2 text-center">
-                  <p className="text-xs text-gray-600">Permission</p>
-                  <p className="text-base font-bold text-green-600">{sessionDraftSummary.permission}</p>
+                <div className="rounded-lg bg-green-50 px-1 py-1.5 text-center">
+                  <p className="text-[10px] text-gray-600">Permit</p>
+                  <p className="text-sm font-bold text-green-600">{sessionDraftSummary.permission}</p>
                 </div>
               </div>
 
@@ -1478,54 +1478,54 @@ export function DisciplineClient({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-2 md:gap-3">
                 <div>
                   <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Session Date</label>
-                  <input value={sessionDate} disabled={sessionReadOnly} onChange={(event) => setSessionDate(event.target.value)} type="date" className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:bg-gray-50 disabled:text-gray-500" />
+                  <input value={sessionDate} disabled={sessionReadOnly} onChange={(event) => setSessionDate(event.target.value)} type="date" className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:bg-gray-50 disabled:text-gray-500 sm:h-10 sm:px-3 sm:text-sm" />
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Session Name</label>
-                  <input value={sessionType} disabled={sessionReadOnly} onChange={(event) => setSessionType(event.target.value)} className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:bg-gray-50 disabled:text-gray-500" />
+                  <input value={sessionType} disabled={sessionReadOnly} onChange={(event) => setSessionType(event.target.value)} className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:bg-gray-50 disabled:text-gray-500 sm:h-10 sm:px-3 sm:text-sm" />
                 </div>
               </div>
 
               {(sessionPermissionStats.pending > 0 || sessionPermissionStats.rejected > 0) && (
                 <div>
-                  <h4 className="mb-2 text-sm font-semibold text-gray-700">Permission Status for This Date</h4>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <h4 className="mb-1.5 text-xs font-semibold text-gray-700 sm:mb-2 sm:text-sm">Permission Status for This Date</h4>
+                  <div className="grid grid-cols-2 gap-2 sm:gap-3">
                     {sessionPermissionStats.pending > 0 && (
-                      <button type="button" onClick={() => setPermissionReviewModal("pending")} className="rounded-lg border border-yellow-200 bg-yellow-50 px-3 py-2 text-left transition hover:shadow-md">
+                      <button type="button" onClick={() => setPermissionReviewModal("pending")} className="rounded-lg border border-yellow-200 bg-yellow-50 px-2 py-2 text-left transition hover:shadow-md sm:px-3">
                         <div className="flex items-center justify-between">
                           <div>
-                            <p className="text-2xl font-bold text-yellow-700">{sessionPermissionStats.pending}</p>
+                            <p className="text-lg font-bold text-yellow-700 sm:text-2xl">{sessionPermissionStats.pending}</p>
                             <p className="text-xs text-yellow-600">Pending</p>
                           </div>
-                          <div className="flex size-8 items-center justify-center rounded-full bg-yellow-100">
+                          <div className="flex size-7 items-center justify-center rounded-full bg-yellow-100 sm:size-8">
                             <Clock className="size-4 text-yellow-600" />
                           </div>
                         </div>
-                        <p className="mt-1 text-xs text-yellow-600">Click to review</p>
+                        <p className="mt-1 text-[11px] text-yellow-600 sm:text-xs">Click to review</p>
                       </button>
                     )}
                     {sessionPermissionStats.rejected > 0 && (
-                      <button type="button" onClick={() => setPermissionReviewModal("rejected")} className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-left transition hover:shadow-md">
+                      <button type="button" onClick={() => setPermissionReviewModal("rejected")} className="rounded-lg border border-red-200 bg-red-50 px-2 py-2 text-left transition hover:shadow-md sm:px-3">
                         <div className="flex items-center justify-between">
                           <div>
-                            <p className="text-2xl font-bold text-red-700">{sessionPermissionStats.rejected}</p>
+                            <p className="text-lg font-bold text-red-700 sm:text-2xl">{sessionPermissionStats.rejected}</p>
                             <p className="text-xs text-red-600">Rejected</p>
                           </div>
-                          <div className="flex size-8 items-center justify-center rounded-full bg-red-100">
+                          <div className="flex size-7 items-center justify-center rounded-full bg-red-100 sm:size-8">
                             <XCircle className="size-4 text-red-600" />
                           </div>
                         </div>
-                        <p className="mt-1 text-xs text-red-600">Click to view</p>
+                        <p className="mt-1 text-[11px] text-red-600 sm:text-xs">Click to view</p>
                       </button>
                     )}
                   </div>
                 </div>
               )}
 
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <div className="flex gap-2 sm:gap-3 sm:flex-row sm:items-end">
                 <div className="relative w-full sm:max-w-sm">
                   <label htmlFor="session_user_search" className="sr-only">Search users</label>
                   <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
@@ -1535,19 +1535,19 @@ export function DisciplineClient({
                     value={sessionUserSearch}
                     onChange={(event) => setSessionUserSearch(event.target.value)}
                     placeholder="Search user..."
-                    className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    className="h-9 w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:h-auto"
                   />
                 </div>
-                <button type="button" onClick={exportSessionAttendance} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 sm:w-auto">
+                <button type="button" onClick={exportSessionAttendance} className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 sm:h-auto sm:w-auto sm:gap-2 sm:px-4 sm:py-2 sm:text-sm">
                   <FileText className="size-4" />
-                  Export
+                  <span className="hidden min-[380px]:inline">Export</span>
                 </button>
               </div>
 
               <div className="overflow-hidden rounded-xl border border-gray-100">
-                <div className="border-b bg-gray-50 px-4 py-2">
+                <div className="border-b bg-gray-50 px-3 py-2 sm:px-4">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-700">Members Attendance</span>
+                    <span className="text-xs font-medium text-gray-700 sm:text-sm">Members Attendance</span>
                   </div>
                 </div>
                 <div className="hidden max-h-[42vh] overflow-auto md:block">
@@ -1628,35 +1628,41 @@ export function DisciplineClient({
                   </table>
                 </div>
 
-                <div className="space-y-2 p-2 md:hidden">
+                <div className="space-y-1.5 p-1.5 md:hidden">
                   {filteredSessionUsers.map((user) => {
                     const draft = attendanceDrafts.find((item) => item.userId === user.id);
                     if (!draft) return null;
                     const permission = permissionForUser(user.id);
                     return (
-                      <div key={user.id} className="rounded-lg border border-gray-100 bg-white p-2.5 shadow-sm">
-                        <div className="mb-2">
-                          <p className="text-sm font-semibold text-gray-900">
-                            {user.name}
-                            {draft.hasOfficialPermission && <span className="ml-2 rounded-full bg-green-100 px-1.5 py-0.5 text-xs text-green-700">Permission</span>}
-                          </p>
-                          <p className="text-xs text-gray-500">{user.email}</p>
+                      <div key={user.id} className="rounded-lg border border-gray-100 bg-white p-2 shadow-sm">
+                        <div className="mb-1.5 flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-gray-900">{user.name}</p>
+                            <p className="truncate text-[11px] text-gray-500">{user.email}</p>
+                          </div>
+                          <div className="shrink-0 rounded-md bg-gray-50 px-2 py-1 text-center text-[11px] font-semibold text-gray-700">
+                            <span className="block leading-none text-gray-500">Pts</span>
+                            <span className="text-sm text-black">{totalAttendancePoints(draft)}</span>
+                          </div>
+                        </div>
+                        <div>
                           {permission && (
-                            <div className="mt-1.5 rounded-lg bg-gray-50 p-1.5 text-xs">
-                              <span className={`inline-flex rounded-full px-2 py-0.5 font-medium capitalize ${permissionStatusClass(permission.status)}`}>
-                                {permission.status} permission
-                              </span>
-                              <p className="mt-1 font-medium text-gray-700">{permission.startDate} - {permission.endDate}</p>
-                              <p className="text-gray-500">{permission.approvedByName ? `Approved by ${permission.approvedByName}` : "Not approved yet"}</p>
+                            <div className="mb-1.5 rounded-lg bg-gray-50 px-2 py-1 text-[11px]">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className={`inline-flex rounded-full px-1.5 py-0.5 font-medium capitalize ${permissionStatusClass(permission.status)}`}>
+                                  {permission.status}
+                                </span>
+                                <span className="font-medium text-gray-700">{permission.startDate} - {permission.endDate}</span>
+                              </div>
+                              <p className="mt-0.5 truncate text-gray-500">{permission.approvedByName ? `Approved by ${permission.approvedByName}` : "Not approved yet"}</p>
                             </div>
                           )}
                         </div>
-                        <div className="grid grid-cols-2 gap-1.5 text-sm">
-                          <ToggleField label="Present" value={draft.present} readOnly={sessionReadOnly} disabled={draft.disabled} onToggle={() => updateDraft(user.id, { present: !draft.present, status: !draft.present ? "present" : "absent" })} />
-                          <ToggleField label="On Time" value={draft.onTime} readOnly={sessionReadOnly} disabled={draft.disabled} onToggle={() => updateDraft(user.id, { onTime: !draft.onTime })} />
-                          <ToggleField label="Communicated" value={draft.communicated} readOnly={sessionReadOnly} onToggle={() => updateDraft(user.id, { communicated: !draft.communicated })} />
-                          <ToggleField label="Discipline" value={draft.discipline} readOnly={sessionReadOnly} disabled={draft.disabled} onToggle={() => updateDraft(user.id, { discipline: !draft.discipline, disciplinePoints: !draft.discipline ? 1 : 0 })} />
-                          <div className="col-span-2 rounded-lg bg-gray-50 px-2 py-1.5 text-center text-sm font-bold">Total Points: {totalAttendancePoints(draft)}</div>
+                        <div className="grid grid-cols-4 gap-1 text-sm">
+                          <MobileAttendanceToggle label="Present" value={draft.present} readOnly={sessionReadOnly} disabled={draft.disabled} onToggle={() => updateDraft(user.id, { present: !draft.present, status: !draft.present ? "present" : "absent" })} />
+                          <MobileAttendanceToggle label="Time" value={draft.onTime} readOnly={sessionReadOnly} disabled={draft.disabled} onToggle={() => updateDraft(user.id, { onTime: !draft.onTime })} />
+                          <MobileAttendanceToggle label="Comm." value={draft.communicated} readOnly={sessionReadOnly} onToggle={() => updateDraft(user.id, { communicated: !draft.communicated })} />
+                          <MobileAttendanceToggle label="Disc." value={draft.discipline} readOnly={sessionReadOnly} disabled={draft.disabled} onToggle={() => updateDraft(user.id, { discipline: !draft.discipline, disciplinePoints: !draft.discipline ? 1 : 0 })} />
                         </div>
                       </div>
                     );
@@ -1666,17 +1672,17 @@ export function DisciplineClient({
               </div>
             </div>
 
-            <div className="flex flex-col-reverse gap-2 border-t bg-white px-4 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] sm:flex-row sm:justify-end sm:gap-3 sm:px-5 sm:shadow-none">
-              <button type="button" onClick={() => setSessionModal(false)} className="rounded-lg border px-4 py-2 text-sm text-gray-700">
+            <div className={`${sessionReadOnly ? "grid-cols-1" : "grid-cols-3"} grid gap-1.5 border-t bg-white px-3 py-2 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] sm:flex sm:justify-end sm:gap-3 sm:px-5 sm:py-3 sm:shadow-none`}>
+              <button type="button" onClick={() => setSessionModal(false)} className="rounded-lg border px-2 py-2 text-xs text-gray-700 sm:px-4 sm:text-sm">
                 Close
               </button>
               {!sessionReadOnly && (
                 <>
-                  <button type="button" disabled={isSaving} onClick={completeSession} className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">
+                  <button type="button" disabled={isSaving} onClick={completeSession} className="inline-flex items-center justify-center gap-1 rounded-lg bg-emerald-600 px-2 py-2 text-[11px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-60 sm:gap-2 sm:px-4 sm:text-sm">
                     <CheckCircle2 className="size-4" />
                     {isSaving ? "Saving..." : "Complete Session"}
                   </button>
-                  <button type="button" disabled={isSaving} onClick={() => submitAttendanceSession(true)} className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-60">
+                  <button type="button" disabled={isSaving} onClick={() => submitAttendanceSession(true)} className="inline-flex items-center justify-center gap-1 rounded-lg bg-blue-700 px-2 py-2 text-[11px] font-semibold text-white hover:bg-blue-800 disabled:opacity-60 sm:gap-2 sm:px-4 sm:text-sm">
                     <Save className="size-4" />
                     {isSaving ? "Saving..." : "Save Changes"}
                   </button>
@@ -2138,6 +2144,30 @@ function YesNoButton({ value, disabled = false, onToggle }: { value: boolean; di
 
 function ReadonlyYesNo({ value }: { value: boolean }) {
   return <span className="text-sm font-medium text-gray-700">{value ? "Yes" : "No"}</span>;
+}
+
+function MobileAttendanceToggle({ label, value, disabled = false, readOnly = false, onToggle }: { label: string; value: boolean; disabled?: boolean; readOnly?: boolean; onToggle: () => void }) {
+  return (
+    <div className="rounded-md border border-gray-100 bg-gray-50 px-1 py-1 text-center">
+      <span className="block truncate text-[10px] font-medium text-gray-600">{label}</span>
+      {readOnly ? (
+        <span className={`mt-0.5 inline-flex min-w-10 justify-center rounded px-1.5 py-0.5 text-[11px] font-bold ${value ? "bg-blue-100 text-blue-700" : "bg-gray-200 text-gray-600"}`}>
+          {value ? "Yes" : "No"}
+        </span>
+      ) : (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onToggle}
+          className={`mt-0.5 min-h-7 min-w-10 rounded px-1.5 text-[11px] font-bold text-white transition ${
+            value ? "bg-blue-600 hover:bg-blue-700" : "bg-gray-300 hover:bg-gray-400"
+          } ${disabled ? "cursor-not-allowed opacity-80" : ""}`}
+        >
+          {value ? "Yes" : "No"}
+        </button>
+      )}
+    </div>
+  );
 }
 
 function ToggleField({ label, value, disabled = false, readOnly = false, onToggle }: { label: string; value: boolean; disabled?: boolean; readOnly?: boolean; onToggle: () => void }) {

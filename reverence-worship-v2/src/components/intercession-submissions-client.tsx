@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { ArrowLeft, CalendarDays, CheckCircle2, Download, FileText, RotateCcw, Search, UserCheck, Users, X, XCircle } from "lucide-react";
-import { saveSubmissionManualReview } from "@/app/admin/intercession/actions";
+import { deleteFormSubmission, saveSubmissionManualReview, setAllSubmissionRelease, setSubmissionRelease } from "@/app/admin/intercession/actions";
 
 type SubmissionRow = {
   id: number;
@@ -15,6 +15,8 @@ type SubmissionRow = {
   score: number | null;
   earnedPoints: number | null;
   totalPoints: number;
+  isReleased: boolean;
+  releasedAt: string | null;
   answersCount: number;
   answers: Array<{
     questionIndex: number;
@@ -30,13 +32,15 @@ export function IntercessionSubmissionsClient({
   form,
   submissions,
 }: {
-  form: { id: number; title: string; description: string | null; isQuiz: boolean; releaseGrade: string };
+  form: { id: number; title: string; description: string | null; isQuiz: boolean; releaseGrade: string; canDeleteSubmissions: boolean };
   submissions: SubmissionRow[];
 }) {
   const [query, setQuery] = useState("");
   const [scoreFilter, setScoreFilter] = useState("all");
+  const [releaseFilter, setReleaseFilter] = useState("all");
   const [reviewSubmission, setReviewSubmission] = useState<SubmissionRow | null>(null);
   const [notice, setNotice] = useState<{ ok: boolean; message: string } | null>(null);
+  const [pending, startTransition] = useTransition();
 
   const filteredSubmissions = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -51,9 +55,14 @@ export function IntercessionSubmissionsClient({
         (scoreFilter === "low" && score >= 40 && score < 60) ||
         (scoreFilter === "fail" && score < 40) ||
         (scoreFilter === "unscored" && submission.score === null);
-      return matchesSearch && matchesScore;
+      const matchesRelease =
+        form.releaseGrade !== "later" ||
+        releaseFilter === "all" ||
+        (releaseFilter === "released" && submission.isReleased) ||
+        (releaseFilter === "pending" && !submission.isReleased);
+      return matchesSearch && matchesScore && matchesRelease;
     });
-  }, [submissions, query, scoreFilter, form.isQuiz]);
+  }, [submissions, query, scoreFilter, releaseFilter, form.isQuiz, form.releaseGrade]);
 
   const averageScore = useMemo(() => {
     const scored = submissions.map((submission) => submission.score).filter((score): score is number => typeof score === "number");
@@ -64,7 +73,17 @@ export function IntercessionSubmissionsClient({
   function resetFilters() {
     setQuery("");
     setScoreFilter("all");
+    setReleaseFilter("all");
   }
+
+  function runSubmissionAction(action: () => Promise<{ ok: boolean; message: string }>) {
+    startTransition(async () => {
+      setNotice(await action());
+    });
+  }
+
+  const pendingReleaseCount = submissions.filter((submission) => submission.score !== null && !submission.isReleased).length;
+  const releasedCount = submissions.filter((submission) => submission.isReleased).length;
 
   function exportCsv() {
     const header = ["#", "Member", "Email", "Submitted Date", "Submitted Time", "Marks", "Score", "Answers", "Result Status"];
@@ -77,7 +96,7 @@ export function IntercessionSubmissionsClient({
       submission.earnedPoints === null ? "" : `${submission.earnedPoints}/${submission.totalPoints}`,
       submission.score === null ? "" : `${submission.score}%`,
       String(submission.answersCount),
-      resultStatusLabel(form.releaseGrade),
+      resultStatusLabel(form.releaseGrade, submission.isReleased),
     ]);
     const csv = [header, ...rows]
       .map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(","))
@@ -124,7 +143,7 @@ export function IntercessionSubmissionsClient({
         ) : null}
 
         <div className="border-b border-slate-200 bg-slate-50 p-3 sm:p-4">
-          <div className={`grid grid-cols-1 gap-3 ${form.isQuiz ? "sm:grid-cols-2 lg:grid-cols-[minmax(220px,1fr)_180px_auto]" : "sm:grid-cols-[minmax(220px,1fr)_auto]"}`}>
+          <div className={`grid grid-cols-1 gap-3 ${form.isQuiz ? "sm:grid-cols-2 lg:grid-cols-[minmax(220px,1fr)_180px_180px_auto]" : "sm:grid-cols-[minmax(220px,1fr)_auto]"}`}>
             <div>
               <label className="mb-1 block text-xs font-semibold text-slate-600">Search member</label>
               <div className="relative">
@@ -154,6 +173,20 @@ export function IntercessionSubmissionsClient({
                 </select>
               </div>
             ) : null}
+            {form.releaseGrade === "later" ? (
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-600">Release status</label>
+                <select
+                  value={releaseFilter}
+                  onChange={(event) => setReleaseFilter(event.target.value)}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                >
+                  <option value="all">All statuses</option>
+                  <option value="released">Released</option>
+                  <option value="pending">Pending review</option>
+                </select>
+              </div>
+            ) : null}
             <div className="flex items-end justify-end gap-2">
               <button
                 type="button"
@@ -179,6 +212,40 @@ export function IntercessionSubmissionsClient({
             Showing {filteredSubmissions.length} of {submissions.length} submissions
           </div>
         </div>
+
+        {form.releaseGrade === "later" ? (
+          <div className="flex flex-col gap-3 border-b border-slate-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
+            <div className="text-sm text-slate-600">
+              {pendingReleaseCount > 0 ? (
+                <span><strong className="text-amber-700">{pendingReleaseCount}</strong> awaiting release</span>
+              ) : (
+                <span className="text-green-700">All reviewed submissions are released</span>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {pendingReleaseCount > 0 ? (
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => runSubmissionAction(() => setAllSubmissionRelease(form.id, true))}
+                  className="rounded-lg bg-green-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-green-700 disabled:opacity-60"
+                >
+                  Release pending
+                </button>
+              ) : null}
+              {releasedCount > 0 ? (
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => runSubmissionAction(() => setAllSubmissionRelease(form.id, false))}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-60"
+                >
+                  Hide released
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
 
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200 text-sm">
@@ -228,17 +295,54 @@ export function IntercessionSubmissionsClient({
                       <div className="text-xs text-gray-400">{submission.submittedTime}</div>
                     </td>
                     <td className="px-4 py-3">
-                      <ResultStatus releaseGrade={form.releaseGrade} />
+                      <ResultStatus releaseGrade={form.releaseGrade} isReleased={submission.isReleased} />
                     </td>
                     <td className="px-4 py-3">
-                      <button
-                        type="button"
-                        onClick={() => setReviewSubmission(submission)}
-                        className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100"
-                      >
-                        <UserCheck className="size-3.5" aria-hidden="true" />
-                        Review
-                      </button>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setReviewSubmission(submission)}
+                          className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100"
+                        >
+                          <UserCheck className="size-3.5" aria-hidden="true" />
+                          Review
+                        </button>
+                        {form.releaseGrade === "later" && submission.score !== null ? (
+                          submission.isReleased ? (
+                            <button
+                              type="button"
+                              disabled={pending}
+                              onClick={() => runSubmissionAction(() => setSubmissionRelease(submission.id, false))}
+                              className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-60"
+                            >
+                              Hide
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={pending}
+                              onClick={() => runSubmissionAction(() => setSubmissionRelease(submission.id, true))}
+                              className="rounded-lg border border-green-200 px-2.5 py-1.5 text-xs font-semibold text-green-700 transition hover:bg-green-50 disabled:opacity-60"
+                            >
+                              Release
+                            </button>
+                          )
+                        ) : null}
+                        {form.canDeleteSubmissions ? (
+                          <button
+                            type="button"
+                            disabled={pending}
+                            onClick={() => {
+                              if (window.confirm(`Delete ${submission.memberName}'s submission?`)) {
+                                runSubmissionAction(() => deleteFormSubmission(submission.id));
+                              }
+                            }}
+                            className="rounded-lg border border-red-100 px-2.5 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-60"
+                          >
+                            Delete
+                          </button>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -418,9 +522,9 @@ function initials(name: string) {
     .toUpperCase();
 }
 
-function resultStatusLabel(releaseGrade: string) {
+function resultStatusLabel(releaseGrade: string, isReleased = false) {
   if (releaseGrade === "never") return "Private";
-  if (releaseGrade === "later") return "Pending review";
+  if (releaseGrade === "later") return isReleased ? "Released" : "Pending review";
   return "Available";
 }
 
@@ -430,12 +534,15 @@ function resultModeLabel(releaseGrade: string) {
   return "Auto-graded";
 }
 
-function ResultStatus({ releaseGrade }: { releaseGrade: string }) {
+function ResultStatus({ releaseGrade, isReleased = false }: { releaseGrade: string; isReleased?: boolean }) {
   if (releaseGrade === "never") {
     return <span className="inline-flex rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600">Private</span>;
   }
 
   if (releaseGrade === "later") {
+    if (isReleased) {
+      return <span className="inline-flex rounded-full bg-green-50 px-2 py-1 text-xs text-green-700">Released</span>;
+    }
     return <span className="inline-flex rounded-full bg-amber-50 px-2 py-1 text-xs text-amber-700">Pending review</span>;
   }
 
