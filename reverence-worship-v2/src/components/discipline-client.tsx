@@ -1029,33 +1029,33 @@ export function DisciplineClient({
               </div>
             </div>
           ) : activeTab === "permission" ? (
-            <div className="space-y-6">
-              <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-                <h3 className="text-2xl font-bold tracking-tight text-gray-900 md:text-3xl">Permission Management</h3>
-                <button onClick={() => openPermissionModal()} className="inline-flex items-center gap-2 self-start rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow-md shadow-blue-200 transition hover:from-blue-700 hover:to-indigo-700">
+            <div className="space-y-4 sm:space-y-6">
+              <div className="flex items-center justify-between gap-3 md:items-end">
+                <h3 className="text-xl font-bold tracking-tight text-gray-900 md:text-3xl">Permission Management</h3>
+                <button onClick={() => openPermissionModal()} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-3 py-2 text-xs font-medium text-white shadow-md shadow-blue-200 transition hover:from-blue-700 hover:to-indigo-700 sm:gap-2 sm:rounded-xl sm:px-4 sm:py-2.5 sm:text-sm">
                   <Plus className="size-4" />
                   New Request
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
+              <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-4">
                 <AttendanceStat label="Total Requests" value={permissionStats.total} icon={MailOpen} tone="sky" />
                 <AttendanceStat label="Pending" value={permissionStats.pending} icon={Clock} tone="amber" />
                 <AttendanceStat label="Approved" value={permissionStats.approved} icon={CheckCircle2} tone="emerald" />
                 <AttendanceStat label="Rejected" value={permissionStats.rejected} icon={XCircle} tone="rose" />
               </div>
 
-              <div className="grid grid-cols-1 items-end gap-3 rounded-2xl border border-gray-100 bg-white/90 p-4 shadow-sm sm:grid-cols-2 lg:grid-cols-6">
-                <div className="lg:col-span-2">
+              <div className="grid grid-cols-2 items-end gap-2 rounded-xl border border-gray-100 bg-white/90 p-3 shadow-sm sm:gap-3 sm:rounded-2xl sm:p-4 lg:grid-cols-6">
+                <div className="col-span-2 lg:col-span-2">
                   <label className="mb-1 block text-xs text-gray-600">Search</label>
                   <div className="relative">
                     <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
-                    <input value={permissionSearch} onChange={(event) => setPermissionSearch(event.target.value)} placeholder="Search by name or reason..." className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+                    <input value={permissionSearch} onChange={(event) => setPermissionSearch(event.target.value)} placeholder="Search by name or reason..." className="h-9 w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 sm:h-auto sm:rounded-xl sm:py-2.5" />
                   </div>
                 </div>
                 <div>
                   <label className="mb-1 block text-xs text-gray-600">Status</label>
-                  <select value={permissionStatus} onChange={(event) => setPermissionStatus(event.target.value)} className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
+                  <select value={permissionStatus} onChange={(event) => setPermissionStatus(event.target.value)} className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 sm:h-auto sm:rounded-xl sm:px-3 sm:py-2.5 sm:text-sm">
                     <option value="all">All Status</option>
                     <option value="pending">Pending</option>
                     <option value="approved">Approved</option>
@@ -1063,17 +1063,17 @@ export function DisciplineClient({
                     <option value="cancelled">Cancelled</option>
                   </select>
                 </div>
+                <button onClick={() => { setPermissionSearch(""); setPermissionStatus("all"); setPermissionFrom(""); setPermissionTo(""); }} className="h-9 w-full rounded-lg bg-gray-100 px-3 text-xs font-medium text-gray-700 transition hover:bg-gray-200 sm:h-auto sm:rounded-xl sm:px-4 sm:py-2.5 sm:text-sm lg:order-last">
+                  Reset
+                </button>
                 <div>
                   <label className="mb-1 block text-xs text-gray-600">From</label>
-                  <input value={permissionFrom} onChange={(event) => setPermissionFrom(event.target.value)} type="date" className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+                  <input value={permissionFrom} onChange={(event) => setPermissionFrom(event.target.value)} type="date" className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 sm:h-auto sm:rounded-xl sm:px-3 sm:py-2.5 sm:text-sm" />
                 </div>
                 <div>
                   <label className="mb-1 block text-xs text-gray-600">To</label>
-                  <input value={permissionTo} onChange={(event) => setPermissionTo(event.target.value)} type="date" className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+                  <input value={permissionTo} onChange={(event) => setPermissionTo(event.target.value)} type="date" className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 sm:h-auto sm:rounded-xl sm:px-3 sm:py-2.5 sm:text-sm" />
                 </div>
-                <button onClick={() => { setPermissionSearch(""); setPermissionStatus("all"); setPermissionFrom(""); setPermissionTo(""); }} className="w-full rounded-xl bg-gray-100 px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-200">
-                  Reset
-                </button>
               </div>
 
               <div className="space-y-3">
@@ -1240,44 +1240,43 @@ export function DisciplineClient({
               </div>
             </div>
           ) : activeTab === "action-plans" ? (
-            <div className="space-y-4">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-800">Action Plans</h3>
-                </div>
-                <button type="button" onClick={() => openActionPlan()} className="inline-flex w-fit items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm text-white transition hover:bg-blue-700">
+            <div className="space-y-3 sm:space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-lg font-semibold text-gray-800">Action Plans</h3>
+                <button type="button" onClick={() => openActionPlan()} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs text-white transition hover:bg-blue-700 sm:gap-2 sm:px-4 sm:text-sm">
                   <Plus className="size-4" />
-                  Create New Action Plan
+                  <span className="hidden min-[390px]:inline">Create New</span>
+                  <span className="min-[390px]:hidden">Create</span>
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="grid grid-cols-3 gap-1.5 sm:gap-4">
                 <ActionSummaryCard label="Overdue Tasks" value={actionSummary.overdueTasks} tone="rose" />
                 <ActionSummaryCard label="To-Be-Overdue Within 7 Days" value={actionSummary.dueSoonTasks} tone="amber" />
                 <ActionSummaryCard label="My TO DO" value={actionSummary.myTodoTasks} tone="sky" />
               </div>
 
-              <div className="grid grid-cols-1 gap-4">
+              <div className="grid grid-cols-1 gap-3 sm:gap-4">
                 {actionPlans.length ? actionPlans.map((plan) => {
                   const totalBudget = plan.tasks.reduce((sum, task) => sum + task.estimatedBudget, 0);
                   const statusColor = plan.status === "completed" ? "bg-green-100 text-green-800" : plan.status === "in_progress" ? "bg-blue-100 text-blue-800" : "bg-yellow-100 text-yellow-800";
                   return (
-                    <article key={plan.id} className="rounded-lg border bg-white p-4 transition hover:shadow-md">
-                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <article key={plan.id} className="rounded-lg border bg-white p-3 transition hover:shadow-md sm:p-4">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                         <div className="min-w-0 flex-1">
-                          <div className="mb-2 flex flex-wrap items-center gap-2">
-                            <h4 className="font-semibold text-gray-800">{plan.title}</h4>
-                            <span className={`rounded-full px-2 py-1 text-xs capitalize ${statusColor}`}>{plan.status.replace("_", " ")}</span>
+                          <div className="mb-1.5 flex items-start justify-between gap-2 sm:mb-2 sm:block">
+                            <h4 className="min-w-0 flex-1 text-sm font-semibold text-gray-800 sm:text-base">{plan.title}</h4>
+                            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] capitalize sm:py-1 sm:text-xs ${statusColor}`}>{plan.status.replace("_", " ")}</span>
                           </div>
-                          <p className="text-sm text-gray-600">{plan.description || "No description"}</p>
-                          <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-gray-500">
+                          <p className="line-clamp-2 text-xs text-gray-600 sm:text-sm">{plan.description || "No description"}</p>
+                          <div className="mt-2 grid grid-cols-2 gap-1.5 text-[11px] text-gray-500 sm:flex sm:flex-wrap sm:items-center sm:gap-4 sm:text-xs">
                             <span>By {plan.createdByName}</span>
                             <span>Start: {plan.startDate}</span>
                             <span>Completion: {plan.dueDate}</span>
-                            <span>Created: {plan.createdAt}</span>
+                            <span className="hidden sm:inline">Created: {plan.createdAt}</span>
                             {totalBudget > 0 && <span>Budget: RWF {totalBudget.toLocaleString()}</span>}
                           </div>
-                          <div className="mt-4">
+                          <div className="mt-3 sm:mt-4">
                             <div className="flex items-center gap-2">
                               <div className="h-2 w-full max-w-sm rounded-full bg-gray-200">
                                 <div className="h-2 rounded-full bg-blue-600" style={{ width: `${plan.progress}%` }} />
@@ -1286,23 +1285,23 @@ export function DisciplineClient({
                             </div>
                           </div>
                         </div>
-                        <div className="flex flex-wrap gap-2">
-                          <button type="button" onClick={() => openTaskModal(plan)} className="rounded-lg bg-green-50 px-3 py-2 text-green-700 hover:bg-green-100" title="Create task">
+                        <div className="grid grid-cols-4 gap-1.5 sm:flex sm:flex-wrap sm:gap-2">
+                          <button type="button" onClick={() => openTaskModal(plan)} className="inline-flex justify-center rounded-lg bg-green-50 px-2 py-1.5 text-green-700 hover:bg-green-100 sm:px-3 sm:py-2" title="Create task">
                             <Plus className="size-4" />
                           </button>
-                          <button type="button" onClick={() => exportActionPlanTasks(plan)} className="rounded-lg bg-indigo-50 px-3 py-2 text-indigo-700 hover:bg-indigo-100" title="Export tasks">
+                          <button type="button" onClick={() => exportActionPlanTasks(plan)} className="inline-flex justify-center rounded-lg bg-indigo-50 px-2 py-1.5 text-indigo-700 hover:bg-indigo-100 sm:px-3 sm:py-2" title="Export tasks">
                             <FileText className="size-4" />
                           </button>
-                          <button type="button" onClick={() => openActionPlan(plan)} className="rounded-lg border border-gray-200 px-3 py-2 text-blue-600 hover:bg-blue-50" title="Edit">
+                          <button type="button" onClick={() => openActionPlan(plan)} className="inline-flex justify-center rounded-lg border border-gray-200 px-2 py-1.5 text-blue-600 hover:bg-blue-50 sm:px-3 sm:py-2" title="Edit">
                             <Edit className="size-4" />
                           </button>
-                          <button type="button" onClick={() => removeActionPlan(plan)} className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-red-600 hover:bg-red-100" title="Delete">
+                          <button type="button" onClick={() => removeActionPlan(plan)} className="inline-flex justify-center rounded-lg border border-red-100 bg-red-50 px-2 py-1.5 text-red-600 hover:bg-red-100 sm:px-3 sm:py-2" title="Delete">
                             <Trash2 className="size-4" />
                           </button>
                         </div>
                       </div>
 
-                      <div className="mt-4 overflow-x-auto rounded-lg border border-gray-100">
+                      <div className="mt-3 hidden overflow-x-auto rounded-lg border border-gray-100 sm:mt-4 md:block">
                         <table className="min-w-full text-sm">
                           <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
                             <tr>
@@ -1336,6 +1335,30 @@ export function DisciplineClient({
                             )}
                           </tbody>
                         </table>
+                      </div>
+
+                      <div className="mt-3 space-y-1.5 md:hidden">
+                        {plan.tasks.length ? plan.tasks.map((task) => (
+                          <div key={task.id} className="rounded-lg border border-gray-100 bg-gray-50 p-2">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-gray-800">{task.activity || task.taskName}</p>
+                                <p className="mt-0.5 line-clamp-2 text-[11px] text-gray-500">{task.targetMilestone || "No milestone"}</p>
+                              </div>
+                              <span className="shrink-0 rounded-md bg-white px-2 py-1 text-xs font-bold text-blue-700">{task.progress}%</span>
+                            </div>
+                            <div className="mt-2 grid grid-cols-2 gap-1.5 text-[11px] text-gray-600">
+                              <span className="rounded-md bg-white px-2 py-1">Budget: {task.estimatedBudget ? `RWF ${task.estimatedBudget.toLocaleString()}` : "-"}</span>
+                              <span className="rounded-md bg-white px-2 py-1">Deadline: {task.deadline || "-"}</span>
+                            </div>
+                            <div className="mt-2 grid grid-cols-2 gap-1.5">
+                              <button type="button" onClick={() => openTaskModal(plan, task)} className="rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">Edit</button>
+                              <button type="button" onClick={() => removeActionPlanTask(task)} className="rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700">Delete</button>
+                            </div>
+                          </div>
+                        )) : (
+                          <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4 text-center text-xs text-gray-400">No tasks yet</div>
+                        )}
                       </div>
                     </article>
                   );
@@ -1750,18 +1773,18 @@ export function DisciplineClient({
       )}
 
       {permissionModal && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-gray-600/50 p-3 sm:p-6">
-          <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-lg border bg-white p-4 shadow-lg sm:p-5">
-            <div className="flex items-center justify-between border-b pb-3">
-              <h3 className="text-lg font-bold text-gray-800">{editingPermission ? "Edit Permission Request" : "New Permission Request"}</h3>
-              <button onClick={() => setPermissionModal(false)} className="text-gray-400 hover:text-gray-600" aria-label="Close">
+        <div className="fixed inset-0 z-[80] grid place-items-stretch bg-gray-600/50 p-0 sm:place-items-center sm:p-6">
+          <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-white shadow-lg sm:h-auto sm:max-h-[92vh] sm:max-w-md sm:rounded-lg sm:border">
+            <div className="flex items-center justify-between border-b px-3 py-3 sm:px-5">
+              <h3 className="text-base font-bold text-gray-800 sm:text-lg">{editingPermission ? "Edit Permission Request" : "New Permission Request"}</h3>
+              <button onClick={() => setPermissionModal(false)} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600" aria-label="Close">
                 <X className="size-5" />
               </button>
             </div>
 
-            <div className="mt-4 space-y-4">
+            <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-3 sm:bg-white sm:p-5">
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">User *</label>
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500 sm:text-sm sm:normal-case sm:tracking-normal">User *</label>
                 <div className="relative">
                   <div className="relative">
                     <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
@@ -1772,7 +1795,7 @@ export function DisciplineClient({
                         setSelectedPermissionUser(null);
                       }}
                       placeholder="Search by name or email..."
-                      className={`w-full rounded-lg border py-2 pl-9 pr-10 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 ${
+                      className={`h-10 w-full rounded-lg border bg-white py-2 pl-9 pr-10 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 ${
                         !selectedPermissionUser && permissionUserSearch.length > 0 && permissionUserSearch.length < 2 ? "border-red-300" : "border-gray-300"
                       }`}
                       autoComplete="off"
@@ -1792,7 +1815,7 @@ export function DisciplineClient({
                     )}
                   </div>
                   {permissionUserSearch.trim().length >= 2 && !selectedPermissionUser && (
-                    <div className="absolute z-10 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+                    <div className="absolute z-20 mt-1 max-h-52 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg sm:max-h-60">
                       {filteredPermissionUsers.length ? (
                         filteredPermissionUsers.map((user) => (
                           <button
@@ -1802,9 +1825,9 @@ export function DisciplineClient({
                               setSelectedPermissionUser(user);
                               setPermissionUserSearch(user.name);
                             }}
-                            className="flex w-full cursor-pointer items-center gap-3 border-b border-gray-100 px-3 py-2 text-left transition last:border-0 hover:bg-blue-50"
+                            className="flex w-full cursor-pointer items-center gap-2 border-b border-gray-100 px-3 py-2 text-left transition last:border-0 hover:bg-blue-50 sm:gap-3"
                           >
-                            <span className="flex size-8 items-center justify-center rounded-full bg-gray-100 text-xs font-semibold text-gray-500">
+                            <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-semibold text-gray-500 sm:size-8">
                               {user.name.slice(0, 2).toUpperCase()}
                             </span>
                             <span className="min-w-0 flex-1">
@@ -1828,23 +1851,25 @@ export function DisciplineClient({
 
               <input type="hidden" value={permissionType} readOnly />
 
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Start Date *</label>
-                <input value={permissionStartDate} onChange={(event) => setPermissionStartDate(event.target.value)} type="date" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500" />
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500 sm:text-sm sm:normal-case sm:tracking-normal">Start Date *</label>
+                  <input value={permissionStartDate} onChange={(event) => setPermissionStartDate(event.target.value)} type="date" className="h-10 w-full rounded-lg border border-gray-300 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 sm:px-3 sm:text-sm" />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500 sm:text-sm sm:normal-case sm:tracking-normal">End Date *</label>
+                  <input value={permissionEndDate} onChange={(event) => setPermissionEndDate(event.target.value)} type="date" className="h-10 w-full rounded-lg border border-gray-300 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 sm:px-3 sm:text-sm" />
+                </div>
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">End Date *</label>
-                <input value={permissionEndDate} onChange={(event) => setPermissionEndDate(event.target.value)} type="date" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500" />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Reason *</label>
-                <textarea value={permissionReason} onChange={(event) => setPermissionReason(event.target.value)} rows={4} placeholder="Provide detailed reason for the request..." className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500" />
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500 sm:text-sm sm:normal-case sm:tracking-normal">Reason *</label>
+                <textarea value={permissionReason} onChange={(event) => setPermissionReason(event.target.value)} rows={5} placeholder="Provide detailed reason for the request..." className="w-full resize-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 sm:rows-4" />
               </div>
             </div>
 
-            <div className="mt-5 flex flex-col-reverse gap-2 border-t pt-3 sm:flex-row sm:justify-end">
+            <div className="sticky bottom-0 grid grid-cols-2 gap-2 border-t bg-white px-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] sm:flex sm:justify-end sm:px-5 sm:py-3 sm:shadow-none">
               <button type="button" onClick={() => setPermissionModal(false)} className="rounded-lg border px-4 py-2 text-sm hover:bg-gray-50">Cancel</button>
               <button type="button" disabled={isSaving} onClick={submitPermission} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60">
                 {isSaving ? "Saving..." : "Submit Request"}
@@ -1855,34 +1880,36 @@ export function DisciplineClient({
       )}
 
       {actionPlanModal && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-gray-600/50 p-3 sm:p-6">
-          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-lg border bg-white p-4 shadow-lg sm:p-5">
-            <div className="flex items-center justify-between border-b pb-3">
-              <h3 className="text-lg font-bold text-gray-800">{editingActionPlan ? "Edit Action Plan" : "Create Action Plan"}</h3>
-              <button type="button" onClick={() => { setActionPlanModal(false); setEditingActionPlan(null); }} className="text-gray-400 hover:text-gray-600" aria-label="Close">
+        <div className="fixed inset-0 z-[80] grid place-items-stretch bg-gray-600/50 p-0 sm:place-items-center sm:p-6">
+          <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-white shadow-lg sm:h-auto sm:max-h-[92vh] sm:max-w-2xl sm:rounded-lg sm:border">
+            <div className="flex items-center justify-between border-b px-3 py-3 sm:px-5">
+              <h3 className="text-base font-bold text-gray-800 sm:text-lg">{editingActionPlan ? "Edit Action Plan" : "Create Action Plan"}</h3>
+              <button type="button" onClick={() => { setActionPlanModal(false); setEditingActionPlan(null); }} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600" aria-label="Close">
                 <X className="size-5" />
               </button>
             </div>
-            <form onSubmit={submitActionPlan} className="mt-4 space-y-5">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="md:col-span-2">
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Action Plan Name *</label>
-                  <input name="title" defaultValue={editingActionPlan?.title ?? ""} required placeholder="Enter action plan name" className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+            <form onSubmit={submitActionPlan} className="flex min-h-0 flex-1 flex-col">
+              <div className="flex-1 space-y-4 overflow-y-auto bg-slate-50 p-3 sm:bg-white sm:p-5">
+                <div className="grid grid-cols-2 gap-2 md:gap-4">
+                  <div className="col-span-2">
+                    <label className="mb-1 block text-sm font-medium text-gray-700">Action Plan Name *</label>
+                    <input name="title" defaultValue={editingActionPlan?.title ?? ""} required placeholder="Enter action plan name" className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500 sm:text-sm sm:normal-case sm:tracking-normal">Start Date *</label>
+                    <input name="startDate" type="date" defaultValue={editingActionPlan?.startDateValue ?? ""} required className="h-10 w-full rounded-lg border border-gray-300 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:px-3 sm:text-sm" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500 sm:text-sm sm:normal-case sm:tracking-normal">Completion *</label>
+                    <input name="dueDate" type="date" defaultValue={editingActionPlan?.dueDateValue ?? ""} required className="h-10 w-full rounded-lg border border-gray-300 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:px-3 sm:text-sm" />
+                  </div>
                 </div>
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Start Date *</label>
-                  <input name="startDate" type="date" defaultValue={editingActionPlan?.startDateValue ?? ""} required className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Completion Date *</label>
-                  <input name="dueDate" type="date" defaultValue={editingActionPlan?.dueDateValue ?? ""} required className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Description</label>
+                  <textarea name="description" rows={4} defaultValue={editingActionPlan?.description ?? ""} placeholder="Optional description" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:rows-3" />
                 </div>
               </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Description</label>
-                <textarea name="description" rows={3} defaultValue={editingActionPlan?.description ?? ""} placeholder="Optional description" className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
-              </div>
-              <div className="flex flex-col-reverse gap-2 border-t pt-3 sm:flex-row sm:justify-end">
+              <div className="sticky bottom-0 grid grid-cols-2 gap-2 border-t bg-white px-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] sm:flex sm:justify-end sm:px-5 sm:py-3 sm:shadow-none">
                 <button type="button" onClick={() => { setActionPlanModal(false); setEditingActionPlan(null); }} className="rounded-lg border px-4 py-2 text-sm hover:bg-gray-50">Cancel</button>
                 <button type="submit" disabled={isSaving} className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-60">{isSaving ? "Saving..." : "Save Plan"}</button>
               </div>
@@ -1892,45 +1919,46 @@ export function DisciplineClient({
       )}
 
       {taskModal && taskPlan && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-gray-600/50 p-3 sm:p-6">
-          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-lg border bg-white p-4 shadow-lg sm:p-5">
-            <div className="flex items-center justify-between border-b pb-3">
-              <h3 className="text-lg font-bold text-gray-800">{editingActionTask ? `Edit Task for ${taskPlan.title}` : `Create Task for ${taskPlan.title}`}</h3>
-              <button type="button" onClick={() => { setTaskModal(false); setTaskPlan(null); setEditingActionTask(null); }} className="text-gray-400 hover:text-gray-600" aria-label="Close">
+        <div className="fixed inset-0 z-[80] grid place-items-stretch bg-gray-600/50 p-0 sm:place-items-center sm:p-6">
+          <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-white shadow-lg sm:h-auto sm:max-h-[92vh] sm:max-w-2xl sm:rounded-lg sm:border">
+            <div className="flex items-center justify-between border-b px-3 py-3 sm:px-5">
+              <h3 className="min-w-0 truncate text-base font-bold text-gray-800 sm:text-lg">{editingActionTask ? `Edit Task for ${taskPlan.title}` : `Create Task for ${taskPlan.title}`}</h3>
+              <button type="button" onClick={() => { setTaskModal(false); setTaskPlan(null); setEditingActionTask(null); }} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600" aria-label="Close">
                 <X className="size-5" />
               </button>
             </div>
-            <form onSubmit={submitActionPlanTask} className="mt-4 space-y-4">
-              <div>
+            <form onSubmit={submitActionPlanTask} className="flex min-h-0 flex-1 flex-col">
+              <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-3 sm:bg-white sm:p-5">
+                <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">Action Plan</label>
-                <input value={taskPlan.title} readOnly className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-gray-700" />
+                <input value={taskPlan.title} readOnly className="h-10 w-full rounded-lg border border-gray-300 bg-gray-50 px-3 text-sm text-gray-700" />
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">Activity *</label>
-                <input name="activity" defaultValue={editingActionTask?.activity ?? editingActionTask?.taskName ?? ""} required placeholder="Enter activity" className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                <input name="activity" defaultValue={editingActionTask?.activity ?? editingActionTask?.taskName ?? ""} required placeholder="Enter activity" className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">Targeted Milestone *</label>
-                <input name="targetMilestone" defaultValue={editingActionTask?.targetMilestone ?? ""} required placeholder="Enter targeted milestone" className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                <input name="targetMilestone" defaultValue={editingActionTask?.targetMilestone ?? ""} required placeholder="Enter targeted milestone" className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
               </div>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="grid grid-cols-2 gap-2 md:gap-4">
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Start Date</label>
-                  <input name="startDate" type="date" defaultValue={editingActionTask?.startDateValue ?? ""} className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500 sm:text-sm sm:normal-case sm:tracking-normal">Start Date</label>
+                  <input name="startDate" type="date" defaultValue={editingActionTask?.startDateValue ?? ""} className="h-10 w-full rounded-lg border border-gray-300 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:px-3 sm:text-sm" />
                 </div>
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Estimated Budget *</label>
-                  <input name="estimatedBudget" type="number" step="0.01" min="0" defaultValue={editingActionTask?.estimatedBudget ?? ""} required placeholder="0.00" className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500 sm:text-sm sm:normal-case sm:tracking-normal">Budget *</label>
+                  <input name="estimatedBudget" type="number" step="0.01" min="0" defaultValue={editingActionTask?.estimatedBudget ?? ""} required placeholder="0.00" className="h-10 w-full rounded-lg border border-gray-300 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:px-3 sm:text-sm" />
                 </div>
               </div>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="grid grid-cols-2 gap-2 md:gap-4">
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Deadline *</label>
-                  <input name="deadline" type="date" defaultValue={editingActionTask?.deadlineValue ?? ""} required className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500 sm:text-sm sm:normal-case sm:tracking-normal">Deadline *</label>
+                  <input name="deadline" type="date" defaultValue={editingActionTask?.deadlineValue ?? ""} required className="h-10 w-full rounded-lg border border-gray-300 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:px-3 sm:text-sm" />
                 </div>
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Priority *</label>
-                  <select name="priority" defaultValue={editingActionTask?.priority ?? ""} required className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500 sm:text-sm sm:normal-case sm:tracking-normal">Priority *</label>
+                  <select name="priority" defaultValue={editingActionTask?.priority ?? ""} required className="h-10 w-full rounded-lg border border-gray-300 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:px-3 sm:text-sm">
                     <option value="">Select priority</option>
                     <option value="low">Low</option>
                     <option value="medium">Medium</option>
@@ -1938,13 +1966,14 @@ export function DisciplineClient({
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="grid grid-cols-2 gap-2 md:gap-4">
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Progress *</label>
-                  <input name="progress" type="number" min="0" max="100" defaultValue={editingActionTask?.progress ?? 0} required className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500 sm:text-sm sm:normal-case sm:tracking-normal">Progress *</label>
+                  <input name="progress" type="number" min="0" max="100" defaultValue={editingActionTask?.progress ?? 0} required className="h-10 w-full rounded-lg border border-gray-300 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:px-3 sm:text-sm" />
                 </div>
               </div>
-              <div className="flex flex-col-reverse gap-2 border-t pt-3 sm:flex-row sm:justify-end">
+              </div>
+              <div className="sticky bottom-0 grid grid-cols-2 gap-2 border-t bg-white px-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] sm:flex sm:justify-end sm:px-5 sm:py-3 sm:shadow-none">
                 <button type="button" onClick={() => { setTaskModal(false); setTaskPlan(null); setEditingActionTask(null); }} className="rounded-lg border px-4 py-2 text-sm hover:bg-gray-50">Cancel</button>
                 <button type="submit" disabled={isSaving} className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-60">{isSaving ? "Saving..." : editingActionTask ? "Update Task" : "Save Task"}</button>
               </div>
@@ -2091,13 +2120,13 @@ function ActionSummaryCard({ label, value, tone }: { label: string; value: numbe
     sky: "border-sky-100 from-white via-sky-50 to-blue-50/40 text-sky-600 bg-sky-100 ring-sky-200",
   };
   return (
-    <div className={`rounded-xl border bg-gradient-to-br p-4 shadow-sm ${colors[tone]}`}>
-      <div className="flex items-center justify-between">
+    <div className={`rounded-lg border bg-gradient-to-br p-2 shadow-sm sm:rounded-xl sm:p-4 ${colors[tone]}`}>
+      <div className="flex items-center justify-between gap-1">
         <div>
-          <p className="text-xs uppercase tracking-wide text-gray-500">{label}</p>
-          <p className="mt-1 text-2xl font-bold">{value}</p>
+          <p className="text-[9px] uppercase text-gray-500 sm:text-xs sm:tracking-wide">{label}</p>
+          <p className="mt-0.5 text-lg font-bold sm:mt-1 sm:text-2xl">{value}</p>
         </div>
-        <div className={`flex size-10 items-center justify-center rounded-lg ring-1 ${colors[tone]}`}>
+        <div className={`hidden size-10 items-center justify-center rounded-lg ring-1 sm:flex ${colors[tone]}`}>
           <ClipboardList className="size-5" />
         </div>
       </div>

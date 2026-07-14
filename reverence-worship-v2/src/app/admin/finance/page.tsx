@@ -256,6 +256,7 @@ export default async function FinancePage() {
           startDateRaw: task.startDate ? task.startDate.toISOString().slice(0, 10) : "",
           deadline: formatDate(task.deadline),
           deadlineRaw: task.deadline ? task.deadline.toISOString().slice(0, 10) : "",
+          priority: task.priority ?? "medium",
           progress: task.progress,
           status: task.status,
           assigneeName: task.assignee?.name ?? null,
