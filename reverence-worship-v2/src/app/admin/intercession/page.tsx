@@ -39,14 +39,17 @@ export default async function IntercessionPage() {
   const intercessionPermissions = {
     canSubmitForms: permissionSetHas(permissions, "intercession", "submit-forms"),
     canCreateForms: permissionSetHas(permissions, "intercession", "create-forms"),
+    canManageForms: permissionSetHas(permissions, "intercession", "manage-forms"),
     canEditForms: permissionSetHas(permissions, "intercession", "edit-forms"),
+    canPublishForms: permissionSetHas(permissions, "intercession", "publish-forms") || permissionSetHas(permissions, "intercession", "edit-forms"),
     canDeleteForms: permissionSetHas(permissions, "intercession", "delete-forms"),
-    canViewSubmissions: permissionSetHas(permissions, "intercession", "view-submissions"),
+    canViewSubmissions: permissionSetHas(permissions, "intercession", "view-submissions") || permissionSetHas(permissions, "intercession", "view-results"),
+    canViewReports: permissionSetHas(permissions, "intercession", "view-reports"),
     canExportReports: permissionSetHas(permissions, "intercession", "export-reports"),
     canReadBible: permissionSetHas(permissions, "intercession", "read-bible"),
     canManageActionPlans: permissionSetHas(permissions, "intercession", "manage-action-plans"),
   };
-  const canLoadReports = intercessionPermissions.canViewSubmissions || intercessionPermissions.canExportReports;
+  const canLoadReports = intercessionPermissions.canViewReports || intercessionPermissions.canViewSubmissions || intercessionPermissions.canExportReports;
 
   const [forms, mySubmissions, users, allSubmissions, actionPlans] = await Promise.all([
     prisma.spiritualForm.findMany({
@@ -187,6 +190,7 @@ export default async function IntercessionPage() {
           deadlineRaw: formatDateValue(task.deadline),
           progress: task.progress,
           status: task.status,
+          priority: task.priority,
         })),
       }))}
     />

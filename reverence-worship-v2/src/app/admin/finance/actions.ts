@@ -541,6 +541,7 @@ export async function saveFinanceActionPlanTask(formData: FormData) {
   const estimatedBudget = readString(formData, "estimatedBudget") || "0";
   const startDateValue = readString(formData, "startDate");
   const deadlineValue = readString(formData, "deadline");
+  const priority = readString(formData, "priority") || "medium";
   const progress = boundedProgress(formData.get("progress"));
 
   if (!Number.isInteger(actionPlanId) || actionPlanId <= 0 || !activity || !targetMilestone || !deadlineValue) {
@@ -565,6 +566,7 @@ export async function saveFinanceActionPlanTask(formData: FormData) {
     estimatedBudget,
     startDate: startDateValue ? dateOnly(startDateValue) : null,
     deadline: dateOnly(deadlineValue),
+    priority,
     progress,
     status,
     startedAt: progress > 0 ? new Date() : null,
@@ -581,6 +583,7 @@ export async function saveFinanceActionPlanTask(formData: FormData) {
         estimatedBudget: data.estimatedBudget,
         startDate: data.startDate,
         deadline: data.deadline,
+        priority: data.priority,
         progress: data.progress,
         status: data.status,
         startedAt: data.startedAt,

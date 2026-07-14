@@ -13,7 +13,10 @@ import {
   CreditCard,
   Eye,
   FileSpreadsheet,
+  FileText,
+  FileUp,
   HandCoins,
+  Hourglass,
   Minus,
   Pencil,
   Plus,
@@ -23,6 +26,7 @@ import {
   Search,
   Settings,
   Trash2,
+  UserCheck,
   Users,
   X,
 } from "lucide-react";
@@ -33,7 +37,6 @@ import {
   deleteSponsor,
   deleteExpense,
   deleteFinancePayment,
-  deleteMemberContributionForYear,
   recordContributionPayment,
   recordSponsorPayment,
   saveAnnualContribution,
@@ -169,6 +172,7 @@ type ActionPlanTask = {
   deadlineRaw: string;
   progress: number;
   status: string;
+  priority: string;
   assigneeName: string | null;
 };
 
@@ -362,8 +366,6 @@ export function FinanceClient({
 
 function FinanceActionPlansTab({ currentYear, actionPlans }: { currentYear: number; actionPlans: ActionPlan[] }) {
   const router = useRouter();
-  const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
   const [planModal, setPlanModal] = useState<ActionPlan | "new" | null>(null);
   const [taskModal, setTaskModal] = useState<{ plan: ActionPlan; task?: ActionPlanTask } | null>(null);
   const [viewPlan, setViewPlan] = useState<ActionPlan | null>(null);
@@ -371,26 +373,16 @@ function FinanceActionPlansTab({ currentYear, actionPlans }: { currentYear: numb
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const filteredPlans = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return actionPlans.filter((plan) => {
-      const matchesSearch = !needle || `${plan.title} ${plan.description ?? ""} ${plan.createdByName}`.toLowerCase().includes(needle);
-      const matchesStatus = statusFilter === "all" || plan.status === statusFilter;
-      return matchesSearch && matchesStatus;
-    });
-  }, [actionPlans, query, statusFilter]);
-
   const summary = useMemo(() => {
     const tasks = actionPlans.flatMap((plan) => plan.tasks);
-    const completed = actionPlans.filter((plan) => plan.status === "completed").length;
-    const inProgress = actionPlans.filter((plan) => plan.status === "in_progress").length;
-    const totalBudget = tasks.reduce((sum, task) => sum + task.estimatedBudget, 0);
+    const today = new Date().toISOString().slice(0, 10);
+    const dueSoonLimit = new Date();
+    dueSoonLimit.setDate(dueSoonLimit.getDate() + 7);
+    const dueSoon = dueSoonLimit.toISOString().slice(0, 10);
     return {
-      totalPlans: actionPlans.length,
-      completed,
-      inProgress,
-      totalTasks: tasks.length,
-      totalBudget,
+      overdueTasks: tasks.filter((task) => task.deadlineRaw && task.deadlineRaw < today && task.progress < 100).length,
+      dueSoonTasks: tasks.filter((task) => task.deadlineRaw && task.deadlineRaw >= today && task.deadlineRaw <= dueSoon && task.progress < 100).length,
+      myTodoTasks: tasks.filter((task) => task.progress < 100).length,
     };
   }, [actionPlans]);
 
@@ -496,12 +488,9 @@ function FinanceActionPlansTab({ currentYear, actionPlans }: { currentYear: numb
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-gray-900">Financial Management Action Plans</h2>
-          <p className="text-sm text-gray-500">Track finance department plans, tasks, budgets, and progress.</p>
-        </div>
-        <button type="button" onClick={() => setPlanModal("new")} className="inline-flex w-fit items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <h2 className="text-lg font-semibold text-gray-800">Financial Management Action Plans</h2>
+        <button type="button" onClick={() => setPlanModal("new")} className="inline-flex w-fit items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700">
           <Plus className="size-4" />
           Create New Action Plan
         </button>
@@ -511,106 +500,112 @@ function FinanceActionPlansTab({ currentYear, actionPlans }: { currentYear: numb
         <FinanceNoticeBanner notice={message} onClose={() => setMessage(null)} />
       )}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <ActionPlanStat label="Plans" value={summary.totalPlans} />
-        <ActionPlanStat label="Completed" value={summary.completed} tone="green" />
-        <ActionPlanStat label="In Progress" value={summary.inProgress} tone="blue" />
-        <ActionPlanStat label="Tasks" value={summary.totalTasks} tone="purple" />
-        <ActionPlanStat label="Budget" value={formatCurrency(summary.totalBudget)} tone="amber" />
-      </div>
-
-      <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 md:flex-row md:items-center">
-        <label className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search action plans..." className="h-10 w-full rounded-lg border border-gray-300 bg-white pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
-        </label>
-        <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
-          <option value="all">All Statuses</option>
-          <option value="pending">Pending</option>
-          <option value="in_progress">In Progress</option>
-          <option value="completed">Completed</option>
-        </select>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <ActionSummaryCard label="Overdue Tasks" value={summary.overdueTasks} tone="rose" />
+        <ActionSummaryCard label="To-Be-Overdue Within 7 Days" value={summary.dueSoonTasks} tone="amber" />
+        <ActionSummaryCard label="My TO DO" value={summary.myTodoTasks} tone="sky" />
       </div>
 
       <div className="space-y-4">
-        {filteredPlans.length ? filteredPlans.map((plan) => {
+        {actionPlans.length ? actionPlans.map((plan) => {
           const totalBudget = plan.tasks.reduce((sum, task) => sum + task.estimatedBudget, 0);
           return (
-            <article key={plan.id} className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <article key={plan.id} className="rounded-lg border bg-white p-4 transition hover:shadow-md">
+              <div className="mb-3 flex justify-between gap-4">
                 <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-base font-semibold text-gray-900">{plan.title}</h3>
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <h3 className="font-semibold text-gray-800">{plan.title}</h3>
                     <span className={`rounded-full px-2 py-1 text-xs font-medium capitalize ${actionPlanStatusBadge(plan.status)}`}>{plan.status.replace("_", " ")}</span>
                   </div>
-                  <p className="mt-2 text-sm text-gray-600">{plan.description || "No description"}</p>
-                  <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+                  <p className="text-sm text-gray-600">{plan.description || "No description"}</p>
+                  <div className="mt-2 flex flex-wrap gap-4 text-xs text-gray-500">
                     <span>By {plan.createdByName}</span>
                     <span>Start: {plan.startDate}</span>
                     <span>Completion: {plan.dueDate}</span>
-                    <span>Tasks: {plan.tasks.length}</span>
-                    {totalBudget > 0 && <span>Budget: {formatCurrency(totalBudget)}</span>}
-                  </div>
-                  <div className="mt-4 flex max-w-md items-center gap-2">
-                    <div className="h-2 flex-1 rounded-full bg-gray-100">
-                      <div className="h-2 rounded-full bg-blue-600" style={{ width: `${Math.min(plan.progress, 100)}%` }} />
-                    </div>
-                    <span className="text-xs font-semibold text-gray-600">{plan.progress}%</span>
+                    <span>Created: {plan.createdAt}</span>
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <button type="button" onClick={() => setTaskModal({ plan })} className="rounded-lg bg-green-50 px-3 py-2 text-green-700 hover:bg-green-100" title="Create task">
-                    <Plus className="size-4" />
+                <div className="ml-0 flex shrink-0 flex-wrap gap-2">
+                  <button type="button" onClick={() => setViewPlan(plan)} className="text-purple-600 hover:text-purple-700" title="View advanced plan">
+                    <FileText className="size-4" />
                   </button>
-                  <button type="button" onClick={() => exportTasks(plan)} className="rounded-lg bg-indigo-50 px-3 py-2 text-indigo-700 hover:bg-indigo-100" title="Export tasks">
-                    <FileSpreadsheet className="size-4" />
+                  <button type="button" onClick={() => setTaskModal({ plan })} className="text-green-600 hover:text-green-700" title="Create task">
+                    <PlusCircle className="size-4" />
                   </button>
-                  <button type="button" onClick={() => setViewPlan(plan)} className="rounded-lg border border-gray-200 px-3 py-2 text-gray-600 hover:bg-gray-50" title="View">
-                    <Eye className="size-4" />
+                  <button type="button" onClick={() => exportTasks(plan)} className="text-indigo-600 hover:text-indigo-700" title="Export tasks">
+                    <FileUp className="size-4" />
                   </button>
-                  <button type="button" onClick={() => setPlanModal(plan)} className="rounded-lg border border-gray-200 px-3 py-2 text-blue-600 hover:bg-blue-50" title="Edit">
+                  <button type="button" onClick={() => setPlanModal(plan)} className="text-blue-500 hover:text-blue-700" title="Edit">
                     <Pencil className="size-4" />
                   </button>
-                  <button type="button" onClick={() => removePlan(plan)} className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-red-600 hover:bg-red-100" title="Delete">
+                  <button type="button" onClick={() => removePlan(plan)} className="text-red-500 hover:text-red-700" title="Delete">
                     <Trash2 className="size-4" />
                   </button>
                 </div>
               </div>
 
-              <div className="mt-4 overflow-x-auto rounded-lg border border-gray-100">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
-                    <tr>
-                      <th className="px-3 py-2">Activity</th>
-                      <th className="px-3 py-2">Milestone</th>
-                      <th className="px-3 py-2">Budget</th>
-                      <th className="px-3 py-2">Deadline</th>
-                      <th className="px-3 py-2">Progress</th>
-                      <th className="px-3 py-2 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {plan.tasks.length ? plan.tasks.map((task) => (
-                      <tr key={task.id}>
-                        <td className="px-3 py-2 font-medium text-gray-800">{task.activity || task.taskName}</td>
-                        <td className="px-3 py-2 text-gray-600">{task.targetMilestone || "-"}</td>
-                        <td className="px-3 py-2 text-gray-600">{task.estimatedBudget ? formatCurrency(task.estimatedBudget) : "-"}</td>
-                        <td className="px-3 py-2 text-gray-600">{task.deadline}</td>
-                        <td className="px-3 py-2 text-gray-600">{task.progress}%</td>
-                        <td className="px-3 py-2">
-                          <div className="flex justify-end gap-3">
-                            <button type="button" onClick={() => setTaskModal({ plan, task })} className="text-blue-600 hover:text-blue-700">Edit</button>
-                            <button type="button" onClick={() => removeTask(task)} className="text-red-600 hover:text-red-700">Delete</button>
-                          </div>
-                        </td>
-                      </tr>
-                    )) : (
-                      <tr>
-                        <td colSpan={6} className="px-3 py-8 text-center text-gray-400">No tasks yet</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+              <div className="mt-3">
+                <div className="mb-1 flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Progress</span>
+                  <span className="font-medium text-gray-800">{plan.progress}%</span>
+                </div>
+                <div className="h-2 w-full rounded-full bg-gray-200">
+                  <div className="h-2 rounded-full bg-blue-600 transition-all duration-300" style={{ width: `${Math.min(plan.progress, 100)}%` }} />
+                </div>
+              </div>
+
+              <div className="mt-4 overflow-hidden rounded-lg border border-gray-100 bg-gray-50">
+                <div className="grid grid-cols-12 gap-2 border-b border-gray-100 bg-white px-4 py-3 text-xs font-semibold text-gray-600">
+                  <div className="col-span-12 md:col-span-2">Activity</div>
+                  <div className="col-span-12 md:col-span-2">Milestone</div>
+                  <div className="col-span-6 md:col-span-2">Budget</div>
+                  <div className="col-span-6 md:col-span-2">Deadline</div>
+                  <div className="col-span-6 md:col-span-1">Priority</div>
+                  <div className="col-span-6 md:col-span-1">Progress</div>
+                  <div className="col-span-12 text-left md:col-span-2 md:text-right">Actions</div>
+                </div>
+                {plan.tasks.length ? plan.tasks.map((task) => (
+                  <div key={task.id} className="grid grid-cols-12 items-center gap-2 border-b border-gray-100 px-4 py-3 text-sm last:border-b-0">
+                    <div className="col-span-12 font-medium text-gray-800 md:col-span-2">{task.activity || task.taskName || "-"}</div>
+                    <div className="col-span-12 text-gray-600 md:col-span-2">{task.targetMilestone || "-"}</div>
+                    <div className="col-span-6 text-gray-600 md:col-span-2">{task.estimatedBudget ? formatCurrency(task.estimatedBudget) : "-"}</div>
+                    <div className="col-span-6 text-gray-600 md:col-span-2">{task.deadline || "-"}</div>
+                    <div className="col-span-6 md:col-span-1">
+                      <span className="inline-flex rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700">{task.priority || "medium"}</span>
+                    </div>
+                    <div className="col-span-6 md:col-span-1">
+                      <div className="mb-1 flex items-center justify-between text-xs">
+                        <span className="text-gray-500">{task.progress}%</span>
+                      </div>
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+                        <div className="h-2 rounded-full bg-blue-600" style={{ width: `${Math.min(task.progress, 100)}%` }} />
+                      </div>
+                    </div>
+                    <div className="col-span-12 md:col-span-2">
+                      <div className="flex items-center justify-start gap-1 md:justify-end md:gap-2">
+                        <button type="button" onClick={() => setTaskModal({ plan, task })} className="inline-flex size-7 items-center justify-center rounded-full text-blue-600 hover:bg-blue-50 md:size-8" title="Edit task">
+                          <Pencil className="size-4" />
+                        </button>
+                        <button type="button" onClick={() => removeTask(task)} className="inline-flex size-7 items-center justify-center rounded-full text-red-600 hover:bg-red-50 md:size-8" title="Delete task">
+                          <Trash2 className="size-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )) : (
+                  <div className="px-4 py-6 text-center text-sm text-gray-500">No tasks created yet. Use the green plus button to add one.</div>
+                )}
+              </div>
+
+              <div className="mt-3 flex items-center justify-between rounded-lg border border-gray-100 bg-white px-4 py-3">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-gray-500">Total estimated amount</p>
+                  <p className="text-sm text-gray-500">For this action plan only</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs uppercase tracking-wide text-gray-500">Budget</p>
+                  <p className="text-lg font-bold text-gray-800">{formatCurrency(totalBudget)}</p>
+                </div>
               </div>
             </article>
           );
@@ -680,6 +675,17 @@ function FinanceActionPlansTab({ currentYear, actionPlans }: { currentYear: numb
                 <input name="deadline" type="date" defaultValue={editingTask?.deadlineRaw ?? ""} required className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
               </div>
               <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Priority *</label>
+                <select name="priority" defaultValue={editingTask?.priority ?? "medium"} required className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
+                  <option value="">Select priority</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">Progress *</label>
                 <input name="progress" type="number" min="0" max="100" defaultValue={editingTask?.progress ?? 0} required className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
               </div>
@@ -690,47 +696,16 @@ function FinanceActionPlansTab({ currentYear, actionPlans }: { currentYear: numb
       )}
 
       {viewPlan && (
-        <Modal title={viewPlan.title} onClose={() => setViewPlan(null)} width="max-w-3xl">
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              <PlanDetail label="Status" value={viewPlan.status.replace("_", " ")} />
-              <PlanDetail label="Progress" value={`${viewPlan.progress}%`} />
-              <PlanDetail label="Tasks" value={viewPlan.tasks.length} />
-              <PlanDetail label="Budget" value={formatCurrency(viewPlan.tasks.reduce((sum, task) => sum + task.estimatedBudget, 0))} />
-            </div>
-            {viewPlan.description && <p className="rounded-lg bg-gray-50 p-3 text-sm text-gray-600">{viewPlan.description}</p>}
-            <div className="overflow-x-auto rounded-lg border border-gray-100">
-              <table className="min-w-full text-sm">
-                <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
-                  <tr>
-                    <th className="px-3 py-2">Activity</th>
-                    <th className="px-3 py-2">Milestone</th>
-                    <th className="px-3 py-2">Budget</th>
-                    <th className="px-3 py-2">Deadline</th>
-                    <th className="px-3 py-2">Progress</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {viewPlan.tasks.length ? viewPlan.tasks.map((task) => (
-                    <tr key={task.id}>
-                      <td className="px-3 py-2 font-medium text-gray-800">{task.activity || task.taskName}</td>
-                      <td className="px-3 py-2 text-gray-600">{task.targetMilestone || "-"}</td>
-                      <td className="px-3 py-2 text-gray-600">{task.estimatedBudget ? formatCurrency(task.estimatedBudget) : "-"}</td>
-                      <td className="px-3 py-2 text-gray-600">{task.deadline}</td>
-                      <td className="px-3 py-2 text-gray-600">{task.progress}%</td>
-                    </tr>
-                  )) : (
-                    <tr><td colSpan={5} className="px-3 py-8 text-center text-gray-400">No tasks yet</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-            <div className="flex justify-end gap-2 border-t pt-4">
-              <button type="button" onClick={() => { setViewPlan(null); setPlanModal(viewPlan); }} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-blue-600 hover:bg-blue-50">Edit Plan</button>
-              <button type="button" onClick={() => setViewPlan(null)} className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700">Close</button>
-            </div>
-          </div>
-        </Modal>
+        <AdvancedActionPlanModal
+          plan={viewPlan}
+          departmentLabel="Financial Management"
+          onClose={() => setViewPlan(null)}
+          onExport={() => exportTasks(viewPlan)}
+          onEdit={() => {
+            setViewPlan(null);
+            setPlanModal(viewPlan);
+          }}
+        />
       )}
 
       {confirmAction ? (
@@ -745,20 +720,167 @@ function FinanceActionPlansTab({ currentYear, actionPlans }: { currentYear: numb
   );
 }
 
-function ActionPlanStat({ label, value, tone = "gray" }: { label: string; value: number | string; tone?: "gray" | "green" | "blue" | "purple" | "amber" }) {
+function ActionSummaryCard({ label, value, tone }: { label: string; value: number; tone: "rose" | "amber" | "sky" }) {
   const colors = {
-    gray: "bg-gray-50 text-gray-800",
-    green: "bg-green-50 text-green-700",
-    blue: "bg-blue-50 text-blue-700",
-    purple: "bg-purple-50 text-purple-700",
-    amber: "bg-amber-50 text-amber-700",
+    rose: "border-rose-100 from-white via-rose-50 to-red-50/40 text-rose-600 bg-rose-100 ring-rose-200",
+    amber: "border-amber-100 from-white via-amber-50 to-yellow-50/50 text-amber-600 bg-amber-100 ring-amber-200",
+    sky: "border-sky-100 from-white via-sky-50 to-blue-50/40 text-sky-600 bg-sky-100 ring-sky-200",
   };
+  const Icon = tone === "rose" ? AlertTriangle : tone === "amber" ? Hourglass : UserCheck;
   return (
-    <div className={`rounded-lg border border-gray-100 p-3 ${colors[tone]}`}>
-      <p className="text-xs font-semibold uppercase text-gray-500">{label}</p>
-      <p className="mt-1 text-lg font-bold">{value}</p>
+    <div className={`rounded-xl border bg-gradient-to-br p-4 shadow-sm ${colors[tone]}`}>
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-gray-500">{label}</p>
+          <p className="mt-1 text-2xl font-bold">{value}</p>
+        </div>
+        <div className={`flex size-10 items-center justify-center rounded-lg ring-1 ${colors[tone]}`}>
+          <Icon className="size-5" />
+        </div>
+      </div>
     </div>
   );
+}
+
+function AdvancedActionPlanModal({
+  plan,
+  departmentLabel,
+  onClose,
+  onExport,
+  onEdit,
+}: {
+  plan: ActionPlan;
+  departmentLabel: string;
+  onClose: () => void;
+  onExport: () => void;
+  onEdit: () => void;
+}) {
+  const months = buildTimelineMonths(plan);
+  const minWidth = Math.max(780, months.length * 90 + 360);
+  const totalBudget = plan.tasks.reduce((sum, task) => sum + task.estimatedBudget, 0);
+
+  return (
+    <div className="fixed inset-0 z-[90] overflow-y-auto bg-gray-900/60">
+      <div className="mx-auto w-full max-w-6xl px-3 pb-8 pt-6 sm:px-6">
+        <div className="overflow-hidden rounded-3xl bg-white shadow-2xl">
+          <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-5 pb-5 pt-8 sm:px-8">
+            <div className="min-w-0">
+              <div className="mb-5 h-1 w-28 rounded-full bg-gradient-to-r from-fuchsia-500 to-orange-400" />
+              <h3 className="text-xl font-bold leading-none tracking-tight sm:text-2xl">
+                <span className="text-gray-700">{departmentLabel}</span>
+                <span className="text-purple-500"> ACTION PLAN</span>
+              </h3>
+              <p className="mt-4 text-sm text-gray-500 sm:text-base">{plan.title}</p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button type="button" onClick={onExport} className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-emerald-700">
+                <FileSpreadsheet className="size-4" />
+                Export
+              </button>
+              <button type="button" onClick={onClose} className="mt-1 text-gray-400 hover:text-gray-600" aria-label="Close">
+                <X className="size-6" />
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-4 p-4 sm:p-5">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <PlanDetail label="Status" value={plan.status.replace("_", " ")} />
+              <PlanDetail label="Progress" value={`${plan.progress}%`} />
+              <PlanDetail label="Tasks" value={plan.tasks.length} />
+              <PlanDetail label="Budget" value={formatCurrency(totalBudget)} />
+            </div>
+            {plan.description ? <p className="rounded-xl bg-gray-50 p-3 text-sm text-gray-600">{plan.description}</p> : null}
+
+            <div className="overflow-x-auto rounded-3xl border border-gray-100 bg-white shadow-[0_10px_40px_rgba(0,0,0,0.06)]">
+              <div style={{ minWidth }}>
+                <div className="grid grid-cols-[180px_140px_140px_1fr] border-b border-gray-100 bg-gray-50 text-xs font-semibold uppercase text-gray-500">
+                  <div className="px-4 py-3">Activity</div>
+                  <div className="px-4 py-3">Milestone</div>
+                  <div className="px-4 py-3">Budget</div>
+                  <div className="grid text-gray-700" style={{ gridTemplateColumns: `repeat(${months.length}, minmax(5.5rem, 1fr))` }}>
+                    {months.map((month) => (
+                      <div key={month.key} className="border-l border-gray-100 px-3 py-3 text-center">{month.label}</div>
+                    ))}
+                  </div>
+                </div>
+
+                {plan.tasks.length ? plan.tasks.map((task) => {
+                  const position = taskTimelinePosition(task, months);
+                  return (
+                    <div key={task.id} className="grid grid-cols-[180px_140px_140px_1fr] border-b border-gray-100 text-sm last:border-b-0">
+                      <div className="px-4 py-4">
+                        <p className="font-semibold text-gray-800">{task.activity || task.taskName || "-"}</p>
+                        <p className="mt-1 text-xs text-gray-500">Priority: {task.priority || "medium"}</p>
+                      </div>
+                      <div className="px-4 py-4 text-gray-600">{task.targetMilestone || "-"}</div>
+                      <div className="px-4 py-4 text-gray-600">{task.estimatedBudget ? formatCurrency(task.estimatedBudget) : "-"}</div>
+                      <div className="relative grid min-h-20" style={{ gridTemplateColumns: `repeat(${months.length}, minmax(5.5rem, 1fr))` }}>
+                        {months.map((month) => (
+                          <div key={month.key} className="border-l border-gray-100" />
+                        ))}
+                        <div className="absolute top-1/2 h-8 -translate-y-1/2 rounded-full bg-blue-600/90 px-3 text-xs font-semibold leading-8 text-white shadow-sm" style={{ left: `${position.left}%`, width: `${position.width}%` }}>
+                          {task.progress}%
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }) : (
+                  <div className="py-10 text-center text-sm text-gray-500">No tasks available.</div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-end">
+              <button type="button" onClick={onEdit} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-blue-600 hover:bg-blue-50">Edit Plan</button>
+              <button type="button" onClick={onClose} className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700">Close</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function buildTimelineMonths(plan: ActionPlan) {
+  const dates = [parseDate(plan.startDateRaw), parseDate(plan.dueDateRaw), ...plan.tasks.flatMap((task) => [parseDate(task.startDateRaw), parseDate(task.deadlineRaw)])].filter(Boolean) as Date[];
+  const fallback = new Date();
+  const min = dates.length ? new Date(Math.min(...dates.map((date) => date.getTime()))) : fallback;
+  const max = dates.length ? new Date(Math.max(...dates.map((date) => date.getTime()))) : fallback;
+  const cursor = new Date(min.getFullYear(), min.getMonth(), 1);
+  const end = new Date(max.getFullYear(), max.getMonth(), 1);
+  const months: Array<{ key: string; label: string; date: Date }> = [];
+  while (cursor <= end || months.length === 0) {
+    months.push({
+      key: `${cursor.getFullYear()}-${cursor.getMonth()}`,
+      label: cursor.toLocaleString("en", { month: "short", year: "numeric" }),
+      date: new Date(cursor),
+    });
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return months;
+}
+
+function taskTimelinePosition(task: ActionPlanTask, months: Array<{ date: Date }>) {
+  const start = parseDate(task.startDateRaw) ?? parseDate(task.deadlineRaw) ?? months[0]?.date ?? new Date();
+  const deadline = parseDate(task.deadlineRaw) ?? start;
+  const startIndex = monthDistance(months[0]?.date ?? start, start);
+  const endIndex = monthDistance(months[0]?.date ?? start, deadline);
+  const monthCount = Math.max(months.length, 1);
+  const left = Math.max(0, Math.min(100, (Math.min(startIndex, endIndex) / monthCount) * 100));
+  const span = Math.max(1, Math.abs(endIndex - startIndex) + 1);
+  const width = Math.max(8, Math.min(100 - left, (span / monthCount) * 100));
+  return { left, width };
+}
+
+function parseDate(value: string | null | undefined) {
+  if (!value) return null;
+  const parsed = new Date(`${value}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function monthDistance(from: Date, to: Date) {
+  return (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth());
 }
 
 function PlanDetail({ label, value }: { label: string; value: ReactNode }) {
@@ -1073,9 +1195,10 @@ function FinanceContributionsTab({
   const [requestedPage, setRequestedPage] = useState(1);
   const [annualModalUser, setAnnualModalUser] = useState<UserOption | null>(null);
   const [paymentModalUser, setPaymentModalUser] = useState<UserOption | null>(null);
+  const [annualModalOpen, setAnnualModalOpen] = useState(false);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [detailRow, setDetailRow] = useState<ContributionRow | null>(null);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
-  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [pending, startTransition] = useTransition();
 
   const selectedYear = Number(fromDate.slice(0, 4)) || currentYear;
@@ -1166,6 +1289,8 @@ function FinanceContributionsTab({
       const response = await action(formData);
       setResult(response);
       if (response.ok) {
+        setAnnualModalOpen(false);
+        setPaymentModalOpen(false);
         setAnnualModalUser(null);
         setPaymentModalUser(null);
         router.refresh();
@@ -1202,23 +1327,6 @@ function FinanceContributionsTab({
     link.download = `contributions_${fromDate}_to_${toDate}.csv`;
     link.click();
     URL.revokeObjectURL(url);
-  }
-
-  function deleteRow(row: ContributionRow) {
-    setConfirmAction({
-      title: "Delete Contribution",
-      message: `Delete contribution and payments for ${row.user.name} in ${selectedYear}? This action cannot be undone.`,
-      confirmLabel: "Delete Contribution",
-      action: async () => {
-        setResult(null);
-        const response = await deleteMemberContributionForYear(row.user.id, selectedYear);
-        setResult(response);
-        if (response.ok) {
-          setConfirmAction(null);
-          router.refresh();
-        }
-      },
-    });
   }
 
   return (
@@ -1274,11 +1382,11 @@ function FinanceContributionsTab({
               <FileSpreadsheet className="size-4" />
               Export Excel
             </button>
-            <button type="button" onClick={() => setPaymentModalUser(users[0] ?? null)} className="inline-flex h-8 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-blue-600 px-3 text-xs text-white transition hover:bg-blue-700">
+            <button type="button" onClick={() => { setPaymentModalUser(null); setPaymentModalOpen(true); }} className="inline-flex h-8 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-blue-600 px-3 text-xs text-white transition hover:bg-blue-700">
               <HandCoins className="size-4" />
               Record Payment
             </button>
-            <button type="button" onClick={() => setAnnualModalUser(users[0] ?? null)} className="inline-flex h-8 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-green-600 px-3 text-xs text-white transition hover:bg-green-700">
+            <button type="button" onClick={() => { setAnnualModalUser(null); setAnnualModalOpen(true); }} className="inline-flex h-8 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-green-600 px-3 text-xs text-white transition hover:bg-green-700">
               <PlusCircle className="size-4" />
               Set Annual Contribution
             </button>
@@ -1322,7 +1430,7 @@ function FinanceContributionsTab({
         <FinanceNoticeBanner notice={result} onClose={() => setResult(null)} />
       ) : null}
 
-      <div className="overflow-x-auto">
+      <div className="hidden overflow-x-auto sm:block">
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-gray-50">
             <tr>
@@ -1342,30 +1450,21 @@ function FinanceContributionsTab({
                 <td className="min-w-56 px-3 py-3">
                   <p className="font-medium text-gray-800">{row.user.name}</p>
                   <p className="text-xs text-gray-500">{row.user.email}</p>
-                  <p className="mt-1 text-xs text-gray-400">{row.familyName ?? "No family"}</p>
-                  <p className="mt-1 text-xs font-semibold text-gray-700">{formatCurrency(row.annualAmount)}</p>
+                  <p className={`mt-1 text-xs text-gray-400 ${row.familyName ? "" : "italic"}`}>{row.familyName ?? `No Family in ${selectedYear}`}</p>
                 </td>
                 {row.termRows.map((term) => (
-                  <td key={term.term} className="min-w-36 px-3 py-3">
-                    <p className="text-xs text-gray-500">Target {formatCurrency(term.target)}</p>
-                    <p className="font-semibold text-green-600">Paid {formatCurrency(term.paid)}</p>
+                  <td key={term.term} className="min-w-[120px] px-3 py-2">
+                    <TermContributionProgress paid={term.paid} target={term.target} label={`Term ${term.term}`} />
                   </td>
                 ))}
-                <td className="min-w-40 px-3 py-3">
-                  <div className="mb-1 flex justify-between text-xs">
-                    <span>{formatCurrency(row.totalPaid)}</span>
-                    <span className="font-semibold">{row.progress}%</span>
-                  </div>
-                  <div className="h-1.5 overflow-hidden rounded-full bg-gray-200">
-                    <div className="h-1.5 rounded-full bg-purple-600" style={{ width: `${row.progress}%` }} />
-                  </div>
+                <td className="min-w-[150px] px-3 py-2">
+                  <TotalContributionProgress paid={row.totalPaid} annualAmount={row.annualAmount} progress={row.progress} />
                 </td>
                 <td className="px-3 py-3">
                   <div className="flex gap-1">
-                    <IconButton label="View details" onClick={() => setDetailRow(row)} icon={Eye} />
-                    <IconButton label="Edit annual" onClick={() => setAnnualModalUser(row.user)} icon={Pencil} />
-                    <IconButton label="Record payment" onClick={() => setPaymentModalUser(row.user)} icon={HandCoins} />
-                    <IconButton label="Delete" onClick={() => deleteRow(row)} icon={Trash2} danger />
+                    <ContributionActionButton label="Edit annual amount" onClick={() => { setAnnualModalUser(row.user); setAnnualModalOpen(true); }} icon={Pencil} tone="blue" />
+                    <ContributionActionButton label="Record payment" onClick={() => { setPaymentModalUser(row.user); setPaymentModalOpen(true); }} icon={HandCoins} tone="green" />
+                    <ContributionActionButton label="View details and history" onClick={() => setDetailRow(row)} icon={FileSpreadsheet} tone="amber" />
                   </div>
                 </td>
               </tr>
@@ -1407,20 +1506,56 @@ function FinanceContributionsTab({
         </div>
       ) : null}
 
-      {annualModalUser ? (
+      <div className="space-y-2 sm:hidden">
+        {rows.length ? paginatedRows.map((row) => (
+          <article key={row.user.id} className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+            <div className="bg-gray-50 px-3 py-2">
+              <p className="font-medium text-gray-800">{row.user.name}</p>
+              <p className="truncate text-xs text-gray-500">{row.user.email}</p>
+              <div className="mt-1 flex flex-wrap gap-2 text-xs text-gray-500">
+                <span className={row.familyName ? "" : "italic"}>{row.familyName ?? `No Family in ${selectedYear}`}</span>
+              </div>
+            </div>
+            <div className="divide-y divide-gray-100">
+              {row.termRows.map((term) => (
+                <div key={term.term} className="grid grid-cols-[80px_1fr] items-center gap-2 px-3 py-2">
+                  <span className="text-[11px] font-semibold uppercase text-gray-500">Term {term.term}</span>
+                  <TermContributionProgress paid={term.paid} target={term.target} label={`Term ${term.term}`} />
+                </div>
+              ))}
+              <div className="grid grid-cols-[80px_1fr] items-center gap-2 px-3 py-2">
+                <span className="text-[11px] font-semibold uppercase text-gray-500">Progress</span>
+                <TotalContributionProgress paid={row.totalPaid} annualAmount={row.annualAmount} progress={row.progress} />
+              </div>
+              <div className="grid grid-cols-[80px_1fr] items-center gap-2 px-3 py-2">
+                <span className="text-[11px] font-semibold uppercase text-gray-500">Actions</span>
+                <div className="flex flex-wrap gap-1">
+                  <ContributionActionButton label="Edit annual amount" onClick={() => { setAnnualModalUser(row.user); setAnnualModalOpen(true); }} icon={Pencil} tone="blue" />
+                  <ContributionActionButton label="Record payment" onClick={() => { setPaymentModalUser(row.user); setPaymentModalOpen(true); }} icon={HandCoins} tone="green" />
+                  <ContributionActionButton label="View details and history" onClick={() => setDetailRow(row)} icon={FileSpreadsheet} tone="amber" />
+                </div>
+              </div>
+            </div>
+          </article>
+        )) : (
+          <div className="rounded-lg border border-dashed border-gray-200 bg-white p-8 text-center text-gray-400">No contribution records found</div>
+        )}
+      </div>
+
+      {annualModalOpen ? (
         <AnnualContributionModal
           user={annualModalUser}
           users={users}
           year={selectedYear}
-          contribution={contributionMap.get(annualModalUser.id)}
+          contribution={annualModalUser ? contributionMap.get(annualModalUser.id) : undefined}
           pending={pending}
           onUserChange={setAnnualModalUser}
-          onClose={() => setAnnualModalUser(null)}
+          onClose={() => { setAnnualModalOpen(false); setAnnualModalUser(null); }}
           onSubmit={(formData) => submitAction(saveAnnualContribution, formData)}
         />
       ) : null}
 
-      {paymentModalUser ? (
+      {paymentModalOpen ? (
         <PaymentModal
           user={paymentModalUser}
           users={users}
@@ -1429,21 +1564,13 @@ function FinanceContributionsTab({
           termNumbers={termNumbers}
           pending={pending}
           onUserChange={setPaymentModalUser}
-          onClose={() => setPaymentModalUser(null)}
+          onClose={() => { setPaymentModalOpen(false); setPaymentModalUser(null); }}
           onSubmit={(formData) => submitAction(recordContributionPayment, formData)}
         />
       ) : null}
 
       {detailRow ? (
         <DetailsModal row={detailRow} payments={paymentsForRange.filter((payment) => payment.userId === detailRow.user.id)} onClose={() => setDetailRow(null)} />
-      ) : null}
-      {confirmAction ? (
-        <FinanceConfirmModal
-          confirm={confirmAction}
-          pending={pending}
-          onCancel={() => setConfirmAction(null)}
-          onConfirm={() => startTransition(confirmAction.action)}
-        />
       ) : null}
     </div>
   );
@@ -1853,7 +1980,7 @@ function FinanceExpensesTab({
       ) : null}
 
       <div className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
-        <div className="overflow-x-auto">
+        <div className="hidden overflow-x-auto sm:block">
           <table className="min-w-full divide-y divide-gray-200 text-sm">
             <thead className="bg-gray-50">
               <tr>
@@ -1875,11 +2002,11 @@ function FinanceExpensesTab({
                   <td className="px-3 py-2 text-xs text-gray-600">{expense.approver1Name ?? expense.approver2Name ?? "-"}</td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-1">
-                      <IconButton label="View" icon={Eye} onClick={() => setDetailExpense(expense)} />
+                      <ExpenseActionButton label="View" icon={FileText} tone="blue" onClick={() => setDetailExpense(expense)} />
                       {expense.status === "pending" && expense.approverId1 === currentUserId ? (
-                        <IconButton label="Approve" icon={Save} onClick={() => approveRow(expense)} />
+                        <ExpenseActionButton label="Approve" icon={CheckCircle2} tone="green" onClick={() => approveRow(expense)} />
                       ) : null}
-                      <IconButton label="Delete" icon={Trash2} onClick={() => deleteRow(expense)} danger />
+                      <ExpenseActionButton label="Delete" icon={Trash2} tone="red" onClick={() => deleteRow(expense)} />
                     </div>
                   </td>
                 </tr>
@@ -1890,6 +2017,45 @@ function FinanceExpensesTab({
               )}
             </tbody>
           </table>
+        </div>
+        <div className="space-y-3 p-3 sm:hidden">
+          {filteredExpenses.length ? filteredExpenses.map((expense, index) => {
+            const approverName = expense.approver1Name ?? expense.approver2Name ?? "-";
+            return (
+              <div key={expense.id} className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+                <div className="mb-3 rounded-lg bg-gray-50 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-xs font-semibold text-gray-400">#{index + 1}</span>
+                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium capitalize ${expenseStatusBadge(expense.status)}`}>{expense.status}</span>
+                  </div>
+                  <p className="mt-2 text-sm font-medium text-gray-800">{expense.description || "-"}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <p className="font-medium uppercase tracking-wide text-gray-400">Date</p>
+                    <p className="mt-0.5 text-gray-700">{expense.date}</p>
+                  </div>
+                  <div>
+                    <p className="font-medium uppercase tracking-wide text-gray-400">Amount</p>
+                    <p className="mt-0.5 font-semibold text-blue-600">{formatCurrency(expense.amount)}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="font-medium uppercase tracking-wide text-gray-400">Approver</p>
+                    <p className="mt-0.5 text-gray-700">{approverName}</p>
+                  </div>
+                </div>
+                <div className="mt-3 flex items-center gap-1 border-t border-gray-100 pt-2">
+                  <ExpenseActionButton label="View" icon={FileText} tone="blue" onClick={() => setDetailExpense(expense)} />
+                  {expense.status === "pending" && expense.approverId1 === currentUserId ? (
+                    <ExpenseActionButton label="Approve" icon={CheckCircle2} tone="green" onClick={() => approveRow(expense)} />
+                  ) : null}
+                  <ExpenseActionButton label="Delete" icon={Trash2} tone="red" onClick={() => deleteRow(expense)} />
+                </div>
+              </div>
+            );
+          }) : (
+            <div className="py-8 text-center text-sm text-gray-500">No expenses for this date range</div>
+          )}
         </div>
       </div>
 
@@ -2179,6 +2345,149 @@ function IconButton({ label, onClick, icon: Icon, danger = false }: { label: str
   );
 }
 
+function progressColor(progress: number, strong = false) {
+  if (progress >= 100) return strong ? "bg-green-600" : "bg-green-500";
+  if (progress >= 50) return strong ? "bg-blue-600" : "bg-blue-500";
+  return strong ? "bg-purple-600" : "bg-yellow-500";
+}
+
+function TermContributionProgress({ paid, target, label }: { paid: number; target: number; label: string }) {
+  const progress = target > 0 ? Math.min(100, (paid / target) * 100) : paid > 0 ? 100 : 0;
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-medium text-green-600">{formatCurrency(paid)}</span>
+        <span className="whitespace-nowrap text-xs text-gray-400">/ {formatCurrency(target)}</span>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200" role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100} aria-label={`${progress.toFixed(1)}% complete for ${label}`}>
+        <div className={`h-1.5 rounded-full transition-all duration-300 ${progressColor(progress)}`} style={{ width: `${progress}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function TotalContributionProgress({ paid, annualAmount, progress }: { paid: number; annualAmount: number; progress: number }) {
+  const width = Math.max(0, Math.min(100, progress));
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-bold text-purple-600">{width.toFixed(1)}%</span>
+        <span className="whitespace-nowrap text-xs text-gray-400">{formatCurrency(paid)} / {formatCurrency(annualAmount)}</span>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200" role="progressbar" aria-valuenow={width} aria-valuemin={0} aria-valuemax={100} aria-label={`${width.toFixed(1)}% overall progress`}>
+        <div
+          className={`h-1.5 rounded-full transition-all duration-300 ${progressColor(width, true)}`}
+          style={{ width: `${width}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ContributionActionButton({ label, onClick, icon: Icon, tone }: { label: string; onClick: () => void; icon: typeof Eye; tone: "blue" | "green" | "amber" }) {
+  const colors = {
+    blue: "text-blue-600 hover:bg-blue-50",
+    green: "text-green-600 hover:bg-green-50",
+    amber: "text-amber-600 hover:bg-amber-50",
+  };
+  return (
+    <button type="button" onClick={onClick} title={label} aria-label={label} className={`inline-flex size-7 items-center justify-center rounded-md transition ${colors[tone]}`}>
+      <Icon className="size-4" aria-hidden="true" />
+    </button>
+  );
+}
+
+function ExpenseActionButton({ label, onClick, icon: Icon, tone }: { label: string; onClick: () => void; icon: typeof Eye; tone: "blue" | "green" | "red" }) {
+  const colors = {
+    blue: "text-blue-600 hover:bg-blue-50",
+    green: "text-green-600 hover:bg-green-50",
+    red: "text-red-600 hover:bg-red-50",
+  };
+  return (
+    <button type="button" onClick={onClick} title={label} aria-label={label} className={`inline-flex size-8 items-center justify-center rounded-md transition sm:size-7 ${colors[tone]}`}>
+      <Icon className="size-4" aria-hidden="true" />
+    </button>
+  );
+}
+
+function MemberSearchField({
+  label,
+  user,
+  users,
+  onUserChange,
+  changeLabel = "Remove",
+}: {
+  label: string;
+  user: UserOption | null;
+  users: UserOption[];
+  onUserChange: (user: UserOption | null) => void;
+  changeLabel?: string;
+}) {
+  const [query, setQuery] = useState("");
+  const normalized = query.trim().toLowerCase();
+  const matches = normalized
+    ? users
+        .filter((item) => item.name.toLowerCase().includes(normalized) || item.email.toLowerCase().includes(normalized))
+        .slice(0, 8)
+    : [];
+
+  return (
+    <div>
+      <label className="mb-1 block text-sm font-medium text-gray-700">{label}</label>
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+        <input
+          type="text"
+          value={user ? user.name : query}
+          onChange={(event) => {
+            onUserChange(null);
+            setQuery(event.target.value);
+          }}
+          placeholder="Search member by name or email..."
+          className="h-10 w-full rounded-lg border border-gray-300 bg-white px-9 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+          autoComplete="off"
+        />
+        {user ? (
+          <button type="button" onClick={() => { onUserChange(null); setQuery(""); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-medium text-red-500 hover:text-red-700">
+            {changeLabel}
+          </button>
+        ) : null}
+        {!user && normalized.length >= 2 ? (
+          <div className="absolute z-20 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-xl">
+            {matches.length ? matches.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => {
+                  onUserChange(item);
+                  setQuery("");
+                }}
+                className="flex w-full items-center gap-2 border-b border-gray-100 px-3 py-2 text-left transition last:border-0 hover:bg-blue-50"
+              >
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-semibold text-gray-500">
+                  {item.name.slice(0, 2).toUpperCase()}
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-medium text-gray-800">{item.name}</span>
+                  <span className="block truncate text-xs text-gray-500">{item.email}</span>
+                </span>
+              </button>
+            )) : (
+              <div className="px-3 py-4 text-center text-sm text-gray-500">No members found</div>
+            )}
+          </div>
+        ) : null}
+      </div>
+      {user ? (
+        <div className="mt-2 flex items-center justify-between rounded-lg bg-blue-50 p-2">
+          <span className="text-sm font-medium text-gray-800">{user.name}</span>
+          <button type="button" onClick={() => { onUserChange(null); setQuery(""); }} className="text-sm text-red-500 hover:text-red-700">{changeLabel}</button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function AnnualContributionModal({
   user,
   users,
@@ -2189,12 +2498,12 @@ function AnnualContributionModal({
   onClose,
   onSubmit,
 }: {
-  user: UserOption;
+  user: UserOption | null;
   users: UserOption[];
   year: number;
   contribution: Contribution | undefined;
   pending: boolean;
-  onUserChange: (user: UserOption) => void;
+  onUserChange: (user: UserOption | null) => void;
   onClose: () => void;
   onSubmit: (formData: FormData) => void;
 }) {
@@ -2208,20 +2517,18 @@ function AnnualContributionModal({
         }}
       >
         <input type="hidden" name="year" value={year} />
-        <FieldLabel label="Member">
-          <select name="user_id" value={user.id} onChange={(event) => onUserChange(users.find((item) => item.id === Number(event.target.value)) ?? user)} className={fieldClass}>
-            {users.map((item) => (
-              <option key={item.id} value={item.id}>{item.name} - {item.email}</option>
-            ))}
-          </select>
-        </FieldLabel>
-        <FieldLabel label="Annual Amount">
+        <MemberSearchField label="Select Member" user={user} users={users} onUserChange={onUserChange} />
+        <input type="hidden" name="user_id" value={user?.id ?? ""} />
+        <FieldLabel label="Annual Amount (RWF)">
           <input name="annual_amount" type="number" min={0} step="0.01" required defaultValue={contribution?.annualAmount ?? 0} className={fieldClass} />
         </FieldLabel>
-        <FieldLabel label="Notes">
-          <textarea name="notes" defaultValue={contribution?.notes ?? ""} rows={3} className={`${fieldClass} h-auto py-2`} />
+        <FieldLabel label="Year">
+          <span className="flex h-10 items-center rounded-lg bg-gray-100 px-3 text-sm font-medium text-gray-800">{year}</span>
         </FieldLabel>
-        <ModalFooter pending={pending} submitLabel="Save Contribution" onClose={onClose} />
+        <FieldLabel label="Notes">
+          <textarea name="notes" defaultValue={contribution?.notes ?? ""} rows={2} className={`${fieldClass} h-auto py-2`} placeholder="Add any notes about this contribution..." />
+        </FieldLabel>
+        <ModalFooter pending={pending} disabled={!user} submitLabel="Set Contribution" onClose={onClose} />
       </form>
     </Modal>
   );
@@ -2238,105 +2545,28 @@ function PaymentModal({
   onClose,
   onSubmit,
 }: {
-  user: UserOption;
+  user: UserOption | null;
   users: UserOption[];
   year: number;
   defaultDate: string;
   termNumbers: number[];
   pending: boolean;
-  onUserChange: (user: UserOption) => void;
+  onUserChange: (user: UserOption | null) => void;
   onClose: () => void;
   onSubmit: (formData: FormData) => void;
 }) {
-  const initialMemberLabel = `${user.name} - ${user.email}`;
-  const [memberSearch, setMemberSearch] = useState(initialMemberLabel);
-  const [selectedUserId, setSelectedUserId] = useState<number | null>(user.id);
-  const [memberListOpen, setMemberListOpen] = useState(false);
-  const [memberError, setMemberError] = useState("");
-  const normalizedMemberSearch = memberSearch.trim().toLowerCase();
-  const matchingUsers = users.filter((item) => {
-    if (!normalizedMemberSearch) return true;
-    return item.name.toLowerCase().includes(normalizedMemberSearch)
-      || item.email.toLowerCase().includes(normalizedMemberSearch);
-  });
-
   return (
     <Modal title="Record Payment" onClose={onClose}>
       <form
         className="space-y-4"
         onSubmit={(event) => {
           event.preventDefault();
-          if (!selectedUserId) {
-            setMemberError("Search for and select a member.");
-            setMemberListOpen(true);
-            return;
-          }
           onSubmit(new FormData(event.currentTarget));
         }}
       >
         <input type="hidden" name="year" value={year} />
-        <input type="hidden" name="user_id" value={selectedUserId ?? ""} />
-        <div
-          className="relative"
-          onBlur={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-              setMemberListOpen(false);
-            }
-          }}
-        >
-          <label htmlFor="payment-member-search" className="mb-1 block text-sm font-medium text-gray-700">Member</label>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" aria-hidden="true" />
-            <input
-              id="payment-member-search"
-              type="search"
-              role="combobox"
-              aria-autocomplete="list"
-              aria-expanded={memberListOpen}
-              aria-controls="payment-member-results"
-              autoComplete="off"
-              value={memberSearch}
-              onFocus={() => setMemberListOpen(true)}
-              onChange={(event) => {
-                setMemberSearch(event.target.value);
-                setSelectedUserId(null);
-                setMemberError("");
-                setMemberListOpen(true);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") setMemberListOpen(false);
-              }}
-              placeholder="Search by member name or email..."
-              className={`${fieldClass} pl-9 ${memberError ? "border-red-400 focus:border-red-500 focus:ring-red-100" : ""}`}
-            />
-          </div>
-          {memberError ? <p className="mt-1 text-xs text-red-600">{memberError}</p> : null}
-          {memberListOpen ? (
-            <div id="payment-member-results" role="listbox" className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white p-1 shadow-lg">
-              {matchingUsers.length ? matchingUsers.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  role="option"
-                  aria-selected={selectedUserId === item.id}
-                  onClick={() => {
-                    onUserChange(item);
-                    setSelectedUserId(item.id);
-                    setMemberSearch(`${item.name} - ${item.email}`);
-                    setMemberError("");
-                    setMemberListOpen(false);
-                  }}
-                  className={`block w-full rounded-md px-3 py-2 text-left transition hover:bg-blue-50 ${selectedUserId === item.id ? "bg-blue-50" : ""}`}
-                >
-                  <span className="block text-sm font-medium text-gray-800">{item.name}</span>
-                  <span className="block text-xs text-gray-500">{item.email}</span>
-                </button>
-              )) : (
-                <p className="px-3 py-5 text-center text-sm text-gray-500">No members found</p>
-              )}
-            </div>
-          ) : null}
-        </div>
+        <MemberSearchField label="Select Member" user={user} users={users} onUserChange={onUserChange} changeLabel="Change" />
+        <input type="hidden" name="user_id" value={user?.id ?? ""} />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <FieldLabel label="Term">
             <select name="term" className={fieldClass}>
@@ -2347,6 +2577,9 @@ function PaymentModal({
           </FieldLabel>
           <FieldLabel label="Amount">
             <input name="amount" type="number" min={1} step="0.01" required className={fieldClass} />
+          </FieldLabel>
+          <FieldLabel label="Year">
+            <span className="flex h-10 items-center rounded-lg bg-gray-100 px-3 text-sm font-medium text-gray-800">{year}</span>
           </FieldLabel>
           <FieldLabel label="Payment Method">
             <select name="payment_method" defaultValue="cash" className={fieldClass}>
@@ -2361,9 +2594,9 @@ function PaymentModal({
           </FieldLabel>
         </div>
         <FieldLabel label="Notes">
-          <textarea name="notes" rows={3} className={`${fieldClass} h-auto py-2`} />
+          <textarea name="notes" rows={2} className={`${fieldClass} h-auto py-2`} placeholder="Add any notes about this payment..." />
         </FieldLabel>
-        <ModalFooter pending={pending} submitLabel="Record Payment" onClose={onClose} />
+        <ModalFooter pending={pending} disabled={!user} submitLabel="Submit Payment" onClose={onClose} />
       </form>
     </Modal>
   );
@@ -2383,13 +2616,8 @@ function DetailsModal({ row, payments, onClose }: { row: ContributionRow; paymen
           <InfoCard label="Outstanding" value={formatCurrency(Math.max(row.annualAmount - row.totalPaid, 0))} tone="purple" />
         </div>
         <div className="rounded-lg bg-gray-50 p-3">
-          <div className="mb-1 flex justify-between text-sm">
-            <span>Overall Progress</span>
-            <span className="font-semibold">{row.progress}%</span>
-          </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-gray-200">
-            <div className="h-1.5 rounded-full bg-purple-600" style={{ width: `${row.progress}%` }} />
-          </div>
+          <p className="mb-2 text-sm font-medium text-gray-700">Overall Progress</p>
+          <TotalContributionProgress paid={row.totalPaid} annualAmount={row.annualAmount} progress={row.progress} />
         </div>
         <SimpleTable title="Term Summary" headers={["Term", "Target", "Paid", "Balance"]} empty="No terms found">
           {row.termRows.map((term) => (
@@ -2401,13 +2629,14 @@ function DetailsModal({ row, payments, onClose }: { row: ContributionRow; paymen
             </tr>
           ))}
         </SimpleTable>
-        <SimpleTable title="Payment Records" headers={["Term", "Amount", "Date", "Method"]} empty="No payment records found">
+        <SimpleTable title="Payment Records" headers={["Term", "Amount", "Date", "Method", "Recorded By"]} empty="No payment records found">
           {payments.map((payment) => (
             <tr key={payment.id} className="border-b border-gray-100">
               <td className="px-4 py-3">Term {payment.term ?? "-"}</td>
               <td className="px-4 py-3 font-semibold text-green-600">{formatCurrency(payment.amount)}</td>
               <td className="px-4 py-3">{payment.paymentDate}</td>
               <td className="px-4 py-3 capitalize">{payment.paymentMethod.replaceAll("_", " ")}</td>
+              <td className="px-4 py-3">{payment.createdByName}</td>
             </tr>
           ))}
         </SimpleTable>
@@ -2700,7 +2929,7 @@ function ExpenseModal({
   });
 
   return (
-    <Modal title="New Expense" onClose={onClose}>
+    <Modal title="New Expense" onClose={onClose} width="max-w-lg">
       <form
         className="space-y-4"
         onSubmit={(event) => {
@@ -2864,15 +3093,15 @@ function DetailItem({ label, value }: { label: string; value: string }) {
 
 function Modal({ title, children, onClose, width = "max-w-xl" }: { title: string; children: ReactNode; onClose: () => void; width?: string }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 px-4 py-6">
-      <div className={`max-h-[90vh] w-full overflow-y-auto rounded-2xl bg-white shadow-2xl ${width}`}>
-        <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+    <div className="fixed inset-0 z-[80] grid place-items-stretch bg-gray-900/40 p-0 sm:place-items-center sm:px-4 sm:py-6">
+      <div className={`flex h-[100dvh] w-full flex-col overflow-hidden bg-white shadow-2xl sm:h-auto sm:max-h-[90vh] sm:rounded-2xl ${width}`}>
+        <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 sm:px-5 sm:py-4">
           <h2 className="text-lg font-bold text-gray-900">{title}</h2>
-          <button type="button" onClick={onClose} className="text-gray-400 transition hover:text-gray-700" aria-label="Close">
+          <button type="button" onClick={onClose} className="rounded-lg p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700" aria-label="Close">
             <X className="size-5" />
           </button>
         </div>
-        <div className="p-5">{children}</div>
+        <div className="flex-1 overflow-y-auto p-4 sm:p-5">{children}</div>
       </div>
     </div>
   );
@@ -2887,13 +3116,13 @@ function FieldLabel({ label, children }: { label: string; children: ReactNode })
   );
 }
 
-function ModalFooter({ pending, submitLabel, onClose }: { pending: boolean; submitLabel: string; onClose: () => void }) {
+function ModalFooter({ pending, disabled = false, submitLabel, onClose }: { pending: boolean; disabled?: boolean; submitLabel: string; onClose: () => void }) {
   return (
-    <div className="flex justify-end gap-2 border-t border-gray-100 pt-4">
+    <div className="sticky bottom-0 -mx-4 grid grid-cols-2 gap-2 border-t border-gray-100 bg-white px-4 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-3 sm:mx-0 sm:flex sm:justify-end sm:px-0 sm:pb-0 sm:pt-4">
       <button type="button" onClick={onClose} className="h-9 rounded-lg border border-gray-300 px-4 text-sm text-gray-700 transition hover:bg-gray-50">
         Cancel
       </button>
-      <button type="submit" disabled={pending} className="h-9 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60">
+      <button type="submit" disabled={pending || disabled} className="h-9 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60">
         {pending ? "Saving..." : submitLabel}
       </button>
     </div>

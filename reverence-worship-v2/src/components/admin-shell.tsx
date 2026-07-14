@@ -25,7 +25,7 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import {
   getAdminNotifications,
   markAdminNotificationRead,
@@ -55,17 +55,17 @@ const navGroups: Array<{ label: string; items: NavItem[] }> = [
     items: [
       { label: "Dashboard", href: "/admin/dashboard", page: "dashboard", icon: Gauge },
       { label: "User Management", href: "/admin/users", page: "users", icon: Users },
-      { label: "My Family", href: "/admin/family", page: "family", icon: Home },
-      { label: "Parent Dashboard", href: "/admin/parent", page: "parent", icon: UserCheck },
-      { label: "My Contributions", href: "/admin/contributions", page: "contributions", icon: HandCoins },
-      { label: "My Profile", href: "/admin/profile", page: "profile", icon: User },
-      { label: "My Performance", href: "/admin/performance", page: "performance", icon: BarChart3 },
       { label: "Music and Evangelism DPT", href: "/admin/music", page: "music-ministry", icon: Music },
       { label: "Intercession & spiritual DPT", href: "/admin/intercession", page: "intercession", icon: HandHeart },
       { label: "Social Fellowship DPT", href: "/admin/social-fellowship", page: "social-fellowship", icon: ClipboardList },
       { label: "Discipline  DPT", href: "/admin/discipline", page: "discipline", icon: Gavel },
       { label: "Financial  DPT", href: "/admin/finance", page: "finance", icon: ChartLine },
       { label: "Announcements", href: "/admin/announcements", page: "announcements", icon: Megaphone },
+      { label: "My Family", href: "/admin/family", page: "family", icon: Home },
+      { label: "Parent Dashboard", href: "/admin/parent", page: "parent", icon: UserCheck },
+      { label: "My Contributions", href: "/admin/contributions", page: "contributions", icon: HandCoins },
+      { label: "My Profile", href: "/admin/profile", page: "profile", icon: User },
+      { label: "My Performance", href: "/admin/performance", page: "performance", icon: BarChart3 },
       { label: "Permission Manager", href: "/admin/permissions", page: "permissions", icon: Lock },
       { label: "Settings", href: "/admin/settings", page: "settings", icon: Settings },
     ],
@@ -82,6 +82,9 @@ const mobileNavItems = [
   { label: "Progress", href: "/admin/performance", page: "performance", icon: BarChart3 },
   { label: "Settings", href: "/admin/settings", page: "settings", icon: Settings },
 ];
+
+const IDLE_LOGOUT_MS = 10 * 60 * 1000;
+const SESSION_PING_MS = 60 * 1000;
 
 function hasPagePermission(permissions: string[], page: string) {
   return permissions.includes("*") || permissions.some((permission) => permission.startsWith(`${page}.`));
@@ -114,6 +117,9 @@ export function AdminShell({
   const [notificationsLoaded, setNotificationsLoaded] = useState(false);
   const [notificationError, setNotificationError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const lastActivityRef = useRef(0);
+  const activitySincePingRef = useRef(true);
+  const loggingOutRef = useRef(false);
   const pathname = usePathname();
   const router = useRouter();
   const visibleNavGroups = navGroupsForPermissions(user.permissions, user.roles, !!user.isParent);
@@ -145,6 +151,59 @@ export function AdminShell({
     const timeout = window.setTimeout(loadNotifications, 0);
     return () => window.clearTimeout(timeout);
   }, []);
+
+  useEffect(() => {
+    const markActive = () => {
+      lastActivityRef.current = Date.now();
+      activitySincePingRef.current = true;
+    };
+
+    markActive();
+
+    const logoutForIdle = async () => {
+      if (loggingOutRef.current) return;
+      loggingOutRef.current = true;
+      try {
+        await fetch("/logout", { method: "POST" });
+      } finally {
+        router.replace("/login");
+      }
+    };
+
+    const refreshSession = async () => {
+      if (!activitySincePingRef.current) return;
+      activitySincePingRef.current = false;
+
+      const response = await fetch("/api/session/ping", {
+        method: "POST",
+        cache: "no-store",
+      });
+
+      if (response.status === 401) {
+        await logoutForIdle();
+      }
+    };
+
+    const events: Array<keyof WindowEventMap> = ["click", "keydown", "mousemove", "scroll", "touchstart"];
+    events.forEach((eventName) => window.addEventListener(eventName, markActive, { passive: true }));
+
+    const interval = window.setInterval(() => {
+      const idleFor = Date.now() - lastActivityRef.current;
+      if (idleFor >= IDLE_LOGOUT_MS) {
+        void logoutForIdle();
+        return;
+      }
+
+      void refreshSession();
+    }, SESSION_PING_MS);
+
+    void refreshSession();
+
+    return () => {
+      events.forEach((eventName) => window.removeEventListener(eventName, markActive));
+      window.clearInterval(interval);
+    };
+  }, [router]);
 
   function openNotificationDropdown() {
     setNotificationOpen((current) => {

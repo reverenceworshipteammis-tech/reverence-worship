@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { IntercessionSubmissionsClient } from "@/components/intercession-submissions-client";
-import { requirePermission } from "@/lib/auth";
+import { getUserPermissionSet, permissionSetHas, requireAnyPermission } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 function formatDateTime(date: Date) {
@@ -80,7 +80,8 @@ export default async function IntercessionFormSubmissionsPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requirePermission("intercession", "view-submissions", "/admin/intercession");
+  const user = await requireAnyPermission("intercession", ["view-submissions", "view-results"], "/admin/intercession");
+  const permissions = await getUserPermissionSet(user);
   const { id } = await params;
   const formId = Number(id);
 
@@ -128,6 +129,7 @@ export default async function IntercessionFormSubmissionsPage({
         description: form.description,
         isQuiz,
         releaseGrade,
+        canDeleteSubmissions: permissionSetHas(permissions, "intercession", "delete-forms"),
       }}
       submissions={form.submissions.map((submission) => ({
         id: submission.id,
@@ -139,6 +141,8 @@ export default async function IntercessionFormSubmissionsPage({
         score: submission.score,
         earnedPoints: submission.score === null ? null : Math.round(((submission.score / 100) * totalPoints) * 100) / 100,
         totalPoints,
+        isReleased: submission.isReleased,
+        releasedAt: submission.releasedAt ? formatDateTime(submission.releasedAt) : null,
         answersCount: answerCount(submission.answers),
         answers: reviewQuestions.map((question) => {
           const answers = parseObject(submission.answers);

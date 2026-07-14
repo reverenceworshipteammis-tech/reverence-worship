@@ -30,6 +30,7 @@ type LandingEvent = {
 
 type LandingPageClientProps = {
   dashboardHref: string | null;
+  registrationEnabled: boolean;
   videos: LandingVideo[];
   pictures: LandingPicture[];
   events: LandingEvent[];
@@ -76,7 +77,7 @@ function SocialIcon({ name }: { name: "instagram" | "youtube" | "spotify" | "app
   );
 }
 
-export function LandingPageClient({ dashboardHref, videos, pictures, events }: LandingPageClientProps) {
+export function LandingPageClient({ dashboardHref, registrationEnabled, videos, pictures, events }: LandingPageClientProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [heroIndex, setHeroIndex] = useState(0);
   const heroPictures = pictures.length > 0 ? pictures : [{ id: 0, title: "Reverence Worship", imagePath: "/logo.png", description: null, isHero: true }];
@@ -240,7 +241,11 @@ export function LandingPageClient({ dashboardHref, videos, pictures, events }: L
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-600">You belong here</p>
           <h2 className="mt-3 font-serif text-4xl font-bold">Join us in worship</h2>
           <p className="mt-3 leading-7 text-slate-500">Create your account to become part of the Reverence Worship community and stay connected with the ministry.</p>
-          <Link href="/register" className="mt-7 inline-flex rounded-full bg-blue-600 px-6 py-3 text-sm font-bold text-white">Join Reverence Worship</Link>
+          {registrationEnabled ? (
+            <Link href="/register" className="mt-7 inline-flex rounded-full bg-blue-600 px-6 py-3 text-sm font-bold text-white">Join Reverence Worship</Link>
+          ) : (
+            <Link href="/login" className="mt-7 inline-flex rounded-full bg-blue-600 px-6 py-3 text-sm font-bold text-white">Login</Link>
+          )}
         </div>
       </section>
 

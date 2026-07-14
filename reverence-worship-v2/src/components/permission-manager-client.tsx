@@ -4,12 +4,16 @@ import { FormEvent, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
+  Check,
   CheckCircle2,
+  ChevronDown,
   Download,
   Edit,
+  Eye,
   Layers,
   Lock,
   Plus,
+  PlusCircle,
   Search,
   Shield,
   SlidersHorizontal,
@@ -128,6 +132,7 @@ export function PermissionManagerClient({
   }, [pages, permissionSearch]);
 
   const editingRole = roleModal && roleModal !== "new" ? roleModal : null;
+  const hasRoleSearch = roleSearch.trim().length > 0;
 
   function openPermissionModal(role: RoleItem) {
     const roleAssignments = assignmentsByRole.get(role.id) ?? [];
@@ -263,8 +268,6 @@ export function PermissionManagerClient({
             <Lock className="size-3.5" />
             Access control
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">Permission Manager</h1>
-         
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={exportRoles} className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50">
@@ -331,7 +334,7 @@ export function PermissionManagerClient({
                       <SlidersHorizontal className="size-4" />
                       Manage Permissions
                     </button>
-                    <button type="button" onClick={() => { setResult(null); setRoleModal(role); }} disabled={role.name === "super-admin"} className="flex size-8 items-center justify-center rounded-lg text-blue-600 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40" title="Edit role">
+                    <button type="button" onClick={() => { setResult(null); setRoleModal(role); }} className="flex size-8 items-center justify-center rounded-lg text-blue-600 transition hover:bg-blue-100" title="Edit role">
                       <Edit className="size-4" />
                     </button>
                     {role.name !== "super-admin" && (
@@ -344,8 +347,8 @@ export function PermissionManagerClient({
               </article>
             )) : (
               <div className="py-10 text-center text-sm text-gray-400">
-                <Search className="mx-auto mb-3 size-8" />
-                No matching roles found
+                {hasRoleSearch ? <Search className="mx-auto mb-3 size-8" /> : <Shield className="mx-auto mb-3 size-8" />}
+                {hasRoleSearch ? "No matching roles found" : "No roles created yet"}
               </div>
             )}
           </div>
@@ -365,16 +368,6 @@ export function PermissionManagerClient({
               <div>
                 <label className="mb-1 block text-sm font-semibold text-gray-700">Name *</label>
                 <input name="displayName" defaultValue={editingRole?.displayName ?? ""} required placeholder="Finance Manager" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
-              </div>
-              {!editingRole && (
-                <div>
-                  <label className="mb-1 block text-sm font-semibold text-gray-700">System key</label>
-                  <input name="name" placeholder="finance-manager" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
-                </div>
-              )}
-              <div>
-                <label className="mb-1 block text-sm font-semibold text-gray-700">Description</label>
-                <textarea name="description" rows={3} defaultValue={editingRole?.description ?? ""} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
               </div>
               <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
                 <button type="button" onClick={() => setRoleModal(null)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">Cancel</button>
@@ -431,7 +424,7 @@ export function PermissionManagerClient({
                           <h4 className="truncate text-sm font-semibold text-gray-900">{page.label}</h4>
                           <p className="text-xs text-gray-500">{page.features.length} permissions</p>
                         </div>
-                        <span className={`text-xs text-gray-400 transition ${expanded ? "rotate-180" : ""}`}>⌄</span>
+                        <ChevronDown className={`size-4 text-gray-400 transition ${expanded ? "rotate-180" : ""}`} />
                       </button>
                       {expanded && (
                         <div className="border-t border-gray-200 bg-gray-50 px-4 py-3">
@@ -439,19 +432,14 @@ export function PermissionManagerClient({
                             <input type="checkbox" checked={allSelected} onChange={() => togglePage(page)} className="rounded border-gray-300" />
                             Select all
                           </label>
-                          <div className="grid gap-2 md:grid-cols-2">
+                          <div className="flex flex-wrap gap-x-5 gap-y-2">
                             {sortedFeatures.map((feature) => (
-                              <label key={feature.id} className="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm transition hover:border-blue-200 hover:bg-blue-50/40">
-                                <input type="checkbox" checked={selectedFeatureIds.has(feature.id)} onChange={() => toggleFeature(feature.id)} className="mt-1 rounded border-gray-300" />
-                                <span className={`mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md ${featureTone(feature.name)}`}>
-                                  {feature.name.slice(0, 1).toUpperCase()}
+                              <label key={feature.id} className="inline-flex cursor-pointer items-center gap-2 text-sm">
+                                <input type="checkbox" checked={selectedFeatureIds.has(feature.id)} onChange={() => toggleFeature(feature.id)} className="rounded border-gray-300" />
+                                <span className={`flex size-6 shrink-0 items-center justify-center rounded-md ${featureTone(feature.name)}`}>
+                                  <FeatureIcon name={feature.name} />
                                 </span>
-                                <span className="min-w-0">
-                                  <span className="block font-semibold text-gray-800">{feature.label}</span>
-                                  {feature.description ? (
-                                    <span className="mt-0.5 block text-xs leading-5 text-gray-500">{feature.description}</span>
-                                  ) : null}
-                                </span>
+                                <span>{feature.label}</span>
                               </label>
                             ))}
                           </div>
@@ -550,6 +538,16 @@ function PermissionConfirmModal({
   );
 }
 
+function FeatureIcon({ name }: { name: string }) {
+  if (name.startsWith("view") || name.startsWith("read")) return <Eye className="size-3.5" aria-hidden="true" />;
+  if (name.startsWith("create") || name.startsWith("submit") || name.startsWith("record") || name.startsWith("mark") || name.startsWith("manage")) return <PlusCircle className="size-3.5" aria-hidden="true" />;
+  if (name.startsWith("edit") || name.startsWith("change") || name.startsWith("complete") || name.startsWith("resolve") || name.startsWith("publish")) return <Edit className="size-3.5" aria-hidden="true" />;
+  if (name.startsWith("delete")) return <Trash2 className="size-3.5" aria-hidden="true" />;
+  if (name.startsWith("approve")) return <Check className="size-3.5" aria-hidden="true" />;
+  if (name.startsWith("export") || name.startsWith("import")) return <Download className="size-3.5" aria-hidden="true" />;
+  return <Layers className="size-3.5" aria-hidden="true" />;
+}
+
 function featureTone(name: string) {
   if (name.startsWith("view") || name.startsWith("read")) return "bg-emerald-50 text-emerald-600";
   if (name.startsWith("create") || name.startsWith("submit") || name.startsWith("record") || name.startsWith("mark") || name.startsWith("manage")) return "bg-blue-50 text-blue-600";
@@ -559,3 +557,4 @@ function featureTone(name: string) {
   if (name.startsWith("export") || name.startsWith("import")) return "bg-purple-50 text-purple-600";
   return "bg-gray-50 text-gray-600";
 }
+

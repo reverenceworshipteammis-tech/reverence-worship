@@ -57,6 +57,11 @@ export default async function SocialFellowshipPage({
       },
     }),
     prisma.familyTask.findMany({
+      where: {
+        family: {
+          year: selectedYear,
+        },
+      },
       orderBy: { createdAt: "desc" },
       include: {
         family: true,

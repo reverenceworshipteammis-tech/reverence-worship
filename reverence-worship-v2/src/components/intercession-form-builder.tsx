@@ -16,7 +16,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { createSpiritualFormFromBuilder, updateSpiritualFormFromBuilder } from "@/app/admin/intercession/actions";
-import { MobileTabDropdown } from "@/components/mobile-tab-dropdown";
+import { MobileTabScroller } from "@/components/mobile-tab-scroller";
 
 type QuestionType =
   | "short_answer"
@@ -881,7 +881,7 @@ function SettingsPanel({
     <div className="mx-auto max-w-5xl overflow-hidden rounded-xl border border-gray-200 bg-white">
       <div className="border-b border-gray-200 px-5">
         <div className="py-3 md:hidden">
-          <MobileTabDropdown tabs={tabs} value={activeTab} onChange={(tab) => setActiveTab(tab as SettingsTab)} tone="indigo" />
+          <MobileTabScroller tabs={tabs} value={activeTab} onChange={(tab) => setActiveTab(tab as SettingsTab)} />
         </div>
         <nav className="hidden gap-6 overflow-x-auto md:flex">
           {tabs.map((tab) => (

@@ -19,7 +19,6 @@ import {
   saveDisciplineSession,
   savePermissionRequest,
 } from "@/app/admin/discipline/actions";
-import { MobileTabDropdown } from "@/components/mobile-tab-dropdown";
 import { MobileTabScroller } from "@/components/mobile-tab-scroller";
 
 type DisciplineStats = {
@@ -497,8 +496,8 @@ export function DisciplineClient({
       !normalized ||
       [permission.userName, permission.userEmail, permission.reason, permission.type].some((value) => value.toLowerCase().includes(normalized));
     const matchesStatus = permissionStatus === "all" || permission.status === permissionStatus;
-    const matchesFrom = !permissionFrom || permission.createdAtValue >= permissionFrom;
-    const matchesTo = !permissionTo || permission.createdAtValue <= permissionTo;
+    const matchesFrom = !permissionFrom || permission.endDateValue >= permissionFrom;
+    const matchesTo = !permissionTo || permission.startDateValue <= permissionTo;
     return matchesSearch && matchesStatus && matchesFrom && matchesTo;
   });
   const permissionStats = {
@@ -512,6 +511,31 @@ export function DisciplineClient({
     if (normalized.length < 2) return false;
     return [user.name, user.email].some((value) => value.toLowerCase().includes(normalized));
   });
+
+  function exportPermissionsCsv() {
+    const rows = filteredPermissions.map((permission) => [
+      permission.userName,
+      permission.reason,
+      permission.startDate,
+      permission.endDate,
+      String(permissionDayCount(permission)),
+      permission.status,
+      permissionCommentText(permission),
+    ]);
+    const csv = [
+      ["Name", "Reason", "From", "To", "Count of Days", "Status", "Comment"],
+      ...rows,
+    ]
+      .map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "permission-requests.csv";
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
 
   function openPermissionModal(permission?: Permission) {
     setEditingPermission(permission ?? null);
@@ -850,9 +874,6 @@ export function DisciplineClient({
                               {session.sessionDateLabel}
                             </p>
                           </div>
-                          <span className={`rounded-full px-2 py-1 text-xs ${session.isCompleted ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
-                            {session.isCompleted ? "Completed" : "Open"}
-                          </span>
                         </div>
                       ))
                     ) : (
@@ -895,57 +916,57 @@ export function DisciplineClient({
               </div>
             </div>
           ) : activeTab === "attendance" ? (
-            <div className="space-y-6">
+            <div className="space-y-4 sm:space-y-6">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <h3 className="text-2xl font-bold text-gray-800">Attendance Management</h3>
+                <h3 className="text-xl font-bold text-gray-800 sm:text-2xl">Attendance Management</h3>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
+              <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-4">
                 <AttendanceStat label="Total Sessions" value={attendanceSessions.length} icon={CalendarCheck} tone="sky" />
                 <AttendanceStat label="Timeliness" value={`${presentAvg}%`} icon={CheckCircle2} tone="emerald" />
                 <AttendanceStat label="Late Avg" value={`${lateAvg}%`} icon={Clock} tone="amber" />
                 <AttendanceStat label="Absent Avg" value={`${absentAvg}%`} icon={XCircle} tone="rose" />
               </div>
 
-              <div className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm">
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-[180px_minmax(220px,1fr)_auto] md:items-end">
+              <div className="rounded-xl border border-blue-100 bg-white p-3 shadow-sm sm:rounded-2xl sm:p-4">
+                <div className="grid grid-cols-2 gap-2.5 md:grid-cols-[180px_minmax(220px,1fr)_auto] md:items-end">
                   <div>
                     <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Session Date</label>
-                    <input value={sessionDate} onChange={(event) => setSessionDate(event.target.value)} type="date" className="h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+                    <input value={sessionDate} onChange={(event) => setSessionDate(event.target.value)} type="date" className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 sm:h-11 sm:rounded-xl" />
                   </div>
                   <div>
                     <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Session Name</label>
-                    <input value={sessionType} onChange={(event) => setSessionType(event.target.value)} placeholder="Sunday Service" className="h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+                    <input value={sessionType} onChange={(event) => setSessionType(event.target.value)} placeholder="Sunday Service" className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 sm:h-11 sm:rounded-xl" />
                   </div>
-                  <button type="button" onClick={() => openAttendanceSession(sessionDate, sessionType)} className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white transition hover:bg-blue-700 md:w-auto">
+                  <button type="button" onClick={() => openAttendanceSession(sessionDate, sessionType)} className="col-span-2 inline-flex h-10 w-full items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700 sm:h-11 sm:rounded-xl md:col-span-1 md:w-auto">
                     <Play className="mr-2 size-4" />
                     Start Session
                   </button>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              <div className="grid grid-cols-2 items-end gap-2 sm:gap-3 lg:grid-cols-5">
                 <div>
                   <label className="mb-1 block text-xs text-gray-600">From</label>
-                  <input value={attendanceFrom} onChange={(event) => setAttendanceFrom(event.target.value)} type="date" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                  <input value={attendanceFrom} onChange={(event) => setAttendanceFrom(event.target.value)} type="date" className="h-9 w-full rounded-lg border border-gray-300 px-2 text-xs sm:h-auto sm:px-3 sm:py-2 sm:text-sm" />
                 </div>
                 <div>
                   <label className="mb-1 block text-xs text-gray-600">To</label>
-                  <input value={attendanceTo} onChange={(event) => setAttendanceTo(event.target.value)} type="date" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                  <input value={attendanceTo} onChange={(event) => setAttendanceTo(event.target.value)} type="date" className="h-9 w-full rounded-lg border border-gray-300 px-2 text-xs sm:h-auto sm:px-3 sm:py-2 sm:text-sm" />
                 </div>
-                <div>
+                <div className="col-span-2 lg:col-span-1">
                   <label className="mb-1 block text-xs text-gray-600">Session</label>
-                  <select value={attendanceSessionFilter} onChange={(event) => setAttendanceSessionFilter(event.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm">
+                  <select value={attendanceSessionFilter} onChange={(event) => setAttendanceSessionFilter(event.target.value)} className="h-9 w-full rounded-lg border border-gray-300 bg-white px-2 text-xs sm:h-auto sm:px-3 sm:py-2 sm:text-sm">
                     <option value="">All Sessions</option>
                     {sessionTypes.map((type) => (
                       <option key={type} value={type}>{type}</option>
                     ))}
                   </select>
                 </div>
-                <button type="button" onClick={() => setAttendanceSessionFilter("")} className="w-full rounded-lg bg-slate-100 px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-200">
+                <button type="button" onClick={() => setAttendanceSessionFilter("")} className="h-9 w-full rounded-lg bg-slate-100 px-3 text-xs text-slate-700 transition hover:bg-slate-200 sm:h-auto sm:px-4 sm:py-2 sm:text-sm">
                   Reset
                 </button>
-                <button type="button" className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-sky-100 px-4 py-2 text-sm text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-200">
+                <button type="button" className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-sky-100 px-3 text-xs text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-200 sm:h-auto sm:gap-2 sm:px-4 sm:py-2 sm:text-sm">
                   <FileText className="size-4" />
                   Export
                 </button>
@@ -974,7 +995,6 @@ export function DisciplineClient({
                           <td className="px-5 py-3 text-sm text-slate-600">{session.dateLabel}</td>
                           <td className="px-5 py-3 text-sm font-medium text-slate-800">
                             {session.session}
-                            {session.isCompleted && <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-700">Completed</span>}
                           </td>
                           <td className="px-5 py-3 text-center text-sm font-semibold text-emerald-600">{present}</td>
                           <td className="px-5 py-3 text-center text-sm text-rose-500">{absent}</td>
@@ -982,7 +1002,6 @@ export function DisciplineClient({
                           <td className="px-5 py-3">
                             <div className="flex items-center justify-center gap-2">
                               <button type="button" onClick={() => openAttendanceSession(session.date, session.session)} className="rounded-lg border border-gray-200 px-3 py-2 text-xs text-blue-600 hover:bg-blue-50">View</button>
-                              {session.isCompleted && <span className="rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-400">Completed</span>}
                               <button type="button" onClick={() => removeAttendanceSession(session.date, session.session)} className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-600 hover:bg-red-100">
                                 <Trash2 className="size-4" />
                               </button>
@@ -999,30 +1018,29 @@ export function DisciplineClient({
                 </table>
               </div>
 
-              <div className="space-y-2 md:hidden">
+              <div className="space-y-1.5 md:hidden">
                 {attendanceSessions.length ? attendanceSessions.map((session) => {
                   const present = session.present + session.late;
                   const absent = session.absent + session.excused;
                   const rate = session.total ? Math.round((present / session.total) * 100) : 0;
                   return (
-                    <div key={session.key} className="rounded-lg border border-gray-100 bg-white p-2.5 shadow-sm">
+                    <div key={session.key} className="rounded-lg border border-gray-100 bg-white p-2 shadow-sm">
                       <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900">{session.session}</p>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-slate-900">{session.session}</p>
                           <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-                            {session.isCompleted && <span className="inline-block rounded-full bg-green-100 px-1.5 py-0.5 text-[11px] text-green-700">Completed</span>}
                             <p className="text-xs text-slate-500">{session.dateLabel}</p>
                           </div>
                         </div>
-                        <span className="text-base font-bold text-emerald-600">{rate}%</span>
+                        <span className="shrink-0 rounded-md bg-emerald-50 px-2 py-1 text-sm font-bold text-emerald-600">{rate}%</span>
                       </div>
-                      <div className="mt-2 grid grid-cols-2 gap-1.5 text-xs">
+                      <div className="mt-1.5 grid grid-cols-2 gap-1.5 text-[11px]">
                         <div className="rounded-md bg-emerald-50 px-2 py-1 text-emerald-700"><span className="mr-1">Present</span><strong>{present}</strong></div>
                         <div className="rounded-md bg-rose-50 px-2 py-1 text-rose-700"><span className="mr-1">Absent</span><strong>{absent}</strong></div>
                       </div>
-                      <div className="mt-2 grid grid-cols-2 gap-1.5">
-                        <button type="button" onClick={() => openAttendanceSession(session.date, session.session)} className="rounded-md bg-blue-600 px-2 py-1.5 text-xs font-medium text-white">View</button>
-                        <button type="button" onClick={() => removeAttendanceSession(session.date, session.session)} className="rounded-md border border-red-100 bg-red-50 px-2 py-1.5 text-xs font-medium text-red-700">Delete</button>
+                      <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+                        <button type="button" onClick={() => openAttendanceSession(session.date, session.session)} className="rounded-md bg-blue-600 px-2 py-1 text-xs font-medium text-white">View</button>
+                        <button type="button" onClick={() => removeAttendanceSession(session.date, session.session)} className="rounded-md border border-red-100 bg-red-50 px-2 py-1 text-xs font-medium text-red-700">Delete</button>
                       </div>
                     </div>
                   );
@@ -1030,33 +1048,34 @@ export function DisciplineClient({
               </div>
             </div>
           ) : activeTab === "permission" ? (
-            <div className="space-y-6">
-              <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-                <h3 className="text-2xl font-bold tracking-tight text-gray-900 md:text-3xl">Permission Management</h3>
-                <button onClick={() => openPermissionModal()} className="inline-flex items-center gap-2 self-start rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow-md shadow-blue-200 transition hover:from-blue-700 hover:to-indigo-700">
+            <div className="space-y-4 sm:space-y-6">
+              <div className="flex items-center justify-between gap-3 md:items-end">
+                <h3 className="text-xl font-bold tracking-tight text-gray-900 md:text-3xl">Permission Management</h3>
+                <button onClick={() => openPermissionModal()} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-3 py-2 text-xs font-medium text-white shadow-md shadow-blue-200 transition hover:from-blue-700 hover:to-indigo-700 sm:gap-2 sm:rounded-xl sm:px-4 sm:py-2.5 sm:text-sm">
                   <Plus className="size-4" />
                   New Request
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
+              <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-4">
                 <AttendanceStat label="Total Requests" value={permissionStats.total} icon={MailOpen} tone="sky" />
                 <AttendanceStat label="Pending" value={permissionStats.pending} icon={Clock} tone="amber" />
                 <AttendanceStat label="Approved" value={permissionStats.approved} icon={CheckCircle2} tone="emerald" />
                 <AttendanceStat label="Rejected" value={permissionStats.rejected} icon={XCircle} tone="rose" />
               </div>
 
-              <div className="grid grid-cols-1 items-end gap-3 rounded-2xl border border-gray-100 bg-white/90 p-4 shadow-sm sm:grid-cols-2 lg:grid-cols-6">
-                <div className="lg:col-span-2">
+              <div className="rounded-xl border border-gray-100 bg-white/90 p-3 shadow-sm sm:rounded-2xl sm:p-4">
+                <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr_1fr]">
+                  <div>
                   <label className="mb-1 block text-xs text-gray-600">Search</label>
                   <div className="relative">
                     <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
-                    <input value={permissionSearch} onChange={(event) => setPermissionSearch(event.target.value)} placeholder="Search by name or reason..." className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+                    <input value={permissionSearch} onChange={(event) => setPermissionSearch(event.target.value)} placeholder="Search by name or reason..." className="h-9 w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 sm:h-auto sm:rounded-xl sm:py-2.5" />
                   </div>
                 </div>
                 <div>
                   <label className="mb-1 block text-xs text-gray-600">Status</label>
-                  <select value={permissionStatus} onChange={(event) => setPermissionStatus(event.target.value)} className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
+                  <select value={permissionStatus} onChange={(event) => setPermissionStatus(event.target.value)} className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 sm:h-auto sm:rounded-xl sm:px-3 sm:py-2.5 sm:text-sm">
                     <option value="all">All Status</option>
                     <option value="pending">Pending</option>
                     <option value="approved">Approved</option>
@@ -1066,18 +1085,66 @@ export function DisciplineClient({
                 </div>
                 <div>
                   <label className="mb-1 block text-xs text-gray-600">From</label>
-                  <input value={permissionFrom} onChange={(event) => setPermissionFrom(event.target.value)} type="date" className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+                  <input value={permissionFrom} onChange={(event) => setPermissionFrom(event.target.value)} type="date" className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 sm:h-auto sm:rounded-xl sm:px-3 sm:py-2.5 sm:text-sm" />
                 </div>
                 <div>
                   <label className="mb-1 block text-xs text-gray-600">To</label>
-                  <input value={permissionTo} onChange={(event) => setPermissionTo(event.target.value)} type="date" className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+                  <input value={permissionTo} onChange={(event) => setPermissionTo(event.target.value)} type="date" className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 sm:h-auto sm:rounded-xl sm:px-3 sm:py-2.5 sm:text-sm" />
                 </div>
-                <button onClick={() => { setPermissionSearch(""); setPermissionStatus("all"); setPermissionFrom(""); setPermissionTo(""); }} className="w-full rounded-xl bg-gray-100 px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-200">
-                  Reset
+                  <button type="button" className="h-9 w-full rounded-lg bg-gray-100 px-3 text-xs font-medium text-gray-700 transition hover:bg-gray-200 sm:h-auto sm:rounded-xl sm:px-4 sm:py-2.5 sm:text-sm">
+                    <Search className="mr-1 inline size-4" />
+                    Filter
+                  </button>
+                </div>
+                <button onClick={exportPermissionsCsv} className="mt-3 h-9 w-full rounded-lg bg-blue-600 px-3 text-xs font-medium text-white shadow-sm transition hover:bg-blue-700 sm:h-auto sm:w-52 sm:rounded-xl sm:px-4 sm:py-2.5 sm:text-sm">
+                  <FileText className="mr-1 inline size-4" />
+                  Export
                 </button>
               </div>
 
-              <div className="space-y-3">
+              <div className="hidden overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm md:block">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[980px]">
+                    <thead className="border-b border-gray-100 bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Name</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Reason</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">From</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">To</th>
+                        <th className="px-4 py-3 text-center text-xs font-semibold uppercase text-gray-500">Count of Days</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Status</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Comment</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {filteredPermissions.length ? filteredPermissions.map((permission) => (
+                        <tr key={permission.id} className="align-top hover:bg-gray-50/70">
+                          <td className="px-4 py-4 text-sm font-semibold text-gray-900">
+                            <span className="block max-w-[160px] break-words">{permission.userName}</span>
+                          </td>
+                          <td className="max-w-[460px] px-4 py-4 text-sm leading-6 text-gray-700">{permission.reason}</td>
+                          <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-700">{permission.startDate}</td>
+                          <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-700">{permission.endDate}</td>
+                          <td className="px-4 py-4 text-center text-sm font-bold text-gray-900">{permissionDayCount(permission)}</td>
+                          <td className="px-4 py-4"><StatusBadge status={permission.status} /></td>
+                          <td className="px-4 py-4 text-sm leading-6 text-gray-700">
+                            <PermissionComment permission={permission} />
+                          </td>
+                        </tr>
+                      )) : (
+                        <tr>
+                          <td colSpan={7} className="py-12 text-center text-gray-500">
+                            <MailOpen className="mx-auto mb-2 size-10 text-gray-300" />
+                            No permission requests found
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="space-y-3 md:hidden">
                 {filteredPermissions.length ? filteredPermissions.map((permission) => (
                   <article key={permission.id} className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm transition hover:shadow-md">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -1089,11 +1156,13 @@ export function DisciplineClient({
                         </div>
                         <p className="text-sm text-gray-500">{permission.userEmail}</p>
                         <p className="mt-2 text-sm text-gray-700">{permission.reason}</p>
-                        <div className="mt-3 flex flex-wrap gap-3 text-xs text-gray-500">
-                          <span>{permission.startDate} - {permission.endDate}</span>
-                          <span>Created {permission.createdAt}</span>
-                          {permission.approvedByName && <span>By {permission.approvedByName}</span>}
-                          {permission.rejectionReason && <span className="text-red-600">Reason: {permission.rejectionReason}</span>}
+                        <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-gray-500">
+                          <div className="rounded-lg bg-gray-50 p-2"><span className="block">From</span><strong className="text-gray-800">{permission.startDate}</strong></div>
+                          <div className="rounded-lg bg-gray-50 p-2"><span className="block">To</span><strong className="text-gray-800">{permission.endDate}</strong></div>
+                          <div className="rounded-lg bg-gray-50 p-2 text-center"><span className="block">Days</span><strong className="text-gray-900">{permissionDayCount(permission)}</strong></div>
+                        </div>
+                        <div className="mt-3 rounded-lg bg-gray-50 p-2 text-xs leading-5 text-gray-600">
+                          <PermissionComment permission={permission} />
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2">
@@ -1241,44 +1310,43 @@ export function DisciplineClient({
               </div>
             </div>
           ) : activeTab === "action-plans" ? (
-            <div className="space-y-4">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-800">Action Plans</h3>
-                </div>
-                <button type="button" onClick={() => openActionPlan()} className="inline-flex w-fit items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm text-white transition hover:bg-blue-700">
+            <div className="space-y-3 sm:space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-lg font-semibold text-gray-800">Action Plans</h3>
+                <button type="button" onClick={() => openActionPlan()} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs text-white transition hover:bg-blue-700 sm:gap-2 sm:px-4 sm:text-sm">
                   <Plus className="size-4" />
-                  Create New Action Plan
+                  <span className="hidden min-[390px]:inline">Create New</span>
+                  <span className="min-[390px]:hidden">Create</span>
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="grid grid-cols-3 gap-1.5 sm:gap-4">
                 <ActionSummaryCard label="Overdue Tasks" value={actionSummary.overdueTasks} tone="rose" />
                 <ActionSummaryCard label="To-Be-Overdue Within 7 Days" value={actionSummary.dueSoonTasks} tone="amber" />
                 <ActionSummaryCard label="My TO DO" value={actionSummary.myTodoTasks} tone="sky" />
               </div>
 
-              <div className="grid grid-cols-1 gap-4">
+              <div className="grid grid-cols-1 gap-3 sm:gap-4">
                 {actionPlans.length ? actionPlans.map((plan) => {
                   const totalBudget = plan.tasks.reduce((sum, task) => sum + task.estimatedBudget, 0);
                   const statusColor = plan.status === "completed" ? "bg-green-100 text-green-800" : plan.status === "in_progress" ? "bg-blue-100 text-blue-800" : "bg-yellow-100 text-yellow-800";
                   return (
-                    <article key={plan.id} className="rounded-lg border bg-white p-4 transition hover:shadow-md">
-                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <article key={plan.id} className="rounded-lg border bg-white p-3 transition hover:shadow-md sm:p-4">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                         <div className="min-w-0 flex-1">
-                          <div className="mb-2 flex flex-wrap items-center gap-2">
-                            <h4 className="font-semibold text-gray-800">{plan.title}</h4>
-                            <span className={`rounded-full px-2 py-1 text-xs capitalize ${statusColor}`}>{plan.status.replace("_", " ")}</span>
+                          <div className="mb-1.5 flex items-start justify-between gap-2 sm:mb-2 sm:block">
+                            <h4 className="min-w-0 flex-1 text-sm font-semibold text-gray-800 sm:text-base">{plan.title}</h4>
+                            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] capitalize sm:py-1 sm:text-xs ${statusColor}`}>{plan.status.replace("_", " ")}</span>
                           </div>
-                          <p className="text-sm text-gray-600">{plan.description || "No description"}</p>
-                          <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-gray-500">
+                          <p className="line-clamp-2 text-xs text-gray-600 sm:text-sm">{plan.description || "No description"}</p>
+                          <div className="mt-2 grid grid-cols-2 gap-1.5 text-[11px] text-gray-500 sm:flex sm:flex-wrap sm:items-center sm:gap-4 sm:text-xs">
                             <span>By {plan.createdByName}</span>
                             <span>Start: {plan.startDate}</span>
                             <span>Completion: {plan.dueDate}</span>
-                            <span>Created: {plan.createdAt}</span>
+                            <span className="hidden sm:inline">Created: {plan.createdAt}</span>
                             {totalBudget > 0 && <span>Budget: RWF {totalBudget.toLocaleString()}</span>}
                           </div>
-                          <div className="mt-4">
+                          <div className="mt-3 sm:mt-4">
                             <div className="flex items-center gap-2">
                               <div className="h-2 w-full max-w-sm rounded-full bg-gray-200">
                                 <div className="h-2 rounded-full bg-blue-600" style={{ width: `${plan.progress}%` }} />
@@ -1287,23 +1355,23 @@ export function DisciplineClient({
                             </div>
                           </div>
                         </div>
-                        <div className="flex flex-wrap gap-2">
-                          <button type="button" onClick={() => openTaskModal(plan)} className="rounded-lg bg-green-50 px-3 py-2 text-green-700 hover:bg-green-100" title="Create task">
+                        <div className="grid grid-cols-4 gap-1.5 sm:flex sm:flex-wrap sm:gap-2">
+                          <button type="button" onClick={() => openTaskModal(plan)} className="inline-flex justify-center rounded-lg bg-green-50 px-2 py-1.5 text-green-700 hover:bg-green-100 sm:px-3 sm:py-2" title="Create task">
                             <Plus className="size-4" />
                           </button>
-                          <button type="button" onClick={() => exportActionPlanTasks(plan)} className="rounded-lg bg-indigo-50 px-3 py-2 text-indigo-700 hover:bg-indigo-100" title="Export tasks">
+                          <button type="button" onClick={() => exportActionPlanTasks(plan)} className="inline-flex justify-center rounded-lg bg-indigo-50 px-2 py-1.5 text-indigo-700 hover:bg-indigo-100 sm:px-3 sm:py-2" title="Export tasks">
                             <FileText className="size-4" />
                           </button>
-                          <button type="button" onClick={() => openActionPlan(plan)} className="rounded-lg border border-gray-200 px-3 py-2 text-blue-600 hover:bg-blue-50" title="Edit">
+                          <button type="button" onClick={() => openActionPlan(plan)} className="inline-flex justify-center rounded-lg border border-gray-200 px-2 py-1.5 text-blue-600 hover:bg-blue-50 sm:px-3 sm:py-2" title="Edit">
                             <Edit className="size-4" />
                           </button>
-                          <button type="button" onClick={() => removeActionPlan(plan)} className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-red-600 hover:bg-red-100" title="Delete">
+                          <button type="button" onClick={() => removeActionPlan(plan)} className="inline-flex justify-center rounded-lg border border-red-100 bg-red-50 px-2 py-1.5 text-red-600 hover:bg-red-100 sm:px-3 sm:py-2" title="Delete">
                             <Trash2 className="size-4" />
                           </button>
                         </div>
                       </div>
 
-                      <div className="mt-4 overflow-x-auto rounded-lg border border-gray-100">
+                      <div className="mt-3 hidden overflow-x-auto rounded-lg border border-gray-100 sm:mt-4 md:block">
                         <table className="min-w-full text-sm">
                           <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
                             <tr>
@@ -1337,6 +1405,30 @@ export function DisciplineClient({
                             )}
                           </tbody>
                         </table>
+                      </div>
+
+                      <div className="mt-3 space-y-1.5 md:hidden">
+                        {plan.tasks.length ? plan.tasks.map((task) => (
+                          <div key={task.id} className="rounded-lg border border-gray-100 bg-gray-50 p-2">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-gray-800">{task.activity || task.taskName}</p>
+                                <p className="mt-0.5 line-clamp-2 text-[11px] text-gray-500">{task.targetMilestone || "No milestone"}</p>
+                              </div>
+                              <span className="shrink-0 rounded-md bg-white px-2 py-1 text-xs font-bold text-blue-700">{task.progress}%</span>
+                            </div>
+                            <div className="mt-2 grid grid-cols-2 gap-1.5 text-[11px] text-gray-600">
+                              <span className="rounded-md bg-white px-2 py-1">Budget: {task.estimatedBudget ? `RWF ${task.estimatedBudget.toLocaleString()}` : "-"}</span>
+                              <span className="rounded-md bg-white px-2 py-1">Deadline: {task.deadline || "-"}</span>
+                            </div>
+                            <div className="mt-2 grid grid-cols-2 gap-1.5">
+                              <button type="button" onClick={() => openTaskModal(plan, task)} className="rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">Edit</button>
+                              <button type="button" onClick={() => removeActionPlanTask(task)} className="rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700">Delete</button>
+                            </div>
+                          </div>
+                        )) : (
+                          <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4 text-center text-xs text-gray-400">No tasks yet</div>
+                        )}
                       </div>
                     </article>
                   );
@@ -1427,11 +1519,11 @@ export function DisciplineClient({
       )}
 
       {sessionModal && (
-        <div className="fixed inset-0 z-50 grid place-items-stretch bg-black/40 p-0 sm:place-items-center sm:p-6">
-          <div className="flex h-[100dvh] w-full max-w-5xl flex-col overflow-hidden bg-white shadow-xl sm:h-auto sm:max-h-[90vh] sm:rounded-xl sm:border">
-            <div className="flex items-center justify-between border-b px-4 py-3 sm:px-5">
-              <div>
-                <h2 className="flex items-center gap-2 text-lg font-bold text-gray-900">
+        <div className="fixed inset-0 z-[80] grid place-items-stretch bg-black/40 p-0 md:place-items-center md:p-5">
+          <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-white shadow-xl md:h-auto md:max-h-[94vh] md:max-w-[min(96vw,1320px)] md:rounded-xl md:border">
+            <div className="flex items-center justify-between border-b px-3 py-2.5 md:px-6 md:py-4">
+              <div className="min-w-0">
+                <h2 className="flex items-center gap-2 text-base font-bold text-gray-900 md:text-xl">
                   Mark Attendance
                   {sessionReadOnly && <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">Completed</span>}
                 </h2>
@@ -1442,92 +1534,100 @@ export function DisciplineClient({
               </button>
             </div>
 
-            <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-3 sm:bg-white sm:p-4">
+            <div className="flex-1 space-y-2 overflow-y-auto bg-slate-50 p-2.5 sm:space-y-3 md:p-5">
               {sessionReadOnly && (
-                <div className="rounded-lg bg-yellow-100 px-3 py-2 text-sm font-medium text-yellow-700">
+                <div className="rounded-lg bg-yellow-100 px-3 py-2 text-xs font-medium text-yellow-700 sm:text-sm">
                   This session is completed and cannot be edited.
                 </div>
               )}
 
-              <div className="grid grid-cols-4 gap-1.5 sm:hidden">
-                <div className="rounded-lg bg-blue-50 px-2 py-2 text-center">
-                  <p className="text-xs text-gray-600">Present</p>
-                  <p className="text-base font-bold text-blue-600">{sessionDraftSummary.present}</p>
+              <div className="grid grid-cols-4 gap-1 sm:hidden">
+                <div className="rounded-lg bg-blue-50 px-1 py-1.5 text-center">
+                  <p className="text-[10px] text-gray-600">Present</p>
+                  <p className="text-sm font-bold text-blue-600">{sessionDraftSummary.present}</p>
                 </div>
-                <div className="rounded-lg bg-amber-50 px-2 py-2 text-center">
-                  <p className="text-xs text-gray-600">Late</p>
-                  <p className="text-base font-bold text-amber-600">{sessionDraftSummary.late}</p>
+                <div className="rounded-lg bg-amber-50 px-1 py-1.5 text-center">
+                  <p className="text-[10px] text-gray-600">Late</p>
+                  <p className="text-sm font-bold text-amber-600">{sessionDraftSummary.late}</p>
                 </div>
-                <div className="rounded-lg bg-rose-50 px-2 py-2 text-center">
-                  <p className="text-xs text-gray-600">Absent</p>
-                  <p className="text-base font-bold text-rose-600">{sessionDraftSummary.absent}</p>
+                <div className="rounded-lg bg-rose-50 px-1 py-1.5 text-center">
+                  <p className="text-[10px] text-gray-600">Absent</p>
+                  <p className="text-sm font-bold text-rose-600">{sessionDraftSummary.absent}</p>
                 </div>
-                <div className="rounded-lg bg-green-50 px-2 py-2 text-center">
-                  <p className="text-xs text-gray-600">Permission</p>
-                  <p className="text-base font-bold text-green-600">{sessionDraftSummary.permission}</p>
-                </div>
-              </div>
-
-              <div className="hidden grid-cols-2 gap-3 sm:grid">
-                <div className="rounded-xl bg-blue-50 p-3">
-                  <p className="text-xs text-gray-600">Total Users</p>
-                  <p className="text-xl font-bold text-blue-600">{users.length}</p>
-                </div>
-                <div className="rounded-xl bg-green-50 p-3">
-                  <p className="text-xs text-gray-600">Approved Permissions</p>
-                  <p className="text-xl font-bold text-green-600">{sessionPermissionStats.approved}</p>
+                <div className="rounded-lg bg-green-50 px-1 py-1.5 text-center">
+                  <p className="text-[10px] text-gray-600">Permit</p>
+                  <p className="text-sm font-bold text-green-600">{sessionDraftSummary.permission}</p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="hidden grid-cols-4 gap-3 md:grid">
+                <div className="rounded-xl border border-blue-100 bg-blue-50 p-3">
+                  <p className="text-xs font-medium text-gray-600">Total Users</p>
+                  <p className="text-2xl font-bold text-blue-600">{users.length}</p>
+                </div>
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
+                  <p className="text-xs font-medium text-gray-600">Present</p>
+                  <p className="text-2xl font-bold text-emerald-600">{sessionDraftSummary.present}</p>
+                </div>
+                <div className="rounded-xl border border-rose-100 bg-rose-50 p-3">
+                  <p className="text-xs font-medium text-gray-600">Absent</p>
+                  <p className="text-2xl font-bold text-rose-600">{sessionDraftSummary.absent}</p>
+                </div>
+                <div className="rounded-xl border border-green-100 bg-green-50 p-3">
+                  <p className="text-xs font-medium text-gray-600">Approved Permissions</p>
+                  <p className="text-2xl font-bold text-green-600">{sessionPermissionStats.approved}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-[220px_minmax(260px,1fr)] md:gap-3">
                 <div>
                   <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Session Date</label>
-                  <input value={sessionDate} disabled={sessionReadOnly} onChange={(event) => setSessionDate(event.target.value)} type="date" className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:bg-gray-50 disabled:text-gray-500" />
+                  <input value={sessionDate} disabled={sessionReadOnly} onChange={(event) => setSessionDate(event.target.value)} type="date" className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:bg-gray-50 disabled:text-gray-500 sm:h-10 sm:px-3 sm:text-sm" />
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Session Name</label>
-                  <input value={sessionType} disabled={sessionReadOnly} onChange={(event) => setSessionType(event.target.value)} className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:bg-gray-50 disabled:text-gray-500" />
+                  <input value={sessionType} disabled={sessionReadOnly} onChange={(event) => setSessionType(event.target.value)} className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:bg-gray-50 disabled:text-gray-500 sm:h-10 sm:px-3 sm:text-sm" />
                 </div>
               </div>
 
               {(sessionPermissionStats.pending > 0 || sessionPermissionStats.rejected > 0) && (
                 <div>
-                  <h4 className="mb-2 text-sm font-semibold text-gray-700">Permission Status for This Date</h4>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <h4 className="mb-1.5 text-xs font-semibold text-gray-700 sm:mb-2 sm:text-sm">Permission Status for This Date</h4>
+                  <div className="grid grid-cols-2 gap-2 sm:gap-3">
                     {sessionPermissionStats.pending > 0 && (
-                      <button type="button" onClick={() => setPermissionReviewModal("pending")} className="rounded-lg border border-yellow-200 bg-yellow-50 px-3 py-2 text-left transition hover:shadow-md">
+                      <button type="button" onClick={() => setPermissionReviewModal("pending")} className="rounded-lg border border-yellow-200 bg-yellow-50 px-2 py-2 text-left transition hover:shadow-md sm:px-3">
                         <div className="flex items-center justify-between">
                           <div>
-                            <p className="text-2xl font-bold text-yellow-700">{sessionPermissionStats.pending}</p>
+                            <p className="text-lg font-bold text-yellow-700 sm:text-2xl">{sessionPermissionStats.pending}</p>
                             <p className="text-xs text-yellow-600">Pending</p>
                           </div>
-                          <div className="flex size-8 items-center justify-center rounded-full bg-yellow-100">
+                          <div className="flex size-7 items-center justify-center rounded-full bg-yellow-100 sm:size-8">
                             <Clock className="size-4 text-yellow-600" />
                           </div>
                         </div>
-                        <p className="mt-1 text-xs text-yellow-600">Click to review</p>
+                        <p className="mt-1 text-[11px] text-yellow-600 sm:text-xs">Click to review</p>
                       </button>
                     )}
                     {sessionPermissionStats.rejected > 0 && (
-                      <button type="button" onClick={() => setPermissionReviewModal("rejected")} className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-left transition hover:shadow-md">
+                      <button type="button" onClick={() => setPermissionReviewModal("rejected")} className="rounded-lg border border-red-200 bg-red-50 px-2 py-2 text-left transition hover:shadow-md sm:px-3">
                         <div className="flex items-center justify-between">
                           <div>
-                            <p className="text-2xl font-bold text-red-700">{sessionPermissionStats.rejected}</p>
+                            <p className="text-lg font-bold text-red-700 sm:text-2xl">{sessionPermissionStats.rejected}</p>
                             <p className="text-xs text-red-600">Rejected</p>
                           </div>
-                          <div className="flex size-8 items-center justify-center rounded-full bg-red-100">
+                          <div className="flex size-7 items-center justify-center rounded-full bg-red-100 sm:size-8">
                             <XCircle className="size-4 text-red-600" />
                           </div>
                         </div>
-                        <p className="mt-1 text-xs text-red-600">Click to view</p>
+                        <p className="mt-1 text-[11px] text-red-600 sm:text-xs">Click to view</p>
                       </button>
                     )}
                   </div>
                 </div>
               )}
 
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                <div className="relative w-full sm:max-w-sm">
+              <div className="flex gap-2 sm:gap-3 sm:flex-row sm:items-end md:justify-between">
+                <div className="relative w-full md:max-w-md">
                   <label htmlFor="session_user_search" className="sr-only">Search users</label>
                   <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
                   <input
@@ -1536,32 +1636,33 @@ export function DisciplineClient({
                     value={sessionUserSearch}
                     onChange={(event) => setSessionUserSearch(event.target.value)}
                     placeholder="Search user..."
-                    className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    className="h-9 w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:h-auto"
                   />
                 </div>
-                <button type="button" onClick={exportSessionAttendance} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 sm:w-auto">
+                <button type="button" onClick={exportSessionAttendance} className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 sm:h-auto sm:w-auto sm:gap-2 sm:px-4 sm:py-2 sm:text-sm">
                   <FileText className="size-4" />
-                  Export
+                  <span className="hidden min-[380px]:inline">Export</span>
                 </button>
               </div>
 
-              <div className="overflow-hidden rounded-xl border border-gray-100">
-                <div className="border-b bg-gray-50 px-4 py-2">
+              <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+                <div className="border-b bg-gray-50 px-3 py-2 sm:px-4">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-700">Members Attendance</span>
+                    <span className="text-xs font-medium text-gray-700 sm:text-sm">Members Attendance</span>
+                    <span className="hidden text-xs text-gray-500 md:inline">{filteredSessionUsers.length} shown</span>
                   </div>
                 </div>
-                <div className="hidden max-h-[42vh] overflow-auto md:block">
+                <div className="hidden max-h-[52vh] overflow-auto md:block">
                   <table className="min-w-full divide-y divide-gray-200 rounded-xl">
                     <thead className="sticky top-0 z-10 bg-gray-50">
                       <tr>
-                        <th className="px-4 py-2 text-left text-xs font-semibold uppercase text-gray-500">User</th>
-                        <th className="px-4 py-2 text-left text-xs font-semibold uppercase text-gray-500">Permission</th>
-                        <th className="px-4 py-2 text-center text-xs font-semibold uppercase text-gray-500">Present</th>
-                        <th className="px-4 py-2 text-center text-xs font-semibold uppercase text-gray-500">On Time</th>
-                        <th className="px-4 py-2 text-center text-xs font-semibold uppercase text-gray-500">Communicated</th>
-                        <th className="px-4 py-2 text-center text-xs font-semibold uppercase text-gray-500">Discipline</th>
-                        <th className="px-4 py-2 text-center text-xs font-semibold uppercase text-gray-500">Total Points</th>
+                        <th className="w-[18%] px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">User</th>
+                        <th className="w-[24%] px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Permission</th>
+                        <th className="px-3 py-3 text-center text-xs font-semibold uppercase text-gray-500">Present</th>
+                        <th className="px-3 py-3 text-center text-xs font-semibold uppercase text-gray-500">On Time</th>
+                        <th className="px-3 py-3 text-center text-xs font-semibold uppercase text-gray-500">Communicated</th>
+                        <th className="px-3 py-3 text-center text-xs font-semibold uppercase text-gray-500">Discipline</th>
+                        <th className="px-3 py-3 text-center text-xs font-semibold uppercase text-gray-500">Total Points</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 bg-white">
@@ -1572,7 +1673,7 @@ export function DisciplineClient({
                         const totalPoints = totalAttendancePoints(draft);
                         return (
                           <tr key={user.id} className={draft.hasOfficialPermission ? "bg-green-50" : ""}>
-                            <td className="px-4 py-3 text-sm text-gray-800">{user.name}</td>
+                            <td className="px-4 py-3 text-sm font-medium text-gray-800">{user.name}</td>
                             <td className="px-4 py-3 text-sm">
                               {permission ? (
                                 <div className="space-y-1">
@@ -1588,7 +1689,7 @@ export function DisciplineClient({
                                 <span className="text-gray-400">No permission</span>
                               )}
                             </td>
-                            <td className="px-4 py-3 text-center">
+                            <td className="px-3 py-3 text-center">
                               {sessionReadOnly ? (
                                 <ReadonlyYesNo value={draft.present} />
                               ) : (
@@ -1599,13 +1700,13 @@ export function DisciplineClient({
                                 />
                               )}
                             </td>
-                            <td className="px-4 py-3 text-center">
+                            <td className="px-3 py-3 text-center">
                               {sessionReadOnly ? <ReadonlyYesNo value={draft.onTime} /> : <YesNoButton value={draft.onTime} disabled={draft.disabled} onToggle={() => updateDraft(user.id, { onTime: !draft.onTime })} />}
                             </td>
-                            <td className="px-4 py-3 text-center">
+                            <td className="px-3 py-3 text-center">
                               {sessionReadOnly ? <ReadonlyYesNo value={draft.communicated} /> : <YesNoButton value={draft.communicated} onToggle={() => updateDraft(user.id, { communicated: !draft.communicated })} />}
                             </td>
-                            <td className="px-4 py-3 text-center">
+                            <td className="px-3 py-3 text-center">
                               {sessionReadOnly ? (
                                 <ReadonlyYesNo value={draft.discipline} />
                               ) : (
@@ -1616,7 +1717,7 @@ export function DisciplineClient({
                                 />
                               )}
                             </td>
-                            <td className="px-4 py-3 text-center text-base font-bold text-black">{totalPoints}</td>
+                            <td className="px-3 py-3 text-center text-base font-bold text-black">{totalPoints}</td>
                           </tr>
                         );
                       })}
@@ -1629,35 +1730,41 @@ export function DisciplineClient({
                   </table>
                 </div>
 
-                <div className="space-y-2 p-2 md:hidden">
+                <div className="space-y-1.5 p-1.5 md:hidden">
                   {filteredSessionUsers.map((user) => {
                     const draft = attendanceDrafts.find((item) => item.userId === user.id);
                     if (!draft) return null;
                     const permission = permissionForUser(user.id);
                     return (
-                      <div key={user.id} className="rounded-lg border border-gray-100 bg-white p-2.5 shadow-sm">
-                        <div className="mb-2">
-                          <p className="text-sm font-semibold text-gray-900">
-                            {user.name}
-                            {draft.hasOfficialPermission && <span className="ml-2 rounded-full bg-green-100 px-1.5 py-0.5 text-xs text-green-700">Permission</span>}
-                          </p>
-                          <p className="text-xs text-gray-500">{user.email}</p>
+                      <div key={user.id} className="rounded-lg border border-gray-100 bg-white p-2 shadow-sm">
+                        <div className="mb-1.5 flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-gray-900">{user.name}</p>
+                            <p className="truncate text-[11px] text-gray-500">{user.email}</p>
+                          </div>
+                          <div className="shrink-0 rounded-md bg-gray-50 px-2 py-1 text-center text-[11px] font-semibold text-gray-700">
+                            <span className="block leading-none text-gray-500">Pts</span>
+                            <span className="text-sm text-black">{totalAttendancePoints(draft)}</span>
+                          </div>
+                        </div>
+                        <div>
                           {permission && (
-                            <div className="mt-1.5 rounded-lg bg-gray-50 p-1.5 text-xs">
-                              <span className={`inline-flex rounded-full px-2 py-0.5 font-medium capitalize ${permissionStatusClass(permission.status)}`}>
-                                {permission.status} permission
-                              </span>
-                              <p className="mt-1 font-medium text-gray-700">{permission.startDate} - {permission.endDate}</p>
-                              <p className="text-gray-500">{permission.approvedByName ? `Approved by ${permission.approvedByName}` : "Not approved yet"}</p>
+                            <div className="mb-1.5 rounded-lg bg-gray-50 px-2 py-1 text-[11px]">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className={`inline-flex rounded-full px-1.5 py-0.5 font-medium capitalize ${permissionStatusClass(permission.status)}`}>
+                                  {permission.status}
+                                </span>
+                                <span className="font-medium text-gray-700">{permission.startDate} - {permission.endDate}</span>
+                              </div>
+                              <p className="mt-0.5 truncate text-gray-500">{permission.approvedByName ? `Approved by ${permission.approvedByName}` : "Not approved yet"}</p>
                             </div>
                           )}
                         </div>
-                        <div className="grid grid-cols-2 gap-1.5 text-sm">
-                          <ToggleField label="Present" value={draft.present} readOnly={sessionReadOnly} disabled={draft.disabled} onToggle={() => updateDraft(user.id, { present: !draft.present, status: !draft.present ? "present" : "absent" })} />
-                          <ToggleField label="On Time" value={draft.onTime} readOnly={sessionReadOnly} disabled={draft.disabled} onToggle={() => updateDraft(user.id, { onTime: !draft.onTime })} />
-                          <ToggleField label="Communicated" value={draft.communicated} readOnly={sessionReadOnly} onToggle={() => updateDraft(user.id, { communicated: !draft.communicated })} />
-                          <ToggleField label="Discipline" value={draft.discipline} readOnly={sessionReadOnly} disabled={draft.disabled} onToggle={() => updateDraft(user.id, { discipline: !draft.discipline, disciplinePoints: !draft.discipline ? 1 : 0 })} />
-                          <div className="col-span-2 rounded-lg bg-gray-50 px-2 py-1.5 text-center text-sm font-bold">Total Points: {totalAttendancePoints(draft)}</div>
+                        <div className="grid grid-cols-4 gap-1 text-sm">
+                          <MobileAttendanceToggle label="Present" value={draft.present} readOnly={sessionReadOnly} disabled={draft.disabled} onToggle={() => updateDraft(user.id, { present: !draft.present, status: !draft.present ? "present" : "absent" })} />
+                          <MobileAttendanceToggle label="Time" value={draft.onTime} readOnly={sessionReadOnly} disabled={draft.disabled} onToggle={() => updateDraft(user.id, { onTime: !draft.onTime })} />
+                          <MobileAttendanceToggle label="Comm." value={draft.communicated} readOnly={sessionReadOnly} onToggle={() => updateDraft(user.id, { communicated: !draft.communicated })} />
+                          <MobileAttendanceToggle label="Disc." value={draft.discipline} readOnly={sessionReadOnly} disabled={draft.disabled} onToggle={() => updateDraft(user.id, { discipline: !draft.discipline, disciplinePoints: !draft.discipline ? 1 : 0 })} />
                         </div>
                       </div>
                     );
@@ -1667,17 +1774,17 @@ export function DisciplineClient({
               </div>
             </div>
 
-            <div className="flex flex-col-reverse gap-2 border-t bg-white px-4 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] sm:flex-row sm:justify-end sm:gap-3 sm:px-5 sm:shadow-none">
-              <button type="button" onClick={() => setSessionModal(false)} className="rounded-lg border px-4 py-2 text-sm text-gray-700">
+            <div className={`${sessionReadOnly ? "grid-cols-1" : "grid-cols-[0.7fr_1.2fr_1fr]"} sticky bottom-0 z-20 grid gap-1.5 border-t bg-white px-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] sm:flex sm:justify-end sm:gap-3 sm:px-5 sm:py-3 sm:shadow-none`}>
+              <button type="button" onClick={() => setSessionModal(false)} className="rounded-lg border px-2 py-2 text-xs text-gray-700 sm:px-4 sm:text-sm">
                 Close
               </button>
               {!sessionReadOnly && (
                 <>
-                  <button type="button" disabled={isSaving} onClick={completeSession} className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">
+                  <button type="button" disabled={isSaving} onClick={completeSession} className="inline-flex items-center justify-center gap-1 rounded-lg bg-emerald-600 px-2 py-2 text-[11px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-60 sm:gap-2 sm:px-4 sm:text-sm">
                     <CheckCircle2 className="size-4" />
                     {isSaving ? "Saving..." : "Complete Session"}
                   </button>
-                  <button type="button" disabled={isSaving} onClick={() => submitAttendanceSession(true)} className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-60">
+                  <button type="button" disabled={isSaving} onClick={() => submitAttendanceSession(true)} className="inline-flex items-center justify-center gap-1 rounded-lg bg-blue-700 px-2 py-2 text-[11px] font-semibold text-white hover:bg-blue-800 disabled:opacity-60 sm:gap-2 sm:px-4 sm:text-sm">
                     <Save className="size-4" />
                     {isSaving ? "Saving..." : "Save Changes"}
                   </button>
@@ -1745,18 +1852,18 @@ export function DisciplineClient({
       )}
 
       {permissionModal && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-gray-600/50 p-3 sm:p-6">
-          <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-lg border bg-white p-4 shadow-lg sm:p-5">
-            <div className="flex items-center justify-between border-b pb-3">
-              <h3 className="text-lg font-bold text-gray-800">{editingPermission ? "Edit Permission Request" : "New Permission Request"}</h3>
-              <button onClick={() => setPermissionModal(false)} className="text-gray-400 hover:text-gray-600" aria-label="Close">
+        <div className="fixed inset-0 z-[80] grid place-items-stretch bg-gray-600/50 p-0 sm:place-items-center sm:p-6">
+          <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-white shadow-lg sm:h-auto sm:max-h-[92vh] sm:max-w-md sm:rounded-lg sm:border">
+            <div className="flex items-center justify-between border-b px-3 py-3 sm:px-5">
+              <h3 className="text-base font-bold text-gray-800 sm:text-lg">{editingPermission ? "Edit Permission Request" : "New Permission Request"}</h3>
+              <button onClick={() => setPermissionModal(false)} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600" aria-label="Close">
                 <X className="size-5" />
               </button>
             </div>
 
-            <div className="mt-4 space-y-4">
+            <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-3 sm:bg-white sm:p-5">
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">User *</label>
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500 sm:text-sm sm:normal-case sm:tracking-normal">User *</label>
                 <div className="relative">
                   <div className="relative">
                     <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
@@ -1767,7 +1874,7 @@ export function DisciplineClient({
                         setSelectedPermissionUser(null);
                       }}
                       placeholder="Search by name or email..."
-                      className={`w-full rounded-lg border py-2 pl-9 pr-10 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 ${
+                      className={`h-10 w-full rounded-lg border bg-white py-2 pl-9 pr-10 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 ${
                         !selectedPermissionUser && permissionUserSearch.length > 0 && permissionUserSearch.length < 2 ? "border-red-300" : "border-gray-300"
                       }`}
                       autoComplete="off"
@@ -1787,7 +1894,7 @@ export function DisciplineClient({
                     )}
                   </div>
                   {permissionUserSearch.trim().length >= 2 && !selectedPermissionUser && (
-                    <div className="absolute z-10 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+                    <div className="absolute z-20 mt-1 max-h-52 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg sm:max-h-60">
                       {filteredPermissionUsers.length ? (
                         filteredPermissionUsers.map((user) => (
                           <button
@@ -1797,9 +1904,9 @@ export function DisciplineClient({
                               setSelectedPermissionUser(user);
                               setPermissionUserSearch(user.name);
                             }}
-                            className="flex w-full cursor-pointer items-center gap-3 border-b border-gray-100 px-3 py-2 text-left transition last:border-0 hover:bg-blue-50"
+                            className="flex w-full cursor-pointer items-center gap-2 border-b border-gray-100 px-3 py-2 text-left transition last:border-0 hover:bg-blue-50 sm:gap-3"
                           >
-                            <span className="flex size-8 items-center justify-center rounded-full bg-gray-100 text-xs font-semibold text-gray-500">
+                            <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-semibold text-gray-500 sm:size-8">
                               {user.name.slice(0, 2).toUpperCase()}
                             </span>
                             <span className="min-w-0 flex-1">
@@ -1823,23 +1930,25 @@ export function DisciplineClient({
 
               <input type="hidden" value={permissionType} readOnly />
 
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Start Date *</label>
-                <input value={permissionStartDate} onChange={(event) => setPermissionStartDate(event.target.value)} type="date" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500" />
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500 sm:text-sm sm:normal-case sm:tracking-normal">Start Date *</label>
+                  <input value={permissionStartDate} onChange={(event) => setPermissionStartDate(event.target.value)} type="date" className="h-10 w-full rounded-lg border border-gray-300 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 sm:px-3 sm:text-sm" />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500 sm:text-sm sm:normal-case sm:tracking-normal">End Date *</label>
+                  <input value={permissionEndDate} onChange={(event) => setPermissionEndDate(event.target.value)} type="date" className="h-10 w-full rounded-lg border border-gray-300 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 sm:px-3 sm:text-sm" />
+                </div>
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">End Date *</label>
-                <input value={permissionEndDate} onChange={(event) => setPermissionEndDate(event.target.value)} type="date" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500" />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Reason *</label>
-                <textarea value={permissionReason} onChange={(event) => setPermissionReason(event.target.value)} rows={4} placeholder="Provide detailed reason for the request..." className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500" />
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500 sm:text-sm sm:normal-case sm:tracking-normal">Reason *</label>
+                <textarea value={permissionReason} onChange={(event) => setPermissionReason(event.target.value)} rows={5} placeholder="Provide detailed reason for the request..." className="w-full resize-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 sm:rows-4" />
               </div>
             </div>
 
-            <div className="mt-5 flex flex-col-reverse gap-2 border-t pt-3 sm:flex-row sm:justify-end">
+            <div className="sticky bottom-0 grid grid-cols-2 gap-2 border-t bg-white px-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] sm:flex sm:justify-end sm:px-5 sm:py-3 sm:shadow-none">
               <button type="button" onClick={() => setPermissionModal(false)} className="rounded-lg border px-4 py-2 text-sm hover:bg-gray-50">Cancel</button>
               <button type="button" disabled={isSaving} onClick={submitPermission} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60">
                 {isSaving ? "Saving..." : "Submit Request"}
@@ -1850,34 +1959,36 @@ export function DisciplineClient({
       )}
 
       {actionPlanModal && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-gray-600/50 p-3 sm:p-6">
-          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-lg border bg-white p-4 shadow-lg sm:p-5">
-            <div className="flex items-center justify-between border-b pb-3">
-              <h3 className="text-lg font-bold text-gray-800">{editingActionPlan ? "Edit Action Plan" : "Create Action Plan"}</h3>
-              <button type="button" onClick={() => { setActionPlanModal(false); setEditingActionPlan(null); }} className="text-gray-400 hover:text-gray-600" aria-label="Close">
+        <div className="fixed inset-0 z-[80] grid place-items-stretch bg-gray-600/50 p-0 sm:place-items-center sm:p-6">
+          <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-white shadow-lg sm:h-auto sm:max-h-[92vh] sm:max-w-2xl sm:rounded-lg sm:border">
+            <div className="flex items-center justify-between border-b px-3 py-3 sm:px-5">
+              <h3 className="text-base font-bold text-gray-800 sm:text-lg">{editingActionPlan ? "Edit Action Plan" : "Create Action Plan"}</h3>
+              <button type="button" onClick={() => { setActionPlanModal(false); setEditingActionPlan(null); }} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600" aria-label="Close">
                 <X className="size-5" />
               </button>
             </div>
-            <form onSubmit={submitActionPlan} className="mt-4 space-y-5">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="md:col-span-2">
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Action Plan Name *</label>
-                  <input name="title" defaultValue={editingActionPlan?.title ?? ""} required placeholder="Enter action plan name" className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+            <form onSubmit={submitActionPlan} className="flex min-h-0 flex-1 flex-col">
+              <div className="flex-1 space-y-4 overflow-y-auto bg-slate-50 p-3 sm:bg-white sm:p-5">
+                <div className="grid grid-cols-2 gap-2 md:gap-4">
+                  <div className="col-span-2">
+                    <label className="mb-1 block text-sm font-medium text-gray-700">Action Plan Name *</label>
+                    <input name="title" defaultValue={editingActionPlan?.title ?? ""} required placeholder="Enter action plan name" className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500 sm:text-sm sm:normal-case sm:tracking-normal">Start Date *</label>
+                    <input name="startDate" type="date" defaultValue={editingActionPlan?.startDateValue ?? ""} required className="h-10 w-full rounded-lg border border-gray-300 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:px-3 sm:text-sm" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500 sm:text-sm sm:normal-case sm:tracking-normal">Completion *</label>
+                    <input name="dueDate" type="date" defaultValue={editingActionPlan?.dueDateValue ?? ""} required className="h-10 w-full rounded-lg border border-gray-300 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:px-3 sm:text-sm" />
+                  </div>
                 </div>
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Start Date *</label>
-                  <input name="startDate" type="date" defaultValue={editingActionPlan?.startDateValue ?? ""} required className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Completion Date *</label>
-                  <input name="dueDate" type="date" defaultValue={editingActionPlan?.dueDateValue ?? ""} required className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Description</label>
+                  <textarea name="description" rows={4} defaultValue={editingActionPlan?.description ?? ""} placeholder="Optional description" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:rows-3" />
                 </div>
               </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Description</label>
-                <textarea name="description" rows={3} defaultValue={editingActionPlan?.description ?? ""} placeholder="Optional description" className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
-              </div>
-              <div className="flex flex-col-reverse gap-2 border-t pt-3 sm:flex-row sm:justify-end">
+              <div className="sticky bottom-0 grid grid-cols-2 gap-2 border-t bg-white px-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] sm:flex sm:justify-end sm:px-5 sm:py-3 sm:shadow-none">
                 <button type="button" onClick={() => { setActionPlanModal(false); setEditingActionPlan(null); }} className="rounded-lg border px-4 py-2 text-sm hover:bg-gray-50">Cancel</button>
                 <button type="submit" disabled={isSaving} className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-60">{isSaving ? "Saving..." : "Save Plan"}</button>
               </div>
@@ -1887,45 +1998,46 @@ export function DisciplineClient({
       )}
 
       {taskModal && taskPlan && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-gray-600/50 p-3 sm:p-6">
-          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-lg border bg-white p-4 shadow-lg sm:p-5">
-            <div className="flex items-center justify-between border-b pb-3">
-              <h3 className="text-lg font-bold text-gray-800">{editingActionTask ? `Edit Task for ${taskPlan.title}` : `Create Task for ${taskPlan.title}`}</h3>
-              <button type="button" onClick={() => { setTaskModal(false); setTaskPlan(null); setEditingActionTask(null); }} className="text-gray-400 hover:text-gray-600" aria-label="Close">
+        <div className="fixed inset-0 z-[80] grid place-items-stretch bg-gray-600/50 p-0 sm:place-items-center sm:p-6">
+          <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-white shadow-lg sm:h-auto sm:max-h-[92vh] sm:max-w-2xl sm:rounded-lg sm:border">
+            <div className="flex items-center justify-between border-b px-3 py-3 sm:px-5">
+              <h3 className="min-w-0 truncate text-base font-bold text-gray-800 sm:text-lg">{editingActionTask ? `Edit Task for ${taskPlan.title}` : `Create Task for ${taskPlan.title}`}</h3>
+              <button type="button" onClick={() => { setTaskModal(false); setTaskPlan(null); setEditingActionTask(null); }} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600" aria-label="Close">
                 <X className="size-5" />
               </button>
             </div>
-            <form onSubmit={submitActionPlanTask} className="mt-4 space-y-4">
-              <div>
+            <form onSubmit={submitActionPlanTask} className="flex min-h-0 flex-1 flex-col">
+              <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-3 sm:bg-white sm:p-5">
+                <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">Action Plan</label>
-                <input value={taskPlan.title} readOnly className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-gray-700" />
+                <input value={taskPlan.title} readOnly className="h-10 w-full rounded-lg border border-gray-300 bg-gray-50 px-3 text-sm text-gray-700" />
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">Activity *</label>
-                <input name="activity" defaultValue={editingActionTask?.activity ?? editingActionTask?.taskName ?? ""} required placeholder="Enter activity" className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                <input name="activity" defaultValue={editingActionTask?.activity ?? editingActionTask?.taskName ?? ""} required placeholder="Enter activity" className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">Targeted Milestone *</label>
-                <input name="targetMilestone" defaultValue={editingActionTask?.targetMilestone ?? ""} required placeholder="Enter targeted milestone" className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                <input name="targetMilestone" defaultValue={editingActionTask?.targetMilestone ?? ""} required placeholder="Enter targeted milestone" className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
               </div>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="grid grid-cols-2 gap-2 md:gap-4">
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Start Date</label>
-                  <input name="startDate" type="date" defaultValue={editingActionTask?.startDateValue ?? ""} className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500 sm:text-sm sm:normal-case sm:tracking-normal">Start Date</label>
+                  <input name="startDate" type="date" defaultValue={editingActionTask?.startDateValue ?? ""} className="h-10 w-full rounded-lg border border-gray-300 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:px-3 sm:text-sm" />
                 </div>
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Estimated Budget *</label>
-                  <input name="estimatedBudget" type="number" step="0.01" min="0" defaultValue={editingActionTask?.estimatedBudget ?? ""} required placeholder="0.00" className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500 sm:text-sm sm:normal-case sm:tracking-normal">Budget *</label>
+                  <input name="estimatedBudget" type="number" step="0.01" min="0" defaultValue={editingActionTask?.estimatedBudget ?? ""} required placeholder="0.00" className="h-10 w-full rounded-lg border border-gray-300 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:px-3 sm:text-sm" />
                 </div>
               </div>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="grid grid-cols-2 gap-2 md:gap-4">
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Deadline *</label>
-                  <input name="deadline" type="date" defaultValue={editingActionTask?.deadlineValue ?? ""} required className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500 sm:text-sm sm:normal-case sm:tracking-normal">Deadline *</label>
+                  <input name="deadline" type="date" defaultValue={editingActionTask?.deadlineValue ?? ""} required className="h-10 w-full rounded-lg border border-gray-300 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:px-3 sm:text-sm" />
                 </div>
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Priority *</label>
-                  <select name="priority" defaultValue={editingActionTask?.priority ?? ""} required className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500 sm:text-sm sm:normal-case sm:tracking-normal">Priority *</label>
+                  <select name="priority" defaultValue={editingActionTask?.priority ?? ""} required className="h-10 w-full rounded-lg border border-gray-300 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:px-3 sm:text-sm">
                     <option value="">Select priority</option>
                     <option value="low">Low</option>
                     <option value="medium">Medium</option>
@@ -1933,13 +2045,14 @@ export function DisciplineClient({
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="grid grid-cols-2 gap-2 md:gap-4">
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Progress *</label>
-                  <input name="progress" type="number" min="0" max="100" defaultValue={editingActionTask?.progress ?? 0} required className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500 sm:text-sm sm:normal-case sm:tracking-normal">Progress *</label>
+                  <input name="progress" type="number" min="0" max="100" defaultValue={editingActionTask?.progress ?? 0} required className="h-10 w-full rounded-lg border border-gray-300 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:px-3 sm:text-sm" />
                 </div>
               </div>
-              <div className="flex flex-col-reverse gap-2 border-t pt-3 sm:flex-row sm:justify-end">
+              </div>
+              <div className="sticky bottom-0 grid grid-cols-2 gap-2 border-t bg-white px-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] sm:flex sm:justify-end sm:px-5 sm:py-3 sm:shadow-none">
                 <button type="button" onClick={() => { setTaskModal(false); setTaskPlan(null); setEditingActionTask(null); }} className="rounded-lg border px-4 py-2 text-sm hover:bg-gray-50">Cancel</button>
                 <button type="submit" disabled={isSaving} className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-60">{isSaving ? "Saving..." : editingActionTask ? "Update Task" : "Save Task"}</button>
               </div>
@@ -2086,13 +2199,13 @@ function ActionSummaryCard({ label, value, tone }: { label: string; value: numbe
     sky: "border-sky-100 from-white via-sky-50 to-blue-50/40 text-sky-600 bg-sky-100 ring-sky-200",
   };
   return (
-    <div className={`rounded-xl border bg-gradient-to-br p-4 shadow-sm ${colors[tone]}`}>
-      <div className="flex items-center justify-between">
+    <div className={`rounded-lg border bg-gradient-to-br p-2 shadow-sm sm:rounded-xl sm:p-4 ${colors[tone]}`}>
+      <div className="flex items-center justify-between gap-1">
         <div>
-          <p className="text-xs uppercase tracking-wide text-gray-500">{label}</p>
-          <p className="mt-1 text-2xl font-bold">{value}</p>
+          <p className="text-[9px] uppercase text-gray-500 sm:text-xs sm:tracking-wide">{label}</p>
+          <p className="mt-0.5 text-lg font-bold sm:mt-1 sm:text-2xl">{value}</p>
         </div>
-        <div className={`flex size-10 items-center justify-center rounded-lg ring-1 ${colors[tone]}`}>
+        <div className={`hidden size-10 items-center justify-center rounded-lg ring-1 sm:flex ${colors[tone]}`}>
           <ClipboardList className="size-5" />
         </div>
       </div>
@@ -2141,11 +2254,26 @@ function ReadonlyYesNo({ value }: { value: boolean }) {
   return <span className="text-sm font-medium text-gray-700">{value ? "Yes" : "No"}</span>;
 }
 
-function ToggleField({ label, value, disabled = false, readOnly = false, onToggle }: { label: string; value: boolean; disabled?: boolean; readOnly?: boolean; onToggle: () => void }) {
+function MobileAttendanceToggle({ label, value, disabled = false, readOnly = false, onToggle }: { label: string; value: boolean; disabled?: boolean; readOnly?: boolean; onToggle: () => void }) {
   return (
-    <div className="flex min-h-10 items-center justify-between gap-2 rounded-lg border border-gray-100 px-2 py-1.5 sm:min-h-12 sm:gap-3 sm:px-3 sm:py-2">
-      <span className="text-xs font-medium text-gray-700 sm:text-sm">{label}</span>
-      {readOnly ? <ReadonlyYesNo value={value} /> : <YesNoButton value={value} disabled={disabled} onToggle={onToggle} />}
+    <div className="rounded-md border border-gray-100 bg-gray-50 px-1 py-1 text-center">
+      <span className="block truncate text-[10px] font-medium text-gray-600">{label}</span>
+      {readOnly ? (
+        <span className={`mt-0.5 inline-flex min-w-10 justify-center rounded px-1.5 py-0.5 text-[11px] font-bold ${value ? "bg-blue-100 text-blue-700" : "bg-gray-200 text-gray-600"}`}>
+          {value ? "Yes" : "No"}
+        </span>
+      ) : (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onToggle}
+          className={`mt-0.5 min-h-7 min-w-10 rounded px-1.5 text-[11px] font-bold text-white transition ${
+            value ? "bg-blue-600 hover:bg-blue-700" : "bg-gray-300 hover:bg-gray-400"
+          } ${disabled ? "cursor-not-allowed opacity-80" : ""}`}
+        >
+          {value ? "Yes" : "No"}
+        </button>
+      )}
     </div>
   );
 }
@@ -2168,6 +2296,36 @@ function ManagementCard({ title, button, icon: Icon, color, onClick }: { title: 
         {button}
       </button>
     </div>
+  );
+}
+
+function permissionDayCount(permission: Permission) {
+  const start = new Date(`${permission.startDateValue}T12:00:00`);
+  const end = new Date(`${permission.endDateValue}T12:00:00`);
+  const days = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
+  return Number.isFinite(days) ? Math.max(days, 1) : 1;
+}
+
+function permissionCommentText(permission: Permission) {
+  const lines = [];
+  if (permission.approvedByName) lines.push(`Approver: ${permission.approvedByName}`);
+  if (permission.status === "approved") lines.push("Comment: Approved");
+  if (permission.status === "rejected") lines.push(`Comment: ${permission.rejectionReason || "Rejected"}`);
+  if (!lines.length && permission.status === "pending") lines.push("Awaiting approval");
+  return lines.join(" | ");
+}
+
+function PermissionComment({ permission }: { permission: Permission }) {
+  if (permission.status === "pending" && !permission.approvedByName) {
+    return <span className="text-amber-600">Awaiting approval</span>;
+  }
+
+  return (
+    <>
+      {permission.approvedByName && <span className="block">Approver: {permission.approvedByName}</span>}
+      {permission.status === "approved" && <span className="block">Comment: Approved</span>}
+      {permission.status === "rejected" && <span className="block">Comment: {permission.rejectionReason || "Rejected"}</span>}
+    </>
   );
 }
 
