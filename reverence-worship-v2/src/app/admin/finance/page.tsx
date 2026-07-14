@@ -61,7 +61,7 @@ async function safeRead<T>(promise: Promise<T>, fallback: T) {
 }
 
 export default async function FinancePage() {
-  await requirePageAccess("finance");
+  const currentUser = await requirePageAccess("finance");
   const year = new Date().getFullYear();
 
   const [users, families, contributions, payments, gifts, expenses, sponsors, actionPlans, termSettings] = await Promise.all([
@@ -146,6 +146,7 @@ export default async function FinancePage() {
   return (
     <FinanceClient
       year={year}
+      currentUserId={currentUser.id}
       users={users.map((item) => ({
         id: item.id,
         name: item.name,

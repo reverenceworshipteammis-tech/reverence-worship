@@ -195,6 +195,7 @@ type ConfirmAction = {
 
 export function FinanceClient({
   year,
+  currentUserId,
   users,
   families,
   contributions,
@@ -206,6 +207,7 @@ export function FinanceClient({
   termSettings,
 }: {
   year: number;
+  currentUserId: number;
   users: UserOption[];
   families: FamilyOption[];
   contributions: Contribution[];
@@ -236,8 +238,20 @@ export function FinanceClient({
     const totalSponsorReceived = sponsors.reduce((sum, item) => sum + item.receivedAmount, 0);
     const totalExpenses = expenses.reduce((sum, item) => sum + item.amount, 0);
     const totalIncome = totalCollected + totalGifts + totalSponsorReceived;
+    const accountBalance = totalIncome - totalExpenses;
+    const pendingAmount = Math.max(totalExpected - totalCollected, 0);
     const collectionRate = totalExpected ? Math.round((totalCollected / totalExpected) * 100) : 0;
-    return { totalExpected, totalCollected, totalGifts, totalSponsorReceived, totalExpenses, totalIncome, collectionRate };
+    return {
+      totalExpected,
+      totalCollected,
+      totalGifts,
+      totalSponsorReceived,
+      totalExpenses,
+      totalIncome,
+      accountBalance,
+      pendingAmount,
+      collectionRate,
+    };
   }, [currentYearContributions, currentYearPayments, gifts, sponsors, expenses]);
 
   return (
@@ -293,23 +307,14 @@ export function FinanceClient({
         <div className="p-3 sm:p-4">
           {activeTab === "overview" ? (
             <div className="space-y-5">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <FinanceStat label="Expected Amount" value={stats.totalExpected} tone="sky" icon={ChartPie} />
                 <FinanceStat label="Total Income" value={stats.totalIncome} tone="emerald" icon={HandCoins} />
-                <FinanceStat label="Total Expenses" value={stats.totalExpenses} tone="rose" icon={Receipt} />
-                <FinanceStat label="Total Expected" value={stats.totalExpected} tone="sky" icon={ChartPie} />
-                <FinanceStat label="Total Collected" value={stats.totalCollected} tone="indigo" icon={CreditCard} />
+                <FinanceStat label="Total Expense" value={stats.totalExpenses} tone="rose" icon={Receipt} />
+                <FinanceStat label="Account Balance" value={stats.accountBalance} tone="indigo" icon={Calculator} />
+                <FinanceStat label="Pending Amount" value={stats.pendingAmount} tone="amber" icon={CreditCard} />
+                <FinanceStat label="Collection Rate" value={stats.collectionRate} tone="violet" icon={BarChart3} format="percentage" />
               </div>
-
-              <section className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-                <div className="mb-3 flex items-center justify-between">
-                  <h2 className="text-sm font-semibold text-gray-800">Collection Progress</h2>
-                  <span className="text-sm font-bold text-blue-600">{stats.collectionRate}%</span>
-                </div>
-                <div className="h-3 rounded-full bg-gray-100">
-                  <div className="h-3 rounded-full bg-blue-600" style={{ width: `${Math.min(stats.collectionRate, 100)}%` }} />
-                </div>
-                <p className="mt-2 text-xs text-gray-500">Year {year}</p>
-              </section>
 
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 <RecentList title="Recent Payments" empty="No payments yet">
@@ -343,7 +348,7 @@ export function FinanceClient({
           ) : activeTab === "sponsors" ? (
             <FinanceSponsorsTab currentYear={year} sponsors={sponsors} />
           ) : activeTab === "expenses" ? (
-            <FinanceExpensesTab currentYear={year} expenses={expenses} users={users} />
+            <FinanceExpensesTab currentYear={year} currentUserId={currentUserId} expenses={expenses} users={users} />
           ) : activeTab === "action-plans" ? (
             <FinanceActionPlansTab currentYear={year} actionPlans={actionPlans} />
           ) : (
@@ -1061,9 +1066,11 @@ function FinanceContributionsTab({
   termSettings: FinanceTermSetting[];
 }) {
   const router = useRouter();
-  const [selectedYear, setSelectedYear] = useState(currentYear);
+  const [fromDate, setFromDate] = useState(`${currentYear}-01-01`);
+  const [toDate, setToDate] = useState(`${currentYear}-12-31`);
   const [familyFilter, setFamilyFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [requestedPage, setRequestedPage] = useState(1);
   const [annualModalUser, setAnnualModalUser] = useState<UserOption | null>(null);
   const [paymentModalUser, setPaymentModalUser] = useState<UserOption | null>(null);
   const [detailRow, setDetailRow] = useState<ContributionRow | null>(null);
@@ -1071,14 +1078,8 @@ function FinanceContributionsTab({
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const years = useMemo(() => {
-    const values = new Set<number>();
-    for (let offset = -4; offset <= 4; offset += 1) values.add(currentYear + offset);
-    contributions.forEach((item) => values.add(item.year));
-    payments.forEach((item) => values.add(item.year));
-    termSettings.forEach((item) => values.add(item.currentYear));
-    return Array.from(values).sort((a, b) => b - a);
-  }, [currentYear, contributions, payments, termSettings]);
+  const selectedYear = Number(fromDate.slice(0, 4)) || currentYear;
+  const selectedYearEnd = `${selectedYear}-12-31`;
 
   const yearFamilies = useMemo(
     () => families.filter((family) => family.year === selectedYear),
@@ -1091,9 +1092,12 @@ function FinanceContributionsTab({
     () => new Map(contributions.filter((item) => item.year === selectedYear).map((item) => [item.userId, item])),
     [contributions, selectedYear],
   );
-  const paymentsForYear = useMemo(
-    () => payments.filter((payment) => payment.year === selectedYear),
-    [payments, selectedYear],
+  const paymentsForRange = useMemo(
+    () => payments
+      .filter((payment) => payment.year === selectedYear)
+      .filter((payment) => !fromDate || payment.paymentDateRaw >= fromDate)
+      .filter((payment) => !toDate || payment.paymentDateRaw <= toDate),
+    [payments, selectedYear, fromDate, toDate],
   );
 
   const rows = useMemo(() => {
@@ -1105,7 +1109,7 @@ function FinanceContributionsTab({
       .map((user) => {
         const contribution = contributionMap.get(user.id);
         const annualAmount = contribution?.annualAmount ?? 0;
-        const userPayments = paymentsForYear.filter((payment) => payment.userId === user.id);
+        const userPayments = paymentsForRange.filter((payment) => payment.userId === user.id);
         const termRows = termNumbers.map((term, index) => {
           const paid = userPayments
             .filter((payment) => payment.term === term)
@@ -1128,17 +1132,33 @@ function FinanceContributionsTab({
           progress,
         };
       });
-  }, [users, selectedYear, familyFilter, search, contributionMap, paymentsForYear, termNumbers, termPercentages]);
+  }, [users, selectedYear, familyFilter, search, contributionMap, paymentsForRange, termNumbers, termPercentages]);
 
-  const totals = useMemo(() => {
-    const totalExpected = rows.reduce((sum, row) => sum + row.annualAmount, 0);
-    const totalCollected = rows.reduce((sum, row) => sum + row.totalPaid, 0);
-    return {
-      totalExpected,
-      totalCollected,
-      collectionRate: totalExpected > 0 ? Math.round((totalCollected / totalExpected) * 100) : 0,
-    };
-  }, [rows]);
+  const memberStats = useMemo(() => {
+    const annualExpected = rows.reduce((sum, row) => sum + row.annualAmount, 0);
+    const totalReceived = rows.reduce((sum, row) => sum + row.totalPaid, 0);
+    const rangeStart = Date.parse(`${fromDate}T00:00:00.000Z`);
+    const rangeEnd = Date.parse(`${toDate}T00:00:00.000Z`);
+    const yearStart = Date.UTC(selectedYear, 0, 1);
+    const nextYearStart = Date.UTC(selectedYear + 1, 0, 1);
+    const clampedStart = Math.max(rangeStart, yearStart);
+    const clampedEnd = Math.min(rangeEnd, nextYearStart - 1);
+    const selectedDays = Number.isFinite(clampedStart) && Number.isFinite(clampedEnd) && clampedEnd >= clampedStart
+      ? Math.floor((clampedEnd - clampedStart) / 86_400_000) + 1
+      : 0;
+    const daysInYear = Math.round((nextYearStart - yearStart) / 86_400_000);
+    const totalExpected = Math.round(annualExpected * (selectedDays / daysInYear));
+    const pendingAmount = Math.max(totalExpected - totalReceived, 0);
+    const contributionRate = totalExpected > 0 ? Math.round((totalReceived / totalExpected) * 100) : 0;
+
+    return { totalExpected, totalReceived, pendingAmount, contributionRate };
+  }, [rows, fromDate, toDate, selectedYear]);
+
+  const recordsPerPage = 10;
+  const totalPages = Math.max(1, Math.ceil(rows.length / recordsPerPage));
+  const currentPage = Math.min(requestedPage, totalPages);
+  const firstRecordIndex = (currentPage - 1) * recordsPerPage;
+  const paginatedRows = rows.slice(firstRecordIndex, firstRecordIndex + recordsPerPage);
 
   function submitAction(action: (formData: FormData) => Promise<{ ok: boolean; message: string }>, formData: FormData) {
     setResult(null);
@@ -1179,7 +1199,7 @@ function FinanceContributionsTab({
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `contributions_${selectedYear}.csv`;
+    link.download = `contributions_${fromDate}_to_${toDate}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -1203,49 +1223,80 @@ function FinanceContributionsTab({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
-        <h2 className="text-base font-semibold text-gray-800">Member Contributions</h2>
-        <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:flex sm:flex-wrap sm:items-end">
-          <label className="col-span-2 flex items-center gap-2 sm:col-auto">
-            <span className="text-sm text-gray-600">Year:</span>
-            <select
-              value={selectedYear}
-              onChange={(event) => {
-                setSelectedYear(Number(event.target.value));
-                setFamilyFilter("all");
-              }}
-              className="h-8 min-w-[110px] rounded-lg border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-            >
-              {years.map((yearValue) => (
-                <option key={yearValue} value={yearValue}>{yearValue}</option>
-              ))}
-            </select>
-          </label>
-          <button type="button" onClick={exportCsv} className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs text-white transition hover:bg-emerald-700 sm:h-8">
-            <FileSpreadsheet className="size-4" />
-            Export Excel
-          </button>
-          <button type="button" onClick={() => setPaymentModalUser(users[0] ?? null)} className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 text-xs text-white transition hover:bg-blue-700 sm:h-8">
-            <HandCoins className="size-4" />
-            Record Payment
-          </button>
-          <button type="button" onClick={() => setAnnualModalUser(users[0] ?? null)} className="col-span-2 inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-green-600 px-3 text-xs text-white transition hover:bg-green-700 sm:col-auto sm:h-8">
-            <PlusCircle className="size-4" />
-            Set Annual Contribution
-          </button>
+      <div className="flex flex-col justify-between gap-3 xl:flex-row xl:items-end xl:gap-2">
+        <div className="min-w-0 flex-1 xl:min-w-[650px]">
+          <h2 className="text-base font-semibold text-gray-800">Member Contributions</h2>
+          <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <MemberContributionStat label="Expected Amount" value={formatCurrency(memberStats.totalExpected)} tone="blue" />
+            <MemberContributionStat label="Total Received" value={formatCurrency(memberStats.totalReceived)} tone="green" />
+            <MemberContributionStat label="Pending Amount" value={formatCurrency(memberStats.pendingAmount)} tone="amber" />
+            <MemberContributionStat label="Contribution Rate" value={`${memberStats.contributionRate}%`} tone="purple" />
+          </div>
         </div>
-      </div>
-
-      <div className="grid max-w-3xl grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
-        <InfoCard label="Total Expected" value={formatCurrency(totals.totalExpected)} tone="blue" />
-        <InfoCard label="Total Collected" value={formatCurrency(totals.totalCollected)} tone="green" />
-        <InfoCard label="Collection Rate" value={`${totals.collectionRate}%`} tone="purple" wide />
+        <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-end xl:w-auto">
+          <div className="grid grid-cols-2 gap-2">
+            <FieldLabel label="From date">
+              <input
+                type="date"
+                value={fromDate}
+                onChange={(event) => {
+                  const nextFromDate = event.target.value;
+                  const nextYear = Number(nextFromDate.slice(0, 4)) || currentYear;
+                  setFromDate(nextFromDate);
+                  setToDate((currentToDate) => {
+                    if (!currentToDate || currentToDate.slice(0, 4) !== String(nextYear) || currentToDate < nextFromDate) {
+                      return `${nextYear}-12-31`;
+                    }
+                    return currentToDate;
+                  });
+                  setFamilyFilter("all");
+                  setRequestedPage(1);
+                }}
+                className="h-8 w-full rounded-lg border border-gray-300 px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:w-36"
+              />
+            </FieldLabel>
+            <FieldLabel label="To date">
+              <input
+                type="date"
+                value={toDate}
+                min={fromDate}
+                max={selectedYearEnd}
+                onChange={(event) => {
+                  setToDate(event.target.value);
+                  setRequestedPage(1);
+                }}
+                className="h-8 w-full rounded-lg border border-gray-300 px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:w-36"
+              />
+            </FieldLabel>
+          </div>
+          <div className="flex w-full flex-col gap-1.5 sm:w-48">
+            <button type="button" onClick={exportCsv} className="inline-flex h-8 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-emerald-600 px-3 text-xs text-white transition hover:bg-emerald-700">
+              <FileSpreadsheet className="size-4" />
+              Export Excel
+            </button>
+            <button type="button" onClick={() => setPaymentModalUser(users[0] ?? null)} className="inline-flex h-8 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-blue-600 px-3 text-xs text-white transition hover:bg-blue-700">
+              <HandCoins className="size-4" />
+              Record Payment
+            </button>
+            <button type="button" onClick={() => setAnnualModalUser(users[0] ?? null)} className="inline-flex h-8 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-green-600 px-3 text-xs text-white transition hover:bg-green-700">
+              <PlusCircle className="size-4" />
+              Set Annual Contribution
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="flex max-w-4xl flex-col gap-2 sm:flex-row">
         <label className="relative w-full sm:w-64">
           <Users className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" aria-hidden="true" />
-          <select value={familyFilter} onChange={(event) => setFamilyFilter(event.target.value)} className="h-8 w-full appearance-none rounded-lg border border-gray-300 bg-white px-9 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
+          <select
+            value={familyFilter}
+            onChange={(event) => {
+              setFamilyFilter(event.target.value);
+              setRequestedPage(1);
+            }}
+            className="h-8 w-full appearance-none rounded-lg border border-gray-300 bg-white px-9 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+          >
             <option value="all">All Families</option>
             {yearFamilies.map((family) => (
               <option key={family.id} value={family.id}>{family.name}</option>
@@ -1254,7 +1305,15 @@ function FinanceContributionsTab({
         </label>
         <label className="relative flex-1">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" aria-hidden="true" />
-          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by member name or email..." className="h-8 w-full rounded-lg border border-gray-300 px-9 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+          <input
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setRequestedPage(1);
+            }}
+            placeholder="Search by member name or email..."
+            className="h-8 w-full rounded-lg border border-gray-300 px-9 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+          />
         </label>
       </div>
       <p className="text-xs text-gray-500">{rows.length} contribution records found</p>
@@ -1278,7 +1337,7 @@ function FinanceContributionsTab({
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 bg-white">
-            {rows.length ? rows.map((row) => (
+            {rows.length ? paginatedRows.map((row) => (
               <tr key={row.user.id}>
                 <td className="min-w-56 px-3 py-3">
                   <p className="font-medium text-gray-800">{row.user.name}</p>
@@ -1319,6 +1378,35 @@ function FinanceContributionsTab({
         </table>
       </div>
 
+      {rows.length > recordsPerPage ? (
+        <div className="flex flex-col items-center justify-between gap-3 border-t border-gray-100 pt-3 sm:flex-row">
+          <p className="text-xs text-gray-500">
+            Showing {firstRecordIndex + 1}–{Math.min(firstRecordIndex + recordsPerPage, rows.length)} of {rows.length} records
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={currentPage === 1}
+              onClick={() => setRequestedPage(currentPage - 1)}
+              className="h-8 rounded-lg border border-gray-300 px-3 text-xs font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Previous
+            </button>
+            <span className="min-w-20 text-center text-xs font-medium text-gray-600">
+              Page {currentPage} of {totalPages}
+            </span>
+            <button
+              type="button"
+              disabled={currentPage === totalPages}
+              onClick={() => setRequestedPage(currentPage + 1)}
+              className="h-8 rounded-lg border border-gray-300 px-3 text-xs font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {annualModalUser ? (
         <AnnualContributionModal
           user={annualModalUser}
@@ -1337,6 +1425,7 @@ function FinanceContributionsTab({
           user={paymentModalUser}
           users={users}
           year={selectedYear}
+          defaultDate={fromDate <= new Date().toISOString().slice(0, 10) && new Date().toISOString().slice(0, 10) <= toDate ? new Date().toISOString().slice(0, 10) : fromDate}
           termNumbers={termNumbers}
           pending={pending}
           onUserChange={setPaymentModalUser}
@@ -1346,7 +1435,7 @@ function FinanceContributionsTab({
       ) : null}
 
       {detailRow ? (
-        <DetailsModal row={detailRow} payments={paymentsForYear.filter((payment) => payment.userId === detailRow.user.id)} onClose={() => setDetailRow(null)} />
+        <DetailsModal row={detailRow} payments={paymentsForRange.filter((payment) => payment.userId === detailRow.user.id)} onClose={() => setDetailRow(null)} />
       ) : null}
       {confirmAction ? (
         <FinanceConfirmModal
@@ -1574,10 +1663,12 @@ function FinancePaymentsTab({
 
 function FinanceExpensesTab({
   currentYear,
+  currentUserId,
   expenses,
   users,
 }: {
   currentYear: number;
+  currentUserId: number;
   expenses: Expense[];
   users: UserOption[];
 }) {
@@ -1684,13 +1775,13 @@ function FinanceExpensesTab({
       return;
     }
     const lines = [
-      ["Date", "Reason", "Amount", "Status", "Approvers", "Recorded By"],
+      ["Date", "Reason", "Amount", "Status", "Approver", "Recorded By"],
       ...filteredExpenses.map((expense) => [
         expense.dateRaw,
         expense.description ?? "",
         expense.amount,
         expense.status,
-        [expense.approver1Name, expense.approver2Name].filter(Boolean).join(", "),
+        expense.approver1Name ?? expense.approver2Name ?? "",
         expense.createdByName,
       ]),
     ];
@@ -1781,11 +1872,13 @@ function FinanceExpensesTab({
                   <td className="px-3 py-2">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${expenseStatusBadge(expense.status)}`}>{expense.status}</span>
                   </td>
-                  <td className="px-3 py-2 text-xs text-gray-600">{[expense.approver1Name, expense.approver2Name].filter(Boolean).join(", ") || "-"}</td>
+                  <td className="px-3 py-2 text-xs text-gray-600">{expense.approver1Name ?? expense.approver2Name ?? "-"}</td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-1">
                       <IconButton label="View" icon={Eye} onClick={() => setDetailExpense(expense)} />
-                      {expense.status === "pending" ? <IconButton label="Approve" icon={Save} onClick={() => approveRow(expense)} /> : null}
+                      {expense.status === "pending" && expense.approverId1 === currentUserId ? (
+                        <IconButton label="Approve" icon={Save} onClick={() => approveRow(expense)} />
+                      ) : null}
                       <IconButton label="Delete" icon={Trash2} onClick={() => deleteRow(expense)} danger />
                     </div>
                   </td>
@@ -2048,6 +2141,30 @@ function InfoCard({ label, value, tone, wide = false }: { label: string; value: 
   );
 }
 
+function MemberContributionStat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: "blue" | "green" | "amber" | "purple";
+}) {
+  const colors = {
+    blue: "border-blue-100 bg-blue-50 text-blue-700",
+    green: "border-green-100 bg-green-50 text-green-700",
+    amber: "border-amber-100 bg-amber-50 text-amber-700",
+    purple: "border-purple-100 bg-purple-50 text-purple-700",
+  };
+
+  return (
+    <div className={`min-w-0 rounded-lg border px-3 py-2 ${colors[tone]}`}>
+      <p className="truncate text-[11px] text-gray-600">{label}</p>
+      <p className="whitespace-nowrap text-sm font-bold sm:text-base">{value}</p>
+    </div>
+  );
+}
+
 function IconButton({ label, onClick, icon: Icon, danger = false }: { label: string; onClick: () => void; icon: typeof Eye; danger?: boolean }) {
   return (
     <button
@@ -2114,6 +2231,7 @@ function PaymentModal({
   user,
   users,
   year,
+  defaultDate,
   termNumbers,
   pending,
   onUserChange,
@@ -2123,29 +2241,102 @@ function PaymentModal({
   user: UserOption;
   users: UserOption[];
   year: number;
+  defaultDate: string;
   termNumbers: number[];
   pending: boolean;
   onUserChange: (user: UserOption) => void;
   onClose: () => void;
   onSubmit: (formData: FormData) => void;
 }) {
+  const initialMemberLabel = `${user.name} - ${user.email}`;
+  const [memberSearch, setMemberSearch] = useState(initialMemberLabel);
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(user.id);
+  const [memberListOpen, setMemberListOpen] = useState(false);
+  const [memberError, setMemberError] = useState("");
+  const normalizedMemberSearch = memberSearch.trim().toLowerCase();
+  const matchingUsers = users.filter((item) => {
+    if (!normalizedMemberSearch) return true;
+    return item.name.toLowerCase().includes(normalizedMemberSearch)
+      || item.email.toLowerCase().includes(normalizedMemberSearch);
+  });
+
   return (
     <Modal title="Record Payment" onClose={onClose}>
       <form
         className="space-y-4"
         onSubmit={(event) => {
           event.preventDefault();
+          if (!selectedUserId) {
+            setMemberError("Search for and select a member.");
+            setMemberListOpen(true);
+            return;
+          }
           onSubmit(new FormData(event.currentTarget));
         }}
       >
         <input type="hidden" name="year" value={year} />
-        <FieldLabel label="Member">
-          <select name="user_id" value={user.id} onChange={(event) => onUserChange(users.find((item) => item.id === Number(event.target.value)) ?? user)} className={fieldClass}>
-            {users.map((item) => (
-              <option key={item.id} value={item.id}>{item.name} - {item.email}</option>
-            ))}
-          </select>
-        </FieldLabel>
+        <input type="hidden" name="user_id" value={selectedUserId ?? ""} />
+        <div
+          className="relative"
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+              setMemberListOpen(false);
+            }
+          }}
+        >
+          <label htmlFor="payment-member-search" className="mb-1 block text-sm font-medium text-gray-700">Member</label>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+            <input
+              id="payment-member-search"
+              type="search"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded={memberListOpen}
+              aria-controls="payment-member-results"
+              autoComplete="off"
+              value={memberSearch}
+              onFocus={() => setMemberListOpen(true)}
+              onChange={(event) => {
+                setMemberSearch(event.target.value);
+                setSelectedUserId(null);
+                setMemberError("");
+                setMemberListOpen(true);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") setMemberListOpen(false);
+              }}
+              placeholder="Search by member name or email..."
+              className={`${fieldClass} pl-9 ${memberError ? "border-red-400 focus:border-red-500 focus:ring-red-100" : ""}`}
+            />
+          </div>
+          {memberError ? <p className="mt-1 text-xs text-red-600">{memberError}</p> : null}
+          {memberListOpen ? (
+            <div id="payment-member-results" role="listbox" className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white p-1 shadow-lg">
+              {matchingUsers.length ? matchingUsers.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="option"
+                  aria-selected={selectedUserId === item.id}
+                  onClick={() => {
+                    onUserChange(item);
+                    setSelectedUserId(item.id);
+                    setMemberSearch(`${item.name} - ${item.email}`);
+                    setMemberError("");
+                    setMemberListOpen(false);
+                  }}
+                  className={`block w-full rounded-md px-3 py-2 text-left transition hover:bg-blue-50 ${selectedUserId === item.id ? "bg-blue-50" : ""}`}
+                >
+                  <span className="block text-sm font-medium text-gray-800">{item.name}</span>
+                  <span className="block text-xs text-gray-500">{item.email}</span>
+                </button>
+              )) : (
+                <p className="px-3 py-5 text-center text-sm text-gray-500">No members found</p>
+              )}
+            </div>
+          ) : null}
+        </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <FieldLabel label="Term">
             <select name="term" className={fieldClass}>
@@ -2166,7 +2357,7 @@ function PaymentModal({
             </select>
           </FieldLabel>
           <FieldLabel label="Payment Date">
-            <input name="payment_date" type="date" defaultValue={new Date().toISOString().slice(0, 10)} className={fieldClass} />
+            <input name="payment_date" type="date" defaultValue={defaultDate} className={fieldClass} />
           </FieldLabel>
         </div>
         <FieldLabel label="Notes">
@@ -2497,12 +2688,28 @@ function ExpenseModal({
   onClose: () => void;
   onSubmit: (formData: FormData) => void;
 }) {
+  const [approverSearch, setApproverSearch] = useState("");
+  const [selectedApproverId, setSelectedApproverId] = useState<number | null>(null);
+  const [approverListOpen, setApproverListOpen] = useState(false);
+  const [approverError, setApproverError] = useState("");
+  const normalizedApproverSearch = approverSearch.trim().toLowerCase();
+  const matchingApprovers = users.filter((user) => {
+    if (!normalizedApproverSearch) return true;
+    return user.name.toLowerCase().includes(normalizedApproverSearch)
+      || user.email.toLowerCase().includes(normalizedApproverSearch);
+  });
+
   return (
     <Modal title="New Expense" onClose={onClose}>
       <form
         className="space-y-4"
         onSubmit={(event) => {
           event.preventDefault();
+          if (approverSearch.trim() && !selectedApproverId) {
+            setApproverError("Search for and select a valid approver.");
+            setApproverListOpen(true);
+            return;
+          }
           onSubmit(new FormData(event.currentTarget));
         }}
       >
@@ -2514,36 +2721,85 @@ function ExpenseModal({
           <FieldLabel label="Date">
             <input name="date" type="date" defaultValue={new Date().toISOString().slice(0, 10)} className={fieldClass} />
           </FieldLabel>
-          <FieldLabel label="Category">
-            <select name="category" defaultValue="other" className={fieldClass}>
-              <option value="other">Other</option>
-              <option value="transport">Transport</option>
-              <option value="equipment">Equipment</option>
-              <option value="food">Food</option>
-              <option value="service">Service</option>
-            </select>
-          </FieldLabel>
         </div>
         <FieldLabel label="Reason">
           <textarea name="description" rows={3} required className={`${fieldClass} h-auto py-2`} />
         </FieldLabel>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <FieldLabel label="Approver 1">
-            <select name="approver_id_1" className={fieldClass}>
-              <option value="">No approver</option>
-              {users.map((user) => (
-                <option key={user.id} value={user.id}>{user.name} - {user.email}</option>
+        <input type="hidden" name="approver_id_1" value={selectedApproverId ?? ""} />
+        <div
+          className="relative"
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+              setApproverListOpen(false);
+            }
+          }}
+        >
+          <label htmlFor="expense-approver-search" className="mb-1 block text-sm font-medium text-gray-700">Approver</label>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+            <input
+              id="expense-approver-search"
+              type="search"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded={approverListOpen}
+              aria-controls="expense-approver-results"
+              autoComplete="off"
+              value={approverSearch}
+              onFocus={() => setApproverListOpen(true)}
+              onChange={(event) => {
+                setApproverSearch(event.target.value);
+                setSelectedApproverId(null);
+                setApproverError("");
+                setApproverListOpen(true);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") setApproverListOpen(false);
+              }}
+              placeholder="Search approver by name or email..."
+              className={`${fieldClass} pl-9 ${approverError ? "border-red-400 focus:border-red-500 focus:ring-red-100" : ""}`}
+            />
+          </div>
+          {approverError ? <p className="mt-1 text-xs text-red-600">{approverError}</p> : null}
+          {approverListOpen ? (
+            <div id="expense-approver-results" role="listbox" className="absolute z-20 mt-1 max-h-52 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white p-1 shadow-lg">
+              <button
+                type="button"
+                role="option"
+                aria-selected={!selectedApproverId}
+                onClick={() => {
+                  setSelectedApproverId(null);
+                  setApproverSearch("");
+                  setApproverError("");
+                  setApproverListOpen(false);
+                }}
+                className="block w-full rounded-md px-3 py-2 text-left text-sm text-gray-500 transition hover:bg-gray-50"
+              >
+                No approver
+              </button>
+              {matchingApprovers.map((user) => (
+                <button
+                  key={user.id}
+                  type="button"
+                  role="option"
+                  aria-selected={selectedApproverId === user.id}
+                  onClick={() => {
+                    setSelectedApproverId(user.id);
+                    setApproverSearch(`${user.name} - ${user.email}`);
+                    setApproverError("");
+                    setApproverListOpen(false);
+                  }}
+                  className={`block w-full rounded-md px-3 py-2 text-left transition hover:bg-blue-50 ${selectedApproverId === user.id ? "bg-blue-50" : ""}`}
+                >
+                  <span className="block text-sm font-medium text-gray-800">{user.name}</span>
+                  <span className="block text-xs text-gray-500">{user.email}</span>
+                </button>
               ))}
-            </select>
-          </FieldLabel>
-          <FieldLabel label="Approver 2">
-            <select name="approver_id_2" className={fieldClass}>
-              <option value="">No approver</option>
-              {users.map((user) => (
-                <option key={user.id} value={user.id}>{user.name} - {user.email}</option>
-              ))}
-            </select>
-          </FieldLabel>
+              {!matchingApprovers.length && normalizedApproverSearch ? (
+                <p className="px-3 py-5 text-center text-sm text-gray-500">No approvers found</p>
+              ) : null}
+            </div>
+          ) : null}
         </div>
         <ModalFooter pending={pending} submitLabel="Save Expense" onClose={onClose} />
       </form>
@@ -2573,8 +2829,8 @@ function ExpenseDetailsModal({ expense, onClose }: { expense: Expense; onClose: 
             <p className="text-sm font-medium text-gray-800">{expense.createdByName}</p>
           </div>
           <div className="rounded-lg border-l-4 border-green-500 bg-gray-50 p-3">
-            <p className="text-xs text-gray-500">Approvers</p>
-            <p className="text-sm font-medium text-gray-800">{[expense.approver1Name, expense.approver2Name].filter(Boolean).join(", ") || "-"}</p>
+            <p className="text-xs text-gray-500">Approver</p>
+            <p className="text-sm font-medium text-gray-800">{expense.approver1Name ?? expense.approver2Name ?? "-"}</p>
           </div>
         </div>
         {expense.approvedByName ? (
@@ -2757,19 +3013,35 @@ function formatCurrency(value: number) {
   return `RWF ${value.toLocaleString()}`;
 }
 
-function FinanceStat({ label, value, tone, icon: Icon }: { label: string; value: number; tone: "emerald" | "rose" | "sky" | "indigo"; icon: typeof HandCoins }) {
+function FinanceStat({
+  label,
+  value,
+  tone,
+  icon: Icon,
+  format = "currency",
+}: {
+  label: string;
+  value: number;
+  tone: "emerald" | "rose" | "sky" | "indigo" | "amber" | "violet";
+  icon: typeof HandCoins;
+  format?: "currency" | "percentage";
+}) {
   const colors = {
     emerald: "border-emerald-100 from-white via-emerald-50 to-teal-50/40 text-emerald-700 bg-emerald-100",
     rose: "border-rose-100 from-white via-rose-50 to-red-50/40 text-rose-700 bg-rose-100",
     sky: "border-sky-100 from-white via-sky-50 to-blue-50/40 text-sky-700 bg-sky-100",
     indigo: "border-indigo-100 from-white via-indigo-50 to-violet-50/30 text-indigo-700 bg-indigo-100",
+    amber: "border-amber-100 from-white via-amber-50 to-orange-50/40 text-amber-700 bg-amber-100",
+    violet: "border-violet-100 from-white via-violet-50 to-purple-50/40 text-violet-700 bg-violet-100",
   };
   return (
     <div className={`rounded-xl border bg-gradient-to-br p-4 shadow-sm ${colors[tone]}`}>
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs text-gray-500">{label}</p>
-          <p className="mt-1 text-xl font-bold text-gray-900">{formatCurrency(value)}</p>
+          <p className="mt-1 text-xl font-bold text-gray-900">
+            {format === "percentage" ? `${value}%` : formatCurrency(value)}
+          </p>
         </div>
         <div className={`flex size-10 items-center justify-center rounded-lg ${colors[tone]}`}>
           <Icon className="size-5" />

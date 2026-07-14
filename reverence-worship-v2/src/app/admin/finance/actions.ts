@@ -373,9 +373,7 @@ export async function saveExpense(formData: FormData) {
   const description = readString(formData, "description");
   const dateValue = readString(formData, "date");
   const year = Number(readString(formData, "year"));
-  const category = readString(formData, "category") || "other";
   const approverId1 = Number(readString(formData, "approver_id_1"));
-  const approverId2 = Number(readString(formData, "approver_id_2"));
 
   if (!Number.isFinite(amount) || amount <= 0) {
     return { ok: false, message: "Expense amount must be greater than zero." };
@@ -390,7 +388,6 @@ export async function saveExpense(formData: FormData) {
   }
 
   const firstApprover = Number.isInteger(approverId1) && approverId1 > 0 ? approverId1 : null;
-  const secondApprover = Number.isInteger(approverId2) && approverId2 > 0 ? approverId2 : null;
 
   await prisma.expense.create({
     data: {
@@ -398,11 +395,11 @@ export async function saveExpense(formData: FormData) {
       description,
       date: dateValue ? new Date(`${dateValue}T12:00:00.000Z`) : new Date(),
       year,
-      category,
-      status: firstApprover || secondApprover ? "pending" : "approved",
+      category: null,
+      status: firstApprover ? "pending" : "approved",
       approverId1: firstApprover,
-      approverId2: secondApprover,
-      approvedBy: firstApprover || secondApprover ? null : user.id,
+      approverId2: null,
+      approvedBy: firstApprover ? null : user.id,
       createdBy: user.id,
     },
   });
@@ -418,13 +415,34 @@ export async function approveExpense(id: number) {
     return { ok: false, message: "Expense not found." };
   }
 
-  await prisma.expense.update({
+  const expense = await prisma.expense.findUnique({
     where: { id },
+    select: { approverId1: true, status: true },
+  });
+
+  if (!expense) {
+    return { ok: false, message: "Expense not found." };
+  }
+
+  if (expense.approverId1 !== user.id) {
+    return { ok: false, message: "Only the selected approver can approve this expense." };
+  }
+
+  if (expense.status !== "pending") {
+    return { ok: false, message: "This expense is no longer pending approval." };
+  }
+
+  const result = await prisma.expense.updateMany({
+    where: { id, approverId1: user.id, status: "pending" },
     data: {
       status: "approved",
       approvedBy: user.id,
     },
   });
+
+  if (result.count !== 1) {
+    return { ok: false, message: "This expense could not be approved. Refresh and try again." };
+  }
 
   revalidatePath("/admin/finance");
   return { ok: true, message: "Expense approved successfully." };
