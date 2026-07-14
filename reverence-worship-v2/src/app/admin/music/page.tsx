@@ -205,6 +205,7 @@ export default async function MusicPage() {
           startDateRaw: formatDateValue(task.startDate),
           deadline: task.deadline ? formatDate(task.deadline) : "",
           deadlineRaw: formatDateValue(task.deadline),
+          priority: task.priority ?? "medium",
           progress: task.progress,
           status: task.status,
         })),

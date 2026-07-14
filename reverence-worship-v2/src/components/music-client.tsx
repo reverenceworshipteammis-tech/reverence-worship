@@ -9,10 +9,12 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  ClipboardList,
   Download,
   Eye,
   EyeOff,
   FileText,
+  FileUp,
   GalleryHorizontal,
   ImageIcon,
   List,
@@ -21,6 +23,7 @@ import {
   Music,
   Pencil,
   Plus,
+  PlusCircle,
   Search,
   Settings,
   Star,
@@ -165,6 +168,7 @@ type MusicActionPlanTask = {
   startDateRaw: string;
   deadline: string;
   deadlineRaw: string;
+  priority: string;
   progress: number;
   status: string;
 };
@@ -250,19 +254,17 @@ function Modal({
   );
 }
 
-function ActionPlanStat({ label, value, tone = "gray" }: { label: string; value: number | string; tone?: "gray" | "green" | "blue" | "purple" | "amber" }) {
+function ActionSummaryCard({ label, value, tone }: { label: string; value: number | string; tone: "rose" | "amber" | "sky" }) {
   const colors = {
-    gray: "bg-gray-50 text-gray-800",
-    green: "bg-green-50 text-green-700",
-    blue: "bg-blue-50 text-blue-700",
-    purple: "bg-purple-50 text-purple-700",
-    amber: "bg-amber-50 text-amber-700",
+    rose: "border-rose-100 bg-rose-50 text-rose-700",
+    amber: "border-amber-100 bg-amber-50 text-amber-700",
+    sky: "border-sky-100 bg-sky-50 text-sky-700",
   };
 
   return (
-    <div className={`rounded-lg border border-gray-100 p-3 ${colors[tone]}`}>
-      <p className="text-xs font-semibold uppercase text-gray-500">{label}</p>
-      <p className="mt-1 text-xl font-bold">{value}</p>
+    <div className={`rounded-lg border p-3 ${colors[tone]}`}>
+      <p className="text-xs font-semibold uppercase tracking-wide opacity-75">{label}</p>
+      <p className="mt-1 text-2xl font-bold">{value}</p>
     </div>
   );
 }
@@ -272,6 +274,65 @@ function PlanDetail({ label, value }: { label: string; value: number | string })
     <div className="rounded-lg bg-gray-50 p-3">
       <p className="text-xs text-gray-500">{label}</p>
       <p className="text-sm font-medium capitalize text-gray-800">{value}</p>
+    </div>
+  );
+}
+
+function InlineDropdown({
+  name,
+  placeholder,
+  options,
+  tone = "blue",
+}: {
+  name: string;
+  placeholder: string;
+  options: { value: string; label: string }[];
+  tone?: "blue" | "green";
+}) {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState("");
+  const selected = options.find((option) => option.value === value);
+  const focusClass = tone === "green" ? "focus:ring-green-500" : "focus:ring-blue-500";
+  const activeClass = tone === "green" ? "hover:bg-green-50" : "hover:bg-blue-50";
+
+  return (
+    <div className="relative min-w-0 flex-1">
+      <input type="hidden" name={name} value={value} />
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className={`flex h-10 w-full items-center justify-between gap-2 rounded-lg border border-gray-300 bg-white px-3 text-left text-sm text-gray-700 outline-none transition ${focusClass} sm:rounded-xl`}
+      >
+        <span className={`truncate ${selected ? "text-gray-800" : "text-gray-400"}`}>{selected?.label ?? placeholder}</span>
+        <ChevronRight className={`size-4 shrink-0 text-gray-400 transition ${open ? "rotate-90" : ""}`} aria-hidden />
+      </button>
+      {open ? (
+        <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white py-1 shadow-xl">
+          <button
+            type="button"
+            onClick={() => {
+              setValue("");
+              setOpen(false);
+            }}
+            className={`block w-full px-3 py-2 text-left text-sm text-gray-400 ${activeClass}`}
+          >
+            {placeholder}
+          </button>
+          {options.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => {
+                setValue(option.value);
+                setOpen(false);
+              }}
+              className={`block w-full px-3 py-2 text-left text-sm text-gray-700 ${activeClass} ${option.value === value ? "font-semibold" : ""}`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -498,6 +559,7 @@ export function MusicClient({
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("playlist");
   const [boardTab, setBoardTab] = useState<"youtube" | "featured" | "events">("youtube");
+  const [playlistSearch, setPlaylistSearch] = useState("");
   const [songSearch, setSongSearch] = useState("");
   const [gallerySearch, setGallerySearch] = useState("");
   const [gallerySort, setGallerySort] = useState("newest");
@@ -521,6 +583,21 @@ export function MusicClient({
   const [lyricsSong, setLyricsSong] = useState<Song | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  const filteredPlaylists = useMemo(() => {
+    const query = playlistSearch.trim().toLowerCase();
+    if (!query) return playlists;
+
+    return playlists.filter((playlist) =>
+      [
+        playlist.title,
+        playlist.description,
+        ...playlist.songs.flatMap((song) => [song.title, song.artist, song.keySignature]),
+      ]
+        .filter(Boolean)
+        .some((value) => value!.toLowerCase().includes(query)),
+    );
+  }, [playlistSearch, playlists]);
 
   const filteredSongs = useMemo(() => {
     const query = songSearch.trim().toLowerCase();
@@ -570,12 +647,29 @@ export function MusicClient({
   }, [actionPlans, actionPlanSearch, actionPlanStatus]);
   const actionPlanSummary = useMemo(() => {
     const tasks = actionPlans.flatMap((plan) => plan.tasks);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const soon = new Date(today);
+    soon.setDate(soon.getDate() + 7);
+
+    const openTasks = tasks.filter((task) => task.status !== "completed" && task.progress < 100);
+    const dueDate = (task: MusicActionPlanTask) => task.deadlineRaw ? new Date(`${task.deadlineRaw}T12:00:00`) : null;
+
     return {
       totalPlans: actionPlans.length,
       completed: actionPlans.filter((plan) => plan.status === "completed").length,
       inProgress: actionPlans.filter((plan) => plan.status === "in_progress").length,
       totalTasks: tasks.length,
       totalBudget: tasks.reduce((sum, task) => sum + task.estimatedBudget, 0),
+      overdueTasks: openTasks.filter((task) => {
+        const deadline = dueDate(task);
+        return deadline ? deadline < today : false;
+      }).length,
+      dueSoonTasks: openTasks.filter((task) => {
+        const deadline = dueDate(task);
+        return deadline ? deadline >= today && deadline <= soon : false;
+      }).length,
+      myTodoTasks: openTasks.length,
     };
   }, [actionPlans]);
 
@@ -709,6 +803,31 @@ export function MusicClient({
       confirmLabel: "Delete Task",
       action: () => deleteMusicActionPlanTask(task.id),
     });
+  }
+
+  function exportActionPlanTasks(plan: MusicActionPlan) {
+    const rows = [
+      ["No", "Activity", "Milestone", "Budget", "Start Date", "Deadline", "Priority", "Progress", "Status"],
+      ...plan.tasks.map((task, index) => [
+        index + 1,
+        task.activity ?? task.taskName,
+        task.targetMilestone ?? "",
+        task.estimatedBudget,
+        task.startDate,
+        task.deadline,
+        task.priority || "medium",
+        `${task.progress}%`,
+        task.status.replace("_", " "),
+      ]),
+    ];
+    const csv = rows.map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${plan.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-tasks.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   const lightboxPhoto = lightboxIndex === null ? null : filteredGallery[lightboxIndex];
@@ -1001,24 +1120,19 @@ export function MusicClient({
           ) : null}
         </div>
       ) : activeTab === "actionPlan" ? (
-        <div className="space-y-5 rounded-lg border border-gray-100 bg-white p-4 shadow-sm sm:p-6">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h3 className="text-lg font-bold text-gray-800">Music Action Plans</h3>
-              <p className="text-sm text-gray-500">Track Music Ministry DPT plans, tasks, budgets, and progress.</p>
-            </div>
-            <button type="button" onClick={() => setPlanModal("new")} className="inline-flex w-fit items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+        <div className="space-y-4 rounded-lg border border-gray-100 bg-white p-3 shadow-sm sm:p-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <h3 className="text-lg font-semibold text-gray-800">Music Action Plans</h3>
+            <button type="button" onClick={() => setPlanModal("new")} className="inline-flex w-fit items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700">
               <Plus className="size-4" />
               Create New Action Plan
             </button>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            <ActionPlanStat label="Plans" value={actionPlanSummary.totalPlans} />
-            <ActionPlanStat label="Completed" value={actionPlanSummary.completed} tone="green" />
-            <ActionPlanStat label="In Progress" value={actionPlanSummary.inProgress} tone="blue" />
-            <ActionPlanStat label="Tasks" value={actionPlanSummary.totalTasks} tone="purple" />
-            <ActionPlanStat label="Budget" value={formatCurrency(actionPlanSummary.totalBudget)} tone="amber" />
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <ActionSummaryCard label="Overdue Tasks" value={actionPlanSummary.overdueTasks} tone="rose" />
+            <ActionSummaryCard label="To-Be-Overdue Within 7 Days" value={actionPlanSummary.dueSoonTasks} tone="amber" />
+            <ActionSummaryCard label="My TO DO" value={actionPlanSummary.myTodoTasks} tone="sky" />
           </div>
 
           <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 md:flex-row md:items-center">
@@ -1038,74 +1152,106 @@ export function MusicClient({
             {filteredActionPlans.length ? filteredActionPlans.map((plan) => {
               const totalBudget = plan.tasks.reduce((sum, task) => sum + task.estimatedBudget, 0);
               return (
-                <article key={plan.id} className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <article key={plan.id} className="rounded-lg border bg-white p-4 transition hover:shadow-md">
+                  <div className="mb-3 flex flex-col justify-between gap-4 sm:flex-row">
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-base font-semibold text-gray-900">{plan.title}</h3>
+                      <div className="mb-2 flex flex-wrap items-center gap-2">
+                        <h3 className="font-semibold text-gray-800">{plan.title}</h3>
                         <span className={`rounded-full px-2 py-1 text-xs font-medium capitalize ${actionPlanStatusBadge(plan.status)}`}>{plan.status.replace("_", " ")}</span>
                       </div>
-                      <p className="mt-2 text-sm text-gray-600">{plan.description || "No description"}</p>
-                      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+                      <p className="text-sm text-gray-600">{plan.description || "No description"}</p>
+                      <div className="mt-2 flex flex-wrap gap-4 text-xs text-gray-500">
                         <span>By {plan.createdByName}</span>
                         <span>Start: {plan.startDate}</span>
                         <span>Completion: {plan.dueDate}</span>
-                        <span>Tasks: {plan.tasks.length}</span>
-                        {totalBudget > 0 && <span>Budget: {formatCurrency(totalBudget)}</span>}
-                      </div>
-                      <div className="mt-4 flex max-w-md items-center gap-2">
-                        <div className="h-2 flex-1 rounded-full bg-gray-100">
-                          <div className="h-2 rounded-full bg-blue-600" style={{ width: `${Math.min(plan.progress, 100)}%` }} />
-                        </div>
-                        <span className="text-xs font-semibold text-gray-600">{plan.progress}%</span>
+                        <span>Created: {plan.createdAt}</span>
                       </div>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button type="button" onClick={() => setTaskModal({ plan })} className="rounded-lg bg-green-50 px-3 py-2 text-green-700 hover:bg-green-100" title="Create task"><Plus className="size-4" /></button>
-                      <button type="button" onClick={() => setViewPlan(plan)} className="rounded-lg border border-gray-200 px-3 py-2 text-gray-600 hover:bg-gray-50" title="View"><Eye className="size-4" /></button>
-                      <button type="button" onClick={() => setPlanModal(plan)} className="rounded-lg border border-gray-200 px-3 py-2 text-blue-600 hover:bg-blue-50" title="Edit"><Pencil className="size-4" /></button>
-                      <button type="button" onClick={() => removeActionPlan(plan)} className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-red-600 hover:bg-red-100" title="Delete"><Trash2 className="size-4" /></button>
+                    <div className="ml-0 flex shrink-0 flex-wrap gap-2">
+                      <button type="button" onClick={() => setViewPlan(plan)} className="text-purple-600 hover:text-purple-700" title="View advanced plan">
+                        <FileText className="size-4" />
+                      </button>
+                      <button type="button" onClick={() => setTaskModal({ plan })} className="text-green-600 hover:text-green-700" title="Create task">
+                        <PlusCircle className="size-4" />
+                      </button>
+                      <button type="button" onClick={() => exportActionPlanTasks(plan)} className="text-indigo-600 hover:text-indigo-700" title="Export tasks">
+                        <FileUp className="size-4" />
+                      </button>
+                      <button type="button" onClick={() => setPlanModal(plan)} className="text-blue-500 hover:text-blue-700" title="Edit">
+                        <Pencil className="size-4" />
+                      </button>
+                      <button type="button" onClick={() => removeActionPlan(plan)} className="text-red-500 hover:text-red-700" title="Delete">
+                        <Trash2 className="size-4" />
+                      </button>
                     </div>
                   </div>
 
-                  <div className="mt-4 overflow-x-auto rounded-lg border border-gray-100">
-                    <table className="min-w-full text-sm">
-                      <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
-                        <tr>
-                          <th className="px-3 py-2">Activity</th>
-                          <th className="px-3 py-2">Milestone</th>
-                          <th className="px-3 py-2">Budget</th>
-                          <th className="px-3 py-2">Deadline</th>
-                          <th className="px-3 py-2">Progress</th>
-                          <th className="px-3 py-2 text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {plan.tasks.length ? plan.tasks.map((task) => (
-                          <tr key={task.id}>
-                            <td className="px-3 py-2 font-medium text-gray-800">{task.activity || task.taskName}</td>
-                            <td className="px-3 py-2 text-gray-600">{task.targetMilestone || "-"}</td>
-                            <td className="px-3 py-2 text-gray-600">{task.estimatedBudget ? formatCurrency(task.estimatedBudget) : "-"}</td>
-                            <td className="px-3 py-2 text-gray-600">{task.deadline || "-"}</td>
-                            <td className="px-3 py-2 text-gray-600">{task.progress}%</td>
-                            <td className="px-3 py-2">
-                              <div className="flex justify-end gap-3">
-                                <button type="button" onClick={() => setTaskModal({ plan, task })} className="text-blue-600 hover:text-blue-700">Edit</button>
-                                <button type="button" onClick={() => removeActionPlanTask(task)} className="text-red-600 hover:text-red-700">Delete</button>
-                              </div>
-                            </td>
-                          </tr>
-                        )) : (
-                          <tr><td colSpan={6} className="px-3 py-8 text-center text-gray-400">No tasks yet</td></tr>
-                        )}
-                      </tbody>
-                    </table>
+                  <div className="mt-3">
+                    <div className="mb-1 flex items-center justify-between text-sm">
+                      <span className="text-gray-600">Progress</span>
+                      <span className="font-medium text-gray-800">{plan.progress}%</span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-gray-200">
+                      <div className="h-2 rounded-full bg-blue-600 transition-all duration-300" style={{ width: `${Math.min(plan.progress, 100)}%` }} />
+                    </div>
+                  </div>
+
+                  <div className="mt-4 overflow-hidden rounded-lg border border-gray-100 bg-gray-50">
+                    <div className="grid grid-cols-12 gap-2 border-b border-gray-100 bg-white px-4 py-3 text-xs font-semibold text-gray-600">
+                      <div className="col-span-12 md:col-span-2">Activity</div>
+                      <div className="col-span-12 md:col-span-2">Milestone</div>
+                      <div className="col-span-6 md:col-span-2">Budget</div>
+                      <div className="col-span-6 md:col-span-2">Deadline</div>
+                      <div className="col-span-6 md:col-span-1">Priority</div>
+                      <div className="col-span-6 md:col-span-1">Progress</div>
+                      <div className="col-span-12 text-left md:col-span-2 md:text-right">Actions</div>
+                    </div>
+                    {plan.tasks.length ? plan.tasks.map((task) => (
+                      <div key={task.id} className="grid grid-cols-12 items-center gap-2 border-b border-gray-100 px-4 py-3 text-sm last:border-b-0">
+                        <div className="col-span-12 font-medium text-gray-800 md:col-span-2">{task.activity || task.taskName || "-"}</div>
+                        <div className="col-span-12 text-gray-600 md:col-span-2">{task.targetMilestone || "-"}</div>
+                        <div className="col-span-6 text-gray-600 md:col-span-2">{task.estimatedBudget ? formatCurrency(task.estimatedBudget) : "-"}</div>
+                        <div className="col-span-6 text-gray-600 md:col-span-2">{task.deadline || "-"}</div>
+                        <div className="col-span-6 md:col-span-1">
+                          <span className="inline-flex rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700 capitalize">{task.priority || "medium"}</span>
+                        </div>
+                        <div className="col-span-6 md:col-span-1">
+                          <div className="mb-1 text-xs text-gray-500">{task.progress}%</div>
+                          <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+                            <div className="h-2 rounded-full bg-blue-600" style={{ width: `${Math.min(task.progress, 100)}%` }} />
+                          </div>
+                        </div>
+                        <div className="col-span-12 md:col-span-2">
+                          <div className="flex items-center justify-start gap-1 md:justify-end md:gap-2">
+                            <button type="button" onClick={() => setTaskModal({ plan, task })} className="inline-flex size-7 items-center justify-center rounded-full text-blue-600 hover:bg-blue-50 md:size-8" title="Edit task">
+                              <Pencil className="size-4" />
+                            </button>
+                            <button type="button" onClick={() => removeActionPlanTask(task)} className="inline-flex size-7 items-center justify-center rounded-full text-red-600 hover:bg-red-50 md:size-8" title="Delete task">
+                              <Trash2 className="size-4" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )) : (
+                      <div className="px-4 py-6 text-center text-sm text-gray-500">No tasks created yet. Use the green plus button to add one.</div>
+                    )}
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between rounded-lg border border-gray-100 bg-white px-4 py-3">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Total estimated amount</p>
+                      <p className="text-sm text-gray-500">For this action plan only</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Budget</p>
+                      <p className="text-lg font-bold text-gray-800">{formatCurrency(totalBudget)}</p>
+                    </div>
                   </div>
                 </article>
               );
             }) : (
               <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 py-12 text-center">
-                <FileText className="mx-auto mb-3 size-10 text-gray-300" />
+                <ClipboardList className="mx-auto mb-3 size-10 text-gray-300" />
                 <p className="text-sm text-gray-500">No action plans found</p>
                 <button type="button" onClick={() => setPlanModal("new")} className="mt-3 text-sm font-medium text-blue-600 hover:text-blue-700">Create your first action plan</button>
               </div>
@@ -1119,90 +1265,92 @@ export function MusicClient({
           <p className="mt-1 text-sm text-gray-500">We are building this department one tab at a time.</p>
         </div>
       ) : (
-        <div className="rounded-2xl border border-gray-100 bg-white p-3 shadow-sm sm:p-6">
-          <form onSubmit={submitAddToPlaylist} className="mb-6 rounded-2xl border border-blue-100 bg-blue-50 p-4">
-            <h4 className="mb-3 flex items-center gap-2 font-semibold text-gray-700">
+        <div className="rounded-xl border border-gray-100 bg-white p-2 shadow-sm sm:rounded-2xl sm:p-6">
+          <form onSubmit={submitAddToPlaylist} className="mb-4 rounded-xl border border-blue-100 bg-blue-50 p-3 sm:mb-6 sm:rounded-2xl sm:p-4">
+            <h4 className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700 sm:mb-3 sm:text-base">
               <Plus className="size-4 text-blue-600" aria-hidden />
               Add Song to Playlist
             </h4>
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <select name="playlistId" className="min-w-0 flex-1 rounded-xl border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="">Select Playlist</option>
-                {playlists.map((playlist) => (
-                  <option key={playlist.id} value={playlist.id}>{playlist.title} ({playlist.songs.length} songs)</option>
-                ))}
-              </select>
-              <select name="songId" className="min-w-0 flex-1 rounded-xl border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="">Select Song</option>
-                {songs.map((song) => (
-                  <option key={song.id} value={song.id}>{song.title}</option>
-                ))}
-              </select>
-              <button disabled={isPending} className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60" type="submit">
+            <div className="grid grid-cols-1 gap-2 sm:flex sm:gap-3">
+              <InlineDropdown
+                name="playlistId"
+                placeholder="Select Playlist"
+                options={playlists.map((playlist) => ({ value: String(playlist.id), label: `${playlist.title} (${playlist.songs.length} songs)` }))}
+              />
+              <InlineDropdown
+                name="songId"
+                placeholder="Select Song"
+                options={songs.map((song) => ({ value: String(song.id), label: song.title }))}
+              />
+              <button disabled={isPending} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60 sm:rounded-xl" type="submit">
                 <Plus className="size-4" aria-hidden />
                 Add
               </button>
             </div>
           </form>
 
-          <div className="flex flex-col gap-5 lg:flex-row">
+          <div className="flex flex-col gap-4 lg:flex-row lg:gap-5">
             <section className="lg:w-1/2">
-              <div className="mb-3 flex flex-col gap-2 border-b pb-2 sm:flex-row sm:items-center sm:justify-between">
-                <h4 className="font-semibold text-gray-700">
+              <div className="mb-2 flex items-center justify-between gap-2 border-b pb-2 sm:mb-3">
+                <h4 className="min-w-0 text-sm font-semibold text-gray-700 sm:text-base">
                   <List className="mr-2 inline size-4 text-blue-600" aria-hidden />
-                  Playlists <span className="ml-2 text-xs text-gray-400">({playlists.length} total)</span>
+                  <span>Playlists</span> <span className="ml-1 text-xs text-gray-400">({filteredPlaylists.length}/{playlists.length})</span>
                 </h4>
-                <button type="button" onClick={() => setModal("playlist")} className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700">
+                <button type="button" onClick={() => setModal("playlist")} className="inline-flex h-9 shrink-0 items-center justify-center gap-1 rounded-lg bg-blue-600 px-2.5 text-xs font-semibold text-white hover:bg-blue-700 sm:rounded-xl sm:px-3">
                   <Plus className="size-4" aria-hidden />
-                  New Playlist
+                  <span>New</span>
                 </button>
               </div>
+              <div className="relative mb-2 sm:mb-3">
+                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" aria-hidden />
+                <input value={playlistSearch} onChange={(event) => setPlaylistSearch(event.target.value)} placeholder="Search playlists..." className="h-10 w-full rounded-lg border border-gray-300 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 sm:rounded-xl" />
+              </div>
               <div className="space-y-2 sm:max-h-[500px] sm:overflow-y-auto sm:pr-1">
-                {playlists.length > 0 ? playlists.map((playlist) => (
-                  <div key={playlist.id} className="rounded-2xl border border-gray-200 p-3 transition hover:bg-gray-50">
+                {filteredPlaylists.length > 0 ? filteredPlaylists.map((playlist) => (
+                  <div key={playlist.id} className="rounded-xl border border-gray-200 p-2.5 transition hover:bg-gray-50 sm:rounded-2xl sm:p-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <h5 className="font-medium text-gray-800">{playlist.title}</h5>
+                        <h5 className="truncate text-sm font-medium text-gray-800 sm:text-base">{playlist.title}</h5>
                         <p className="text-xs text-gray-500">{playlist.songs.length} songs</p>
                         {playlist.description ? <p className="mt-1 line-clamp-2 text-xs text-gray-400">{playlist.description}</p> : null}
                       </div>
                       <div className="flex shrink-0 gap-2">
-                        <button type="button" onClick={() => setViewingPlaylist(playlist)} className="text-green-600 hover:text-green-800" title="View Songs"><Eye className="size-4" aria-hidden /></button>
-                        <button type="button" onClick={() => setEditingPlaylist(playlist)} className="text-blue-600 hover:text-blue-800" title="Edit Playlist"><Pencil className="size-4" aria-hidden /></button>
-                      <button type="button" onClick={() => askConfirm({ title: "Delete Playlist", message: `Delete "${playlist.title}"? Songs will remain available, but this playlist will be removed.`, confirmLabel: "Delete Playlist", action: () => deletePlaylist(playlist.id) })} className="text-red-600 hover:text-red-800" title="Delete Playlist"><Trash2 className="size-4" aria-hidden /></button>
+                        <button type="button" onClick={() => setViewingPlaylist(playlist)} className="inline-flex size-9 items-center justify-center rounded-lg bg-green-50 text-green-600 hover:bg-green-100 hover:text-green-800 sm:size-auto sm:bg-transparent" title="View Songs"><FileText className="size-4" aria-hidden /></button>
+                        <button type="button" onClick={() => setEditingPlaylist(playlist)} className="inline-flex size-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-800 sm:size-auto sm:bg-transparent" title="Edit Playlist"><Pencil className="size-4" aria-hidden /></button>
+                        <button type="button" onClick={() => askConfirm({ title: "Delete Playlist", message: `Delete "${playlist.title}"? Songs will remain available, but this playlist will be removed.`, confirmLabel: "Delete Playlist", action: () => deletePlaylist(playlist.id) })} className="inline-flex size-9 items-center justify-center rounded-lg bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-800 sm:size-auto sm:bg-transparent" title="Delete Playlist"><Trash2 className="size-4" aria-hidden /></button>
                       </div>
                     </div>
                   </div>
                 )) : (
                   <div className="py-10 text-center text-gray-500">
                     <List className="mx-auto mb-2 size-9 text-gray-300" aria-hidden />
-                    <p>No playlists yet</p>
+                    <p>{playlists.length ? "No playlists match your search" : "No playlists yet"}</p>
                   </div>
                 )}
               </div>
             </section>
 
             <section className="lg:w-1/2">
-              <div className="mb-3 flex flex-col gap-2 border-b pb-2 sm:flex-row sm:items-center sm:justify-between">
-                <h4 className="font-semibold text-gray-700">
+              <div className="mb-2 flex items-center justify-between gap-2 border-b pb-2 sm:mb-3">
+                <h4 className="min-w-0 text-sm font-semibold text-gray-700 sm:text-base">
                   <Music className="mr-2 inline size-4 text-green-600" aria-hidden />
-                  Songs <span className="ml-2 text-xs text-gray-400">({songs.length} total)</span>
+                  <span>Songs</span> <span className="ml-1 text-xs text-gray-400">({filteredSongs.length}/{songs.length})</span>
                 </h4>
-                <button type="button" onClick={() => setModal("song")} className="inline-flex items-center justify-center gap-2 rounded-xl bg-green-600 px-3 py-2 text-xs font-semibold text-white hover:bg-green-700">
+                <button type="button" onClick={() => setModal("song")} className="inline-flex h-9 shrink-0 items-center justify-center gap-1 rounded-lg bg-green-600 px-2.5 text-xs font-semibold text-white hover:bg-green-700 sm:rounded-xl sm:px-3">
                   <Plus className="size-4" aria-hidden />
-                  Add Song
+                  <span>Add</span>
                 </button>
               </div>
-              <div className="relative mb-3">
+              <div className="relative mb-2 sm:mb-3">
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" aria-hidden />
-                <input value={songSearch} onChange={(event) => setSongSearch(event.target.value)} placeholder="Search songs by title, key, artist, singer..." className="w-full rounded-xl border border-gray-300 py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+                <input value={songSearch} onChange={(event) => setSongSearch(event.target.value)} placeholder="Search songs..." className="h-10 w-full rounded-lg border border-gray-300 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 sm:rounded-xl" />
               </div>
               <div className="space-y-2 sm:max-h-[450px] sm:overflow-y-auto sm:pr-1">
                 {filteredSongs.length > 0 ? filteredSongs.map((song) => (
-                  <div key={song.id} className="rounded-2xl border border-gray-200 p-3 transition hover:bg-gray-50">
+                  <div key={song.id} className="rounded-xl border border-gray-200 p-2.5 transition hover:bg-gray-50 sm:rounded-2xl sm:p-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <h5 className="font-medium text-gray-800">{song.title}</h5>
+                        <h5 className="truncate text-sm font-medium text-gray-800 sm:text-base">{song.title}</h5>
                         <div className="mt-1 flex flex-wrap gap-2 text-xs text-gray-500">
                           {song.artist ? <span>{song.artist}</span> : null}
                           {song.keySignature ? <span>Key: {song.keySignature}</span> : null}
@@ -1210,9 +1358,9 @@ export function MusicClient({
                         </div>
                       </div>
                       <div className="flex shrink-0 gap-2">
-                        <button type="button" onClick={() => setLyricsSong(song)} className="text-green-600 hover:text-green-800" title="View Lyrics"><FileText className="size-4" aria-hidden /></button>
-                        <button type="button" onClick={() => setEditingSong(song)} className="text-blue-600 hover:text-blue-800" title="Edit Song"><Pencil className="size-4" aria-hidden /></button>
-                        <button type="button" onClick={() => askConfirm({ title: "Delete Song", message: `Delete "${song.title}" from the music library?`, confirmLabel: "Delete Song", action: () => deleteSong(song.id) })} className="text-red-600 hover:text-red-800" title="Delete Song"><Trash2 className="size-4" aria-hidden /></button>
+                        <button type="button" onClick={() => setLyricsSong(song)} className="inline-flex size-9 items-center justify-center rounded-lg bg-green-50 text-green-600 hover:bg-green-100 hover:text-green-800 sm:size-auto sm:bg-transparent" title="View Lyrics"><FileText className="size-4" aria-hidden /></button>
+                        <button type="button" onClick={() => setEditingSong(song)} className="inline-flex size-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-800 sm:size-auto sm:bg-transparent" title="Edit Song"><Pencil className="size-4" aria-hidden /></button>
+                        <button type="button" onClick={() => askConfirm({ title: "Delete Song", message: `Delete "${song.title}" from the music library?`, confirmLabel: "Delete Song", action: () => deleteSong(song.id) })} className="inline-flex size-9 items-center justify-center rounded-lg bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-800 sm:size-auto sm:bg-transparent" title="Delete Song"><Trash2 className="size-4" aria-hidden /></button>
                       </div>
                     </div>
                   </div>
@@ -1598,6 +1746,17 @@ export function MusicClient({
                 <input name="deadline" type="date" defaultValue={taskModal.task?.deadlineRaw ?? ""} required className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
               </div>
               <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Priority *</label>
+                <select name="priority" defaultValue={taskModal.task?.priority ?? "medium"} required className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
+                  <option value="">Select priority</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">Progress *</label>
                 <input name="progress" type="number" min="0" max="100" defaultValue={taskModal.task?.progress ?? 0} required className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
               </div>
@@ -1611,8 +1770,18 @@ export function MusicClient({
       ) : null}
 
       {viewPlan ? (
-        <Modal title={viewPlan.title} onClose={() => setViewPlan(null)} width="max-w-3xl">
+        <Modal title="Music Ministry ACTION PLAN" onClose={() => setViewPlan(null)} width="max-w-4xl">
           <div className="space-y-4 p-5">
+            <div className="flex flex-col gap-3 border-b border-gray-100 pb-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">{viewPlan.title}</h3>
+                <p className="mt-1 text-sm text-gray-500">By {viewPlan.createdByName} - {viewPlan.startDate} to {viewPlan.dueDate}</p>
+              </div>
+              <button type="button" onClick={() => exportActionPlanTasks(viewPlan)} className="inline-flex w-fit items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm text-white hover:bg-indigo-700">
+                <FileUp className="size-4" />
+                Export
+              </button>
+            </div>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               <PlanDetail label="Status" value={viewPlan.status.replace("_", " ")} />
               <PlanDetail label="Progress" value={`${viewPlan.progress}%`} />
@@ -1620,23 +1789,42 @@ export function MusicClient({
               <PlanDetail label="Budget" value={formatCurrency(viewPlan.tasks.reduce((sum, task) => sum + task.estimatedBudget, 0))} />
             </div>
             {viewPlan.description ? <p className="rounded-lg bg-gray-50 p-3 text-sm text-gray-600">{viewPlan.description}</p> : null}
-            <div className="overflow-x-auto rounded-lg border border-gray-100">
-              <table className="min-w-full text-sm">
-                <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
-                  <tr><th className="px-3 py-2">Activity</th><th className="px-3 py-2">Milestone</th><th className="px-3 py-2">Budget</th><th className="px-3 py-2">Deadline</th><th className="px-3 py-2">Progress</th></tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {viewPlan.tasks.length ? viewPlan.tasks.map((task) => (
-                    <tr key={task.id}>
-                      <td className="px-3 py-2 font-medium text-gray-800">{task.activity || task.taskName}</td>
-                      <td className="px-3 py-2 text-gray-600">{task.targetMilestone || "-"}</td>
-                      <td className="px-3 py-2 text-gray-600">{task.estimatedBudget ? formatCurrency(task.estimatedBudget) : "-"}</td>
-                      <td className="px-3 py-2 text-gray-600">{task.deadline || "-"}</td>
-                      <td className="px-3 py-2 text-gray-600">{task.progress}%</td>
-                    </tr>
-                  )) : <tr><td colSpan={5} className="px-3 py-8 text-center text-gray-400">No tasks yet</td></tr>}
-                </tbody>
-              </table>
+            <div className="rounded-lg border border-gray-100 bg-gray-50">
+              <div className="border-b border-gray-100 bg-white px-4 py-3 text-sm font-semibold text-gray-800">Activities and Milestones</div>
+              {viewPlan.tasks.length ? (
+                <div className="divide-y divide-gray-100">
+                  {viewPlan.tasks.map((task, index) => (
+                    <div key={task.id} className="grid grid-cols-12 gap-3 px-4 py-3 text-sm">
+                      <div className="col-span-12 md:col-span-1">
+                        <span className="inline-flex size-7 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">{index + 1}</span>
+                      </div>
+                      <div className="col-span-12 md:col-span-4">
+                        <p className="font-semibold text-gray-800">{task.activity || task.taskName}</p>
+                        <p className="mt-1 text-xs text-gray-500">{task.targetMilestone || "No milestone"}</p>
+                      </div>
+                      <div className="col-span-6 md:col-span-2">
+                        <p className="text-xs uppercase tracking-wide text-gray-400">Deadline</p>
+                        <p className="font-medium text-gray-700">{task.deadline || "-"}</p>
+                      </div>
+                      <div className="col-span-6 md:col-span-2">
+                        <p className="text-xs uppercase tracking-wide text-gray-400">Budget</p>
+                        <p className="font-medium text-gray-700">{task.estimatedBudget ? formatCurrency(task.estimatedBudget) : "-"}</p>
+                      </div>
+                      <div className="col-span-12 md:col-span-3">
+                        <div className="mb-1 flex items-center justify-between text-xs">
+                          <span className="capitalize text-gray-500">{task.priority || "medium"}</span>
+                          <span className="font-semibold text-gray-700">{task.progress}%</span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-gray-200">
+                          <div className="h-2 rounded-full bg-blue-600" style={{ width: `${Math.min(task.progress, 100)}%` }} />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="px-4 py-8 text-center text-sm text-gray-400">No tasks yet</div>
+              )}
             </div>
             <div className="flex justify-end gap-2 border-t pt-4">
               <button type="button" onClick={() => { setViewPlan(null); setPlanModal(viewPlan); }} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-blue-600 hover:bg-blue-50">Edit Plan</button>

@@ -61,93 +61,44 @@ async function saveSettings(
   });
 
   revalidatePath("/admin/settings");
+  revalidatePath("/");
+  revalidatePath("/login");
+  revalidatePath("/register");
   return { ok: true, message } satisfies ActionResult;
 }
 
-export async function updateGeneralSettings(formData: FormData) {
+export async function updateAccessSettings(formData: FormData) {
   try {
-    const appName = readString(formData, "app_name");
-    const appUrl = readString(formData, "app_url");
-
-    if (!appName) return { ok: false, message: "Application name is required." };
-    if (!appUrl) return { ok: false, message: "Application URL is required." };
-
-    new URL(appUrl);
-
     return saveSettings(
-      "general",
+      "access",
       {
-        app_name: appName,
-        app_url: appUrl,
-        app_debug: readBoolean(formData, "app_debug"),
         registration_enabled: readBoolean(formData, "registration_enabled"),
       },
-      "General settings updated successfully.",
+      readBoolean(formData, "registration_enabled")
+        ? "Public registration enabled. The register link is visible again."
+        : "Public registration disabled. The register link is removed and new registrations are blocked.",
     );
   } catch (error) {
     return {
       ok: false,
-      message: error instanceof Error ? error.message : "Failed to update general settings.",
-    };
-  }
-}
-
-export async function updateEmailSettings(formData: FormData) {
-  try {
-    const mailMailer = readString(formData, "mail_mailer") || "smtp";
-    const mailHost = readString(formData, "mail_host");
-    const mailPort = readNumber(formData, "mail_port", 2525);
-    const fromAddress = readString(formData, "mail_from_address");
-    const fromName = readString(formData, "mail_from_name");
-
-    if (!mailHost) return { ok: false, message: "SMTP host is required." };
-    if (!fromAddress || !fromAddress.includes("@")) {
-      return { ok: false, message: "A valid from address is required." };
-    }
-    if (!fromName) return { ok: false, message: "From name is required." };
-
-    return saveSettings(
-      "email",
-      {
-        mail_mailer: mailMailer,
-        mail_host: mailHost,
-        mail_port: mailPort,
-        mail_username: readString(formData, "mail_username"),
-        mail_password: readString(formData, "mail_password"),
-        mail_encryption: readString(formData, "mail_encryption"),
-        mail_from_address: fromAddress,
-        mail_from_name: fromName,
-      },
-      "Email settings updated successfully.",
-    );
-  } catch (error) {
-    return {
-      ok: false,
-      message: error instanceof Error ? error.message : "Failed to update email settings.",
+      message: error instanceof Error ? error.message : "Failed to update access settings.",
     };
   }
 }
 
 export async function updateSecuritySettings(formData: FormData) {
   try {
-    const sessionLifetime = readNumber(formData, "session_lifetime", 120);
+    const sessionLifetime = readNumber(formData, "session_lifetime", 10);
     const passwordMinLength = readNumber(formData, "password_min_length", 6);
-    const maxLoginAttempts = readNumber(formData, "max_login_attempts", 5);
-    const lockoutDuration = readNumber(formData, "lockout_duration", 15);
 
-    assertRange(sessionLifetime, 1, 1440, "Session lifetime");
+    assertRange(sessionLifetime, 1, 10, "Session lifetime");
     assertRange(passwordMinLength, 6, 255, "Minimum password length");
-    assertRange(maxLoginAttempts, 3, 10, "Max login attempts");
-    assertRange(lockoutDuration, 5, 1440, "Lockout duration");
 
     return saveSettings(
       "security",
       {
         session_lifetime: sessionLifetime,
         password_min_length: passwordMinLength,
-        require_password_confirm: readBoolean(formData, "require_password_confirm"),
-        max_login_attempts: maxLoginAttempts,
-        lockout_duration: lockoutDuration,
       },
       "Security settings updated successfully.",
     );
@@ -173,22 +124,4 @@ export async function clearSystemCache() {
 
   revalidatePath("/", "layout");
   return { ok: true, message: "System cache cleared successfully." } satisfies ActionResult;
-}
-
-export async function requestDatabaseBackup() {
-  const user = await requireUser();
-
-  await prisma.activityLog.create({
-    data: {
-      userId: user.id,
-      action: "database_backup_requested",
-      module: "settings",
-      metadata: { provider: "neon" },
-    },
-  });
-
-  return {
-    ok: true,
-    message: "Database backup request recorded. Use Neon backups for the actual database snapshot.",
-  } satisfies ActionResult;
 }

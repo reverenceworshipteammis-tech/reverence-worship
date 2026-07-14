@@ -4,9 +4,10 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import jwt from "jsonwebtoken";
 import { prisma } from "@/lib/prisma";
+import { getSystemSetting, settingToNumber } from "@/lib/system-settings";
 
 export const SESSION_COOKIE = "reverence_session";
-export const SESSION_IDLE_MAX_AGE_SECONDS = 60 * 15;
+export const SESSION_IDLE_MAX_AGE_SECONDS = 60 * 10;
 
 type SessionPayload = {
   userId: number;
@@ -27,8 +28,10 @@ function authSecret() {
 }
 
 export async function createSession(userId: number) {
+  const sessionLifetimeMinutes = settingToNumber(await getSystemSetting("session_lifetime"), 10);
+  const maxAgeSeconds = Math.max(60, Math.min(sessionLifetimeMinutes, 10) * 60);
   const token = jwt.sign({ userId } satisfies SessionPayload, authSecret(), {
-    expiresIn: SESSION_IDLE_MAX_AGE_SECONDS,
+    expiresIn: maxAgeSeconds,
   });
 
   const cookieStore = await cookies();
@@ -36,7 +39,7 @@ export async function createSession(userId: number) {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
-    maxAge: SESSION_IDLE_MAX_AGE_SECONDS,
+    maxAge: maxAgeSeconds,
     path: "/",
   });
 }

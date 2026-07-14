@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getSystemSetting, isRegistrationEnabled, settingToNumber } from "@/lib/system-settings";
 
 type AuthState = {
   error?: string;
@@ -73,10 +74,25 @@ export async function registerAction(
   _previousState: AuthState,
   formData: FormData,
 ): Promise<AuthState> {
+  const [registrationEnabled, userCount, passwordMinLengthSetting] = await Promise.all([
+    isRegistrationEnabled(),
+    prisma.user.count(),
+    getSystemSetting("password_min_length"),
+  ]);
+
+  if (!registrationEnabled && userCount > 0) {
+    return { error: "Public registration is currently disabled." };
+  }
+
   const parsed = registerSchema.safeParse(Object.fromEntries(formData));
 
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid registration details." };
+  }
+
+  const passwordMinLength = settingToNumber(passwordMinLengthSetting, 6);
+  if (parsed.data.password.length < passwordMinLength) {
+    return { error: `Password must be at least ${passwordMinLength} characters.` };
   }
 
   const existingUser = await prisma.user.findUnique({
@@ -87,7 +103,6 @@ export async function registerAction(
     return { error: "An account with this email already exists." };
   }
 
-  const userCount = await prisma.user.count();
   const firstUser = userCount === 0;
   const roleName = firstUser ? "super-admin" : "member";
   const role = await prisma.role.findUniqueOrThrow({ where: { name: roleName } });

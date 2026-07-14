@@ -1,6 +1,7 @@
 import { LandingPageClient } from "@/components/landing-page-client";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { isRegistrationEnabled } from "@/lib/system-settings";
 
 function formatEventDate(date: Date | null, fallback: Date) {
   const value = date ?? fallback;
@@ -24,7 +25,8 @@ function formatEventDate(date: Date | null, fallback: Date) {
 export default async function HomePage() {
   const user = await getCurrentUser();
 
-  const [videos, pictures, events] = await Promise.all([
+  const [registrationEnabled, videos, pictures, events] = await Promise.all([
+    isRegistrationEnabled(),
     prisma.landingYoutubeVideo.findMany({
       where: { isPublished: true },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
@@ -45,6 +47,7 @@ export default async function HomePage() {
   return (
     <LandingPageClient
       dashboardHref={user ? "/admin/dashboard" : null}
+      registrationEnabled={registrationEnabled}
       videos={videos.map((video) => ({
         id: video.id,
         title: video.title,

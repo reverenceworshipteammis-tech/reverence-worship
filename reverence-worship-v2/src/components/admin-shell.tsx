@@ -25,7 +25,7 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import {
   getAdminNotifications,
   markAdminNotificationRead,
@@ -83,6 +83,9 @@ const mobileNavItems = [
   { label: "Settings", href: "/admin/settings", page: "settings", icon: Settings },
 ];
 
+const IDLE_LOGOUT_MS = 10 * 60 * 1000;
+const SESSION_PING_MS = 60 * 1000;
+
 function hasPagePermission(permissions: string[], page: string) {
   return permissions.includes("*") || permissions.some((permission) => permission.startsWith(`${page}.`));
 }
@@ -114,6 +117,9 @@ export function AdminShell({
   const [notificationsLoaded, setNotificationsLoaded] = useState(false);
   const [notificationError, setNotificationError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const lastActivityRef = useRef(0);
+  const activitySincePingRef = useRef(true);
+  const loggingOutRef = useRef(false);
   const pathname = usePathname();
   const router = useRouter();
   const visibleNavGroups = navGroupsForPermissions(user.permissions, user.roles, !!user.isParent);
@@ -145,6 +151,59 @@ export function AdminShell({
     const timeout = window.setTimeout(loadNotifications, 0);
     return () => window.clearTimeout(timeout);
   }, []);
+
+  useEffect(() => {
+    const markActive = () => {
+      lastActivityRef.current = Date.now();
+      activitySincePingRef.current = true;
+    };
+
+    markActive();
+
+    const logoutForIdle = async () => {
+      if (loggingOutRef.current) return;
+      loggingOutRef.current = true;
+      try {
+        await fetch("/logout", { method: "POST" });
+      } finally {
+        router.replace("/login");
+      }
+    };
+
+    const refreshSession = async () => {
+      if (!activitySincePingRef.current) return;
+      activitySincePingRef.current = false;
+
+      const response = await fetch("/api/session/ping", {
+        method: "POST",
+        cache: "no-store",
+      });
+
+      if (response.status === 401) {
+        await logoutForIdle();
+      }
+    };
+
+    const events: Array<keyof WindowEventMap> = ["click", "keydown", "mousemove", "scroll", "touchstart"];
+    events.forEach((eventName) => window.addEventListener(eventName, markActive, { passive: true }));
+
+    const interval = window.setInterval(() => {
+      const idleFor = Date.now() - lastActivityRef.current;
+      if (idleFor >= IDLE_LOGOUT_MS) {
+        void logoutForIdle();
+        return;
+      }
+
+      void refreshSession();
+    }, SESSION_PING_MS);
+
+    void refreshSession();
+
+    return () => {
+      events.forEach((eventName) => window.removeEventListener(eventName, markActive));
+      window.clearInterval(interval);
+    };
+  }, [router]);
 
   function openNotificationDropdown() {
     setNotificationOpen((current) => {
