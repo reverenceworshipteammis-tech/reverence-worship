@@ -496,8 +496,8 @@ export function DisciplineClient({
       !normalized ||
       [permission.userName, permission.userEmail, permission.reason, permission.type].some((value) => value.toLowerCase().includes(normalized));
     const matchesStatus = permissionStatus === "all" || permission.status === permissionStatus;
-    const matchesFrom = !permissionFrom || permission.createdAtValue >= permissionFrom;
-    const matchesTo = !permissionTo || permission.createdAtValue <= permissionTo;
+    const matchesFrom = !permissionFrom || permission.endDateValue >= permissionFrom;
+    const matchesTo = !permissionTo || permission.startDateValue <= permissionTo;
     return matchesSearch && matchesStatus && matchesFrom && matchesTo;
   });
   const permissionStats = {
@@ -511,6 +511,31 @@ export function DisciplineClient({
     if (normalized.length < 2) return false;
     return [user.name, user.email].some((value) => value.toLowerCase().includes(normalized));
   });
+
+  function exportPermissionsCsv() {
+    const rows = filteredPermissions.map((permission) => [
+      permission.userName,
+      permission.reason,
+      permission.startDate,
+      permission.endDate,
+      String(permissionDayCount(permission)),
+      permission.status,
+      permissionCommentText(permission),
+    ]);
+    const csv = [
+      ["Name", "Reason", "From", "To", "Count of Days", "Status", "Comment"],
+      ...rows,
+    ]
+      .map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "permission-requests.csv";
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
 
   function openPermissionModal(permission?: Permission) {
     setEditingPermission(permission ?? null);
@@ -849,9 +874,6 @@ export function DisciplineClient({
                               {session.sessionDateLabel}
                             </p>
                           </div>
-                          <span className={`rounded-full px-2 py-1 text-xs ${session.isCompleted ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
-                            {session.isCompleted ? "Completed" : "Open"}
-                          </span>
                         </div>
                       ))
                     ) : (
@@ -973,7 +995,6 @@ export function DisciplineClient({
                           <td className="px-5 py-3 text-sm text-slate-600">{session.dateLabel}</td>
                           <td className="px-5 py-3 text-sm font-medium text-slate-800">
                             {session.session}
-                            {session.isCompleted && <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-700">Completed</span>}
                           </td>
                           <td className="px-5 py-3 text-center text-sm font-semibold text-emerald-600">{present}</td>
                           <td className="px-5 py-3 text-center text-sm text-rose-500">{absent}</td>
@@ -981,7 +1002,6 @@ export function DisciplineClient({
                           <td className="px-5 py-3">
                             <div className="flex items-center justify-center gap-2">
                               <button type="button" onClick={() => openAttendanceSession(session.date, session.session)} className="rounded-lg border border-gray-200 px-3 py-2 text-xs text-blue-600 hover:bg-blue-50">View</button>
-                              {session.isCompleted && <span className="rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-400">Completed</span>}
                               <button type="button" onClick={() => removeAttendanceSession(session.date, session.session)} className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-600 hover:bg-red-100">
                                 <Trash2 className="size-4" />
                               </button>
@@ -1009,7 +1029,6 @@ export function DisciplineClient({
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold text-slate-900">{session.session}</p>
                           <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-                            {session.isCompleted && <span className="inline-block rounded-full bg-green-100 px-1.5 py-0.5 text-[11px] text-green-700">Completed</span>}
                             <p className="text-xs text-slate-500">{session.dateLabel}</p>
                           </div>
                         </div>
@@ -1045,8 +1064,9 @@ export function DisciplineClient({
                 <AttendanceStat label="Rejected" value={permissionStats.rejected} icon={XCircle} tone="rose" />
               </div>
 
-              <div className="grid grid-cols-2 items-end gap-2 rounded-xl border border-gray-100 bg-white/90 p-3 shadow-sm sm:gap-3 sm:rounded-2xl sm:p-4 lg:grid-cols-6">
-                <div className="col-span-2 lg:col-span-2">
+              <div className="rounded-xl border border-gray-100 bg-white/90 p-3 shadow-sm sm:rounded-2xl sm:p-4">
+                <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr_1fr]">
+                  <div>
                   <label className="mb-1 block text-xs text-gray-600">Search</label>
                   <div className="relative">
                     <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
@@ -1063,9 +1083,6 @@ export function DisciplineClient({
                     <option value="cancelled">Cancelled</option>
                   </select>
                 </div>
-                <button onClick={() => { setPermissionSearch(""); setPermissionStatus("all"); setPermissionFrom(""); setPermissionTo(""); }} className="h-9 w-full rounded-lg bg-gray-100 px-3 text-xs font-medium text-gray-700 transition hover:bg-gray-200 sm:h-auto sm:rounded-xl sm:px-4 sm:py-2.5 sm:text-sm lg:order-last">
-                  Reset
-                </button>
                 <div>
                   <label className="mb-1 block text-xs text-gray-600">From</label>
                   <input value={permissionFrom} onChange={(event) => setPermissionFrom(event.target.value)} type="date" className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 sm:h-auto sm:rounded-xl sm:px-3 sm:py-2.5 sm:text-sm" />
@@ -1074,9 +1091,60 @@ export function DisciplineClient({
                   <label className="mb-1 block text-xs text-gray-600">To</label>
                   <input value={permissionTo} onChange={(event) => setPermissionTo(event.target.value)} type="date" className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 sm:h-auto sm:rounded-xl sm:px-3 sm:py-2.5 sm:text-sm" />
                 </div>
+                  <button type="button" className="h-9 w-full rounded-lg bg-gray-100 px-3 text-xs font-medium text-gray-700 transition hover:bg-gray-200 sm:h-auto sm:rounded-xl sm:px-4 sm:py-2.5 sm:text-sm">
+                    <Search className="mr-1 inline size-4" />
+                    Filter
+                  </button>
+                </div>
+                <button onClick={exportPermissionsCsv} className="mt-3 h-9 w-full rounded-lg bg-blue-600 px-3 text-xs font-medium text-white shadow-sm transition hover:bg-blue-700 sm:h-auto sm:w-52 sm:rounded-xl sm:px-4 sm:py-2.5 sm:text-sm">
+                  <FileText className="mr-1 inline size-4" />
+                  Export
+                </button>
               </div>
 
-              <div className="space-y-3">
+              <div className="hidden overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm md:block">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[980px]">
+                    <thead className="border-b border-gray-100 bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Name</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Reason</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">From</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">To</th>
+                        <th className="px-4 py-3 text-center text-xs font-semibold uppercase text-gray-500">Count of Days</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Status</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Comment</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {filteredPermissions.length ? filteredPermissions.map((permission) => (
+                        <tr key={permission.id} className="align-top hover:bg-gray-50/70">
+                          <td className="px-4 py-4 text-sm font-semibold text-gray-900">
+                            <span className="block max-w-[160px] break-words">{permission.userName}</span>
+                          </td>
+                          <td className="max-w-[460px] px-4 py-4 text-sm leading-6 text-gray-700">{permission.reason}</td>
+                          <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-700">{permission.startDate}</td>
+                          <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-700">{permission.endDate}</td>
+                          <td className="px-4 py-4 text-center text-sm font-bold text-gray-900">{permissionDayCount(permission)}</td>
+                          <td className="px-4 py-4"><StatusBadge status={permission.status} /></td>
+                          <td className="px-4 py-4 text-sm leading-6 text-gray-700">
+                            <PermissionComment permission={permission} />
+                          </td>
+                        </tr>
+                      )) : (
+                        <tr>
+                          <td colSpan={7} className="py-12 text-center text-gray-500">
+                            <MailOpen className="mx-auto mb-2 size-10 text-gray-300" />
+                            No permission requests found
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="space-y-3 md:hidden">
                 {filteredPermissions.length ? filteredPermissions.map((permission) => (
                   <article key={permission.id} className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm transition hover:shadow-md">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -1088,11 +1156,13 @@ export function DisciplineClient({
                         </div>
                         <p className="text-sm text-gray-500">{permission.userEmail}</p>
                         <p className="mt-2 text-sm text-gray-700">{permission.reason}</p>
-                        <div className="mt-3 flex flex-wrap gap-3 text-xs text-gray-500">
-                          <span>{permission.startDate} - {permission.endDate}</span>
-                          <span>Created {permission.createdAt}</span>
-                          {permission.approvedByName && <span>By {permission.approvedByName}</span>}
-                          {permission.rejectionReason && <span className="text-red-600">Reason: {permission.rejectionReason}</span>}
+                        <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-gray-500">
+                          <div className="rounded-lg bg-gray-50 p-2"><span className="block">From</span><strong className="text-gray-800">{permission.startDate}</strong></div>
+                          <div className="rounded-lg bg-gray-50 p-2"><span className="block">To</span><strong className="text-gray-800">{permission.endDate}</strong></div>
+                          <div className="rounded-lg bg-gray-50 p-2 text-center"><span className="block">Days</span><strong className="text-gray-900">{permissionDayCount(permission)}</strong></div>
+                        </div>
+                        <div className="mt-3 rounded-lg bg-gray-50 p-2 text-xs leading-5 text-gray-600">
+                          <PermissionComment permission={permission} />
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2">
@@ -1449,11 +1519,11 @@ export function DisciplineClient({
       )}
 
       {sessionModal && (
-        <div className="fixed inset-0 z-[80] grid place-items-stretch bg-black/40 p-0 sm:place-items-center sm:p-6">
-          <div className="flex h-[100dvh] w-full max-w-5xl flex-col overflow-hidden bg-white shadow-xl sm:h-auto sm:max-h-[90vh] sm:rounded-xl sm:border">
-            <div className="flex items-center justify-between border-b px-3 py-2.5 sm:px-5 sm:py-3">
+        <div className="fixed inset-0 z-[80] grid place-items-stretch bg-black/40 p-0 md:place-items-center md:p-5">
+          <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-white shadow-xl md:h-auto md:max-h-[94vh] md:max-w-[min(96vw,1320px)] md:rounded-xl md:border">
+            <div className="flex items-center justify-between border-b px-3 py-2.5 md:px-6 md:py-4">
               <div className="min-w-0">
-                <h2 className="flex items-center gap-2 text-base font-bold text-gray-900 sm:text-lg">
+                <h2 className="flex items-center gap-2 text-base font-bold text-gray-900 md:text-xl">
                   Mark Attendance
                   {sessionReadOnly && <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">Completed</span>}
                 </h2>
@@ -1464,7 +1534,7 @@ export function DisciplineClient({
               </button>
             </div>
 
-            <div className="flex-1 space-y-2 overflow-y-auto bg-slate-50 p-2.5 sm:space-y-3 sm:bg-white sm:p-4">
+            <div className="flex-1 space-y-2 overflow-y-auto bg-slate-50 p-2.5 sm:space-y-3 md:p-5">
               {sessionReadOnly && (
                 <div className="rounded-lg bg-yellow-100 px-3 py-2 text-xs font-medium text-yellow-700 sm:text-sm">
                   This session is completed and cannot be edited.
@@ -1490,18 +1560,26 @@ export function DisciplineClient({
                 </div>
               </div>
 
-              <div className="hidden grid-cols-2 gap-3 sm:grid">
-                <div className="rounded-xl bg-blue-50 p-3">
-                  <p className="text-xs text-gray-600">Total Users</p>
-                  <p className="text-xl font-bold text-blue-600">{users.length}</p>
+              <div className="hidden grid-cols-4 gap-3 md:grid">
+                <div className="rounded-xl border border-blue-100 bg-blue-50 p-3">
+                  <p className="text-xs font-medium text-gray-600">Total Users</p>
+                  <p className="text-2xl font-bold text-blue-600">{users.length}</p>
                 </div>
-                <div className="rounded-xl bg-green-50 p-3">
-                  <p className="text-xs text-gray-600">Approved Permissions</p>
-                  <p className="text-xl font-bold text-green-600">{sessionPermissionStats.approved}</p>
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
+                  <p className="text-xs font-medium text-gray-600">Present</p>
+                  <p className="text-2xl font-bold text-emerald-600">{sessionDraftSummary.present}</p>
+                </div>
+                <div className="rounded-xl border border-rose-100 bg-rose-50 p-3">
+                  <p className="text-xs font-medium text-gray-600">Absent</p>
+                  <p className="text-2xl font-bold text-rose-600">{sessionDraftSummary.absent}</p>
+                </div>
+                <div className="rounded-xl border border-green-100 bg-green-50 p-3">
+                  <p className="text-xs font-medium text-gray-600">Approved Permissions</p>
+                  <p className="text-2xl font-bold text-green-600">{sessionPermissionStats.approved}</p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 md:grid-cols-2 md:gap-3">
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-[220px_minmax(260px,1fr)] md:gap-3">
                 <div>
                   <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Session Date</label>
                   <input value={sessionDate} disabled={sessionReadOnly} onChange={(event) => setSessionDate(event.target.value)} type="date" className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:bg-gray-50 disabled:text-gray-500 sm:h-10 sm:px-3 sm:text-sm" />
@@ -1548,8 +1626,8 @@ export function DisciplineClient({
                 </div>
               )}
 
-              <div className="flex gap-2 sm:gap-3 sm:flex-row sm:items-end">
-                <div className="relative w-full sm:max-w-sm">
+              <div className="flex gap-2 sm:gap-3 sm:flex-row sm:items-end md:justify-between">
+                <div className="relative w-full md:max-w-md">
                   <label htmlFor="session_user_search" className="sr-only">Search users</label>
                   <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
                   <input
@@ -1567,23 +1645,24 @@ export function DisciplineClient({
                 </button>
               </div>
 
-              <div className="overflow-hidden rounded-xl border border-gray-100">
+              <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
                 <div className="border-b bg-gray-50 px-3 py-2 sm:px-4">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-medium text-gray-700 sm:text-sm">Members Attendance</span>
+                    <span className="hidden text-xs text-gray-500 md:inline">{filteredSessionUsers.length} shown</span>
                   </div>
                 </div>
-                <div className="hidden max-h-[42vh] overflow-auto md:block">
+                <div className="hidden max-h-[52vh] overflow-auto md:block">
                   <table className="min-w-full divide-y divide-gray-200 rounded-xl">
                     <thead className="sticky top-0 z-10 bg-gray-50">
                       <tr>
-                        <th className="px-4 py-2 text-left text-xs font-semibold uppercase text-gray-500">User</th>
-                        <th className="px-4 py-2 text-left text-xs font-semibold uppercase text-gray-500">Permission</th>
-                        <th className="px-4 py-2 text-center text-xs font-semibold uppercase text-gray-500">Present</th>
-                        <th className="px-4 py-2 text-center text-xs font-semibold uppercase text-gray-500">On Time</th>
-                        <th className="px-4 py-2 text-center text-xs font-semibold uppercase text-gray-500">Communicated</th>
-                        <th className="px-4 py-2 text-center text-xs font-semibold uppercase text-gray-500">Discipline</th>
-                        <th className="px-4 py-2 text-center text-xs font-semibold uppercase text-gray-500">Total Points</th>
+                        <th className="w-[18%] px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">User</th>
+                        <th className="w-[24%] px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Permission</th>
+                        <th className="px-3 py-3 text-center text-xs font-semibold uppercase text-gray-500">Present</th>
+                        <th className="px-3 py-3 text-center text-xs font-semibold uppercase text-gray-500">On Time</th>
+                        <th className="px-3 py-3 text-center text-xs font-semibold uppercase text-gray-500">Communicated</th>
+                        <th className="px-3 py-3 text-center text-xs font-semibold uppercase text-gray-500">Discipline</th>
+                        <th className="px-3 py-3 text-center text-xs font-semibold uppercase text-gray-500">Total Points</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 bg-white">
@@ -1594,7 +1673,7 @@ export function DisciplineClient({
                         const totalPoints = totalAttendancePoints(draft);
                         return (
                           <tr key={user.id} className={draft.hasOfficialPermission ? "bg-green-50" : ""}>
-                            <td className="px-4 py-3 text-sm text-gray-800">{user.name}</td>
+                            <td className="px-4 py-3 text-sm font-medium text-gray-800">{user.name}</td>
                             <td className="px-4 py-3 text-sm">
                               {permission ? (
                                 <div className="space-y-1">
@@ -1610,7 +1689,7 @@ export function DisciplineClient({
                                 <span className="text-gray-400">No permission</span>
                               )}
                             </td>
-                            <td className="px-4 py-3 text-center">
+                            <td className="px-3 py-3 text-center">
                               {sessionReadOnly ? (
                                 <ReadonlyYesNo value={draft.present} />
                               ) : (
@@ -1621,13 +1700,13 @@ export function DisciplineClient({
                                 />
                               )}
                             </td>
-                            <td className="px-4 py-3 text-center">
+                            <td className="px-3 py-3 text-center">
                               {sessionReadOnly ? <ReadonlyYesNo value={draft.onTime} /> : <YesNoButton value={draft.onTime} disabled={draft.disabled} onToggle={() => updateDraft(user.id, { onTime: !draft.onTime })} />}
                             </td>
-                            <td className="px-4 py-3 text-center">
+                            <td className="px-3 py-3 text-center">
                               {sessionReadOnly ? <ReadonlyYesNo value={draft.communicated} /> : <YesNoButton value={draft.communicated} onToggle={() => updateDraft(user.id, { communicated: !draft.communicated })} />}
                             </td>
-                            <td className="px-4 py-3 text-center">
+                            <td className="px-3 py-3 text-center">
                               {sessionReadOnly ? (
                                 <ReadonlyYesNo value={draft.discipline} />
                               ) : (
@@ -1638,7 +1717,7 @@ export function DisciplineClient({
                                 />
                               )}
                             </td>
-                            <td className="px-4 py-3 text-center text-base font-bold text-black">{totalPoints}</td>
+                            <td className="px-3 py-3 text-center text-base font-bold text-black">{totalPoints}</td>
                           </tr>
                         );
                       })}
@@ -2217,6 +2296,36 @@ function ManagementCard({ title, button, icon: Icon, color, onClick }: { title: 
         {button}
       </button>
     </div>
+  );
+}
+
+function permissionDayCount(permission: Permission) {
+  const start = new Date(`${permission.startDateValue}T12:00:00`);
+  const end = new Date(`${permission.endDateValue}T12:00:00`);
+  const days = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
+  return Number.isFinite(days) ? Math.max(days, 1) : 1;
+}
+
+function permissionCommentText(permission: Permission) {
+  const lines = [];
+  if (permission.approvedByName) lines.push(`Approver: ${permission.approvedByName}`);
+  if (permission.status === "approved") lines.push("Comment: Approved");
+  if (permission.status === "rejected") lines.push(`Comment: ${permission.rejectionReason || "Rejected"}`);
+  if (!lines.length && permission.status === "pending") lines.push("Awaiting approval");
+  return lines.join(" | ");
+}
+
+function PermissionComment({ permission }: { permission: Permission }) {
+  if (permission.status === "pending" && !permission.approvedByName) {
+    return <span className="text-amber-600">Awaiting approval</span>;
+  }
+
+  return (
+    <>
+      {permission.approvedByName && <span className="block">Approver: {permission.approvedByName}</span>}
+      {permission.status === "approved" && <span className="block">Comment: Approved</span>}
+      {permission.status === "rejected" && <span className="block">Comment: {permission.rejectionReason || "Rejected"}</span>}
+    </>
   );
 }
 
