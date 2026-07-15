@@ -333,7 +333,7 @@ function DashboardPerformance({ metrics, fromDate, toDate }: { metrics: Performa
       <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h2 className="text-lg font-bold text-gray-900">My Performance</h2>
-          <p className="text-xs text-gray-500">Your personal results for the selected date range.</p>
+  
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
           <form method="get" className="flex flex-col gap-2 sm:flex-row sm:items-end">

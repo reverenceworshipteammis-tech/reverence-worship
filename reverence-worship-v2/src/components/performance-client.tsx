@@ -57,7 +57,7 @@ export function PerformanceClient({ year, fromDate, toDate, rangeLabel, metrics,
       <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900">My Performance</h1>
-          <p className="mt-1 text-sm text-gray-500">Your personal results for the selected date range. Select a card to view its records.</p>
+
         </div>
         <form method="get" className="flex flex-col gap-2 sm:flex-row sm:items-end">
           <label className="block">
