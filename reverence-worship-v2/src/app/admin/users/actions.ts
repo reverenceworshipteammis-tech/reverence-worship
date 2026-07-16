@@ -295,7 +295,7 @@ function parseImportedUser(row: Record<string, string>): ImportedUserRow | null 
   };
 }
 
-async function roleIdsFromImportedNames(roleNames: string[]) {
+async function importRoleLookup() {
   const roles = await prisma.role.findMany({
     where: { name: { not: "super-admin" } },
     select: { id: true, name: true, displayName: true },
@@ -305,7 +305,17 @@ async function roleIdsFromImportedNames(roleNames: string[]) {
     roleMap.set(normalizeRole(role.name), role.id);
     roleMap.set(normalizeRole(role.displayName), role.id);
   }
-  return roleIdsWithMemberBase(roleNames.map((roleName) => roleMap.get(normalizeRole(roleName))).filter((id): id is number => Boolean(id)));
+
+  const memberRole = roles.find((role) => role.name === "member");
+
+  return async (roleNames: string[]) => {
+    const roleIds = roleNames.map((roleName) => roleMap.get(normalizeRole(roleName))).filter((id): id is number => Boolean(id));
+    const assignableRoleIds = [...new Set(roleIds)];
+    if (memberRole && !assignableRoleIds.includes(memberRole.id)) {
+      assignableRoleIds.push(memberRole.id);
+    }
+    return assignableRoleIds;
+  };
 }
 
 function accountStatusNotification(action: "approve" | "activate" | "deactivate", previousStatus?: string) {
@@ -412,18 +422,29 @@ export async function importUsersCsvAction(
     return { ok: false, message: "Select an Excel or CSV file to import." };
   }
 
-  const rows = (await parseImportFile(file)).map(parseImportedUser).filter((row): row is ImportedUserRow => Boolean(row));
+  let rows: ImportedUserRow[];
+  try {
+    rows = (await parseImportFile(file)).map(parseImportedUser).filter((row): row is ImportedUserRow => Boolean(row));
+  } catch (error) {
+    console.error("User import failed while reading file", error);
+    return {
+      ok: false,
+      message: "Could not read that file. Please upload a valid .xlsx, CSV, or tab-separated export file.",
+    };
+  }
+
   if (!rows.length) {
     return { ok: false, message: "No valid users found. Make sure the file has Full Name and Email columns." };
   }
 
   const passwordHash = await bcrypt.hash(IMPORT_DEFAULT_PASSWORD, 12);
+  const roleIdsForImport = await importRoleLookup();
   let created = 0;
   let updated = 0;
   let skipped = 0;
 
   for (const row of rows) {
-    const roleIds = await roleIdsFromImportedNames(row.roles);
+    const roleIds = await roleIdsForImport(row.roles);
     const existing = await prisma.user.findUnique({
       where: { email: row.email },
       select: { id: true, googleId: true, passwordHash: true, status: true },
