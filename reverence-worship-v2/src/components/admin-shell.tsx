@@ -491,7 +491,7 @@ export function AdminShell({
         ))}
         <button
           type="button"
-          className="admin-mobile-footer-item admin-mobile-footer-menu"
+          className={`admin-mobile-footer-item admin-mobile-footer-menu ${mobileOpen ? "active" : ""}`}
           onClick={() => setMobileOpen((current) => !current)}
           aria-label={mobileOpen ? "Close menu" : "Open menu"}
           aria-expanded={mobileOpen}
