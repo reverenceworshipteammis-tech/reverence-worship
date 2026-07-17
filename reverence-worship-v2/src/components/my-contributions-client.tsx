@@ -80,9 +80,7 @@ export function MyContributionsClient({
         </div>
       )}
 
-      <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-        Payments are recorded by the Finance team. Contact Finance if a payment is missing or incorrect.
-      </div>
+      
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <section className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-6">

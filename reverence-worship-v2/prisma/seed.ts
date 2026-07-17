@@ -23,26 +23,38 @@ const roles = [
   },
   {
     name: "music-dpt",
-    displayName: "Music DPT",
+    displayName: "Music and Evangelism Leader",
     description: "Music and Evangelism department responsibilities.",
     isSystem: true,
   },
   {
     name: "social-dpt",
-    displayName: "Social DPT",
+    displayName: "Social Fellowship Leader",
     description: "Social Fellowship department responsibilities.",
     isSystem: true,
   },
   {
     name: "discipline-dpt",
-    displayName: "Discipline DPT",
+    displayName: "Discipline Leader",
     description: "Discipline department responsibilities.",
     isSystem: true,
   },
   {
     name: "intercession-dpt",
-    displayName: "Intercession DPT",
+    displayName: "Intercession & Spiritual Leader",
     description: "Intercession and Spiritual Growth department responsibilities.",
+    isSystem: true,
+  },
+  {
+    name: "finance-dpt",
+    displayName: "Financial Leader",
+    description: "Financial department responsibilities.",
+    isSystem: true,
+  },
+  {
+    name: "parent",
+    displayName: "Parent",
+    description: "Member access plus the parent dashboard.",
     isSystem: true,
   },
   {
@@ -103,6 +115,7 @@ const featureDefinitionsByPage: Record<string, FeatureDefinition[]> = {
   ],
   "music-ministry": [
     { name: "view", label: "View Music DPT", description: "Open the Music and Evangelism workspace." },
+    { name: "view-playlists", label: "View Playlists", description: "Read playlists, songs, and lyrics without department management access." },
     { name: "manage-songs", label: "Create and Edit Songs", description: "Add or update songs and lyrics." },
     { name: "delete-songs", label: "Delete Songs", description: "Remove songs from the song library." },
     { name: "manage-playlists", label: "Create and Edit Playlists", description: "Build and update playlists." },
@@ -142,6 +155,7 @@ const featureDefinitionsByPage: Record<string, FeatureDefinition[]> = {
   ],
   discipline: [
     { name: "view", label: "View Discipline DPT", description: "Open discipline, attendance, and permissions." },
+    { name: "view-own-permission-requests", label: "View Own Permission Requests", description: "Read only the signed-in member's permission requests." },
     { name: "mark-attendance", label: "Mark Attendance", description: "Create and update attendance sessions." },
     { name: "complete-attendance", label: "Complete Attendance Sessions", description: "Lock completed attendance sessions." },
     { name: "delete-attendance", label: "Delete Attendance Sessions", description: "Remove attendance sessions and records." },
@@ -281,42 +295,53 @@ async function main() {
     where: { pageId: { in: pages.map((page) => page.id) } },
   });
 
-  await prisma.rolePageFeature.createMany({
-    data: features.map((feature) => ({
-      roleId: superAdminRole.id,
-      pageId: feature.pageId,
-      featureId: feature.id,
-    })),
-    skipDuplicates: true,
-  });
-
   const featuresByPage = new Map<number, typeof features>();
   for (const feature of features) {
     featuresByPage.set(feature.pageId, [...(featuresByPage.get(feature.pageId) ?? []), feature]);
   }
 
-  const permissionsByRole: Record<string, string[]> = {
-    admin: modules.map(([name]) => name).filter((name) => name !== "permissions" && name !== "settings"),
-    "music-dpt": ["dashboard", "music-ministry", "announcements", "profile", "performance"],
-    "social-dpt": ["dashboard", "social-fellowship", "announcements", "profile", "performance"],
-    "discipline-dpt": ["dashboard", "discipline", "announcements", "profile", "performance"],
-    "intercession-dpt": ["dashboard", "intercession", "announcements", "profile", "performance"],
-    member: ["family", "contributions", "profile", "performance", "intercession"],
+  const normalUserPermissions: Record<string, string[]> = {
+    dashboard: ["view"],
+    profile: ["view", "edit"],
+    performance: ["view"],
+    contributions: ["view", "create"],
+    family: ["view"],
+    intercession: ["read-bible", "submit-forms"],
+    "music-ministry": ["view-playlists"],
+    announcements: ["view"],
+    discipline: ["view-own-permission-requests", "create-permission-requests"],
   };
 
-  for (const [roleName, pageNames] of Object.entries(permissionsByRole)) {
+  const allPageFeatures = Object.fromEntries(
+    modules.map(([pageName]) => [
+      pageName,
+      (featuresByPage.get(pageByName.get(pageName)?.id ?? -1) ?? []).map((feature) => feature.name),
+    ]),
+  );
+
+  const rolePermissionMatrix: Record<string, Record<string, string[]>> = {
+    "super-admin": allPageFeatures,
+    admin: allPageFeatures,
+    member: normalUserPermissions,
+    parent: { ...normalUserPermissions, parent: ["view"] },
+    "music-dpt": { ...normalUserPermissions, "music-ministry": allPageFeatures["music-ministry"] },
+    "discipline-dpt": { ...normalUserPermissions, discipline: allPageFeatures.discipline },
+    "social-dpt": { ...normalUserPermissions, "social-fellowship": allPageFeatures["social-fellowship"] },
+    "finance-dpt": { ...normalUserPermissions, finance: allPageFeatures.finance },
+    "intercession-dpt": { ...normalUserPermissions, intercession: allPageFeatures.intercession },
+  };
+
+  for (const [roleName, pagePermissions] of Object.entries(rolePermissionMatrix)) {
     const role = roleByName.get(roleName);
     if (!role) continue;
 
-    const roleFeatures = pageNames.flatMap((pageName) => {
+    await prisma.rolePageFeature.deleteMany({ where: { roleId: role.id } });
+
+    const roleFeatures = Object.entries(pagePermissions).flatMap(([pageName, featureNames]) => {
       const page = pageByName.get(pageName);
       if (!page) return [];
       return (featuresByPage.get(page.id) ?? [])
-        .filter((feature) => {
-          if (roleName === "member") return ["view", "create", "submit-forms", "read-bible"].includes(feature.name);
-          if (["profile", "performance"].includes(pageName)) return feature.name === "view" || feature.name === "edit";
-          return true;
-        })
+        .filter((feature) => featureNames.includes(feature.name))
         .map((feature) => ({
           roleId: role.id,
           pageId: feature.pageId,

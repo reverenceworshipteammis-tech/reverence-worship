@@ -46,9 +46,11 @@ type RoleName =
   | "social-dpt"
   | "discipline-dpt"
   | "intercession-dpt"
+  | "finance-dpt"
+  | "parent"
   | "member";
 
-type DepartmentRole = Extract<RoleName, "music-dpt" | "social-dpt" | "discipline-dpt" | "intercession-dpt">;
+type DepartmentRole = Extract<RoleName, "music-dpt" | "social-dpt" | "discipline-dpt" | "intercession-dpt" | "finance-dpt">;
 
 type DashboardCard = {
   label: string;
@@ -80,7 +82,7 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
   }
 
   const departmentRole = roles.find((role) =>
-    ["music-dpt", "social-dpt", "discipline-dpt", "intercession-dpt"].includes(role),
+    ["music-dpt", "social-dpt", "discipline-dpt", "intercession-dpt", "finance-dpt"].includes(role),
   ) as DepartmentRole | undefined;
 
   if (departmentRole) {

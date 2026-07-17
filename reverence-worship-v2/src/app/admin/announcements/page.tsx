@@ -1,5 +1,5 @@
 import { AnnouncementsClient } from "@/components/announcements-client";
-import { requirePageAccess } from "@/lib/auth";
+import { getUserPermissionSet, permissionSetHas, requirePageAccess } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 function formatDate(date: Date | null) {
@@ -22,40 +22,47 @@ function parseIdList(value: string | null) {
 }
 
 export default async function AnnouncementsPage() {
-  await requirePageAccess("announcements");
+  const user = await requirePageAccess("announcements");
+  const permissions = await getUserPermissionSet(user);
+  const canManage = ["create", "edit", "delete", "publish"].some((feature) => permissionSetHas(permissions, "announcements", feature));
+  const roleIds = user.roles.map((userRole) => userRole.roleId);
 
-  const [announcements, roles, users, stats] = await Promise.all([
+  const [allAnnouncements, roles, users] = await Promise.all([
     prisma.announcement.findMany({
+      where: canManage ? undefined : { status: "active", OR: [{ expiryDate: null }, { expiryDate: { gte: new Date() } }] },
       orderBy: { createdAt: "desc" },
       include: {
         creator: { select: { id: true, name: true } },
         publisher: { select: { id: true, name: true } },
       },
     }),
-    prisma.role.findMany({
+    canManage ? prisma.role.findMany({
       where: { name: { not: "super-admin" } },
       orderBy: { displayName: "asc" },
       select: { id: true, name: true, displayName: true },
-    }),
-    prisma.user.findMany({
+    }) : Promise.resolve([]),
+    canManage ? prisma.user.findMany({
       where: { status: "active" },
       orderBy: { name: "asc" },
       select: { id: true, name: true, email: true },
-    }),
-    Promise.all([
-      prisma.announcement.count(),
-      prisma.announcement.count({ where: { status: "active" } }),
-      prisma.announcement.count({ where: { status: "scheduled" } }),
-      prisma.announcement.count({ where: { status: "draft" } }),
-      prisma.announcement.count({ where: { expiryDate: { lt: new Date() } } }),
-    ]),
+    }) : Promise.resolve([]),
   ]);
+
+  const announcements = canManage
+    ? allAnnouncements
+    : allAnnouncements.filter((announcement) => {
+        if (announcement.targetType === "all") return true;
+        if (announcement.targetType === "users") return parseIdList(announcement.targetUsers).includes(user.id);
+        if (announcement.targetType === "roles") return parseIdList(announcement.targetRoles).some((id) => roleIds.includes(id));
+        return false;
+      });
 
   const roleNameById = new Map(roles.map((role) => [role.id, role.displayName]));
   const userById = new Map(users.map((user) => [user.id, user]));
 
   const recipientCounts = await Promise.all(
     announcements.map(async (announcement) => {
+      if (!canManage) return 1;
       if (announcement.targetType === "all") return users.length;
       if (announcement.targetType === "users") {
         const ids = parseIdList(announcement.targetUsers);
@@ -75,11 +82,17 @@ export default async function AnnouncementsPage() {
     }),
   );
 
-  const [total, active, scheduled, draft, expired] = stats;
+  const now = new Date();
+  const total = announcements.length;
+  const active = announcements.filter((item) => item.status === "active").length;
+  const scheduled = announcements.filter((item) => item.status === "scheduled").length;
+  const draft = announcements.filter((item) => item.status === "draft").length;
+  const expired = announcements.filter((item) => item.expiryDate && item.expiryDate < now).length;
 
   return (
     <AnnouncementsClient
       stats={{ total, active, scheduled, draft, expired }}
+      readOnly={!canManage}
       roles={roles}
       users={users}
       announcements={announcements.map((announcement, index) => {
@@ -87,7 +100,9 @@ export default async function AnnouncementsPage() {
         const targetUserIds = parseIdList(announcement.targetUsers);
         const roleNames = targetRoleIds.map((id) => roleNameById.get(id)).filter(Boolean) as string[];
         const userNames = targetUserIds.map((id) => userById.get(id)?.name).filter(Boolean) as string[];
-        const recipientLabel =
+        const recipientLabel = !canManage
+          ? "For you"
+          :
           announcement.targetType === "all"
             ? "All Users"
             : announcement.targetType === "roles"

@@ -166,6 +166,8 @@ type DisciplineDraft = {
 };
 
 export function DisciplineClient({
+  initialTab,
+  canManage,
   startDate,
   endDate,
   stats,
@@ -178,6 +180,8 @@ export function DisciplineClient({
   disciplineRecords,
   actionPlans,
 }: {
+  initialTab: string;
+  canManage: boolean;
   startDate: string;
   endDate: string;
   stats: DisciplineStats;
@@ -192,7 +196,7 @@ export function DisciplineClient({
 }) {
   const router = useRouter();
   const { prompt } = useAppDialog();
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [from, setFrom] = useState(startDate);
   const [to, setTo] = useState(endDate);
   const [showOverflowIndicator, setShowOverflowIndicator] = useState(false);
@@ -236,13 +240,14 @@ export function DisciplineClient({
   const [editingActionTask, setEditingActionTask] = useState<DisciplineActionPlanTask | null>(null);
   const [taskPlan, setTaskPlan] = useState<DisciplineActionPlan | null>(null);
 
-  const tabs = [
+  const departmentTabs = [
     { id: "overview", label: "Overview", mobileLabel: "Home", icon: BarChart3 },
     { id: "attendance", label: "Attendance", mobileLabel: "Attend", icon: CalendarCheck },
     { id: "permission", label: "Permission Requests", mobileLabel: "Requests", icon: MailOpen },
     { id: "discipline-records", label: "Discipline Records", mobileLabel: "Records", icon: BookOpen },
     { id: "action-plans", label: "Action Plans", mobileLabel: "Plans", icon: ClipboardList },
   ];
+  const tabs = canManage ? departmentTabs : departmentTabs.filter((tab) => tab.id === "permission");
 
   useEffect(() => {
     const measure = () => {
@@ -548,7 +553,11 @@ export function DisciplineClient({
 
   function openPermissionModal(permission?: Permission) {
     setEditingPermission(permission ?? null);
-    const selectedUser = permission ? users.find((user) => user.id === permission.userId) ?? null : null;
+    const selectedUser = permission
+      ? users.find((user) => user.id === permission.userId) ?? null
+      : !canManage && users.length === 1
+        ? users[0]
+        : null;
     setSelectedPermissionUser(selectedUser);
     setPermissionUserSearch(selectedUser?.name ?? "");
     setPermissionType(permission?.type ?? "General");
@@ -1095,7 +1104,7 @@ export function DisciplineClient({
           ) : activeTab === "permission" ? (
             <div className="space-y-4 sm:space-y-6">
               <div className="flex items-center justify-between gap-3 md:items-end">
-                <h3 className="text-xl font-bold tracking-tight text-gray-900 md:text-3xl">Permission Management</h3>
+                <h3 className="text-xl font-bold tracking-tight text-gray-900 md:text-3xl">{canManage ? "Permission Management" : "My Permission Requests"}</h3>
                 <button onClick={() => openPermissionModal()} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-3 py-2 text-xs font-medium text-white shadow-md shadow-blue-200 transition hover:from-blue-700 hover:to-indigo-700 sm:gap-2 sm:rounded-xl sm:px-4 sm:py-2.5 sm:text-sm">
                   <Plus className="size-4" />
                   New Request
@@ -1141,10 +1150,10 @@ export function DisciplineClient({
                     Filter
                   </button>
                 </div>
-                <button onClick={exportPermissionsCsv} className="mt-3 h-9 w-full rounded-lg bg-blue-600 px-3 text-xs font-medium text-white shadow-sm transition hover:bg-blue-700 sm:h-auto sm:w-52 sm:rounded-xl sm:px-4 sm:py-2.5 sm:text-sm">
+                {canManage && <button onClick={exportPermissionsCsv} className="mt-3 h-9 w-full rounded-lg bg-blue-600 px-3 text-xs font-medium text-white shadow-sm transition hover:bg-blue-700 sm:h-auto sm:w-52 sm:rounded-xl sm:px-4 sm:py-2.5 sm:text-sm">
                   <FileText className="mr-1 inline size-4" />
                   Export
-                </button>
+                </button>}
               </div>
 
               <div className="hidden overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm md:block">
@@ -1174,7 +1183,7 @@ export function DisciplineClient({
                           <td className="px-4 py-4">
                             <div className="flex items-center gap-2">
                               <StatusBadge status={permission.status} />
-                              {permission.status === "pending" && (
+                              {canManage && permission.status === "pending" && (
                                 <div className="flex items-center gap-1">
                                   <button
                                     type="button"
@@ -1240,13 +1249,13 @@ export function DisciplineClient({
                         <button onClick={() => openPermissionModal(permission)} className="rounded-lg border border-gray-200 px-3 py-2 text-gray-600 hover:text-blue-600" title="Edit">
                           <Edit className="size-4" />
                         </button>
-                        {permission.status === "pending" && (
+                        {canManage && permission.status === "pending" && (
                           <>
                             <button type="button" onClick={() => runPermissionAction(() => approvePermissionRequest(permission.id))} className="grid size-9 place-items-center rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100" title="Approve permission request" aria-label={`Approve permission request for ${permission.userName}`}><CheckCircle2 className="size-4" /></button>
                             <button type="button" onClick={() => rejectPermissionWithReason(permission)} className="grid size-9 place-items-center rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100" title="Reject permission request" aria-label={`Reject permission request for ${permission.userName}`}><XCircle className="size-4" /></button>
                           </>
                         )}
-                        <button
+                        {canManage && <button
                           onClick={() =>
                             setConfirmDialog({
                               title: "Delete permission",
@@ -1259,7 +1268,7 @@ export function DisciplineClient({
                           title="Delete"
                         >
                           <Trash2 className="size-4" />
-                        </button>
+                        </button>}
                       </div>
                     </div>
                   </article>

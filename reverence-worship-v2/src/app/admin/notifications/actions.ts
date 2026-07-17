@@ -27,6 +27,7 @@ function hasWorkspaceRole(roleNames: string[]) {
     "social-dpt",
     "discipline-dpt",
     "intercession-dpt",
+    "finance-dpt",
   ]);
 
   return roleNames.some((roleName) => workspaceRoles.has(roleName));

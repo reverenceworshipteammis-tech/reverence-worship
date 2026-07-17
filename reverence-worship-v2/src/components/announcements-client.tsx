@@ -55,11 +55,13 @@ export function AnnouncementsClient({
   announcements,
   roles,
   users,
+  readOnly,
 }: {
   stats: { total: number; active: number; scheduled: number; draft: number; expired: number };
   announcements: Announcement[];
   roles: RoleOption[];
   users: UserOption[];
+  readOnly: boolean;
 }) {
   const router = useRouter();
   const { confirm } = useAppDialog();
@@ -163,13 +165,13 @@ export function AnnouncementsClient({
     <div className="mx-auto max-w-7xl space-y-5 px-2 py-4 sm:px-4 sm:py-6">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Announcement Management</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{readOnly ? "Announcements" : "Announcement Management"}</h1>
         
         </div>
-        <button type="button" onClick={openCompose} className="inline-flex w-fit items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700">
+        {!readOnly && <button type="button" onClick={openCompose} className="inline-flex w-fit items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700">
           <Plus className="size-4" />
           Compose
-        </button>
+        </button>}
       </div>
 
       {result && (
@@ -226,7 +228,7 @@ export function AnnouncementsClient({
                 <button type="button" onClick={() => { setSelected(announcement); setModal("view"); }} className="rounded-lg border border-gray-200 px-3 py-2 text-gray-600 hover:bg-white" title="View">
                   <Eye className="size-4" />
                 </button>
-                <button type="button" onClick={() => openEdit(announcement)} className="rounded-lg border border-gray-200 px-3 py-2 text-blue-600 hover:bg-blue-50" title="Edit">
+                {!readOnly && <><button type="button" onClick={() => openEdit(announcement)} className="rounded-lg border border-gray-200 px-3 py-2 text-blue-600 hover:bg-blue-50" title="Edit">
                   <Pencil className="size-4" />
                 </button>
                 <button type="button" onClick={() => runAction(() => toggleAnnouncementStatus(announcement.id))} disabled={pending} className="rounded-lg border border-gray-200 px-3 py-2 text-indigo-600 hover:bg-indigo-50" title={announcement.status === "active" ? "Move to draft" : "Publish"}>
@@ -239,14 +241,14 @@ export function AnnouncementsClient({
                 )}
                 <button type="button" onClick={() => removeAnnouncement(announcement)} disabled={pending} className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-red-600 hover:bg-red-100" title="Delete">
                   <Trash2 className="size-4" />
-                </button>
+                </button></>}
               </div>
             </article>
           )) : (
             <div className="py-14 text-center">
               <Megaphone className="mx-auto mb-3 size-10 text-gray-300" />
               <p className="text-sm text-gray-500">No announcements found</p>
-              <button type="button" onClick={openCompose} className="mt-3 text-sm font-medium text-blue-600 hover:text-blue-700">Create your first announcement</button>
+              {!readOnly && <button type="button" onClick={openCompose} className="mt-3 text-sm font-medium text-blue-600 hover:text-blue-700">Create your first announcement</button>}
             </div>
           )}
         </div>
@@ -407,7 +409,7 @@ export function AnnouncementsClient({
               <p className="whitespace-pre-wrap text-sm leading-7 text-gray-700">{selected.content}</p>
             </div>
             <div className="flex flex-col-reverse gap-2 border-t px-5 py-4 sm:flex-row sm:justify-end">
-              <button type="button" onClick={() => openEdit(selected)} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-blue-600 hover:bg-blue-50">Edit</button>
+              {!readOnly && <button type="button" onClick={() => openEdit(selected)} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-blue-600 hover:bg-blue-50">Edit</button>}
               <button type="button" onClick={closeModal} className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700">Close</button>
             </div>
           </div>

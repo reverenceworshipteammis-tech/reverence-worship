@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireUser } from "@/lib/auth";
+import { getUserPermissionSet, permissionSetHas, requirePermission } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { notifyUsers, userIdsForRoles } from "@/lib/notifications";
 
@@ -60,7 +60,7 @@ function readDisciplineRecords(formData: FormData) {
 }
 
 async function writeAttendanceSession(formData: FormData, complete: boolean) {
-  const user = await requireUser();
+  const user = await requirePermission("discipline", complete ? "complete-attendance" : "mark-attendance");
   const sessionDateValue = readString(formData, "sessionDate");
   const sessionType = readString(formData, "sessionType");
   const records = readAttendanceRecords(formData);
@@ -187,7 +187,7 @@ export async function completeAttendanceSession(formData: FormData) {
 }
 
 export async function deleteAttendanceSession(sessionDateValue: string, sessionType: string) {
-  await requireUser();
+  await requirePermission("discipline", "delete-attendance");
   const sessionDate = dateOnly(sessionDateValue);
 
   await prisma.$transaction(async (tx) => {
@@ -211,9 +211,12 @@ export async function deleteAttendanceSession(sessionDateValue: string, sessionT
 }
 
 export async function savePermissionRequest(formData: FormData) {
-  await requireUser();
+  const user = await requirePermission("discipline", "create-permission-requests");
+  const permissions = await getUserPermissionSet(user);
+  const canManageRequests = permissionSetHas(permissions, "discipline", "approve-permission-requests");
   const id = Number(readString(formData, "id"));
-  const userId = Number(readString(formData, "userId"));
+  const requestedUserId = Number(readString(formData, "userId"));
+  const userId = canManageRequests ? requestedUserId : user.id;
   const type = readString(formData, "type") ?? "General";
   const startDateValue = readString(formData, "startDate");
   const endDateValue = readString(formData, "endDate");
@@ -233,6 +236,11 @@ export async function savePermissionRequest(formData: FormData) {
 
   let request;
   if (Number.isFinite(id) && id > 0) {
+    const existing = await prisma.permissionRequest.findFirst({
+      where: { id, ...(canManageRequests ? {} : { userId: user.id, status: "pending" }) },
+      select: { id: true },
+    });
+    if (!existing) return { ok: false, message: "You can only edit your own pending request." };
     request = await prisma.permissionRequest.update({
       where: { id },
       data,
@@ -256,7 +264,7 @@ export async function savePermissionRequest(formData: FormData) {
 }
 
 export async function approvePermissionRequest(id: number) {
-  const user = await requireUser();
+  const user = await requirePermission("discipline", "approve-permission-requests");
 
   const request = await prisma.permissionRequest.update({
     where: { id },
@@ -276,7 +284,7 @@ export async function approvePermissionRequest(id: number) {
 }
 
 export async function rejectPermissionRequest(id: number, reason: string) {
-  const user = await requireUser();
+  const user = await requirePermission("discipline", "approve-permission-requests");
   const rejectionReason = reason.trim();
 
   if (!rejectionReason) {
@@ -306,7 +314,7 @@ export async function rejectPermissionRequest(id: number, reason: string) {
 }
 
 export async function deletePermissionRequest(id: number) {
-  await requireUser();
+  await requirePermission("discipline", "delete-permission-requests");
 
   await prisma.permissionRequest.delete({
     where: { id },
@@ -318,7 +326,7 @@ export async function deletePermissionRequest(id: number) {
 }
 
 export async function saveDisciplineSession(formData: FormData) {
-  const user = await requireUser();
+  const user = await requirePermission("discipline", "record-discipline");
   const sessionDateValue = readString(formData, "sessionDate");
   const title = readString(formData, "title");
   const records = readDisciplineRecords(formData);
@@ -397,7 +405,7 @@ export async function saveDisciplineSession(formData: FormData) {
 }
 
 export async function deleteDisciplineSession(sessionDateValue: string, title: string) {
-  await requireUser();
+  await requirePermission("discipline", "delete-discipline");
   const dayStart = new Date(`${sessionDateValue}T00:00:00`);
   const dayEnd = new Date(`${sessionDateValue}T23:59:59`);
 
@@ -417,7 +425,7 @@ export async function deleteDisciplineSession(sessionDateValue: string, title: s
 }
 
 export async function resolveDisciplineRecord(id: number, notes: string) {
-  const user = await requireUser();
+  const user = await requirePermission("discipline", "resolve-discipline");
 
   await prisma.disciplineRecord.update({
     where: { id },
@@ -449,7 +457,7 @@ async function syncDisciplineActionPlanProgress(actionPlanId: number) {
 }
 
 export async function saveDisciplineActionPlan(formData: FormData) {
-  const user = await requireUser();
+  const user = await requirePermission("discipline", "manage-action-plans");
   const id = Number(readString(formData, "id"));
   const title = readString(formData, "title");
   const description = readString(formData, "description");
@@ -489,14 +497,14 @@ export async function saveDisciplineActionPlan(formData: FormData) {
 }
 
 export async function deleteDisciplineActionPlan(id: number) {
-  await requireUser();
+  await requirePermission("discipline", "manage-action-plans");
   await prisma.actionPlan.delete({ where: { id } });
   revalidatePath("/admin/discipline");
   return { ok: true, message: "Action plan deleted." };
 }
 
 export async function saveDisciplineActionPlanTask(formData: FormData) {
-  await requireUser();
+  await requirePermission("discipline", "manage-action-plans");
   const id = Number(readString(formData, "id"));
   const actionPlanId = Number(readString(formData, "actionPlanId"));
   const activity = readString(formData, "activity");
@@ -554,7 +562,7 @@ export async function saveDisciplineActionPlanTask(formData: FormData) {
 }
 
 export async function deleteDisciplineActionPlanTask(id: number) {
-  await requireUser();
+  await requirePermission("discipline", "manage-action-plans");
   const task = await prisma.actionPlanTask.findUnique({
     where: { id },
     select: { actionPlanId: true },

@@ -190,6 +190,7 @@ type MusicActionPlan = {
 };
 
 type MusicClientProps = {
+  canManage: boolean;
   playlists: Playlist[];
   songs: Song[];
   gallery: GalleryPhoto[];
@@ -546,6 +547,7 @@ function downloadGenerationCsv(generation: ServiceTeam) {
 }
 
 export function MusicClient({
+  canManage,
   playlists,
   songs,
   gallery,
@@ -583,6 +585,7 @@ export function MusicClient({
   const [lyricsSong, setLyricsSong] = useState<Song | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [isPending, startTransition] = useTransition();
+  const visibleTabs = canManage ? tabs : tabs.filter((tab) => tab.id === "playlist");
 
   const filteredPlaylists = useMemo(() => {
     const query = playlistSearch.trim().toLowerCase();
@@ -836,10 +839,10 @@ export function MusicClient({
     <div className="mx-auto max-w-7xl px-2 sm:px-4">
       <div className="mb-4 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
         <div className="px-3 py-3 md:hidden">
-          <MobileTabScroller tabs={tabs} value={activeTab} onChange={setActiveTab} />
+          <MobileTabScroller tabs={visibleTabs} value={activeTab} onChange={setActiveTab} />
         </div>
         <nav className="hidden flex-wrap md:flex">
-          {tabs.map((tab) => (
+          {visibleTabs.map((tab) => (
             <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition ${activeTab === tab.id ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
               <tab.icon className="size-4" aria-hidden />
               {tab.label}
@@ -1266,7 +1269,7 @@ export function MusicClient({
         </div>
       ) : (
         <div className="rounded-xl border border-gray-100 bg-white p-2 shadow-sm sm:rounded-2xl sm:p-6">
-          <form onSubmit={submitAddToPlaylist} className="mb-4 rounded-xl border border-blue-100 bg-blue-50 p-3 sm:mb-6 sm:rounded-2xl sm:p-4">
+          {canManage && <form onSubmit={submitAddToPlaylist} className="mb-4 rounded-xl border border-blue-100 bg-blue-50 p-3 sm:mb-6 sm:rounded-2xl sm:p-4">
             <h4 className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700 sm:mb-3 sm:text-base">
               <Plus className="size-4 text-blue-600" aria-hidden />
               Add Song to Playlist
@@ -1287,7 +1290,7 @@ export function MusicClient({
                 Add
               </button>
             </div>
-          </form>
+          </form>}
 
           <div className="flex flex-col gap-4 lg:flex-row lg:gap-5">
             <section className="lg:w-1/2">
@@ -1296,10 +1299,10 @@ export function MusicClient({
                   <List className="mr-2 inline size-4 text-blue-600" aria-hidden />
                   <span>Playlists</span> <span className="ml-1 text-xs text-gray-400">({filteredPlaylists.length}/{playlists.length})</span>
                 </h4>
-                <button type="button" onClick={() => setModal("playlist")} className="inline-flex h-9 shrink-0 items-center justify-center gap-1 rounded-lg bg-blue-600 px-2.5 text-xs font-semibold text-white hover:bg-blue-700 sm:rounded-xl sm:px-3">
+                {canManage && <button type="button" onClick={() => setModal("playlist")} className="inline-flex h-9 shrink-0 items-center justify-center gap-1 rounded-lg bg-blue-600 px-2.5 text-xs font-semibold text-white hover:bg-blue-700 sm:rounded-xl sm:px-3">
                   <Plus className="size-4" aria-hidden />
                   <span>New</span>
-                </button>
+                </button>}
               </div>
               <div className="relative mb-2 sm:mb-3">
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" aria-hidden />
@@ -1316,8 +1319,8 @@ export function MusicClient({
                       </div>
                       <div className="flex shrink-0 gap-2">
                         <button type="button" onClick={() => setViewingPlaylist(playlist)} className="inline-flex size-9 items-center justify-center rounded-lg bg-green-50 text-green-600 hover:bg-green-100 hover:text-green-800 sm:size-auto sm:bg-transparent" title="View Songs"><FileText className="size-4" aria-hidden /></button>
-                        <button type="button" onClick={() => setEditingPlaylist(playlist)} className="inline-flex size-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-800 sm:size-auto sm:bg-transparent" title="Edit Playlist"><Pencil className="size-4" aria-hidden /></button>
-                        <button type="button" onClick={() => askConfirm({ title: "Delete Playlist", message: `Delete "${playlist.title}"? Songs will remain available, but this playlist will be removed.`, confirmLabel: "Delete Playlist", action: () => deletePlaylist(playlist.id) })} className="inline-flex size-9 items-center justify-center rounded-lg bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-800 sm:size-auto sm:bg-transparent" title="Delete Playlist"><Trash2 className="size-4" aria-hidden /></button>
+                        {canManage && <><button type="button" onClick={() => setEditingPlaylist(playlist)} className="inline-flex size-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-800 sm:size-auto sm:bg-transparent" title="Edit Playlist"><Pencil className="size-4" aria-hidden /></button>
+                        <button type="button" onClick={() => askConfirm({ title: "Delete Playlist", message: `Delete "${playlist.title}"? Songs will remain available, but this playlist will be removed.`, confirmLabel: "Delete Playlist", action: () => deletePlaylist(playlist.id) })} className="inline-flex size-9 items-center justify-center rounded-lg bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-800 sm:size-auto sm:bg-transparent" title="Delete Playlist"><Trash2 className="size-4" aria-hidden /></button></>}
                       </div>
                     </div>
                   </div>
@@ -1336,10 +1339,10 @@ export function MusicClient({
                   <Music className="mr-2 inline size-4 text-green-600" aria-hidden />
                   <span>Songs</span> <span className="ml-1 text-xs text-gray-400">({filteredSongs.length}/{songs.length})</span>
                 </h4>
-                <button type="button" onClick={() => setModal("song")} className="inline-flex h-9 shrink-0 items-center justify-center gap-1 rounded-lg bg-green-600 px-2.5 text-xs font-semibold text-white hover:bg-green-700 sm:rounded-xl sm:px-3">
+                {canManage && <button type="button" onClick={() => setModal("song")} className="inline-flex h-9 shrink-0 items-center justify-center gap-1 rounded-lg bg-green-600 px-2.5 text-xs font-semibold text-white hover:bg-green-700 sm:rounded-xl sm:px-3">
                   <Plus className="size-4" aria-hidden />
                   <span>Add</span>
-                </button>
+                </button>}
               </div>
               <div className="relative mb-2 sm:mb-3">
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" aria-hidden />
@@ -1359,8 +1362,8 @@ export function MusicClient({
                       </div>
                       <div className="flex shrink-0 gap-2">
                         <button type="button" onClick={() => setLyricsSong(song)} className="inline-flex size-9 items-center justify-center rounded-lg bg-green-50 text-green-600 hover:bg-green-100 hover:text-green-800 sm:size-auto sm:bg-transparent" title="View Lyrics"><FileText className="size-4" aria-hidden /></button>
-                        <button type="button" onClick={() => setEditingSong(song)} className="inline-flex size-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-800 sm:size-auto sm:bg-transparent" title="Edit Song"><Pencil className="size-4" aria-hidden /></button>
-                        <button type="button" onClick={() => askConfirm({ title: "Delete Song", message: `Delete "${song.title}" from the music library?`, confirmLabel: "Delete Song", action: () => deleteSong(song.id) })} className="inline-flex size-9 items-center justify-center rounded-lg bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-800 sm:size-auto sm:bg-transparent" title="Delete Song"><Trash2 className="size-4" aria-hidden /></button>
+                        {canManage && <><button type="button" onClick={() => setEditingSong(song)} className="inline-flex size-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-800 sm:size-auto sm:bg-transparent" title="Edit Song"><Pencil className="size-4" aria-hidden /></button>
+                        <button type="button" onClick={() => askConfirm({ title: "Delete Song", message: `Delete "${song.title}" from the music library?`, confirmLabel: "Delete Song", action: () => deleteSong(song.id) })} className="inline-flex size-9 items-center justify-center rounded-lg bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-800 sm:size-auto sm:bg-transparent" title="Delete Song"><Trash2 className="size-4" aria-hidden /></button></>}
                       </div>
                     </div>
                   </div>
@@ -1376,7 +1379,7 @@ export function MusicClient({
         </div>
       )}
 
-      {modal === "song" ? (
+      {canManage && modal === "song" ? (
         <Modal title="Add New Song" onClose={() => setModal(null)}>
           <form onSubmit={submitCreateSong} className="space-y-5 p-5">
             <SongFields />
@@ -1649,7 +1652,7 @@ export function MusicClient({
         </Modal>
       ) : null}
 
-      {editingSong ? (
+      {canManage && editingSong ? (
         <Modal title="Edit Song" onClose={() => setEditingSong(null)}>
           <form onSubmit={submitUpdateSong} className="space-y-5 p-5">
             <SongFields song={editingSong} />
@@ -1661,7 +1664,7 @@ export function MusicClient({
         </Modal>
       ) : null}
 
-      {editingPlaylist ? (
+      {canManage && editingPlaylist ? (
         <Modal title="Edit Playlist" onClose={() => setEditingPlaylist(null)}>
           <form onSubmit={submitUpdatePlaylist} className="space-y-5 p-5">
             <PlaylistFields songs={songs} playlist={editingPlaylist} />

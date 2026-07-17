@@ -318,7 +318,7 @@
                 searchLabel: "Shakisha muri iki gice",
                 searchPlaceholder: "Shakisha muri iki gice (nibura inyuguti 2)...",
                 loading: "Ifungura igice...",
-                emptyTitle: "Hitamo umugabane utangire",
+                emptyTitle: "Hitamo igice cyo gusoma",
                 emptyText: "Hitamo Bibiliya, ugereranye niba ubishaka, hanyuma ukande Soma.",
                 invalidSelection: "Hitamo Bibiliya, igitabo, n'igice bifite agaciro.",
                 loadError: "Ntibishobotse gufungura igice cyatoranyijwe ubu.",

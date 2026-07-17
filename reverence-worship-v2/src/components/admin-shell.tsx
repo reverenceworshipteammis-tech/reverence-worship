@@ -2,22 +2,26 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   BarChart3,
   Bell,
+  BookOpen,
   ChartLine,
   ChevronDown,
   ClipboardList,
+  FileText,
   Gavel,
   Gauge,
   HandCoins,
   HandHeart,
   Home,
   Lock,
+  ListMusic,
   LogOut,
   Menu,
   Megaphone,
+  MailOpen,
   Music,
   Settings,
   UserCheck,
@@ -46,6 +50,7 @@ type NavItem = {
   label: string;
   href: string;
   page: string;
+  feature?: string;
   icon: LucideIcon;
   active?: boolean;
 };
@@ -55,18 +60,22 @@ const navGroups: Array<{ label: string; items: NavItem[] }> = [
     label: "",
     items: [
       { label: "Dashboard", href: "/admin/dashboard", page: "dashboard", icon: Gauge },
-      { label: "User Management", href: "/admin/users", page: "users", icon: Users },
-      { label: "Music and Evangelism DPT", href: "/admin/music", page: "music-ministry", icon: Music },
-      { label: "Intercession & spiritual DPT", href: "/admin/intercession", page: "intercession", icon: HandHeart },
-      { label: "Social Fellowship DPT", href: "/admin/social-fellowship", page: "social-fellowship", icon: ClipboardList },
-      { label: "Discipline  DPT", href: "/admin/discipline", page: "discipline", icon: Gavel },
-      { label: "Financial  DPT", href: "/admin/finance", page: "finance", icon: ChartLine },
-      { label: "Announcements", href: "/admin/announcements", page: "announcements", icon: Megaphone },
-      { label: "My Family", href: "/admin/family", page: "family", icon: Home },
-      { label: "Parent Dashboard", href: "/admin/parent", page: "parent", icon: UserCheck },
-      { label: "My Contributions", href: "/admin/contributions", page: "contributions", icon: HandCoins },
       { label: "My Profile", href: "/admin/profile", page: "profile", icon: User },
       { label: "My Performance", href: "/admin/performance", page: "performance", icon: BarChart3 },
+      { label: "My Contribution", href: "/admin/contributions", page: "contributions", icon: HandCoins },
+      { label: "My Family", href: "/admin/family", page: "family", icon: Home },
+      { label: "Read Bible", href: "/admin/intercession?tab=bible", page: "intercession", feature: "read-bible", icon: BookOpen },
+      { label: "Forms", href: "/admin/intercession?tab=forms", page: "intercession", feature: "submit-forms", icon: FileText },
+      { label: "Playlist", href: "/admin/music?tab=playlist", page: "music-ministry", feature: "view-playlists", icon: ListMusic },
+      { label: "Announcements", href: "/admin/announcements", page: "announcements", feature: "view", icon: Megaphone },
+      { label: "Permission Request", href: "/admin/discipline?tab=permission", page: "discipline", feature: "view-own-permission-requests", icon: MailOpen },
+      { label: "Parent Dashboard", href: "/admin/parent", page: "parent", feature: "view", icon: UserCheck },
+      { label: "User Management", href: "/admin/users", page: "users", icon: Users },
+      { label: "Music and Evangelism DPT", href: "/admin/music", page: "music-ministry", feature: "view", icon: Music },
+      { label: "Intercession & Spiritual DPT", href: "/admin/intercession", page: "intercession", feature: "view", icon: HandHeart },
+      { label: "Social Fellowship DPT", href: "/admin/social-fellowship", page: "social-fellowship", feature: "view", icon: ClipboardList },
+      { label: "Discipline DPT", href: "/admin/discipline", page: "discipline", feature: "view", icon: Gavel },
+      { label: "Financial DPT", href: "/admin/finance", page: "finance", feature: "view", icon: ChartLine },
       { label: "Permission Manager", href: "/admin/permissions", page: "permissions", icon: Lock },
       { label: "Settings", href: "/admin/settings", page: "settings", icon: Settings },
     ],
@@ -75,9 +84,8 @@ const navGroups: Array<{ label: string; items: NavItem[] }> = [
 
 const mobileNavItems = [
   { label: "Home", href: "/admin/dashboard", page: "dashboard", icon: Gauge },
-  { label: "Users", href: "/admin/users", page: "users", icon: Users },
-  { label: "Music", href: "/admin/music", page: "music-ministry", icon: Music },
-  { label: "Growth", href: "/admin/intercession", page: "intercession", icon: HandHeart },
+  { label: "Bible", href: "/admin/intercession?tab=bible", page: "intercession", feature: "read-bible", icon: BookOpen },
+  { label: "Playlist", href: "/admin/music?tab=playlist", page: "music-ministry", feature: "view-playlists", icon: ListMusic },
   { label: "Giving", href: "/admin/contributions", page: "contributions", icon: HandCoins },
   { label: "Profile", href: "/admin/profile", page: "profile", icon: User },
   { label: "Progress", href: "/admin/performance", page: "performance", icon: BarChart3 },
@@ -91,16 +99,23 @@ function hasPagePermission(permissions: string[], page: string) {
   return permissions.includes("*") || permissions.some((permission) => permission.startsWith(`${page}.`));
 }
 
+function hasNavPermission(permissions: string[], item: NavItem) {
+  return item.feature
+    ? permissions.includes("*") || permissions.includes(`${item.page}.${item.feature}`)
+    : hasPagePermission(permissions, item.page);
+}
+
 function navGroupsForPermissions(permissions: string[], roles: string[], isParent: boolean) {
   return navGroups
     .map((group) => ({
       ...group,
       items: group.items.filter((item) => {
         if (item.page === "parent") {
-          return isParent && (hasPagePermission(permissions, item.page) || roles.some((r) => r.toLowerCase() === "parent"));
+          const privilegedRole = roles.some((role) => ["super-admin", "admin"].includes(role.toLowerCase()));
+          return hasNavPermission(permissions, item) && (isParent || privilegedRole || roles.some((r) => r.toLowerCase() === "parent"));
         }
 
-        return hasPagePermission(permissions, item.page);
+        return hasNavPermission(permissions, item);
       }),
     }))
     .filter((group) => group.items.length > 0);
@@ -126,17 +141,27 @@ export function AdminShell({
   const activitySincePingRef = useRef(true);
   const loggingOutRef = useRef(false);
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const visibleNavGroups = navGroupsForPermissions(user.permissions, user.roles, !!user.isParent);
   const visibleMobileNavItems = mobileNavItems.filter((item) =>
     visibleNavGroups.some((group) => group.items.some((navItem) => navItem.href === item.href)),
   ).slice(0, 4);
   const canViewAnnouncementsPage = hasPagePermission(user.permissions, "announcements");
+  const currentUrl = `${pathname}${searchParams.size ? `?${searchParams.toString()}` : ""}`;
   const currentPageTitle =
     visibleNavGroups
       .flatMap((group) => group.items)
-      .filter((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))
-      .sort((a, b) => b.href.length - a.href.length)[0]?.label ?? "Admin";
+      .filter((item) => {
+        const itemPath = item.href.split("?")[0];
+        return pathname === itemPath || pathname.startsWith(`${itemPath}/`);
+      })
+      .sort((a, b) => {
+        const exactDifference = Number(currentUrl === b.href) - Number(currentUrl === a.href);
+        if (exactDifference) return exactDifference;
+        const queryDifference = Number(!b.href.includes("?")) - Number(!a.href.includes("?"));
+        return queryDifference || b.href.length - a.href.length;
+      })[0]?.label ?? "Reverence Worship";
 
   async function loadNotifications() {
     setNotificationError(null);

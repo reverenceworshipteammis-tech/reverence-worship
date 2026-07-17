@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { notifyUsers } from "@/lib/notifications";
 
@@ -18,7 +18,7 @@ function readNumber(formData: FormData, key: string) {
 }
 
 export async function createSocialFamily(formData: FormData) {
-  const user = await requireUser();
+  const user = await requirePermission("social-fellowship", "manage-families");
   const name = readString(formData, "name");
 
   if (!name) {
@@ -70,7 +70,7 @@ export async function createSocialFamily(formData: FormData) {
 }
 
 export async function deleteSocialFamily(familyId: number) {
-  await requireUser();
+  await requirePermission("social-fellowship", "delete-families");
 
   await prisma.family.delete({
     where: { id: familyId },
@@ -82,7 +82,7 @@ export async function deleteSocialFamily(familyId: number) {
 }
 
 export async function assignUserToSocialFamily(formData: FormData) {
-  await requireUser();
+  await requirePermission("social-fellowship", "manage-family-members");
   const userId = readNumber(formData, "userId");
   const familyId = readNumber(formData, "familyId");
   const role = readString(formData, "role") ?? "member";
@@ -129,7 +129,7 @@ export async function assignUserToSocialFamily(formData: FormData) {
 }
 
 export async function removeUserFromSocialFamily(userId: number, familyId: number) {
-  await requireUser();
+  await requirePermission("social-fellowship", "manage-family-members");
 
   await prisma.familyMember.delete({
     where: { userId },
@@ -158,7 +158,7 @@ export async function removeUserFromSocialFamily(userId: number, familyId: numbe
 }
 
 export async function updateSocialFamilyParent(formData: FormData) {
-  await requireUser();
+  await requirePermission("social-fellowship", "manage-family-members");
   const familyId = readNumber(formData, "familyId");
   const parentId = readNumber(formData, "parentId");
 
@@ -282,7 +282,7 @@ async function syncTaskProgress(taskId: number) {
 }
 
 export async function createSocialTask(formData: FormData) {
-  const user = await requireUser();
+  const user = await requirePermission("social-fellowship", "manage-family-tasks");
   const title = readString(formData, "title");
   const familyId = readNumber(formData, "familyId");
   const subtasks = readStringList(formData, "subtasks");
@@ -320,7 +320,7 @@ export async function createSocialTask(formData: FormData) {
 }
 
 export async function updateSocialTask(taskId: number, formData: FormData) {
-  await requireUser();
+  await requirePermission("social-fellowship", "manage-family-tasks");
   const title = readString(formData, "title");
   const familyId = readNumber(formData, "familyId");
   const subtasks = readStringList(formData, "subtasks");
@@ -356,7 +356,7 @@ export async function updateSocialTask(taskId: number, formData: FormData) {
 }
 
 export async function deleteSocialTask(taskId: number) {
-  await requireUser();
+  await requirePermission("social-fellowship", "delete-family-tasks");
 
   await prisma.familyTask.delete({
     where: { id: taskId },
@@ -368,7 +368,7 @@ export async function deleteSocialTask(taskId: number) {
 }
 
 export async function toggleSocialSubtask(subtaskIdValue: string) {
-  await requireUser();
+  await requirePermission("social-fellowship", "manage-family-tasks");
   const subtaskId = BigInt(subtaskIdValue);
 
   const subtask = await prisma.taskSubtask.findUnique({
@@ -395,7 +395,7 @@ export async function toggleSocialSubtask(subtaskIdValue: string) {
 }
 
 export async function createSocialActionPlan(formData: FormData) {
-  const user = await requireUser();
+  const user = await requirePermission("social-fellowship", "manage-action-plans");
   const title = readString(formData, "title");
   const startDate = readDate(formData, "startDate");
   const dueDate = readDate(formData, "dueDate");
@@ -438,7 +438,7 @@ export async function createSocialActionPlan(formData: FormData) {
 }
 
 export async function updateSocialActionPlan(actionPlanId: number, formData: FormData) {
-  await requireUser();
+  await requirePermission("social-fellowship", "manage-action-plans");
   const title = readString(formData, "title");
   const startDate = readDate(formData, "startDate");
   const dueDate = readDate(formData, "dueDate");
@@ -482,7 +482,7 @@ export async function updateSocialActionPlan(actionPlanId: number, formData: For
 }
 
 export async function deleteSocialActionPlan(actionPlanId: number) {
-  await requireUser();
+  await requirePermission("social-fellowship", "manage-action-plans");
 
   await prisma.actionPlan.delete({
     where: { id: actionPlanId },
@@ -494,7 +494,7 @@ export async function deleteSocialActionPlan(actionPlanId: number) {
 }
 
 export async function toggleSocialActionPlanTask(taskId: number) {
-  await requireUser();
+  await requirePermission("social-fellowship", "manage-action-plans");
 
   const task = await prisma.actionPlanTask.findUnique({
     where: { id: taskId },

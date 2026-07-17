@@ -50,23 +50,25 @@ export default async function IntercessionPage({ searchParams }: { searchParams:
     canReadBible: permissionSetHas(permissions, "intercession", "read-bible"),
     canManageActionPlans: permissionSetHas(permissions, "intercession", "manage-action-plans"),
   };
+  const showDepartmentNavigation = permissionSetHas(permissions, "intercession", "view");
   const canLoadReports = intercessionPermissions.canViewReports || intercessionPermissions.canViewSubmissions || intercessionPermissions.canExportReports;
+  const canLoadForms = intercessionPermissions.canSubmitForms || intercessionPermissions.canManageForms || intercessionPermissions.canCreateForms || intercessionPermissions.canEditForms || canLoadReports;
 
   const [forms, mySubmissions, users, allSubmissions, actionPlans] = await Promise.all([
-    prisma.spiritualForm.findMany({
+    canLoadForms ? prisma.spiritualForm.findMany({
       orderBy: { createdAt: "desc" },
       include: {
         creator: { select: { name: true, email: true } },
         submissions: { select: { id: true } },
       },
-    }),
-    prisma.formSubmission.findMany({
+    }) : Promise.resolve([]),
+    canLoadForms ? prisma.formSubmission.findMany({
       where: { userId: user.id },
       orderBy: { submittedAt: "desc" },
       include: {
         form: true,
       },
-    }),
+    }) : Promise.resolve([]),
     canLoadReports
       ? prisma.user.findMany({
           where: { status: "active" },
@@ -119,7 +121,8 @@ export default async function IntercessionPage({ searchParams }: { searchParams:
 
   return (
     <IntercessionClient
-      initialTab={params.tab === "bible" && intercessionPermissions.canReadBible ? "bible" : "forms"}
+      initialTab={intercessionPermissions.canReadBible && (params.tab === "bible" || !intercessionPermissions.canSubmitForms) ? "bible" : "forms"}
+      showDepartmentNavigation={showDepartmentNavigation}
       permissions={intercessionPermissions}
       forms={serializedForms}
       mySubmissions={mySubmissions.map((submission) => {

@@ -128,6 +128,7 @@ export async function requireAdminUser() {
     "social-dpt",
     "discipline-dpt",
     "intercession-dpt",
+    "finance-dpt",
   ]);
 
   if (!roleNames.some((roleName) => workspaceRoles.has(roleName))) {
@@ -155,9 +156,20 @@ export async function getUserPermissionSet(user: Awaited<ReturnType<typeof requi
     },
   });
 
-  return new Set<PermissionKey>(
+  const permissionSet = new Set<PermissionKey>(
     permissions.map((permission) => `${permission.page.name}.${permission.feature.name}` as PermissionKey),
   );
+
+  const [parentMembership, parentFamily] = await Promise.all([
+    prisma.familyMember.findFirst({
+      where: { userId: user.id, role: { equals: "parent", mode: "insensitive" } },
+      select: { id: true },
+    }),
+    prisma.family.findFirst({ where: { parentId: user.id }, select: { id: true } }),
+  ]);
+  if (parentMembership || parentFamily) permissionSet.add("parent.view");
+
+  return permissionSet;
 }
 
 export function permissionSetHas(permissions: Set<PermissionKey>, page: string, feature: string) {

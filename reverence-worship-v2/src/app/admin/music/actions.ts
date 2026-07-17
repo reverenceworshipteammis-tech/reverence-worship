@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { mkdir, unlink, writeFile } from "fs/promises";
 import path from "path";
 import { del as deleteBlob, put } from "@vercel/blob";
-import { requireUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 function readString(formData: FormData, key: string) {
@@ -98,7 +98,7 @@ async function deleteUploadedImage(imagePath: string | null | undefined, folder:
 }
 
 export async function createSong(formData: FormData) {
-  const user = await requireUser();
+  const user = await requirePermission("music-ministry", "manage-songs");
   const title = readString(formData, "title");
 
   if (!title) {
@@ -138,7 +138,7 @@ async function syncMusicActionPlanProgress(actionPlanId: number) {
 }
 
 export async function saveMusicActionPlan(formData: FormData) {
-  const user = await requireUser();
+  const user = await requirePermission("music-ministry", "manage-action-plans");
   const id = Number(readString(formData, "id"));
   const title = readString(formData, "title");
   const description = readString(formData, "description");
@@ -184,7 +184,7 @@ export async function saveMusicActionPlan(formData: FormData) {
 }
 
 export async function deleteMusicActionPlan(id: number) {
-  await requireUser();
+  await requirePermission("music-ministry", "manage-action-plans");
 
   if (!Number.isInteger(id) || id <= 0) {
     return { ok: false, message: "Action plan not found." };
@@ -196,7 +196,7 @@ export async function deleteMusicActionPlan(id: number) {
 }
 
 export async function saveMusicActionPlanTask(formData: FormData) {
-  await requireUser();
+  await requirePermission("music-ministry", "manage-action-plans");
   const id = Number(readString(formData, "id"));
   const actionPlanId = Number(readString(formData, "actionPlanId"));
   const activity = readString(formData, "activity");
@@ -251,7 +251,7 @@ export async function saveMusicActionPlanTask(formData: FormData) {
 }
 
 export async function deleteMusicActionPlanTask(id: number) {
-  await requireUser();
+  await requirePermission("music-ministry", "manage-action-plans");
 
   if (!Number.isInteger(id) || id <= 0) {
     return { ok: false, message: "Task not found." };
@@ -273,7 +273,7 @@ export async function deleteMusicActionPlanTask(id: number) {
 }
 
 export async function deleteSong(songId: number) {
-  await requireUser();
+  await requirePermission("music-ministry", "delete-songs");
 
   await prisma.song.delete({
     where: { id: songId },
@@ -285,7 +285,7 @@ export async function deleteSong(songId: number) {
 }
 
 export async function updateSong(songId: number, formData: FormData) {
-  await requireUser();
+  await requirePermission("music-ministry", "manage-songs");
   const title = readString(formData, "title");
 
   if (!title) {
@@ -311,7 +311,7 @@ export async function updateSong(songId: number, formData: FormData) {
 }
 
 export async function createPlaylist(formData: FormData) {
-  const user = await requireUser();
+  const user = await requirePermission("music-ministry", "manage-playlists");
   const title = readString(formData, "title");
 
   if (!title) {
@@ -343,7 +343,7 @@ export async function createPlaylist(formData: FormData) {
 }
 
 export async function deletePlaylist(playlistId: number) {
-  await requireUser();
+  await requirePermission("music-ministry", "delete-playlists");
 
   await prisma.playlist.delete({
     where: { id: playlistId },
@@ -355,7 +355,7 @@ export async function deletePlaylist(playlistId: number) {
 }
 
 export async function updatePlaylist(playlistId: number, formData: FormData) {
-  await requireUser();
+  await requirePermission("music-ministry", "manage-playlists");
   const title = readString(formData, "title");
 
   if (!title) {
@@ -395,7 +395,7 @@ export async function updatePlaylist(playlistId: number, formData: FormData) {
 }
 
 export async function addSongToPlaylist(formData: FormData) {
-  await requireUser();
+  await requirePermission("music-ministry", "manage-playlists");
 
   const playlistId = readNumber(formData, "playlistId");
   const songId = readNumber(formData, "songId");
@@ -430,7 +430,7 @@ export async function addSongToPlaylist(formData: FormData) {
 }
 
 export async function uploadGalleryPhotos(formData: FormData) {
-  const user = await requireUser();
+  const user = await requirePermission("music-ministry", "manage-gallery");
   const files = formData
     .getAll("images")
     .filter((value): value is File => value instanceof File && value.size > 0);
@@ -474,7 +474,7 @@ export async function uploadGalleryPhotos(formData: FormData) {
 }
 
 export async function updateGalleryPhoto(photoId: number, formData: FormData) {
-  await requireUser();
+  await requirePermission("music-ministry", "manage-gallery");
   const title = readString(formData, "title");
 
   if (!title) {
@@ -498,7 +498,7 @@ export async function updateGalleryPhoto(photoId: number, formData: FormData) {
 }
 
 export async function deleteGalleryPhoto(photoId: number) {
-  await requireUser();
+  await requirePermission("music-ministry", "delete-gallery");
 
   const photo = await prisma.photoGallery.findUnique({
     where: { id: photoId },
@@ -517,7 +517,7 @@ export async function deleteGalleryPhoto(photoId: number) {
 }
 
 export async function updateSingerSettings(formData: FormData) {
-  await requireUser();
+  await requirePermission("music-ministry", "manage-service-teams");
 
   const updates = Array.from(formData.entries())
     .filter(([key]) => key.startsWith("singer:"))
@@ -621,7 +621,7 @@ function buildBalancedTeams(singers: SingerForGroups[], numberOfTeams: number) {
 }
 
 export async function generateServiceTeams(formData: FormData) {
-  const user = await requireUser();
+  const user = await requirePermission("music-ministry", "manage-service-teams");
   const serviceName = readString(formData, "serviceName");
   const serviceDate = readString(formData, "serviceDate");
   const numberOfTeams = readNumber(formData, "numberOfTeams") ?? 2;
@@ -679,7 +679,7 @@ export async function generateServiceTeams(formData: FormData) {
 }
 
 export async function restoreServiceTeam(serviceTeamId: number) {
-  const user = await requireUser();
+  const user = await requirePermission("music-ministry", "manage-service-teams");
   const oldGeneration = await prisma.serviceTeam.findUnique({
     where: { id: serviceTeamId },
     include: { members: true },
@@ -712,7 +712,7 @@ export async function restoreServiceTeam(serviceTeamId: number) {
 }
 
 export async function deleteServiceTeam(serviceTeamId: number) {
-  await requireUser();
+  await requirePermission("music-ministry", "manage-service-teams");
 
   await prisma.serviceTeam.delete({
     where: { id: serviceTeamId },
@@ -724,7 +724,7 @@ export async function deleteServiceTeam(serviceTeamId: number) {
 }
 
 export async function saveBoardItem(formData: FormData) {
-  const user = await requireUser();
+  const user = await requirePermission("music-ministry", "manage-public-board");
   const id = readNumber(formData, "id");
   const title = readString(formData, "title");
   const content = readString(formData, "content");
@@ -760,7 +760,7 @@ export async function saveBoardItem(formData: FormData) {
 }
 
 export async function toggleBoardItemPublish(id: number) {
-  await requireUser();
+  await requirePermission("music-ministry", "manage-public-board");
   const item = await prisma.publicBoardItem.findUnique({ where: { id }, select: { isPublished: true } });
   if (!item) return { ok: false, message: "Board item not found." };
   await prisma.publicBoardItem.update({ where: { id }, data: { isPublished: !item.isPublished } });
@@ -769,7 +769,7 @@ export async function toggleBoardItemPublish(id: number) {
 }
 
 export async function toggleBoardItemPin(id: number) {
-  await requireUser();
+  await requirePermission("music-ministry", "manage-public-board");
   const item = await prisma.publicBoardItem.findUnique({ where: { id }, select: { isPinned: true } });
   if (!item) return { ok: false, message: "Board item not found." };
   await prisma.publicBoardItem.update({ where: { id }, data: { isPinned: !item.isPinned } });
@@ -778,14 +778,14 @@ export async function toggleBoardItemPin(id: number) {
 }
 
 export async function deleteBoardItem(id: number) {
-  await requireUser();
+  await requirePermission("music-ministry", "delete-public-board");
   await prisma.publicBoardItem.delete({ where: { id } });
   revalidatePath("/admin/music");
   return { ok: true, message: "Board item deleted." };
 }
 
 export async function saveYoutubeVideo(formData: FormData) {
-  const user = await requireUser();
+  const user = await requirePermission("music-ministry", "manage-landing-media");
   const id = readNumber(formData, "id");
   const title = readString(formData, "title");
   const youtubeLink = readString(formData, "youtubeLink");
@@ -815,7 +815,7 @@ export async function saveYoutubeVideo(formData: FormData) {
 }
 
 export async function toggleYoutubePublish(id: number) {
-  await requireUser();
+  await requirePermission("music-ministry", "manage-landing-media");
   const video = await prisma.landingYoutubeVideo.findUnique({ where: { id }, select: { isPublished: true } });
   if (!video) return { ok: false, message: "Video not found." };
   await prisma.landingYoutubeVideo.update({ where: { id }, data: { isPublished: !video.isPublished } });
@@ -824,14 +824,14 @@ export async function toggleYoutubePublish(id: number) {
 }
 
 export async function deleteYoutubeVideo(id: number) {
-  await requireUser();
+  await requirePermission("music-ministry", "delete-landing-media");
   await prisma.landingYoutubeVideo.delete({ where: { id } });
   revalidatePath("/admin/music");
   return { ok: true, message: "Video deleted." };
 }
 
 export async function saveFeaturedImage(formData: FormData) {
-  const user = await requireUser();
+  const user = await requirePermission("music-ministry", "manage-landing-media");
   const id = readNumber(formData, "id");
   const title = readString(formData, "title");
   const description = readString(formData, "description");
@@ -883,7 +883,7 @@ export async function saveFeaturedImage(formData: FormData) {
 }
 
 export async function toggleFeaturedImagePublish(id: number) {
-  await requireUser();
+  await requirePermission("music-ministry", "manage-landing-media");
   const image = await prisma.landingFeaturedImage.findUnique({ where: { id }, select: { isPublished: true, isHero: true } });
   if (!image) return { ok: false, message: "Image not found." };
   const willPublish = !image.isPublished;
@@ -893,7 +893,7 @@ export async function toggleFeaturedImagePublish(id: number) {
 }
 
 export async function toggleFeaturedImageHero(id: number) {
-  await requireUser();
+  await requirePermission("music-ministry", "manage-landing-media");
   const image = await prisma.landingFeaturedImage.findUnique({ where: { id }, select: { isHero: true, isPublished: true } });
   if (!image) return { ok: false, message: "Image not found." };
   const isHero = !image.isHero;
@@ -903,7 +903,7 @@ export async function toggleFeaturedImageHero(id: number) {
 }
 
 export async function deleteFeaturedImage(id: number) {
-  await requireUser();
+  await requirePermission("music-ministry", "delete-landing-media");
   const image = await prisma.landingFeaturedImage.findUnique({ where: { id }, select: { imagePath: true } });
   await deleteUploadedImage(image?.imagePath, "landing");
   await prisma.landingFeaturedImage.delete({ where: { id } });

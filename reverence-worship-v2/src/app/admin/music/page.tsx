@@ -1,5 +1,5 @@
 import { MusicClient } from "@/components/music-client";
-import { requirePageAccess } from "@/lib/auth";
+import { getUserPermissionSet, permissionSetHas, requirePageAccess } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 function formatDate(date: Date) {
@@ -25,7 +25,9 @@ function formatDateValue(date: Date | null) {
 }
 
 export default async function MusicPage() {
-  await requirePageAccess("music-ministry");
+  const user = await requirePageAccess("music-ministry");
+  const permissions = await getUserPermissionSet(user);
+  const canManage = permissionSetHas(permissions, "music-ministry", "view");
 
   const [playlists, songs, gallery, singers, serviceTeams, boardItems, youtubeVideos, featuredImages, actionPlans] = await Promise.all([
     prisma.playlist.findMany({
@@ -40,10 +42,10 @@ export default async function MusicPage() {
     prisma.song.findMany({
       orderBy: { title: "asc" },
     }),
-    prisma.photoGallery.findMany({
+    canManage ? prisma.photoGallery.findMany({
       orderBy: { createdAt: "desc" },
-    }),
-    prisma.user.findMany({
+    }) : Promise.resolve([]),
+    canManage ? prisma.user.findMany({
       where: {
         membershipType: "permanent",
         status: "active",
@@ -57,8 +59,8 @@ export default async function MusicPage() {
         voicePart: true,
         singerLevel: true,
       },
-    }),
-    prisma.serviceTeam.findMany({
+    }) : Promise.resolve([]),
+    canManage ? prisma.serviceTeam.findMany({
       orderBy: { createdAt: "desc" },
       include: {
         members: {
@@ -66,28 +68,29 @@ export default async function MusicPage() {
           include: { user: true },
         },
       },
-    }),
-    prisma.publicBoardItem.findMany({
+    }) : Promise.resolve([]),
+    canManage ? prisma.publicBoardItem.findMany({
       orderBy: [{ isPinned: "desc" }, { createdAt: "desc" }],
-    }),
-    prisma.landingYoutubeVideo.findMany({
+    }) : Promise.resolve([]),
+    canManage ? prisma.landingYoutubeVideo.findMany({
       orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
-    }),
-    prisma.landingFeaturedImage.findMany({
+    }) : Promise.resolve([]),
+    canManage ? prisma.landingFeaturedImage.findMany({
       orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
-    }),
-    prisma.actionPlan.findMany({
+    }) : Promise.resolve([]),
+    canManage ? prisma.actionPlan.findMany({
       where: { department: "music-ministry" },
       orderBy: [{ year: "desc" }, { createdAt: "desc" }],
       include: {
         creator: { select: { name: true } },
         tasks: { orderBy: [{ deadline: "asc" }, { createdAt: "asc" }] },
       },
-    }),
+    }) : Promise.resolve([]),
   ]);
 
   return (
     <MusicClient
+      canManage={canManage}
       playlists={playlists.map((playlist) => ({
         id: playlist.id,
         title: playlist.title,

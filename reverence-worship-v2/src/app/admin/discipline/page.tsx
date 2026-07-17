@@ -1,5 +1,5 @@
 import { DisciplineClient } from "@/components/discipline-client";
-import { requirePageAccess } from "@/lib/auth";
+import { getUserPermissionSet, permissionSetHas, requirePageAccess } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 function formatDate(date: Date) {
@@ -43,12 +43,60 @@ async function safeRead<T>(promise: Promise<T>, fallback: T) {
 export default async function DisciplinePage({
   searchParams,
 }: {
-  searchParams: Promise<{ start_date?: string; end_date?: string }>;
+  searchParams: Promise<{ start_date?: string; end_date?: string; tab?: string }>;
 }) {
-  await requirePageAccess("discipline");
+  const user = await requirePageAccess("discipline");
+  const permissions = await getUserPermissionSet(user);
+  const canManage = permissionSetHas(permissions, "discipline", "view");
   const params = await searchParams;
   const startDate = params.start_date ? new Date(`${params.start_date}T00:00:00`) : monthStart();
   const endDate = params.end_date ? new Date(`${params.end_date}T23:59:59`) : monthEnd();
+
+  if (!canManage) {
+    const ownPermissions = await prisma.permissionRequest.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: "desc" },
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+        approver: { select: { id: true, name: true } },
+      },
+    });
+
+    return (
+      <DisciplineClient
+        initialTab="permission"
+        canManage={false}
+        startDate={dateValue(startDate)}
+        endDate={dateValue(endDate)}
+        stats={{ permissionRequests: ownPermissions.length, attendanceSessions: 0, disciplineSessions: 0, avgGoodBehavior: 0 }}
+        recentAttendanceSessions={[]}
+        recentPermissions={[]}
+        attendanceRecords={[]}
+        attendanceSessionStates={[]}
+        users={[{ id: user.id, name: user.name, email: user.email, phone: user.phone }]}
+        permissions={ownPermissions.map((permission) => ({
+          id: permission.id,
+          userId: permission.userId,
+          userName: permission.user.name,
+          userEmail: permission.user.email,
+          type: permission.type,
+          startDate: formatDate(permission.startDate),
+          startDateValue: dateValue(permission.startDate),
+          endDate: formatDate(permission.endDate),
+          endDateValue: dateValue(permission.endDate),
+          reason: permission.reason,
+          status: permission.status,
+          approvedByName: permission.approver?.name ?? null,
+          approvedAt: permission.approvedAt ? formatDate(permission.approvedAt) : null,
+          rejectionReason: permission.rejectionReason,
+          createdAt: formatDate(permission.createdAt),
+          createdAtValue: dateValue(permission.createdAt),
+        }))}
+        disciplineRecords={[]}
+        actionPlans={[]}
+      />
+    );
+  }
 
   const [
     permissionRequests,
@@ -198,6 +246,8 @@ export default async function DisciplinePage({
 
   return (
     <DisciplineClient
+      initialTab={params.tab === "permission" ? "permission" : "overview"}
+      canManage
       startDate={dateValue(startDate)}
       endDate={dateValue(endDate)}
       stats={{

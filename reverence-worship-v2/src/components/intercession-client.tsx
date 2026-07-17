@@ -174,6 +174,7 @@ type Section = "available" | "results" | "manage" | "reports";
 
 export function IntercessionClient({
   initialTab,
+  showDepartmentNavigation,
   permissions,
   forms,
   mySubmissions,
@@ -181,6 +182,7 @@ export function IntercessionClient({
   actionPlans,
 }: {
   initialTab: "forms" | "bible";
+  showDepartmentNavigation: boolean;
   permissions: IntercessionPermissions;
   forms: SpiritualForm[];
   mySubmissions: FormSubmission[];
@@ -431,11 +433,16 @@ export function IntercessionClient({
     URL.revokeObjectURL(url);
   }
 
-  const tabs = [
-    { id: "forms", label: "Forms", mobileLabel: "Forms", icon: FileText },
+  const availableTabs = [
+    ...((permissions.canSubmitForms || canManageForms || canViewReports)
+      ? [{ id: "forms", label: "Forms", mobileLabel: "Forms", icon: FileText }]
+      : []),
     ...(permissions.canManageActionPlans ? [{ id: "actions", label: "Action Plans", mobileLabel: "Plans", icon: ListChecks }] : []),
     ...(permissions.canReadBible ? [{ id: "bible", label: "Read Bible", mobileLabel: "Bible", icon: BookOpen }] : []),
   ];
+  const tabs = showDepartmentNavigation
+    ? availableTabs
+    : availableTabs.filter((tab) => tab.id === initialTab);
   const formSections = [
     { id: "available" as const, label: "Available", mobileLabel: "Avail", icon: ClipboardList },
     { id: "results" as const, label: "My Results", mobileLabel: "Results", icon: CheckCircle2 },
@@ -1777,7 +1784,7 @@ function getBibleReaderCopy(useKinyarwanda: boolean) {
       searchLabel: "Shakisha muri iki gice",
       searchPlaceholder: "Shakisha muri iki gice (nibura inyuguti 2)...",
       loading: "Ifungura igice...",
-      emptyTitle: "Hitamo umugabane utangire",
+      emptyTitle: "Hitamo igice cyo gusoma",
       emptyText: "Hitamo Bibiliya, ugereranye niba ubishaka, hanyuma ukande Soma.",
     };
   }
