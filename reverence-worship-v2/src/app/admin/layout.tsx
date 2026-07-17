@@ -1,7 +1,8 @@
 import { AdminShell } from "@/components/admin-shell";
 import { AppDialogProvider } from "@/components/app-dialog-provider";
-import { getUserPermissionSet, requireUser } from "@/lib/auth";
+import { getUserPermissionSet, needsGoogleProfileCompletion, requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { redirect } from "next/navigation";
 
 export default async function AdminLayout({
   children,
@@ -9,6 +10,12 @@ export default async function AdminLayout({
   children: React.ReactNode;
 }>) {
   const user = await requireUser();
+  if (user.mustChangePassword) {
+    redirect("/change-password");
+  }
+  if (needsGoogleProfileCompletion(user)) {
+    redirect("/complete-profile");
+  }
   const roles = user.roles.map((userRole) => userRole.role.name);
   const permissions = Array.from(await getUserPermissionSet(user));
 

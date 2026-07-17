@@ -110,6 +110,31 @@ export async function updateSecuritySettings(formData: FormData) {
   }
 }
 
+export async function updateNotificationSettings(formData: FormData) {
+  try {
+    return saveSettings(
+      "notifications",
+      {
+        notification_in_app_enabled: readBoolean(formData, "notification_in_app_enabled"),
+        notification_email_enabled: readBoolean(formData, "notification_email_enabled"),
+        notification_account_enabled: readBoolean(formData, "notification_account_enabled"),
+        notification_security_enabled: readBoolean(formData, "notification_security_enabled"),
+        notification_announcement_enabled: readBoolean(formData, "notification_announcement_enabled"),
+        notification_form_enabled: readBoolean(formData, "notification_form_enabled"),
+        notification_task_enabled: readBoolean(formData, "notification_task_enabled"),
+        notification_finance_enabled: readBoolean(formData, "notification_finance_enabled"),
+        notification_system_enabled: readBoolean(formData, "notification_system_enabled"),
+      },
+      "Notification settings updated successfully.",
+    );
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Failed to update notification settings.",
+    };
+  }
+}
+
 export async function clearSystemCache() {
   const user = await requireUser();
 

@@ -8,6 +8,7 @@ import {
   Clock3,
   Download,
   FileText,
+  FileUp,
   Mars,
   RotateCcw,
   Search,
@@ -20,6 +21,7 @@ import {
 } from "lucide-react";
 import {
   createUserAction,
+  importUsersCsvAction,
   runUserTableAction,
   updateUserAction,
   updateUserRoleAction,
@@ -115,6 +117,7 @@ export function UserManagementClient({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [viewUser, setViewUser] = useState<UserRow | null>(null);
   const [editUser, setEditUser] = useState<UserRow | null>(null);
   const [rolesUser, setRolesUser] = useState<UserRow | null>(null);
@@ -131,6 +134,10 @@ export function UserManagementClient({
   );
   const [rolesState, rolesAction] = useActionState<UserActionState, FormData>(
     updateUserRolesAction,
+    {},
+  );
+  const [importState, importAction] = useActionState<UserActionState, FormData>(
+    importUsersCsvAction,
     {},
   );
 
@@ -239,7 +246,9 @@ export function UserManagementClient({
         ? editState
         : rolesState.message
           ? rolesState
-          : null;
+          : importState.message
+            ? importState
+            : null;
 
   return (
     <div className="mx-auto max-w-7xl px-2 sm:px-4">
@@ -353,6 +362,14 @@ export function UserManagementClient({
             >
               <UserPlus className="size-4" aria-hidden="true" />
               <span className="hidden sm:inline">Add User</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setImportOpen(true)}
+              className="flex items-center gap-1 rounded-lg bg-blue-600 px-2 py-2 text-sm text-white transition hover:bg-blue-700 sm:px-3"
+            >
+              <FileUp className="size-4" aria-hidden="true" />
+              <span className="hidden sm:inline">Import Users</span>
             </button>
             <button
               type="button"
@@ -639,6 +656,54 @@ export function UserManagementClient({
           onCancel={() => setConfirmAction(null)}
           onConfirm={executeConfirmedAction}
         />
+      )}
+
+      {importOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-xl bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b px-5 py-4">
+              <h2 className="text-lg font-bold text-gray-900">Import Users</h2>
+              <button type="button" onClick={() => setImportOpen(false)} className="text-gray-400 hover:text-gray-700">
+                <X className="size-5" aria-hidden="true" />
+              </button>
+            </div>
+            <form action={importAction} className="space-y-4 p-5">
+              <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-800">
+                <p className="font-semibold">Expected columns</p>
+                <p className="mt-1 leading-5">
+                  Full Name, Email, Phone Number, Roles, Status, Date of Birth, Gender, Marital Status, Residence, Family, Occupation, Membership Type, Approval Status.
+                </p>
+                <p className="mt-2 text-xs text-blue-700">
+                  New password accounts use default password <strong>Pass@123</strong>. Existing Google sign-in accounts keep Google-only login.
+                </p>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-700">CSV file</label>
+                <input
+                  name="file"
+                  type="file"
+                  accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain"
+                  required
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-blue-700 hover:file:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="mt-1 text-xs text-gray-500">Upload CSV or tab-separated text only. If your file is Excel, open it and save as CSV first.</p>
+              </div>
+              <div className="flex justify-end gap-2 border-t pt-4">
+                <button type="button" onClick={() => setImportOpen(false)} className="rounded-lg bg-gray-100 px-4 py-2 text-sm text-gray-700 hover:bg-gray-200">
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  onClick={() => setTimeout(() => { setImportOpen(false); router.refresh(); }, 700)}
+                  className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                >
+                  <FileUp className="size-4" aria-hidden="true" />
+                  Import Users
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       {editUser && (

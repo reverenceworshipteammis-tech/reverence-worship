@@ -25,7 +25,7 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   getAdminNotifications,
   markAdminNotificationRead,
@@ -95,9 +95,13 @@ function navGroupsForPermissions(permissions: string[], roles: string[], isParen
   return navGroups
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) =>
-        hasPagePermission(permissions, item.page) || (item.page === "parent" && roles.some((r) => r.toLowerCase() === "parent") && isParent),
-      ),
+      items: group.items.filter((item) => {
+        if (item.page === "parent") {
+          return isParent && (hasPagePermission(permissions, item.page) || roles.some((r) => r.toLowerCase() === "parent"));
+        }
+
+        return hasPagePermission(permissions, item.page);
+      }),
     }))
     .filter((group) => group.items.length > 0);
 }
@@ -117,7 +121,7 @@ export function AdminShell({
   const [unreadCount, setUnreadCount] = useState(0);
   const [notificationsLoaded, setNotificationsLoaded] = useState(false);
   const [notificationError, setNotificationError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  const [pending, setPending] = useState(false);
   const lastActivityRef = useRef(0);
   const activitySincePingRef = useRef(true);
   const loggingOutRef = useRef(false);
@@ -134,9 +138,10 @@ export function AdminShell({
       .filter((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))
       .sort((a, b) => b.href.length - a.href.length)[0]?.label ?? "Admin";
 
-  function loadNotifications() {
+  async function loadNotifications() {
     setNotificationError(null);
-    startTransition(async () => {
+    setPending(true);
+    try {
       const result = await getAdminNotifications();
       if (result.ok) {
         setNotifications(result.notifications);
@@ -145,11 +150,13 @@ export function AdminShell({
       } else {
         setNotificationError("Could not load notifications.");
       }
-    });
+    } finally {
+      setPending(false);
+    }
   }
 
   useEffect(() => {
-    const timeout = window.setTimeout(loadNotifications, 0);
+    const timeout = window.setTimeout(() => void loadNotifications(), 0);
     return () => window.clearTimeout(timeout);
   }, []);
 
@@ -207,29 +214,36 @@ export function AdminShell({
   }, [router]);
 
   function openNotificationDropdown() {
-    setNotificationOpen((current) => {
-      const next = !current;
-      if (next && !notificationsLoaded) loadNotifications();
-      return next;
-    });
+    const shouldLoadNotifications = !notificationOpen && !notificationsLoaded;
+    setNotificationOpen((current) => !current);
     setUserMenuOpen(false);
+
+    if (shouldLoadNotifications) {
+      window.setTimeout(() => void loadNotifications(), 0);
+    }
   }
 
-  function handleNotificationClick(notification: AdminNotification) {
+  async function handleNotificationClick(notification: AdminNotification) {
     setNotificationOpen(false);
-    startTransition(async () => {
+    setPending(true);
+    try {
       await markAdminNotificationRead(notification.type, notification.sourceId);
       setNotifications((current) => current.filter((item) => item.id !== notification.id));
       setUnreadCount((current) => Math.max(0, current - (notification.readAt ? 0 : 1)));
       router.push(notification.link);
-    });
+    } finally {
+      setPending(false);
+    }
   }
 
-  function handleMarkAllRead() {
-    startTransition(async () => {
+  async function handleMarkAllRead() {
+    setPending(true);
+    try {
       await markAllAdminNotificationsRead();
-      loadNotifications();
-    });
+      await loadNotifications();
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
@@ -477,7 +491,7 @@ export function AdminShell({
         ))}
         <button
           type="button"
-          className="admin-mobile-footer-item admin-mobile-footer-menu"
+          className={`admin-mobile-footer-item admin-mobile-footer-menu ${mobileOpen ? "active" : ""}`}
           onClick={() => setMobileOpen((current) => !current)}
           aria-label={mobileOpen ? "Close menu" : "Open menu"}
           aria-expanded={mobileOpen}

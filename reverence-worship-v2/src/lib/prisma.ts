@@ -8,11 +8,26 @@ const globalForPrisma = globalThis as unknown as {
 
 const PRISMA_SCHEMA_VERSION = "2026-07-15-password-reset-notifications";
 
+function databaseUrl() {
+  const value = process.env.DATABASE_URL;
+  if (!value) return value;
+
+  try {
+    const url = new URL(value);
+    if (url.hostname.includes("neon.tech") && url.searchParams.get("sslmode") === "require") {
+      url.searchParams.set("sslmode", "verify-full");
+    }
+    return url.toString();
+  } catch {
+    return value;
+  }
+}
+
 const adapter = new PrismaPg({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: databaseUrl(),
   max: 5,
   connectionTimeoutMillis: 10_000,
-  idleTimeoutMillis: 30_000,
+  idleTimeoutMillis: 10_000,
   keepAlive: true,
   keepAliveInitialDelayMillis: 10_000,
 });

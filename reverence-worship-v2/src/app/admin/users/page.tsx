@@ -1,5 +1,6 @@
 import { UserManagementClient } from "@/components/user-management-client";
 import { requirePageAccess } from "@/lib/auth";
+import { withDatabaseRetry } from "@/lib/database-retry";
 import { prisma } from "@/lib/prisma";
 
 type UsersPageProps = {
@@ -47,10 +48,11 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
       : {}),
   };
 
-  const [users, roles, stats] = await Promise.all([
+  const users = await withDatabaseRetry(() =>
     prisma.user.findMany({
       where,
       orderBy: { createdAt: "desc" },
+      take: 500,
       include: {
         roles: {
           include: {
@@ -59,27 +61,35 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
         },
       },
     }),
-    prisma.role.findMany({
-      where: { name: { not: "super-admin" } },
-      orderBy: { displayName: "asc" },
-      select: {
-        id: true,
-        name: true,
-        displayName: true,
-      },
-    }),
-    Promise.all([
-      prisma.user.count(),
-      prisma.user.count({ where: { status: "active" } }),
-      prisma.user.count({ where: { status: "inactive" } }),
-      prisma.user.count({ where: { status: "pending" } }),
-      prisma.user.count({ where: { membershipType: "permanent" } }),
-      prisma.user.count({ where: { gender: "male" } }),
-      prisma.user.count({ where: { gender: "female" } }),
-    ]),
-  ]);
+  );
 
-  const [total, active, inactive, pending, permanent, male, female] = stats;
+  const [roles, total, statusCounts, membershipCounts, genderCounts] = await withDatabaseRetry(() =>
+    Promise.all([
+      prisma.role.findMany({
+        where: { name: { not: "super-admin" } },
+        orderBy: { displayName: "asc" },
+        select: {
+          id: true,
+          name: true,
+          displayName: true,
+        },
+      }),
+      prisma.user.count(),
+      prisma.user.groupBy({ by: ["status"], _count: { _all: true } }),
+      prisma.user.groupBy({ by: ["membershipType"], _count: { _all: true } }),
+      prisma.user.groupBy({ by: ["gender"], _count: { _all: true } }),
+    ]),
+  );
+
+  const statusMap = new Map(statusCounts.map((item) => [item.status, item._count._all]));
+  const membershipMap = new Map(membershipCounts.map((item) => [item.membershipType, item._count._all]));
+  const genderMap = new Map(genderCounts.map((item) => [item.gender, item._count._all]));
+  const active = statusMap.get("active") ?? 0;
+  const inactive = statusMap.get("inactive") ?? 0;
+  const pending = statusMap.get("pending") ?? 0;
+  const permanent = membershipMap.get("permanent") ?? 0;
+  const male = genderMap.get("male") ?? 0;
+  const female = genderMap.get("female") ?? 0;
 
   return (
     <UserManagementClient

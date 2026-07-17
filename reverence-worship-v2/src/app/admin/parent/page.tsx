@@ -7,6 +7,10 @@ function formatDate(date: Date | null) {
   return new Intl.DateTimeFormat("en", { month: "short", day: "2-digit", year: "numeric" }).format(date);
 }
 
+function displayValue(value: string | null | undefined) {
+  return value && value.trim() ? value : "N/A";
+}
+
 function money(value: unknown) {
   return Number(value ?? 0);
 }
@@ -80,6 +84,18 @@ export default async function ParentDashboardPage() {
       role: member.role,
       location: location || "N/A",
       createdAt: formatDate(member.user.createdAt),
+      dateOfBirth: formatDate(member.user.dateOfBirth),
+      gender: displayValue(member.user.gender),
+      maritalStatus: displayValue(member.user.maritalStatus),
+      province: displayValue(member.user.province),
+      district: displayValue(member.user.district),
+      sector: displayValue(member.user.sector),
+      village: displayValue(member.user.village),
+      occupation: displayValue(member.user.occupation),
+      membershipType: displayValue(member.user.membershipType),
+      ministryRole: displayValue(member.user.ministryRole),
+      emergencyName: displayValue(member.user.emergencyName),
+      emergencyPhone: displayValue(member.user.emergencyPhone),
       annualAmount,
       totalPaid,
       paymentCount: childPayments.length,

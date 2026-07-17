@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { createHash, randomBytes } from "crypto";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { createSession } from "@/lib/auth";
+import { createSession, requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getSystemSetting, isRegistrationEnabled, settingToNumber } from "@/lib/system-settings";
 import { notifyUsers, userIdsWithPermission } from "@/lib/notifications";
@@ -43,7 +43,7 @@ export async function completePasswordResetAction(_previousState: AuthState, for
   if (!reset || reset.usedAt || reset.expiresAt < new Date()) return { error: "This reset link is invalid or has expired." };
   const passwordHash = await bcrypt.hash(password, 12);
   await prisma.$transaction([
-    prisma.user.update({ where: { id: reset.userId }, data: { passwordHash } }),
+    prisma.user.update({ where: { id: reset.userId }, data: { passwordHash, mustChangePassword: false } }),
     prisma.passwordResetToken.update({ where: { id: reset.id }, data: { usedAt: new Date() } }),
   ]);
   await notifyUsers({ userIds: [reset.userId], type: "security", title: "Password reset completed", message: "Your password was reset successfully. Contact an administrator immediately if you did not make this change.", link: "/login", sourceType: "user", sourceId: reset.userId, dedupeKey: `password-reset:${reset.id}:completed` });
@@ -54,6 +54,21 @@ const loginSchema = z.object({
   email: z.email().trim().toLowerCase(),
   password: z.string().min(1, "Password is required."),
 });
+
+const requiredPasswordChangeSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Current password is required."),
+    password: z.string().min(6, "Password must be at least 6 characters."),
+    passwordConfirmation: z.string(),
+  })
+  .refine((data) => data.password === data.passwordConfirmation, {
+    message: "Passwords do not match.",
+    path: ["passwordConfirmation"],
+  })
+  .refine((data) => data.password !== "Pass@123", {
+    message: "Choose a new password different from the default password.",
+    path: ["password"],
+  });
 
 const registerSchema = z
   .object({
@@ -74,6 +89,18 @@ const registerSchema = z
     message: "Passwords do not match.",
     path: ["confirmPassword"],
   });
+
+const googleProfileCompletionSchema = z.object({
+  name: z.string().trim().min(2, "Name must be at least 2 characters."),
+  phone: z.string().trim().min(5, "Phone number is required."),
+  dateOfBirth: z.string().min(1, "Date of birth is required."),
+  gender: z.enum(["male", "female"]),
+  maritalStatus: z.string().trim().min(1, "Marital status is required."),
+  province: z.string().trim().min(1, "Province is required."),
+  district: z.string().trim().min(1, "District is required."),
+  sector: z.string().trim().min(1, "Sector is required."),
+  village: z.string().trim().min(1, "Village is required."),
+});
 
 export async function loginAction(
   _previousState: AuthState,
@@ -105,6 +132,96 @@ export async function loginAction(
   }
 
   await createSession(user.id);
+
+  if (user.mustChangePassword) {
+    redirect("/change-password");
+  }
+
+  redirect("/admin/dashboard");
+}
+
+export async function requiredPasswordChangeAction(
+  _previousState: AuthState,
+  formData: FormData,
+): Promise<AuthState> {
+  const user = await requireUser();
+  const parsed = requiredPasswordChangeSchema.safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid password details." };
+  }
+
+  if (!user.passwordHash) {
+    return { error: "This account does not use password sign-in." };
+  }
+
+  const currentMatches = await bcrypt.compare(parsed.data.currentPassword, user.passwordHash);
+  if (!currentMatches) {
+    return { error: "Current password is incorrect." };
+  }
+
+  const passwordHash = await bcrypt.hash(parsed.data.password, 12);
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { passwordHash, mustChangePassword: false },
+  });
+
+  await notifyUsers({
+    userIds: [user.id],
+    type: "security",
+    title: "Password changed",
+    message: "Your password was changed successfully.",
+    link: "/admin/profile",
+    sourceType: "user",
+    sourceId: user.id,
+    dedupeKey: `required-password-change:${user.id}:${Date.now()}`,
+  });
+
+  redirect("/admin/dashboard");
+}
+
+export async function completeGoogleProfileAction(
+  _previousState: AuthState,
+  formData: FormData,
+): Promise<AuthState> {
+  const user = await requireUser();
+
+  if (!user.googleId) {
+    redirect("/admin/dashboard");
+  }
+
+  const parsed = googleProfileCompletionSchema.safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Complete all required details." };
+  }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      name: parsed.data.name,
+      phone: parsed.data.phone,
+      dateOfBirth: new Date(parsed.data.dateOfBirth),
+      gender: parsed.data.gender,
+      maritalStatus: parsed.data.maritalStatus,
+      membershipType: user.membershipType ?? "permanent",
+      province: parsed.data.province,
+      district: parsed.data.district,
+      sector: parsed.data.sector,
+      village: parsed.data.village,
+    },
+  });
+
+  await notifyUsers({
+    userIds: [user.id],
+    type: "account",
+    title: "Profile completed",
+    message: "Your required profile details were completed.",
+    link: "/admin/profile",
+    sourceType: "user",
+    sourceId: user.id,
+    dedupeKey: `google-profile-completed:${user.id}`,
+  });
 
   redirect("/admin/dashboard");
 }

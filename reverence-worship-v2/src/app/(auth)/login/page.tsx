@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/login-form";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, needsGoogleProfileCompletion } from "@/lib/auth";
 import { isRegistrationEnabled } from "@/lib/system-settings";
 import { oauthErrorMessage } from "@/lib/oauth-errors";
 
@@ -12,6 +12,12 @@ export default async function LoginPage({ searchParams }: { searchParams?: Promi
   const params = await searchParams;
 
   if (user) {
+    if (user.mustChangePassword) {
+      redirect("/change-password");
+    }
+    if (needsGoogleProfileCompletion(user)) {
+      redirect("/complete-profile");
+    }
     redirect("/admin/dashboard");
   }
 

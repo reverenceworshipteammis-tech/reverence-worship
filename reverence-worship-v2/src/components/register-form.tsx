@@ -72,7 +72,7 @@ function SelectField({
   );
 }
 
-export function RegisterForm({ oauthError }: { oauthError?: string }) {
+export function RegisterForm() {
   const [state, formAction] = useActionState(registerAction, {});
 
   return (
@@ -122,9 +122,9 @@ export function RegisterForm({ oauthError }: { oauthError?: string }) {
         </Link>
       </div>
 
-      {state.error || oauthError ? (
+      {state.error ? (
         <p className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          {state.error || oauthError}
+          {state.error}
         </p>
       ) : null}
 
@@ -181,20 +181,6 @@ export function RegisterForm({ oauthError }: { oauthError?: string }) {
           Create Account
         </AuthFormButton>
       </div>
-
-      <div className="my-5 flex items-center gap-3">
-        <div className="h-px flex-1 bg-gray-200" />
-        <span className="text-xs font-medium text-gray-400">or</span>
-        <div className="h-px flex-1 bg-gray-200" />
-      </div>
-
-      <Link
-        href="/api/auth/google/start?intent=register"
-        className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
-      >
-        <span className="font-bold text-red-500">G</span>
-        Continue with Google
-      </Link>
 
       <p className="mt-5 text-center text-sm text-gray-500">
         Already have an account?{" "}

@@ -19,12 +19,54 @@ type NotifyUsersInput = {
 
 let transporter: ReturnType<typeof nodemailer.createTransport> | null = null;
 
+type NotificationSettings = {
+  inAppEnabled: boolean;
+  emailEnabled: boolean;
+  enabledTypes: Set<string>;
+};
+
 function uniqueIds(ids: number[]) {
   return [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))];
 }
 
 function smtpConfigured() {
   return Boolean(process.env.SMTP_HOST && process.env.SMTP_FROM);
+}
+
+function settingToBoolean(value: unknown, fallback = true) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") return value === "1" || value === "true";
+  if (typeof value === "number") return value === 1;
+  return fallback;
+}
+
+function notificationCategory(type: string) {
+  if (["expense_approval", "expense_status", "finance"].includes(type)) return "finance";
+  if (["form", "permission"].includes(type)) return "form";
+  if (["task"].includes(type)) return "task";
+  if (["announcement"].includes(type)) return "announcement";
+  if (["security"].includes(type)) return "security";
+  if (["system"].includes(type)) return "system";
+  return "account";
+}
+
+async function getNotificationSettings(): Promise<NotificationSettings> {
+  const rows = await prisma.systemSetting.findMany({
+    where: { key: { startsWith: "notification_" } },
+    select: { key: true, value: true },
+  });
+  const settings = new Map(rows.map((row) => [row.key, row.value]));
+
+  const enabledTypes = new Set<string>();
+  for (const type of ["account", "security", "announcement", "form", "task", "finance", "system"]) {
+    if (settingToBoolean(settings.get(`notification_${type}_enabled`), true)) enabledTypes.add(type);
+  }
+
+  return {
+    inAppEnabled: settingToBoolean(settings.get("notification_in_app_enabled"), true),
+    emailEnabled: settingToBoolean(settings.get("notification_email_enabled"), true),
+    enabledTypes,
+  };
 }
 
 function mailTransport() {
@@ -91,37 +133,44 @@ export async function deliverEmail(deliveryId: number) {
 export async function notifyUsers(input: NotifyUsersInput) {
   const ids = uniqueIds(input.userIds);
   if (!ids.length) return [];
+  const settings = await getNotificationSettings();
+  const category = notificationCategory(input.type);
+  if (!settings.enabledTypes.has(category)) return [];
 
   const users = await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, email: true } });
   const notificationIds: number[] = [];
 
   for (const user of users) {
     const dedupeKey = input.dedupeKey ? `${input.dedupeKey}:user:${user.id}` : null;
-    const existing = dedupeKey ? await prisma.notification.findUnique({ where: { dedupeKey } }) : null;
-    if (existing) {
-      notificationIds.push(existing.id);
-      continue;
+    let notification: { id: number } | null = null;
+
+    if (settings.inAppEnabled) {
+      const existing = dedupeKey ? await prisma.notification.findUnique({ where: { dedupeKey } }) : null;
+      if (existing) {
+        notificationIds.push(existing.id);
+        continue;
+      }
+
+      notification = await prisma.notification.create({
+        data: {
+          userId: user.id,
+          type: input.type,
+          title: input.title,
+          message: input.message,
+          link: input.link,
+          sourceType: input.sourceType,
+          sourceId: input.sourceId,
+          dedupeKey,
+        },
+      });
+      notificationIds.push(notification.id);
     }
 
-    const notification = await prisma.notification.create({
-      data: {
-        userId: user.id,
-        type: input.type,
-        title: input.title,
-        message: input.message,
-        link: input.link,
-        sourceType: input.sourceType,
-        sourceId: input.sourceId,
-        dedupeKey,
-      },
-    });
-    notificationIds.push(notification.id);
-
-    if (input.sendEmail !== false && user.email) {
+    if (settings.emailEnabled && input.sendEmail !== false && user.email) {
       const delivery = await prisma.emailDelivery.create({
         data: {
           userId: user.id,
-          notificationId: notification.id,
+          notificationId: notification?.id,
           recipient: user.email,
           subject: input.emailSubject ?? input.title,
           text: input.emailText ?? input.message,
@@ -137,6 +186,8 @@ export async function notifyUsers(input: NotifyUsersInput) {
 
 export async function notifyEmailAddress(recipient: string, subject: string, message: string) {
   if (!recipient) return;
+  const settings = await getNotificationSettings();
+  if (!settings.emailEnabled) return;
   const delivery = await prisma.emailDelivery.create({
     data: { recipient, subject, text: message, html: emailHtml(subject, message) },
   });
@@ -144,6 +195,8 @@ export async function notifyEmailAddress(recipient: string, subject: string, mes
 }
 
 export async function sendCriticalSystemEmail(subject: string, message: string) {
+  const settings = await getNotificationSettings();
+  if (!settings.emailEnabled || !settings.enabledTypes.has("system")) return false;
   const recipients = (process.env.SYSTEM_ALERT_EMAIL ?? "").split(",").map((item) => item.trim()).filter(Boolean);
   if (!recipients.length || !smtpConfigured()) return false;
   await mailTransport().sendMail({

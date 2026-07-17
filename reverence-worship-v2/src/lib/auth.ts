@@ -92,6 +92,31 @@ export async function requireUser() {
   return user;
 }
 
+export function needsGoogleProfileCompletion(user: {
+  googleId?: string | null;
+  phone?: string | null;
+  dateOfBirth?: Date | null;
+  gender?: string | null;
+  maritalStatus?: string | null;
+  province?: string | null;
+  district?: string | null;
+  sector?: string | null;
+  village?: string | null;
+}) {
+  if (!user.googleId) return false;
+
+  return [
+    user.phone,
+    user.dateOfBirth,
+    user.gender,
+    user.maritalStatus,
+    user.province,
+    user.district,
+    user.sector,
+    user.village,
+  ].some((value) => !value);
+}
+
 export async function requireAdminUser() {
   const user = await requireUser();
   const roleNames = user.roles.map((userRole) => userRole.role.name);

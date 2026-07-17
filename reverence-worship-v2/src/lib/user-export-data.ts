@@ -8,32 +8,66 @@ type UserExportFilters = {
 
 export type UserExportRow = {
   index: number;
-  name: string;
+  fullName: string;
   email: string;
-  phone: string;
-  role: string;
+  phoneNumber: string;
+  roles: string;
   status: string;
-  dob: string;
+  joinedDate: string;
+  dateOfBirth: string;
   gender: string;
   maritalStatus: string;
   residence: string;
   family: string;
   occupation: string;
+  membershipType: string;
+  profileComplete: string;
+  approvalStatus: string;
 };
 
 function formatDate(date: Date | null | undefined) {
-  if (!date) return "-";
+  if (!date) return "N/A";
 
   return new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
     month: "2-digit",
-    year: "2-digit",
+    year: "numeric",
   }).format(date);
 }
 
 function titleCase(value: string | null | undefined) {
-  if (!value) return "-";
+  if (!value) return "N/A";
   return value.slice(0, 1).toUpperCase() + value.slice(1);
+}
+
+function approvalStatus(status: string) {
+  if (status === "active") return "approved";
+  if (status === "inactive") return "rejected";
+  return "pending";
+}
+
+function profileComplete(user: {
+  phone: string | null;
+  dateOfBirth: Date | null;
+  gender: string | null;
+  maritalStatus: string | null;
+  province: string | null;
+  district: string | null;
+  sector: string | null;
+  village: string | null;
+}) {
+  return [
+    user.phone,
+    user.dateOfBirth,
+    user.gender,
+    user.maritalStatus,
+    user.province,
+    user.district,
+    user.sector,
+    user.village,
+  ].every(Boolean)
+    ? "Yes"
+    : "No";
 }
 
 export async function getUserExportRows(filters: UserExportFilters) {
@@ -69,6 +103,11 @@ export async function getUserExportRows(filters: UserExportFilters) {
           role: true,
         },
       },
+      familyMembership: {
+        include: {
+          family: true,
+        },
+      },
     },
   });
 
@@ -79,17 +118,21 @@ export async function getUserExportRows(filters: UserExportFilters) {
 
     return {
       index: index + 1,
-      name: user.name,
+      fullName: user.name,
       email: user.email,
-      phone: user.phone || "-",
-      role: user.roles.map(({ role }) => role.displayName).join(", ") || "-",
+      phoneNumber: user.phone || "N/A",
+      roles: user.roles.map(({ role }) => role.displayName).join(", ") || "N/A",
       status: titleCase(user.status),
-      dob: formatDate(user.dateOfBirth),
+      joinedDate: formatDate(user.createdAt),
+      dateOfBirth: formatDate(user.dateOfBirth),
       gender: titleCase(user.gender),
-      maritalStatus: user.maritalStatus || "-",
-      residence: residenceParts.length > 0 ? residenceParts.join(", ") : "-",
-      family: "-",
-      occupation: user.occupation || "-",
+      maritalStatus: user.maritalStatus || "N/A",
+      residence: residenceParts.length > 0 ? residenceParts.join(", ") : "N/A",
+      family: user.familyMembership?.family.name || "N/A",
+      occupation: user.occupation || "N/A",
+      membershipType: titleCase(user.membershipType),
+      profileComplete: profileComplete(user),
+      approvalStatus: approvalStatus(user.status),
     };
   });
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSession } from "@/lib/auth";
+import { createSession, needsGoogleProfileCompletion } from "@/lib/auth";
 import { exchangeGoogleCode, GOOGLE_OAUTH_STATE_COOKIE } from "@/lib/google-oauth";
 import { notifyUsers, userIdsWithPermission } from "@/lib/notifications";
 import { prisma } from "@/lib/prisma";
@@ -100,6 +100,7 @@ export async function GET(request: NextRequest) {
           avatarUrl: profile.picture,
           emailVerifiedAt: user.emailVerifiedAt ?? new Date(),
           name: user.name || profile.name,
+          mustChangePassword: false,
         },
         include: { roles: { include: { role: true } } },
       });
@@ -116,7 +117,7 @@ export async function GET(request: NextRequest) {
     if (user.status !== "active") return loginRedirect(request, "Your account is not active yet.");
 
     await createSession(user.id);
-    const response = NextResponse.redirect(new URL("/admin/dashboard", request.nextUrl.origin));
+    const response = NextResponse.redirect(new URL(needsGoogleProfileCompletion(user) ? "/complete-profile" : "/admin/dashboard", request.nextUrl.origin));
     response.cookies.delete(GOOGLE_OAUTH_STATE_COOKIE);
     return response;
   } catch (error) {

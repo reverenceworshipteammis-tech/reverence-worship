@@ -75,6 +75,29 @@ export type UserActionState = {
   message?: string;
 };
 
+const IMPORT_DEFAULT_PASSWORD = "Pass@123";
+
+type ParsedImportTable = {
+  rows: Record<string, string>[];
+  headers: string[];
+  delimiter: string;
+};
+
+type ImportedUserRow = {
+  name: string;
+  email: string;
+  phone: string | null;
+  roles: string[];
+  status: "active" | "pending" | "inactive";
+  dateOfBirth: Date | null;
+  gender: "male" | "female" | null;
+  maritalStatus: string | null;
+  residence: string | null;
+  family: string | null;
+  occupation: string | null;
+  membershipType: "permanent" | "temporary" | "visitor" | null;
+};
+
 async function roleIdsWithMemberBase(roleIds: number[]) {
   const uniqueRoleIds = [...new Set(roleIds.filter(Number.isFinite))];
   const assignableRoleIds =
@@ -108,6 +131,223 @@ async function isSuperAdminUser(userId: number) {
   });
 
   return Boolean(superAdminRole);
+}
+
+function normalizeHeader(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function normalizeRole(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+function splitCsvLine(line: string, delimiter: string) {
+  const cells: string[] = [];
+  let current = "";
+  let quoted = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+    const next = line[index + 1];
+
+    if (character === '"' && quoted && next === '"') {
+      current += '"';
+      index += 1;
+      continue;
+    }
+
+    if (character === '"') {
+      quoted = !quoted;
+      continue;
+    }
+
+    if (character === delimiter && !quoted) {
+      cells.push(current.trim());
+      current = "";
+      continue;
+    }
+
+    current += character;
+  }
+
+  cells.push(current.trim());
+  return cells;
+}
+
+function countDelimiterCells(line: string, delimiter: string) {
+  return splitCsvLine(line, delimiter).length;
+}
+
+function detectImportDelimiter(firstLine: string) {
+  const separatorDirective = firstLine.match(/^sep=(.)$/i);
+  if (separatorDirective?.[1]) return separatorDirective[1];
+
+  return ["\t", ",", ";"].sort((left, right) => countDelimiterCells(firstLine, right) - countDelimiterCells(firstLine, left))[0] ?? ",";
+}
+
+function decodeImportText(buffer: ArrayBuffer) {
+  const bytes = new Uint8Array(buffer);
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) {
+    return new TextDecoder("utf-16le").decode(buffer);
+  }
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) {
+    return new TextDecoder("utf-16be").decode(buffer);
+  }
+  return new TextDecoder("utf-8").decode(buffer);
+}
+
+function parseImportTable(raw: string): ParsedImportTable {
+  const text = raw.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+  if (!text) return { rows: [], headers: [], delimiter: "," };
+
+  const lines = text.split("\n").filter((line) => line.trim());
+  const firstLine = lines[0] ?? "";
+  const delimiter = detectImportDelimiter(firstLine);
+  const headerLineIndex = /^sep=./i.test(firstLine) ? 1 : 0;
+  const headerLine = lines[headerLineIndex] ?? "";
+  const headers = splitCsvLine(headerLine, delimiter).map(normalizeHeader);
+
+  const rows = lines.slice(headerLineIndex + 1).map((line) => {
+    const cells = splitCsvLine(line, delimiter);
+    return Object.fromEntries(headers.map((header, index) => [header, cells[index]?.trim() ?? ""]));
+  });
+
+  return { rows, headers, delimiter };
+}
+
+async function parseImportFile(file: File) {
+  const lowerName = file.name.toLowerCase();
+  if (lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls")) {
+    throw new Error("Excel files are not supported here. Open the file in Excel and save/export it as CSV first.");
+  }
+
+  const buffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(buffer.slice(0, 4));
+  const isZipXlsx = bytes[0] === 0x50 && bytes[1] === 0x4b;
+  const isLegacyXls = bytes[0] === 0xd0 && bytes[1] === 0xcf && bytes[2] === 0x11 && bytes[3] === 0xe0;
+
+  if (isZipXlsx || isLegacyXls) {
+    throw new Error("This file is still an Excel workbook. Open it in Excel, choose Save As, and select CSV UTF-8 (*.csv).");
+  }
+
+  return parseImportTable(decodeImportText(buffer));
+}
+
+function readImportValue(row: Record<string, string>, ...keys: string[]) {
+  for (const key of keys.map(normalizeHeader)) {
+    const value = row[key];
+    if (value?.trim()) return value.trim();
+  }
+  return "";
+}
+
+function parseImportDate(value: string) {
+  if (!value) return null;
+  const normalized = value.trim();
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : "";
+  if (iso) return new Date(`${iso}T12:00:00`);
+
+  const slash = normalized.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
+  if (slash) {
+    const [, first, second, yearPart] = slash;
+    const year = Number(yearPart.length === 2 ? `20${yearPart}` : yearPart);
+    const month = Number(first) > 12 ? Number(second) : Number(first);
+    const day = Number(first) > 12 ? Number(first) : Number(second);
+    const date = new Date(year, month - 1, day, 12);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function parseImportStatus(statusValue: string, approvalValue: string): "active" | "pending" | "inactive" {
+  const value = `${statusValue} ${approvalValue}`.toLowerCase();
+  if (value.includes("reject") || value.includes("inactive") || value.includes("deactiv")) return "inactive";
+  if (value.includes("pending") || value.includes("wait")) return "pending";
+  return "active";
+}
+
+function parseMembershipType(value: string): "permanent" | "temporary" | "visitor" | null {
+  const normalized = value.toLowerCase();
+  if (normalized.includes("temporary")) return "temporary";
+  if (normalized.includes("visitor") || normalized.includes("partner")) return "visitor";
+  if (normalized.includes("permanent")) return "permanent";
+  return value ? "permanent" : null;
+}
+
+function parseGender(value: string): "male" | "female" | null {
+  const normalized = value.toLowerCase();
+  if (normalized.startsWith("m")) return "male";
+  if (normalized.startsWith("f")) return "female";
+  return null;
+}
+
+function parseRoleNames(value: string) {
+  return value
+    .split(/[;,|]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseImportedUser(row: Record<string, string>): ImportedUserRow | null {
+  const name = readImportValue(row, "Full Name", "Name");
+  const email = readImportValue(row, "Email", "Email Address").toLowerCase();
+  if (!name || !z.email().safeParse(email).success) return null;
+
+  return {
+    name,
+    email,
+    phone: readImportValue(row, "Phone Number", "Phone") || null,
+    roles: parseRoleNames(readImportValue(row, "Roles", "Role")),
+    status: parseImportStatus(readImportValue(row, "Status"), readImportValue(row, "Approval Status")),
+    dateOfBirth: parseImportDate(readImportValue(row, "Date of Birth", "DOB")),
+    gender: parseGender(readImportValue(row, "Gender")),
+    maritalStatus: readImportValue(row, "Marital Status") || null,
+    residence: readImportValue(row, "Residence", "Address") || null,
+    family: readImportValue(row, "Family") || null,
+    occupation: readImportValue(row, "Occupation") || null,
+    membershipType: parseMembershipType(readImportValue(row, "Membership Type")),
+  };
+}
+
+function importedUserData(row: ImportedUserRow) {
+  return {
+    name: row.name,
+    phone: row.phone,
+    dateOfBirth: row.dateOfBirth,
+    gender: row.gender,
+    maritalStatus: row.maritalStatus,
+    membershipType: row.membershipType ?? "permanent",
+    occupation: row.occupation,
+    village: row.residence,
+    notes: row.family ? `Imported family: ${row.family}` : undefined,
+    status: row.status,
+    emailVerifiedAt: row.status === "active" ? new Date() : null,
+  };
+}
+
+async function importRoleLookup() {
+  const roles = await prisma.role.findMany({
+    where: { name: { not: "super-admin" } },
+    select: { id: true, name: true, displayName: true },
+  });
+  const roleMap = new Map<string, number>();
+  for (const role of roles) {
+    roleMap.set(normalizeRole(role.name), role.id);
+    roleMap.set(normalizeRole(role.displayName), role.id);
+  }
+
+  const memberRole = roles.find((role) => role.name === "member");
+
+  return async (roleNames: string[]) => {
+    const roleIds = roleNames.map((roleName) => roleMap.get(normalizeRole(roleName))).filter((id): id is number => Boolean(id));
+    const assignableRoleIds = [...new Set(roleIds)];
+    if (memberRole && !assignableRoleIds.includes(memberRole.id)) {
+      assignableRoleIds.push(memberRole.id);
+    }
+    return assignableRoleIds;
+  };
 }
 
 function accountStatusNotification(action: "approve" | "activate" | "deactivate", previousStatus?: string) {
@@ -201,6 +441,123 @@ export async function createUserAction(
   revalidatePath("/admin/dashboard");
 
   return { ok: true, message: "User created successfully." };
+}
+
+export async function importUsersCsvAction(
+  _previousState: UserActionState,
+  formData: FormData,
+): Promise<UserActionState> {
+  const admin = await requirePermission("users", "create", "/admin/users");
+  const file = formData.get("file");
+
+  if (!(file instanceof File) || file.size === 0) {
+    return { ok: false, message: "Select a CSV file to import." };
+  }
+
+  let parsedTable: ParsedImportTable;
+  let rows: ImportedUserRow[];
+  try {
+    parsedTable = await parseImportFile(file);
+    rows = parsedTable.rows.map(parseImportedUser).filter((row): row is ImportedUserRow => Boolean(row));
+  } catch (error) {
+    console.error("User import failed while reading file", error);
+    return {
+      ok: false,
+      message: error instanceof Error && (error.message.includes("Excel files") || error.message.includes("Excel workbook"))
+        ? error.message
+        : "Could not read that file. Please upload a valid CSV or tab-separated file.",
+    };
+  }
+
+  if (!rows.length) {
+    const detectedHeaders = parsedTable.headers.filter(Boolean).slice(0, 6).join(", ") || "none";
+    return {
+      ok: false,
+      message: `No valid users found. Make sure the file has Full Name and Email columns. Detected columns: ${detectedHeaders}.`,
+    };
+  }
+
+  const uniqueRows = Array.from(new Map(rows.map((row) => [row.email, row])).values());
+  const passwordHash = await bcrypt.hash(IMPORT_DEFAULT_PASSWORD, 12);
+  const roleIdsForImport = await importRoleLookup();
+  let created = 0;
+  let updated = 0;
+  let skipped = rows.length - uniqueRows.length;
+  const roleRows: Array<{ userId: number; roleId: number }> = [];
+  const affectedUserIds: number[] = [];
+
+  const existingUsers = await prisma.user.findMany({
+    where: { email: { in: uniqueRows.map((row) => row.email) } },
+    select: { id: true, email: true, googleId: true, passwordHash: true },
+  });
+  const existingByEmail = new Map(existingUsers.map((user) => [user.email, user]));
+  const newRows = uniqueRows.filter((row) => !existingByEmail.has(row.email));
+
+  for (const row of uniqueRows) {
+    const existing = existingByEmail.get(row.email);
+    if (!existing) continue;
+
+    try {
+      await prisma.user.update({
+        where: { id: existing.id },
+        data: {
+          ...importedUserData(row),
+          ...(existing.googleId ? {} : { ...(existing.passwordHash ? {} : { passwordHash }), mustChangePassword: true }),
+        },
+      });
+      affectedUserIds.push(existing.id);
+      const roleIds = await roleIdsForImport(row.roles);
+      roleRows.push(...roleIds.map((roleId) => ({ userId: existing.id, roleId })));
+      updated += 1;
+    } catch {
+      skipped += 1;
+    }
+  }
+
+  if (newRows.length) {
+    try {
+      const createdUsers = await prisma.user.createManyAndReturn({
+        data: newRows.map((row) => ({
+          ...importedUserData(row),
+          email: row.email,
+          passwordHash,
+          mustChangePassword: true,
+          createdById: admin.id,
+        })),
+        select: { id: true, email: true },
+      });
+      created = createdUsers.length;
+      affectedUserIds.push(...createdUsers.map((user) => user.id));
+      const createdByEmail = new Map(createdUsers.map((user) => [user.email, user.id]));
+
+      for (const row of newRows) {
+        const userId = createdByEmail.get(row.email);
+        if (!userId) continue;
+        const roleIds = await roleIdsForImport(row.roles);
+        roleRows.push(...roleIds.map((roleId) => ({ userId, roleId })));
+      }
+    } catch {
+      skipped += newRows.length;
+    }
+  }
+
+  if (affectedUserIds.length) {
+    await prisma.userRole.deleteMany({ where: { userId: { in: affectedUserIds }, role: { name: { not: "super-admin" } } } });
+  }
+
+  if (roleRows.length) {
+    await prisma.userRole.createMany({ data: roleRows, skipDuplicates: true });
+  }
+
+  await prisma.activityLog.create({ data: { userId: admin.id, action: "users.imported", module: "users", metadata: { created, updated, skipped, total: rows.length } } });
+
+  revalidatePath("/admin/users");
+  revalidatePath("/admin/dashboard");
+
+  return {
+    ok: true,
+    message: `Import completed. Created ${created}, updated ${updated}${skipped ? `, skipped ${skipped}` : ""}. Imported password accounts use ${IMPORT_DEFAULT_PASSWORD} and must change it on first login.`,
+  };
 }
 
 export async function runUserTableAction(formData: FormData) {
@@ -348,6 +705,7 @@ export async function updateUserAction(
       status: parsed.data.status,
       emailVerifiedAt: parsed.data.status === "active" ? new Date() : null,
       ...(passwordHash ? { passwordHash } : {}),
+      ...(passwordHash ? { mustChangePassword: false } : {}),
     },
   });
 

@@ -51,10 +51,10 @@ export async function GET(request: NextRequest) {
   rows.slice(0, 28).forEach((row) => {
     const values = [
       row.index,
-      row.name,
+      row.fullName,
       row.email,
-      row.phone,
-      row.role,
+      row.phoneNumber,
+      row.roles,
       row.status,
       row.gender,
       row.occupation,

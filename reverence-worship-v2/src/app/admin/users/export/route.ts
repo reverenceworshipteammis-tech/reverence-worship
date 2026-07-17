@@ -3,18 +3,21 @@ import { requirePermission } from "@/lib/auth";
 import { getUserExportRows } from "@/lib/user-export-data";
 
 const headers = [
-  "#",
-  "Name",
+  "Full Name",
   "Email",
-  "Phone",
-  "Role",
+  "Phone Number",
+  "Roles",
   "Status",
-  "DOB",
+  "Joined Date",
+  "Date of Birth",
   "Gender",
   "Marital Status",
   "Residence",
   "Family",
   "Occupation",
+  "Membership Type",
+  "Profile Complete",
+  "Approval Status",
 ];
 
 function csvCell(value: string | number) {
@@ -35,18 +38,21 @@ export async function GET(request: NextRequest) {
     headers.map(csvCell).join(","),
     ...rows.map((row) =>
       [
-        row.index,
-        row.name,
+        row.fullName,
         row.email,
-        row.phone,
-        row.role,
+        row.phoneNumber,
+        row.roles,
         row.status,
-        row.dob,
+        row.joinedDate,
+        row.dateOfBirth,
         row.gender,
         row.maritalStatus,
         row.residence,
         row.family,
         row.occupation,
+        row.membershipType,
+        row.profileComplete,
+        row.approvalStatus,
       ]
         .map(csvCell)
         .join(","),

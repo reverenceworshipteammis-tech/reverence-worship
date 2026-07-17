@@ -105,27 +105,33 @@ export function LandingPageClient({ dashboardHref, registrationEnabled, videos, 
           </a>
 
           <nav
-            className={`${menuOpen ? "absolute right-0 top-[calc(100%+8px)] z-60 flex w-[min(230px,calc(100vw-18px))] flex-wrap justify-end rounded-2xl border border-white/20 bg-blue-600/95 p-2.5 shadow-xl backdrop-blur" : "ml-auto flex items-center justify-end"} gap-2 whitespace-nowrap text-xs md:static md:ml-auto md:flex md:w-auto md:flex-nowrap md:items-center md:gap-6 md:border-0 md:bg-transparent md:p-0 md:text-sm md:shadow-none`}
+            className={`${menuOpen ? "absolute right-0 top-[calc(100%+8px)] z-[60] flex w-[124px] flex-col items-stretch rounded-2xl border border-white/20 bg-blue-600/85 p-1.5 shadow-xl backdrop-blur" : "hidden"} gap-1 whitespace-nowrap text-xs md:static md:ml-auto md:flex md:w-auto md:flex-row md:items-center md:gap-6 md:border-0 md:bg-transparent md:p-0 md:text-sm md:shadow-none`}
             aria-label="Primary navigation"
           >
-            <a href="#home" onClick={() => setMenuOpen(false)} className={`${menuOpen ? "inline-flex" : "hidden"} rounded-full px-2 py-1.5 hover:bg-white/10 md:inline-flex md:px-3 md:py-2`}>Home</a>
-            <a href="#about" onClick={() => setMenuOpen(false)} className={`${menuOpen ? "inline-flex" : "hidden"} rounded-full px-2 py-1.5 hover:bg-white/10 md:inline-flex md:px-3 md:py-2`}>About us</a>
-            <a href="#music" onClick={() => setMenuOpen(false)} className={`${menuOpen ? "inline-flex" : "hidden"} rounded-full px-2 py-1.5 hover:bg-white/10 md:inline-flex md:px-3 md:py-2`}>Music</a>
-            <a href="#pictures" onClick={() => setMenuOpen(false)} className={`${menuOpen ? "inline-flex" : "hidden"} rounded-full px-2 py-1.5 hover:bg-white/10 md:inline-flex md:px-3 md:py-2`}>Pictures</a>
-            <a href="#events" onClick={() => setMenuOpen(false)} className={`${menuOpen ? "inline-flex" : "hidden"} rounded-full px-2 py-1.5 hover:bg-white/10 md:inline-flex md:px-3 md:py-2`}>Events</a>
-            <a href="#join" onClick={() => setMenuOpen(false)} className="inline-flex rounded-full bg-white/10 px-2 py-1.5 hover:bg-white/15 md:bg-transparent md:px-3 md:py-2">Join us</a>
-            <Link href={dashboardHref ?? "/login"} className="inline-flex rounded-full border border-white/50 bg-white/10 px-2.5 py-1.5 hover:bg-white/15 md:bg-transparent md:px-4 md:py-2">
+            <a href="#home" onClick={() => setMenuOpen(false)} className="flex w-full rounded-xl px-3 py-2 hover:bg-white/10 md:w-auto md:rounded-full md:px-3 md:py-2">Home</a>
+            <a href="#about" onClick={() => setMenuOpen(false)} className="flex w-full rounded-xl px-3 py-2 hover:bg-white/10 md:w-auto md:rounded-full md:px-3 md:py-2">About us</a>
+            <a href="#music" onClick={() => setMenuOpen(false)} className="flex w-full rounded-xl px-3 py-2 hover:bg-white/10 md:w-auto md:rounded-full md:px-3 md:py-2">Music</a>
+            <a href="#pictures" onClick={() => setMenuOpen(false)} className="flex w-full rounded-xl px-3 py-2 hover:bg-white/10 md:w-auto md:rounded-full md:px-3 md:py-2">Pictures</a>
+            <a href="#events" onClick={() => setMenuOpen(false)} className="flex w-full rounded-xl px-3 py-2 hover:bg-white/10 md:w-auto md:rounded-full md:px-3 md:py-2">Events</a>
+            <a href="#join" onClick={() => setMenuOpen(false)} className="hidden rounded-full px-3 py-2 hover:bg-white/10 md:flex">Join us</a>
+            <Link href={dashboardHref ?? "/login"} className="hidden rounded-full border border-white/50 bg-transparent px-4 py-2 hover:bg-white/15 md:flex">
               {dashboardHref ? "Dashboard" : "Login"}
             </Link>
           </nav>
 
-          <button type="button" onClick={() => setMenuOpen((current) => !current)} className="inline-flex size-[34px] shrink-0 items-center justify-center rounded-[10px] border border-white/25 bg-white/10 md:hidden" aria-label="Open navigation" aria-expanded={menuOpen}>
-            <Menu className="size-5" aria-hidden />
-          </button>
+          <div className="ml-auto flex shrink-0 items-center gap-1.5 md:hidden">
+            <a href="#join" onClick={() => setMenuOpen(false)} className="inline-flex h-[34px] items-center rounded-full bg-white/10 px-2.5 text-[11px] font-bold hover:bg-white/15">Join us</a>
+            <Link href={dashboardHref ?? "/login"} onClick={() => setMenuOpen(false)} className="inline-flex h-[34px] items-center rounded-full border border-white/50 bg-white/10 px-2.5 text-[11px] font-bold hover:bg-white/15">
+              {dashboardHref ? "Dashboard" : "Login"}
+            </Link>
+            <button type="button" onClick={() => setMenuOpen((current) => !current)} className="inline-flex size-[34px] shrink-0 items-center justify-center rounded-[10px] border border-white/25 bg-white/10" aria-label="Open navigation" aria-expanded={menuOpen}>
+              <Menu className="size-5" aria-hidden />
+            </button>
+          </div>
         </div>
       </header>
 
-      <section id="home" className="relative grid min-h-[calc(100vh+90px)] place-items-center overflow-hidden bg-slate-900 text-white">
+      <section id="home" className="relative grid min-h-[108svh] place-items-center overflow-hidden bg-slate-900 text-white md:min-h-[calc(100vh+90px)]">
         {heroPictures.map((picture, index) => (
           <Image
             key={picture.id}
@@ -134,7 +140,7 @@ export function LandingPageClient({ dashboardHref, registrationEnabled, videos, 
             fill
             sizes="100vw"
             priority={index === 0}
-            className={`object-cover object-center transition-opacity duration-1000 ${index === heroIndex ? "opacity-70" : "opacity-0"}`}
+            className={`scale-[1.08] object-cover object-top transition-opacity duration-1000 md:scale-100 md:object-center ${index === heroIndex ? "opacity-70" : "opacity-0"}`}
           />
         ))}
         <div className="absolute inset-0 bg-gradient-to-r from-slate-950/90 to-slate-950/20" />

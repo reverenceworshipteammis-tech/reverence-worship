@@ -1,5 +1,6 @@
 import { LandingPageClient } from "@/components/landing-page-client";
 import { getCurrentUser } from "@/lib/auth";
+import { isTransientDatabaseError, withDatabaseRetry } from "@/lib/database-retry";
 import { prisma } from "@/lib/prisma";
 import { isRegistrationEnabled } from "@/lib/system-settings";
 
@@ -22,26 +23,42 @@ function formatEventDate(date: Date | null, fallback: Date) {
   };
 }
 
+async function safePublicRead<T>(label: string, operation: () => Promise<T>, fallback: T) {
+  try {
+    return await withDatabaseRetry(operation, 3);
+  } catch (error) {
+    if (!isTransientDatabaseError(error)) {
+      throw error;
+    }
+
+    console.warn(`Landing page ${label} unavailable after database retries.`);
+    return fallback;
+  }
+}
+
 export default async function HomePage() {
-  const user = await getCurrentUser();
+  const user = await safePublicRead("session", () => getCurrentUser(), null);
 
   const [registrationEnabled, videos, pictures, events] = await Promise.all([
-    isRegistrationEnabled(),
-    prisma.landingYoutubeVideo.findMany({
-      where: { isPublished: true },
-      orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
-      take: 4,
-    }),
-    prisma.landingFeaturedImage.findMany({
-      where: { isPublished: true },
-      orderBy: [{ isHero: "desc" }, { sortOrder: "asc" }, { createdAt: "desc" }],
-      take: 12,
-    }),
-    prisma.publicBoardItem.findMany({
-      where: { isPublished: true },
-      orderBy: [{ isPinned: "desc" }, { eventDate: "asc" }, { createdAt: "desc" }],
-      take: 6,
-    }),
+    safePublicRead("registration setting", () => isRegistrationEnabled(), true),
+    safePublicRead("videos", () =>
+      prisma.landingYoutubeVideo.findMany({
+        where: { isPublished: true },
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
+        take: 4,
+      }), []),
+    safePublicRead("pictures", () =>
+      prisma.landingFeaturedImage.findMany({
+        where: { isPublished: true },
+        orderBy: [{ isHero: "desc" }, { sortOrder: "asc" }, { createdAt: "desc" }],
+        take: 12,
+      }), []),
+    safePublicRead("events", () =>
+      prisma.publicBoardItem.findMany({
+        where: { isPublished: true },
+        orderBy: [{ isPinned: "desc" }, { eventDate: "asc" }, { createdAt: "desc" }],
+        take: 6,
+      }), []),
   ]);
 
   return (

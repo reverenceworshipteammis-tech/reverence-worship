@@ -19,11 +19,18 @@ type ChildRow = {
   role: string;
   location: string;
   createdAt: string;
-  annualAmount: number;
-  totalPaid: number;
-  paymentCount: number;
-  progress: number;
-  recentPayments: Array<{ id: number; amount: number; term: number | null; method: string | null; date: string }>;
+  dateOfBirth: string;
+  gender: string;
+  maritalStatus: string;
+  province: string;
+  district: string;
+  sector: string;
+  village: string;
+  occupation: string;
+  membershipType: string;
+  ministryRole: string;
+  emergencyName: string;
+  emergencyPhone: string;
 };
 
 type TaskRow = {
@@ -231,19 +238,31 @@ function ChildrenTab({ childRows, onView }: { childRows: ChildRow[]; onView: (ch
         {childRows.map((child) => (
           <article key={child.id} className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
             <div className="flex items-start justify-between gap-3">
-              <div>
+              <div className="min-w-0">
                 <h4 className="font-bold text-gray-900">{child.name}</h4>
-                <p className="text-xs text-gray-500">{child.email}</p>
-                <span className="mt-2 inline-flex rounded-full bg-blue-100 px-2.5 py-1 text-xs capitalize text-blue-700">{child.role}</span>
+                <p className="truncate text-xs text-gray-500">{child.email}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <span className="inline-flex rounded-full bg-blue-100 px-2.5 py-1 text-xs capitalize text-blue-700">{child.role}</span>
+                  <span className="inline-flex rounded-full bg-gray-100 px-2.5 py-1 text-xs capitalize text-gray-600">{child.membershipType}</span>
+                </div>
               </div>
               <button type="button" onClick={() => onView(child)} className="rounded-lg bg-blue-600 p-2 text-white hover:bg-blue-700" aria-label="View child details">
                 <Eye className="size-4" />
               </button>
             </div>
-            <div className="mt-4 rounded-xl bg-gray-50 p-3">
-              <div className="flex justify-between text-xs text-gray-500"><span>Contribution progress</span><span>{child.progress}%</span></div>
-              <div className="mt-2 h-2 rounded-full bg-gray-200"><div className="h-2 rounded-full bg-blue-600" style={{ width: `${Math.min(child.progress, 100)}%` }} /></div>
-              <p className="mt-2 text-sm"><strong>{rwf(child.totalPaid)}</strong> <span className="text-gray-400">/ {rwf(child.annualAmount)}</span></p>
+            <div className="mt-4 grid gap-2 rounded-xl bg-gray-50 p-3 text-sm">
+              <div className="flex justify-between gap-3">
+                <span className="text-gray-500">Phone</span>
+                <strong className="text-right text-gray-800">{child.phone || "N/A"}</strong>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-gray-500">Residence</span>
+                <strong className="text-right text-gray-800">{child.location}</strong>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-gray-500">Occupation</span>
+                <strong className="text-right text-gray-800">{child.occupation}</strong>
+              </div>
             </div>
           </article>
         ))}
@@ -337,15 +356,48 @@ function Summary({ label, value, className }: { label: string; value: string; cl
 }
 
 function ChildModal({ child, onClose }: { child: ChildRow; onClose: () => void }) {
+  const detailGroups = [
+    {
+      title: "Contact",
+      items: [["Email", child.email], ["Phone", child.phone || "N/A"], ["Emergency Name", child.emergencyName], ["Emergency Phone", child.emergencyPhone]],
+    },
+    {
+      title: "Personal Details",
+      items: [["Gender", child.gender], ["Date of Birth", child.dateOfBirth || "N/A"], ["Marital Status", child.maritalStatus], ["Occupation", child.occupation]],
+    },
+    {
+      title: "Residence",
+      items: [["Province", child.province], ["District", child.district], ["Sector", child.sector], ["Village", child.village]],
+    },
+    {
+      title: "Membership",
+      items: [["Family Role", child.role], ["Membership Type", child.membershipType], ["Ministry Role", child.ministryRole], ["Member Since", child.createdAt]],
+    },
+  ];
+
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
       <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-xl">
         <div className="flex items-center justify-between border-b pb-4"><h3 className="text-xl font-bold text-gray-800">{child.name} - Details</h3><button onClick={onClose}><X className="size-5" /></button></div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          {[["Email", child.email], ["Phone", child.phone || "N/A"], ["Location", child.location], ["Member Since", child.createdAt], ["Payments", String(child.paymentCount)], ["Progress", `${child.progress}%`]].map(([label, value]) => <div key={label} className="rounded-lg bg-gray-50 p-3"><p className="text-xs text-gray-500">{label}</p><p className="font-medium">{value}</p></div>)}
+        <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
+          <p className="text-sm font-semibold text-blue-900">Residence</p>
+          <p className="mt-1 text-sm text-blue-800">{child.location}</p>
         </div>
-        <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-4"><p className="font-semibold text-blue-900">Financial Summary</p><p className="mt-2 text-sm text-blue-800">{rwf(child.totalPaid)} paid from {rwf(child.annualAmount)} expected.</p></div>
-        <div className="mt-4"><p className="mb-2 font-semibold text-gray-800">Recent Payments</p>{child.recentPayments.length ? child.recentPayments.map((payment) => <div key={payment.id} className="flex justify-between border-t py-2 text-sm"><span>{payment.date} {payment.term ? `- Term ${payment.term}` : ""}</span><strong>{rwf(payment.amount)}</strong></div>) : <p className="text-sm text-gray-500">No recent payments</p>}</div>
+        <div className="mt-4 grid gap-4">
+          {detailGroups.map((group) => (
+            <section key={group.title} className="rounded-xl border border-gray-100">
+              <h4 className="border-b border-gray-100 px-4 py-3 text-sm font-semibold text-gray-800">{group.title}</h4>
+              <div className="grid gap-3 p-4 sm:grid-cols-2">
+                {group.items.map(([label, value]) => (
+                  <div key={label} className="rounded-lg bg-gray-50 p-3">
+                    <p className="text-xs text-gray-500">{label}</p>
+                    <p className="break-words font-medium text-gray-800">{value || "N/A"}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
         <div className="mt-5 flex justify-end border-t pt-4"><button onClick={onClose} className="rounded-lg bg-blue-600 px-5 py-2 text-sm text-white">Close</button></div>
       </div>
     </div>

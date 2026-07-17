@@ -1,10 +1,11 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { BrushCleaning, Save, ShieldCheck, UserPlus } from "lucide-react";
+import { Bell, BrushCleaning, ShieldCheck, UserPlus } from "lucide-react";
 import {
   clearSystemCache,
   updateAccessSettings,
+  updateNotificationSettings,
   updateSecuritySettings,
 } from "@/app/admin/settings/actions";
 import { MobileTabScroller } from "@/components/mobile-tab-scroller";
@@ -13,6 +14,17 @@ export type SettingsValues = {
   registrationEnabled: boolean;
   sessionLifetime: number;
   passwordMinLength: number;
+  notifications: {
+    inAppEnabled: boolean;
+    emailEnabled: boolean;
+    accountEnabled: boolean;
+    securityEnabled: boolean;
+    announcementEnabled: boolean;
+    formEnabled: boolean;
+    taskEnabled: boolean;
+    financeEnabled: boolean;
+    systemEnabled: boolean;
+  };
 };
 
 type Result = {
@@ -20,11 +32,12 @@ type Result = {
   message: string;
 };
 
-type TabId = "access" | "security" | "maintenance";
+type TabId = "access" | "security" | "notifications" | "maintenance";
 
 const tabs = [
   { id: "access" as const, label: "Access", icon: UserPlus },
   { id: "security" as const, label: "Security", icon: ShieldCheck },
+  { id: "notifications" as const, label: "Notifications", icon: Bell },
   { id: "maintenance" as const, label: "Maintenance", icon: BrushCleaning },
 ];
 
@@ -34,6 +47,8 @@ export function SettingsClient({ values }: { values: SettingsValues }) {
   const [pending, startTransition] = useTransition();
   const accessRef = useRef<HTMLFormElement>(null);
   const securityRef = useRef<HTMLFormElement>(null);
+  const notificationRef = useRef<HTMLFormElement>(null);
+  const autoSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   function runAction(action: (formData: FormData) => Promise<Result>, form: HTMLFormElement | null) {
     if (!form) return;
@@ -41,6 +56,14 @@ export function SettingsClient({ values }: { values: SettingsValues }) {
     startTransition(async () => {
       setResult(await action(new FormData(form)));
     });
+  }
+
+  function autoSave(key: string, action: (formData: FormData) => Promise<Result>, form: HTMLFormElement | null) {
+    if (!form || !form.checkValidity()) return;
+    clearTimeout(autoSaveTimers.current[key]);
+    autoSaveTimers.current[key] = setTimeout(() => {
+      runAction(action, form);
+    }, 500);
   }
 
   function runButtonAction(action: () => Promise<Result>) {
@@ -90,7 +113,7 @@ export function SettingsClient({ values }: { values: SettingsValues }) {
         </div>
 
         <div className={activeTab === "access" ? "block" : "hidden"}>
-          <form ref={accessRef} className="p-4 sm:p-6">
+          <form ref={accessRef} onChange={() => autoSave("access", updateAccessSettings, accessRef.current)} className="p-4 sm:p-6">
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.15fr_0.85fr]">
               <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                 <div className="flex items-start gap-3">
@@ -123,12 +146,12 @@ export function SettingsClient({ values }: { values: SettingsValues }) {
                 ]}
               />
             </div>
-            <SettingsFooter pending={pending} label="Save Access Settings" onClick={() => runAction(updateAccessSettings, accessRef.current)} />
+            <AutoSaveNote pending={pending} />
           </form>
         </div>
 
         <div className={activeTab === "security" ? "block" : "hidden"}>
-          <form ref={securityRef} className="p-4 sm:p-6">
+          <form ref={securityRef} onChange={() => autoSave("security", updateSecuritySettings, securityRef.current)} className="p-4 sm:p-6">
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
               <Field label="Session Lifetime (minutes)" note="Maximum is 10 minutes. Active users are refreshed; idle users are logged out automatically.">
                 <input name="session_lifetime" type="number" min={1} max={10} required defaultValue={Math.min(values.sessionLifetime, 10)} className={inputClass} />
@@ -137,7 +160,45 @@ export function SettingsClient({ values }: { values: SettingsValues }) {
                 <input name="password_min_length" type="number" min={6} max={255} required defaultValue={values.passwordMinLength} className={inputClass} />
               </Field>
             </div>
-            <SettingsFooter pending={pending} label="Save Security Settings" onClick={() => runAction(updateSecuritySettings, securityRef.current)} />
+            <AutoSaveNote pending={pending} />
+          </form>
+        </div>
+
+        <div className={activeTab === "notifications" ? "block" : "hidden"}>
+          <form ref={notificationRef} onChange={() => autoSave("notifications", updateNotificationSettings, notificationRef.current)} className="p-4 sm:p-6">
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.15fr_0.85fr]">
+              <div className="space-y-4">
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                  <h3 className="font-semibold text-gray-900">Delivery Channels</h3>
+                  <div className="mt-4 space-y-3">
+                    <CheckField name="notification_in_app_enabled" label="Enable in-app notifications" note="Controls notifications shown in the bell menu and notification lists." defaultChecked={values.notifications.inAppEnabled} />
+                    <CheckField name="notification_email_enabled" label="Enable email notifications" note="Checked: users receive emails. Unchecked: email sending is paused while you test." defaultChecked={values.notifications.emailEnabled} />
+                  </div>
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-white p-4">
+                  <h3 className="font-semibold text-gray-900">Notification Types</h3>
+                  <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <CheckField name="notification_account_enabled" label="Account updates" note="Approvals, deactivations, role changes." defaultChecked={values.notifications.accountEnabled} />
+                    <CheckField name="notification_security_enabled" label="Security alerts" note="Password reset, password/email changes." defaultChecked={values.notifications.securityEnabled} />
+                    <CheckField name="notification_announcement_enabled" label="Announcements" note="Admin announcements and broadcasts." defaultChecked={values.notifications.announcementEnabled} />
+                    <CheckField name="notification_form_enabled" label="Forms" note="Available forms and submission reminders." defaultChecked={values.notifications.formEnabled} />
+                    <CheckField name="notification_task_enabled" label="Tasks" note="Assigned task and overdue task reminders." defaultChecked={values.notifications.taskEnabled} />
+                    <CheckField name="notification_finance_enabled" label="Finance" note="Expense approvals, payments, contributions." defaultChecked={values.notifications.financeEnabled} />
+                    <CheckField name="notification_system_enabled" label="System alerts" note="System health and delivery failure alerts." defaultChecked={values.notifications.systemEnabled} />
+                  </div>
+                </div>
+              </div>
+              <ImpactCard
+                title="Testing mode"
+                items={[
+                  "Turn off email notifications to stop real emails.",
+                  "Keep in-app notifications on to verify app behavior.",
+                  "Disable categories you are not testing now.",
+                  "SMTP settings still control whether emails can be delivered.",
+                ]}
+              />
+            </div>
+            <AutoSaveNote pending={pending} />
           </form>
         </div>
 
@@ -203,13 +264,10 @@ function ImpactCard({ title, items }: { title: string; items: string[] }) {
   );
 }
 
-function SettingsFooter({ pending, label, onClick }: { pending: boolean; label: string; onClick: () => void }) {
+function AutoSaveNote({ pending }: { pending: boolean }) {
   return (
-    <div className="mt-6 border-t border-gray-200 pt-5">
-      <button type="button" disabled={pending} onClick={onClick} className="inline-flex h-10 items-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60">
-        <Save className="size-4" aria-hidden="true" />
-        {pending ? "Saving..." : label}
-      </button>
+    <div className="mt-6 border-t border-gray-200 pt-4 text-xs font-medium text-gray-500">
+      {pending ? "Saving changes..." : "Changes are saved automatically."}
     </div>
   );
 }
