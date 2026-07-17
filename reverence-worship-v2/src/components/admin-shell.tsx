@@ -36,6 +36,7 @@ import {
 type AdminUser = {
   name: string;
   email: string;
+  avatarUrl?: string | null;
   roles: string[];
   permissions: string[];
   isParent?: boolean;
@@ -427,8 +428,12 @@ export function AdminShell({
                     <p className="text-sm font-semibold text-gray-800">{user.name}</p>
                     <p className="text-xs text-gray-500">{user.email}</p>
                   </div>
-                  <div className="flex size-10 items-center justify-center rounded-full bg-gray-200">
-                    <User className="size-4 text-gray-500" aria-hidden="true" />
+                  <div className="relative flex size-10 items-center justify-center overflow-hidden rounded-full bg-gray-200">
+                    {user.avatarUrl ? (
+                      <Image src={user.avatarUrl} alt={user.name} fill sizes="40px" className="object-cover" />
+                    ) : (
+                      <User className="size-4 text-gray-500" aria-hidden="true" />
+                    )}
                   </div>
                   <ChevronDown
                     className={`size-3 text-gray-400 transition ${userMenuOpen ? "rotate-180" : ""}`}

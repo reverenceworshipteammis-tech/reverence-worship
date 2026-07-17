@@ -110,6 +110,27 @@ async function isSuperAdminUser(userId: number) {
   return Boolean(superAdminRole);
 }
 
+function accountStatusNotification(action: "approve" | "activate" | "deactivate", previousStatus?: string) {
+  if (action === "deactivate") {
+    return {
+      title: "Account deactivated",
+      message: "Your account has been deactivated.",
+      emailSubject: "Your Reverence Worship account was deactivated",
+      emailText: "Your Reverence Worship account has been deactivated. Contact an administrator if you need more information.",
+    };
+  }
+
+  const approved = action === "approve" || previousStatus === "pending";
+  return {
+    title: approved ? "Account approved" : "Account reactivated",
+    message: approved ? "Your account has been approved. You can now sign in." : "Your account is active again. You can sign in.",
+    emailSubject: approved ? "Your Reverence Worship account has been approved" : "Your Reverence Worship account is active again",
+    emailText: approved
+      ? "Good news. Your Reverence Worship account has been approved. You can now sign in and access your dashboard."
+      : "Your Reverence Worship account is active again. You can now sign in and access your dashboard.",
+  };
+}
+
 export async function createUserAction(
   _previousState: UserActionState,
   formData: FormData,
@@ -191,7 +212,7 @@ export async function runUserTableAction(formData: FormData) {
     return { ok: false, message: "Invalid user." };
   }
 
-  const affectedUser = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, email: true } });
+  const affectedUser = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, email: true, status: true } });
   if (!affectedUser) return { ok: false, message: "User not found." };
 
   if (action === "approve" || action === "activate") {
@@ -222,16 +243,19 @@ export async function runUserTableAction(formData: FormData) {
 
 
   if (["approve", "activate", "deactivate"].includes(action)) {
-    const title = action === "approve" ? "Account approved" : action === "deactivate" ? "Account deactivated" : "Account reactivated";
+    const notification = accountStatusNotification(action as "approve" | "activate" | "deactivate", affectedUser.status);
     await notifyUsers({
       userIds: [userId],
       type: "account",
-      title,
-      message: action === "deactivate" ? "Your account has been deactivated." : "Your account is active and you can sign in.",
+      title: notification.title,
+      message: notification.message,
       link: "/admin/dashboard",
       sourceType: "user",
       sourceId: userId,
       dedupeKey: `account:${userId}:${action}:${Date.now()}`,
+      emailSubject: notification.emailSubject,
+      emailText: notification.emailText,
+      sendEmail: true,
     });
   }
   await prisma.activityLog.create({ data: { userId: (action === "delete" || action === "reject") && admin.id === userId ? null : admin.id, action: `users.${action}`, module: "users", metadata: { affectedUserId: userId } } });
@@ -337,8 +361,21 @@ export async function updateUserAction(
     await notifyUsers({ userIds: [parsed.data.userId], type: "security", title: "Password changed", message: "Your account password was changed successfully. Contact an administrator if you did not request this.", link: "/admin/profile", sourceType: "user", sourceId: parsed.data.userId, dedupeKey: `account:${parsed.data.userId}:password:${Date.now()}` });
   }
   if (currentUser.status !== parsed.data.status) {
-    const active = parsed.data.status === "active";
-    await notifyUsers({ userIds: [parsed.data.userId], type: "account", title: active ? "Account reactivated" : "Account deactivated", message: active ? "Your account is active again." : "Your account has been deactivated.", link: "/admin/dashboard", sourceType: "user", sourceId: parsed.data.userId, dedupeKey: `account:${parsed.data.userId}:status:${Date.now()}` });
+    const action = parsed.data.status === "active" ? "activate" : "deactivate";
+    const notification = accountStatusNotification(action, currentUser.status);
+    await notifyUsers({
+      userIds: [parsed.data.userId],
+      type: "account",
+      title: notification.title,
+      message: notification.message,
+      link: "/admin/dashboard",
+      sourceType: "user",
+      sourceId: parsed.data.userId,
+      dedupeKey: `account:${parsed.data.userId}:status:${Date.now()}`,
+      emailSubject: notification.emailSubject,
+      emailText: notification.emailText,
+      sendEmail: true,
+    });
   }
   await prisma.activityLog.create({ data: { userId: admin.id, action: "users.updated", module: "users", metadata: { affectedUserId: parsed.data.userId, emailChanged: currentUser.email !== parsed.data.email, statusChanged: currentUser.status !== parsed.data.status, passwordChanged: Boolean(passwordHash) } } });
 

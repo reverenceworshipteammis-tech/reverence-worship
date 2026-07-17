@@ -19,7 +19,7 @@ export default async function AdminLayout({
 
   return (
     <AppDialogProvider>
-      <AdminShell user={{ name: user.name, email: user.email, roles, permissions, isParent }}>
+      <AdminShell user={{ name: user.name, email: user.email, avatarUrl: user.avatarUrl, roles, permissions, isParent }}>
         {children}
       </AdminShell>
     </AppDialogProvider>

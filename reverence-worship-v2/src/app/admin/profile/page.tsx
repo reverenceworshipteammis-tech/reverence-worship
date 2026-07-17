@@ -12,6 +12,7 @@ import {
   User,
   Users,
 } from "lucide-react";
+import Image from "next/image";
 import { requirePageAccess } from "@/lib/auth";
 
 function display(value: string | null | undefined) {
@@ -79,8 +80,12 @@ export default async function ProfilePage() {
       <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="bg-gradient-to-r from-blue-500 to-blue-600 px-5 py-7 text-white sm:px-6 sm:py-8">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-            <div className="flex size-24 shrink-0 items-center justify-center rounded-full border-2 border-white bg-white/20 text-3xl font-bold text-white">
-              {initials(user.name) || <User className="size-10" aria-hidden />}
+            <div className="relative flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white bg-white/20 text-3xl font-bold text-white">
+              {user.avatarUrl ? (
+                <Image src={user.avatarUrl} alt={user.name} fill sizes="96px" className="object-cover" />
+              ) : (
+                initials(user.name) || <User className="size-10" aria-hidden />
+              )}
             </div>
             <div className="min-w-0">
               <h2 className="break-words text-2xl font-bold">{user.name}</h2>
