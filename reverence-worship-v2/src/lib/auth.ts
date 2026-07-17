@@ -101,6 +101,7 @@ export function needsGoogleProfileCompletion(user: {
   province?: string | null;
   district?: string | null;
   sector?: string | null;
+  cell?: string | null;
   village?: string | null;
 }) {
   if (!user.googleId) return false;
@@ -113,6 +114,7 @@ export function needsGoogleProfileCompletion(user: {
     user.province,
     user.district,
     user.sector,
+    user.cell,
     user.village,
   ].some((value) => !value);
 }

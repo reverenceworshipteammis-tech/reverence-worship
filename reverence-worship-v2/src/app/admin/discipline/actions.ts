@@ -16,6 +16,18 @@ type AttendanceRecordInput = {
   hasOfficialPermission?: boolean;
 };
 
+type ImportedAttendanceRecord = {
+  userId: number;
+  sessionDate: string;
+  sessionType: string;
+  status: "present" | "late" | "absent" | "excused";
+  onTime: boolean;
+  communicated: boolean;
+  disciplinePoints: number;
+  lateMinutes: number;
+  notes: string | null;
+};
+
 type DisciplineRecordInput = {
   userId: number;
   behaviour: "good" | "bad";
@@ -46,6 +58,104 @@ function readAttendanceRecords(formData: FormData) {
 
 function dateOnly(value: string) {
   return new Date(`${value}T12:00:00.000Z`);
+}
+
+function normalizeImportHeader(value: string) {
+  return value.replace(/^\uFEFF/, "").trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function decodeImportFile(buffer: ArrayBuffer) {
+  const bytes = new Uint8Array(buffer);
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) return new TextDecoder("utf-16le").decode(buffer);
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) return new TextDecoder("utf-16be").decode(buffer);
+  return new TextDecoder("utf-8").decode(buffer);
+}
+
+function importDelimiter(text: string) {
+  const firstLine = text.replace(/^\uFEFF/, "").split(/\r?\n/, 1)[0] ?? "";
+  const directive = firstLine.match(/^sep=(.)$/i);
+  if (directive?.[1]) return directive[1];
+  return [",", "\t", ";"].sort((left, right) => firstLine.split(right).length - firstLine.split(left).length)[0] ?? ",";
+}
+
+function parseDelimitedRows(raw: string) {
+  const text = raw.replace(/^\uFEFF/, "");
+  const delimiter = importDelimiter(text);
+  const content = /^sep=./i.test(text.split(/\r?\n/, 1)[0] ?? "") ? text.replace(/^sep=.\r?\n/i, "") : text;
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let value = "";
+  let quoted = false;
+
+  for (let index = 0; index < content.length; index += 1) {
+    const character = content[index];
+    if (character === '"') {
+      if (quoted && content[index + 1] === '"') {
+        value += '"';
+        index += 1;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (character === delimiter && !quoted) {
+      row.push(value.trim());
+      value = "";
+    } else if ((character === "\n" || character === "\r") && !quoted) {
+      if (character === "\r" && content[index + 1] === "\n") index += 1;
+      row.push(value.trim());
+      if (row.some(Boolean)) rows.push(row);
+      row = [];
+      value = "";
+    } else {
+      value += character;
+    }
+  }
+
+  row.push(value.trim());
+  if (row.some(Boolean)) rows.push(row);
+  return rows;
+}
+
+function importedDate(value: string) {
+  const normalized = value.trim();
+  const iso = normalized.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  const dayFirst = normalized.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
+  const parts = iso
+    ? { year: Number(iso[1]), month: Number(iso[2]), day: Number(iso[3]) }
+    : dayFirst
+      ? { year: Number(dayFirst[3].length === 2 ? `20${dayFirst[3]}` : dayFirst[3]), month: Number(dayFirst[2]), day: Number(dayFirst[1]) }
+      : null;
+  if (!parts) return null;
+  const date = new Date(Date.UTC(parts.year, parts.month - 1, parts.day, 12));
+  return date.getUTCFullYear() === parts.year && date.getUTCMonth() === parts.month - 1 && date.getUTCDate() === parts.day
+    ? `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`
+    : null;
+}
+
+function importBoolean(value: string, fallback = false) {
+  if (!value.trim()) return fallback;
+  return ["1", "yes", "y", "true", "on", "present", "on time"].includes(value.trim().toLowerCase());
+}
+
+function importedStatus(value: string, presenceValue: string) {
+  const normalized = value.trim().toLowerCase();
+  if (["present", "p"].includes(normalized)) return "present" as const;
+  if (["late", "l"].includes(normalized)) return "late" as const;
+  if (["absent", "a"].includes(normalized)) return "absent" as const;
+  if (["excused", "permission", "permitted"].includes(normalized)) return "excused" as const;
+  if (!normalized) return importBoolean(presenceValue) ? "present" as const : "absent" as const;
+  return null;
+}
+
+function normalizeImportedName(value: string) {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function importedValue(row: Record<string, string>, ...headers: string[]) {
+  for (const header of headers.map(normalizeImportHeader)) {
+    const value = row[header]?.trim();
+    if (value) return value;
+  }
+  return "";
 }
 
 function readDisciplineRecords(formData: FormData) {
@@ -184,6 +294,182 @@ export async function saveAttendanceSession(formData: FormData) {
 
 export async function completeAttendanceSession(formData: FormData) {
   return writeAttendanceSession(formData, true);
+}
+
+export async function importAttendanceCsv(formData: FormData) {
+  const admin = await requirePermission("discipline", "mark-attendance");
+  const file = formData.get("file");
+  const completeSessions = formData.get("completeSessions") === "true";
+  const fallbackSessionDate = importedDate(readString(formData, "fallbackSessionDate") ?? "");
+  const fallbackSessionName = readString(formData, "fallbackSessionName") ?? "";
+
+  if (!(file instanceof File) || file.size === 0) {
+    return { ok: false, message: "Choose a CSV file to import." };
+  }
+  if (file.size > 20 * 1024 * 1024) {
+    return { ok: false, message: "The CSV file must be smaller than 20 MB." };
+  }
+  if (/\.(xlsx|xls)$/i.test(file.name)) {
+    return { ok: false, message: "Save the Excel workbook as CSV UTF-8 before importing it." };
+  }
+
+  const table = parseDelimitedRows(decodeImportFile(await file.arrayBuffer()));
+  if (table.length < 2) {
+    return { ok: false, message: "The file has no attendance rows." };
+  }
+
+  const headers = table[0].map(normalizeImportHeader);
+  const sourceRows = table.slice(1).map((cells) => Object.fromEntries(headers.map((header, index) => [header, cells[index] ?? ""])));
+  const users = await prisma.user.findMany({ select: { id: true, name: true, email: true } });
+  const usersByEmail = new Map(users.map((user) => [user.email.toLowerCase(), user]));
+  const usersByName = new Map<string, typeof users>();
+  for (const user of users) {
+    const key = normalizeImportedName(user.name);
+    usersByName.set(key, [...(usersByName.get(key) ?? []), user]);
+  }
+
+  const parsedRecords = new Map<string, ImportedAttendanceRecord>();
+  const failures: string[] = [];
+
+  sourceRows.forEach((row, index) => {
+    const rowNumber = index + 2;
+    const sessionDate = importedDate(importedValue(row, "Session Date", "Date")) ?? fallbackSessionDate;
+    const sessionType = importedValue(row, "Session Name", "Session", "Session Type") || fallbackSessionName;
+    const email = importedValue(row, "Email", "Email Address").toLowerCase();
+    const fullName = importedValue(row, "Full Name", "Names", "Name");
+    const matchedByName = fullName ? usersByName.get(normalizeImportedName(fullName)) ?? [] : [];
+    const matchedUser = (email ? usersByEmail.get(email) : undefined) ?? (matchedByName.length === 1 ? matchedByName[0] : undefined);
+    const presence = importedValue(row, "Points of Presence", "Presence", "Present");
+    const statusValue = importedValue(row, "Status", "Attendance Status");
+    const permissionStatus = importedValue(row, "Permission Status", "Permission");
+    const status = !statusValue && /approved permission|excused|permitted/i.test(permissionStatus)
+      ? "excused" as const
+      : importedStatus(statusValue, presence);
+
+    if (!sessionDate) {
+      failures.push(`row ${rowNumber}: invalid or missing Session Date`);
+      return;
+    }
+    if (!sessionType) {
+      failures.push(`row ${rowNumber}: missing Session Name`);
+      return;
+    }
+    if (!matchedUser) {
+      failures.push(`row ${rowNumber}: user not found${email ? ` (${email})` : fullName ? ` (${fullName})` : ""}`);
+      return;
+    }
+    if (!status) {
+      failures.push(`row ${rowNumber}: invalid Status`);
+      return;
+    }
+
+    const timeliness = importedValue(row, "On Time", "Timeliness");
+    const onTime = status === "late" || status === "absent" ? false : importBoolean(timeliness, status === "present");
+    const normalizedStatus = status === "present" && !onTime ? "late" : status;
+    const disciplineValue = importedValue(row, "Discipline Points", "Discipline");
+    const numericDiscipline = Number(disciplineValue);
+    const disciplinePoints = Number.isFinite(numericDiscipline) && disciplineValue.trim()
+      ? Math.max(0, Math.round(numericDiscipline))
+      : importBoolean(disciplineValue) ? 1 : 0;
+    const lateMinutesValue = Number(importedValue(row, "Late Minutes", "Minutes Late"));
+    const record: ImportedAttendanceRecord = {
+      userId: matchedUser.id,
+      sessionDate,
+      sessionType,
+      status: normalizedStatus,
+      onTime,
+      communicated: importBoolean(importedValue(row, "Communicated", "Communication")),
+      disciplinePoints,
+      lateMinutes: Number.isFinite(lateMinutesValue) ? Math.max(0, Math.round(lateMinutesValue)) : 0,
+      notes: importedValue(row, "Notes", "Comment", "Comments") || null,
+    };
+    parsedRecords.set(`${sessionDate}__${sessionType.toLowerCase()}__${matchedUser.id}`, record);
+  });
+
+  if (parsedRecords.size === 0) {
+    return { ok: false, message: `No attendance records were imported. ${failures.slice(0, 4).join("; ") || "Check the template columns."}` };
+  }
+
+  const grouped = new Map<string, ImportedAttendanceRecord[]>();
+  for (const record of parsedRecords.values()) {
+    const key = `${record.sessionDate}__${record.sessionType.toLowerCase()}`;
+    grouped.set(key, [...(grouped.get(key) ?? []), record]);
+  }
+
+  const dates = [...new Set([...parsedRecords.values()].map((record) => record.sessionDate))];
+  const existingSessions = await prisma.attendanceSession.findMany({
+    where: { sessionDate: { in: dates.map(dateOnly) } },
+    select: { sessionDate: true, sessionType: true },
+  });
+  const blockedGroups = new Set<string>();
+  for (const [key, records] of grouped) {
+    const first = records[0];
+    const conflict = existingSessions.find((session) => session.sessionDate.toISOString().slice(0, 10) === first.sessionDate && session.sessionType.toLowerCase() !== first.sessionType.toLowerCase());
+    if (conflict) {
+      blockedGroups.add(key);
+      failures.push(`${first.sessionDate}: already has session “${conflict.sessionType}”`);
+    }
+  }
+
+  let sessionsImported = 0;
+  let recordsImported = 0;
+  await prisma.$transaction(async (tx) => {
+    for (const [key, records] of grouped) {
+      if (blockedGroups.has(key)) continue;
+      const first = records[0];
+      const sessionDate = dateOnly(first.sessionDate);
+      await tx.attendanceSession.upsert({
+        where: { sessionDate_sessionType: { sessionDate, sessionType: first.sessionType } },
+        update: completeSessions ? { isCompleted: true, completedAt: new Date(), completedBy: admin.id } : {},
+        create: {
+          sessionDate,
+          sessionType: first.sessionType,
+          isCompleted: completeSessions,
+          completedAt: completeSessions ? new Date() : null,
+          completedBy: completeSessions ? admin.id : null,
+        },
+      });
+      sessionsImported += 1;
+
+      for (const record of records) {
+        await tx.attendanceRecord.upsert({
+          where: { userId_sessionDate_sessionType: { userId: record.userId, sessionDate, sessionType: first.sessionType } },
+          update: {
+            status: record.status,
+            onTime: record.onTime,
+            communicated: record.communicated,
+            disciplinePoints: record.disciplinePoints,
+            lateMinutes: record.lateMinutes,
+            notes: record.notes,
+            markedBy: admin.id,
+          },
+          create: {
+            userId: record.userId,
+            sessionDate,
+            sessionType: first.sessionType,
+            status: record.status,
+            onTime: record.onTime,
+            communicated: record.communicated,
+            disciplinePoints: record.disciplinePoints,
+            lateMinutes: record.lateMinutes,
+            notes: record.notes,
+            markedBy: admin.id,
+          },
+        });
+        recordsImported += 1;
+      }
+    }
+  }, { maxWait: 30_000, timeout: 120_000 });
+
+  revalidatePath("/admin/discipline");
+  const skipped = sourceRows.length - recordsImported;
+  if (recordsImported === 0) {
+    return { ok: false, message: `No attendance records were imported. ${failures.slice(0, 4).join("; ")}` };
+  }
+  return {
+    ok: true,
+    message: `Imported ${recordsImported} attendance record(s) across ${sessionsImported} session(s)${skipped > 0 ? `; skipped ${skipped} row(s): ${failures.slice(0, 3).join("; ")}` : ""}.`,
+  };
 }
 
 export async function deleteAttendanceSession(sessionDateValue: string, sessionType: string) {

@@ -49,6 +49,7 @@ export default async function AdminLayout({
             province: user.province,
             district: user.district,
             sector: user.sector,
+            cell: user.cell,
             village: user.village,
             emergencyName: user.emergencyName,
             emergencyPhone: user.emergencyPhone,

@@ -17,7 +17,11 @@ export type UserExportRow = {
   dateOfBirth: string;
   gender: string;
   maritalStatus: string;
-  residence: string;
+  province: string;
+  district: string;
+  sector: string;
+  cell: string;
+  village: string;
   family: string;
   occupation: string;
   membershipType: string;
@@ -54,6 +58,7 @@ function profileComplete(user: {
   province: string | null;
   district: string | null;
   sector: string | null;
+  cell: string | null;
   village: string | null;
 }) {
   return [
@@ -64,6 +69,7 @@ function profileComplete(user: {
     user.province,
     user.district,
     user.sector,
+    user.cell,
     user.village,
   ].every(Boolean)
     ? "Yes"
@@ -112,10 +118,6 @@ export async function getUserExportRows(filters: UserExportFilters) {
   });
 
   return users.map<UserExportRow>((user, index) => {
-    const residenceParts = [user.province, user.district, user.sector, user.village].filter(
-      Boolean,
-    );
-
     return {
       index: index + 1,
       fullName: user.name,
@@ -127,7 +129,11 @@ export async function getUserExportRows(filters: UserExportFilters) {
       dateOfBirth: formatDate(user.dateOfBirth),
       gender: titleCase(user.gender),
       maritalStatus: user.maritalStatus || "N/A",
-      residence: residenceParts.length > 0 ? residenceParts.join(", ") : "N/A",
+      province: user.province || "N/A",
+      district: user.district || "N/A",
+      sector: user.sector || "N/A",
+      cell: user.cell || "N/A",
+      village: user.village || "N/A",
       family: user.familyMembership?.family.name || "N/A",
       occupation: user.occupation || "N/A",
       membershipType: titleCase(user.membershipType),

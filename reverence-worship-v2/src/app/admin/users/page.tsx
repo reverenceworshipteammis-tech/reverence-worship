@@ -105,6 +105,7 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
         province: user.province,
         district: user.district,
         sector: user.sector,
+        cell: user.cell,
         village: user.village,
         maritalStatus: user.maritalStatus,
         membershipType: user.membershipType,

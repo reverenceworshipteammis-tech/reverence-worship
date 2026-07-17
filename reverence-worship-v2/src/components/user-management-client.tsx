@@ -45,6 +45,7 @@ type UserRow = {
   province: string | null;
   district: string | null;
   sector: string | null;
+  cell: string | null;
   village: string | null;
   maritalStatus: string | null;
   membershipType: string | null;
@@ -74,6 +75,27 @@ const statCards = [
   { key: "male", label: "Male", icon: Mars, iconClass: "bg-blue-100 text-blue-600", valueClass: "text-blue-600" },
   { key: "female", label: "Female", icon: Venus, iconClass: "bg-pink-100 text-pink-600", valueClass: "text-pink-600" },
 ] as const;
+
+const userImportHeaders = [
+  "Full Name",
+  "Email",
+  "Phone Number",
+  "Roles",
+  "Status",
+  "Joined Date",
+  "Date of Birth",
+  "Gender",
+  "Marital Status",
+  "Province",
+  "District",
+  "Sector",
+  "Cell",
+  "Village",
+  "Family",
+  "Occupation",
+  "Membership Type",
+  "Approval Status",
+];
 
 function initials(name: string) {
   return name
@@ -187,6 +209,16 @@ export function UserManagementClient({
 
     const base = kind === "csv" ? "/admin/users/export" : "/admin/users/export-pdf";
     return `${base}${params.toString() ? `?${params.toString()}` : ""}`;
+  }
+
+  function downloadImportTemplate() {
+    const csv = `\uFEFF${userImportHeaders.join(",")}\r\n`;
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "user-import-template.csv";
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   function handleUserAction(user: UserRow, action: string) {
@@ -606,6 +638,7 @@ export function UserManagementClient({
                   ["Email Address", viewUser.email],
                   ["Phone Number", viewUser.phone || "-"],
                   ["Gender", viewUser.gender || "-"],
+                  ["Joined Date", viewUser.createdAt],
                   ["Date of Birth", viewUser.dateOfBirth || "-"],
                   ["Marital Status", viewUser.maritalStatus || "-"],
                   ["Membership Type", viewUser.membershipType || "-"],
@@ -615,6 +648,7 @@ export function UserManagementClient({
                   ["Province", viewUser.province || "-"],
                   ["District", viewUser.district || "-"],
                   ["Sector", viewUser.sector || "-"],
+                  ["Cell", viewUser.cell || "-"],
                   ["Village", viewUser.village || "-"],
                 ]],
                 ["Additional Information", [["Skills", viewUser.skills || "-"]]],
@@ -671,21 +705,32 @@ export function UserManagementClient({
               <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-800">
                 <p className="font-semibold">Expected columns</p>
                 <p className="mt-1 leading-5">
-                  Full Name, Email, Phone Number, Roles, Status, Date of Birth, Gender, Marital Status, Residence, Family, Occupation, Membership Type, Approval Status.
+                  {userImportHeaders.join(", ")}.
                 </p>
                 <p className="mt-2 text-xs text-blue-700">
+                  Use <strong>DD/MM/YYYY</strong> for Joined Date. {" "}
                   New password accounts use default password <strong>Pass@123</strong>. Existing Google sign-in accounts keep Google-only login.
                 </p>
               </div>
               <div>
                 <label className="mb-1 block text-xs font-semibold text-gray-700">CSV file</label>
-                <input
-                  name="file"
-                  type="file"
-                  accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain"
-                  required
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-blue-700 hover:file:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <input
+                    name="file"
+                    type="file"
+                    accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain"
+                    required
+                    className="min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-blue-700 hover:file:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={downloadImportTemplate}
+                    className="flex shrink-0 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <Download className="size-4" aria-hidden="true" />
+                    Download Template
+                  </button>
+                </div>
                 <p className="mt-1 text-xs text-gray-500">Upload CSV or tab-separated text only. If your file is Excel, open it and save as CSV first.</p>
               </div>
               <div className="flex justify-end gap-2 border-t pt-4">
@@ -725,6 +770,7 @@ export function UserManagementClient({
                 <input name="province" defaultValue={editUser.province || ""} placeholder="Province" className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 <input name="district" defaultValue={editUser.district || ""} placeholder="District" className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 <input name="sector" defaultValue={editUser.sector || ""} placeholder="Sector" className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <input name="cell" defaultValue={editUser.cell || ""} placeholder="Cell" className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 <input name="village" defaultValue={editUser.village || ""} placeholder="Village" className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 <select name="gender" defaultValue={editUser.gender || ""} className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                   <option value="">Select Gender</option><option value="male">Male</option><option value="female">Female</option>
@@ -836,6 +882,10 @@ export function UserManagementClient({
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-gray-700">Sector</label>
                   <input name="sector" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-gray-700">Cell</label>
+                  <input name="cell" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-gray-700">Village</label>

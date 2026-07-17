@@ -17,6 +17,7 @@ type CompleteGoogleProfileFormProps = {
     province: string | null;
     district: string | null;
     sector: string | null;
+    cell: string | null;
     village: string | null;
   };
 };
@@ -147,6 +148,7 @@ export function CompleteGoogleProfileForm({ user }: CompleteGoogleProfileFormPro
           <Field label="Province" name="province" defaultValue={user.province} placeholder="Province" icon={MapPin} />
           <Field label="District" name="district" defaultValue={user.district} placeholder="District" icon={Map} />
           <Field label="Sector" name="sector" defaultValue={user.sector} placeholder="Sector" icon={MapPin} />
+          <Field label="Cell" name="cell" defaultValue={user.cell} placeholder="Cell" icon={MapPin} />
           <Field label="Village" name="village" defaultValue={user.village} placeholder="Village" icon={Home} />
         </div>
       </div>

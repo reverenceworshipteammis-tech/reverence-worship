@@ -81,6 +81,7 @@ const registerSchema = z
     province: z.string().trim().min(1, "Province is required."),
     district: z.string().trim().min(1, "District is required."),
     sector: z.string().trim().min(1, "Sector is required."),
+    cell: z.string().trim().min(1, "Cell is required."),
     village: z.string().trim().min(1, "Village is required."),
     password: z.string().min(6, "Password must be at least 6 characters."),
     confirmPassword: z.string(),
@@ -99,6 +100,7 @@ const googleProfileCompletionSchema = z.object({
   province: z.string().trim().min(1, "Province is required."),
   district: z.string().trim().min(1, "District is required."),
   sector: z.string().trim().min(1, "Sector is required."),
+  cell: z.string().trim().min(1, "Cell is required."),
   village: z.string().trim().min(1, "Village is required."),
 });
 
@@ -208,6 +210,7 @@ export async function completeGoogleProfileAction(
       province: parsed.data.province,
       district: parsed.data.district,
       sector: parsed.data.sector,
+      cell: parsed.data.cell,
       village: parsed.data.village,
     },
   });
@@ -276,6 +279,7 @@ export async function registerAction(
       province: parsed.data.province,
       district: parsed.data.district,
       sector: parsed.data.sector,
+      cell: parsed.data.cell,
       village: parsed.data.village,
       passwordHash,
       status: firstUser ? "active" : "pending",

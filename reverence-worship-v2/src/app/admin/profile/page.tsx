@@ -144,6 +144,7 @@ export default async function ProfilePage() {
                 <InfoRow label="Province" value={display(user.province)} icon={MapPin} />
                 <InfoRow label="District" value={display(user.district)} icon={Home} />
                 <InfoRow label="Sector" value={display(user.sector)} icon={MapPin} />
+                <InfoRow label="Cell" value={display(user.cell)} icon={MapPin} />
                 <InfoRow label="Village" value={display(user.village)} icon={Home} />
                 <InfoRow label="Emergency Name" value={display(user.emergencyName)} icon={Users} />
                 <InfoRow label="Emergency Phone" value={display(user.emergencyPhone)} icon={Phone} />

@@ -15,6 +15,7 @@ const createUserSchema = z.object({
   province: z.string().optional(),
   district: z.string().optional(),
   sector: z.string().optional(),
+  cell: z.string().optional(),
   village: z.string().optional(),
   gender: z.enum(["", "male", "female"]).optional(),
   maritalStatus: z.string().optional(),
@@ -38,6 +39,7 @@ const updateUserSchema = z.object({
   province: z.string().optional(),
   district: z.string().optional(),
   sector: z.string().optional(),
+  cell: z.string().optional(),
   village: z.string().optional(),
   gender: z.enum(["", "male", "female"]).optional(),
   maritalStatus: z.string().optional(),
@@ -89,10 +91,15 @@ type ImportedUserRow = {
   phone: string | null;
   roles: string[];
   status: "active" | "pending" | "inactive";
+  joinedDate: Date | null;
   dateOfBirth: Date | null;
   gender: "male" | "female" | null;
   maritalStatus: string | null;
-  residence: string | null;
+  province: string | null;
+  district: string | null;
+  sector: string | null;
+  cell: string | null;
+  village: string | null;
   family: string | null;
   occupation: string | null;
   membershipType: "permanent" | "temporary" | "visitor" | null;
@@ -241,7 +248,7 @@ function readImportValue(row: Record<string, string>, ...keys: string[]) {
   return "";
 }
 
-function parseImportDate(value: string) {
+function parseImportDate(value: string, slashOrder: "day-first" | "month-first" = "day-first") {
   if (!value) return null;
   const normalized = value.trim();
   const iso = /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : "";
@@ -251,10 +258,10 @@ function parseImportDate(value: string) {
   if (slash) {
     const [, first, second, yearPart] = slash;
     const year = Number(yearPart.length === 2 ? `20${yearPart}` : yearPart);
-    const month = Number(first) > 12 ? Number(second) : Number(first);
-    const day = Number(first) > 12 ? Number(first) : Number(second);
+    const month = Number(slashOrder === "month-first" ? first : second);
+    const day = Number(slashOrder === "month-first" ? second : first);
     const date = new Date(year, month - 1, day, 12);
-    return Number.isNaN(date.getTime()) ? null : date;
+    return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? date : null;
   }
 
   const date = new Date(normalized);
@@ -301,10 +308,15 @@ function parseImportedUser(row: Record<string, string>): ImportedUserRow | null 
     phone: readImportValue(row, "Phone Number", "Phone") || null,
     roles: parseRoleNames(readImportValue(row, "Roles", "Role")),
     status: parseImportStatus(readImportValue(row, "Status"), readImportValue(row, "Approval Status")),
+    joinedDate: parseImportDate(readImportValue(row, "Joined Date", "Join Date", "Registered Date")),
     dateOfBirth: parseImportDate(readImportValue(row, "Date of Birth", "DOB")),
     gender: parseGender(readImportValue(row, "Gender")),
     maritalStatus: readImportValue(row, "Marital Status") || null,
-    residence: readImportValue(row, "Residence", "Address") || null,
+    province: readImportValue(row, "Province") || null,
+    district: readImportValue(row, "District") || null,
+    sector: readImportValue(row, "Sector") || null,
+    cell: readImportValue(row, "Cell") || null,
+    village: readImportValue(row, "Village") || null,
     family: readImportValue(row, "Family") || null,
     occupation: readImportValue(row, "Occupation") || null,
     membershipType: parseMembershipType(readImportValue(row, "Membership Type")),
@@ -320,11 +332,24 @@ function importedUserData(row: ImportedUserRow) {
     maritalStatus: row.maritalStatus,
     membershipType: row.membershipType ?? "permanent",
     occupation: row.occupation,
-    village: row.residence,
+    province: row.province,
+    district: row.district,
+    sector: row.sector,
+    cell: row.cell,
+    village: row.village,
     notes: row.family ? `Imported family: ${row.family}` : undefined,
     status: row.status,
     emailVerifiedAt: row.status === "active" ? new Date() : null,
+    ...(row.joinedDate ? { createdAt: row.joinedDate } : {}),
   };
+}
+
+function importSaveFailure(error: unknown) {
+  const code = typeof error === "object" && error !== null && "code" in error ? String(error.code) : "";
+  if (code === "P2002") return "an account with this email already exists";
+  if (code === "P2000") return "one of the values is too long";
+  if (code === "P2003") return "a referenced record is invalid";
+  return "the user could not be saved";
 }
 
 async function importRoleLookup() {
@@ -407,6 +432,7 @@ export async function createUserAction(
       province: parsed.data.province || null,
       district: parsed.data.district || null,
       sector: parsed.data.sector || null,
+      cell: parsed.data.cell || null,
       village: parsed.data.village || null,
       gender: parsed.data.gender || null,
       maritalStatus: parsed.data.maritalStatus || null,
@@ -483,7 +509,9 @@ export async function importUsersCsvAction(
   const roleIdsForImport = await importRoleLookup();
   let created = 0;
   let updated = 0;
-  let skipped = rows.length - uniqueRows.length;
+  const duplicateRows = rows.length - uniqueRows.length;
+  let skipped = duplicateRows;
+  const failures: string[] = duplicateRows ? [`${duplicateRows} duplicate email row(s) in the file`] : [];
   const roleRows: Array<{ userId: number; roleId: number }> = [];
   const affectedUserIds: number[] = [];
 
@@ -510,35 +538,33 @@ export async function importUsersCsvAction(
       const roleIds = await roleIdsForImport(row.roles);
       roleRows.push(...roleIds.map((roleId) => ({ userId: existing.id, roleId })));
       updated += 1;
-    } catch {
+    } catch (error) {
+      console.error(`Could not update imported user ${row.email}`, error);
       skipped += 1;
+      failures.push(`${row.email}: ${importSaveFailure(error)}`);
     }
   }
 
-  if (newRows.length) {
+  for (const row of newRows) {
     try {
-      const createdUsers = await prisma.user.createManyAndReturn({
-        data: newRows.map((row) => ({
+      const createdUser = await prisma.user.create({
+        data: {
           ...importedUserData(row),
           email: row.email,
           passwordHash,
           mustChangePassword: true,
           createdById: admin.id,
-        })),
+        },
         select: { id: true, email: true },
       });
-      created = createdUsers.length;
-      affectedUserIds.push(...createdUsers.map((user) => user.id));
-      const createdByEmail = new Map(createdUsers.map((user) => [user.email, user.id]));
-
-      for (const row of newRows) {
-        const userId = createdByEmail.get(row.email);
-        if (!userId) continue;
-        const roleIds = await roleIdsForImport(row.roles);
-        roleRows.push(...roleIds.map((roleId) => ({ userId, roleId })));
-      }
-    } catch {
-      skipped += newRows.length;
+      created += 1;
+      affectedUserIds.push(createdUser.id);
+      const roleIds = await roleIdsForImport(row.roles);
+      roleRows.push(...roleIds.map((roleId) => ({ userId: createdUser.id, roleId })));
+    } catch (error) {
+      console.error(`Could not create imported user ${row.email}`, error);
+      skipped += 1;
+      failures.push(`${row.email}: ${importSaveFailure(error)}`);
     }
   }
 
@@ -555,9 +581,18 @@ export async function importUsersCsvAction(
   revalidatePath("/admin/users");
   revalidatePath("/admin/dashboard");
 
+  const failureDetails = failures.length ? ` ${failures.slice(0, 3).join("; ")}.` : "";
+
+  if (created === 0 && updated === 0) {
+    return {
+      ok: false,
+      message: `No users were imported. Skipped ${skipped}.${failureDetails}`,
+    };
+  }
+
   return {
     ok: true,
-    message: `Import completed. Created ${created}, updated ${updated}${skipped ? `, skipped ${skipped}` : ""}. Imported password accounts use ${IMPORT_DEFAULT_PASSWORD} and must change it on first login.`,
+    message: `Import completed. Created ${created}, updated ${updated}${skipped ? `, skipped ${skipped}` : ""}.${failureDetails} Imported password accounts use ${IMPORT_DEFAULT_PASSWORD} and must change it on first login.`,
   };
 }
 
@@ -698,6 +733,7 @@ export async function updateUserAction(
       province: parsed.data.province || null,
       district: parsed.data.district || null,
       sector: parsed.data.sector || null,
+      cell: parsed.data.cell || null,
       village: parsed.data.village || null,
       gender: parsed.data.gender || null,
       maritalStatus: parsed.data.maritalStatus || null,

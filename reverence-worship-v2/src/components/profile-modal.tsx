@@ -36,6 +36,7 @@ export type ProfileModalData = {
   province: string | null;
   district: string | null;
   sector: string | null;
+  cell: string | null;
   village: string | null;
   emergencyName: string | null;
   emergencyPhone: string | null;
@@ -166,6 +167,7 @@ export function ProfileModal({
               <InfoRow label="Province" value={display(profile.province)} icon={MapPin} />
               <InfoRow label="District" value={display(profile.district)} icon={Home} />
               <InfoRow label="Sector" value={display(profile.sector)} icon={MapPin} />
+              <InfoRow label="Cell" value={display(profile.cell)} icon={MapPin} />
               <InfoRow label="Village" value={display(profile.village)} icon={Home} />
               <InfoRow label="Emergency Name" value={display(profile.emergencyName)} icon={Users} />
               <InfoRow label="Emergency Phone" value={display(profile.emergencyPhone)} icon={Phone} />

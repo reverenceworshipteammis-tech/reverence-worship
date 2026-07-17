@@ -6,7 +6,7 @@ const globalForPrisma = globalThis as unknown as {
   prismaSchemaVersion?: string;
 };
 
-const PRISMA_SCHEMA_VERSION = "2026-07-15-password-reset-notifications";
+const PRISMA_SCHEMA_VERSION = "2026-07-17-user-cell";
 
 function databaseUrl() {
   const value = process.env.DATABASE_URL;

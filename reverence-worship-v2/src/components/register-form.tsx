@@ -154,6 +154,7 @@ export function RegisterForm() {
           <Field label="Province" name="province" placeholder="Province" icon={MapPin} />
           <Field label="District" name="district" placeholder="District" icon={Map} />
           <Field label="Sector" name="sector" placeholder="Sector" icon={MapPin} />
+          <Field label="Cell" name="cell" placeholder="Cell" icon={MapPin} />
           <Field label="Village" name="village" placeholder="Village" icon={Home} />
         </div>
 

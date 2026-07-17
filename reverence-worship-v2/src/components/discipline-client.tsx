@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BarChart3, BookOpen, CalendarCheck, CheckCircle2, ClipboardList, Clock, Edit, FileText, Filter, Gavel, Info, MailOpen, Play, Plus, Save, Search, Smile, Trash2, TriangleAlert, X, XCircle } from "lucide-react";
+import { BarChart3, BookOpen, CalendarCheck, CheckCircle2, ClipboardList, Clock, Download, Edit, FileText, FileUp, Filter, Gavel, Info, MailOpen, Play, Plus, Save, Search, Smile, Trash2, TriangleAlert, X, XCircle } from "lucide-react";
 import {
   approvePermissionRequest,
   completeAttendanceSession,
@@ -11,6 +11,7 @@ import {
   deleteAttendanceSession,
   deleteDisciplineSession,
   deletePermissionRequest,
+  importAttendanceCsv,
   rejectPermissionRequest,
   resolveDisciplineRecord,
   saveDisciplineActionPlan,
@@ -208,6 +209,10 @@ export function DisciplineClient({
   const [notice, setNotice] = useState<{ title: string; message: string } | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{ title: string; message: string; confirmText: string; onConfirm: () => Promise<void> | void } | null>(null);
   const [sessionModal, setSessionModal] = useState(false);
+  const [attendanceImportModal, setAttendanceImportModal] = useState(false);
+  const [attendanceImportFile, setAttendanceImportFile] = useState<File | null>(null);
+  const [completeImportedSessions, setCompleteImportedSessions] = useState(true);
+  const [isImportingAttendance, setIsImportingAttendance] = useState(false);
   const [sessionReadOnly, setSessionReadOnly] = useState(false);
   const [permissionReviewModal, setPermissionReviewModal] = useState<null | "pending" | "rejected">(null);
   const [sessionDate, setSessionDate] = useState(new Date().toISOString().slice(0, 10));
@@ -384,6 +389,42 @@ export function DisciplineClient({
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  }
+
+  function downloadAttendanceTemplate() {
+    const headers = ["Session Date", "Session Name", "Email", "Full Name", "Status", "On Time", "Communicated", "Discipline Points", "Late Minutes", "Notes"];
+    const csv = `\uFEFF${headers.map((header) => `"${header}"`).join(",")}\r\n`;
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "attendance-import-template.csv";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  async function submitAttendanceImport(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!attendanceImportFile) {
+      setNotice({ title: "Attendance Import", message: "Choose a CSV file to import." });
+      return;
+    }
+
+    const formData = new FormData();
+    formData.set("file", attendanceImportFile);
+    formData.set("completeSessions", String(completeImportedSessions));
+    formData.set("fallbackSessionDate", sessionDate);
+    formData.set("fallbackSessionName", sessionType.trim());
+    setIsImportingAttendance(true);
+    const result = await importAttendanceCsv(formData);
+    setIsImportingAttendance(false);
+    setMessage(result.message);
+    if (result.ok) {
+      setAttendanceImportModal(false);
+      setAttendanceImportFile(null);
+      router.refresh();
+    }
   }
 
   function openAttendanceSession(date = new Date().toISOString().slice(0, 10), type = "") {
@@ -983,7 +1024,7 @@ export function DisciplineClient({
               </div>
 
               <div className="rounded-xl border border-blue-100 bg-white p-3 shadow-sm sm:rounded-2xl sm:p-4">
-                <div className="grid grid-cols-2 gap-2.5 md:grid-cols-[180px_minmax(220px,1fr)_auto] md:items-end">
+                <div className="grid grid-cols-2 gap-2.5 md:grid-cols-[180px_minmax(220px,1fr)_auto_auto] md:items-end">
                   <div>
                     <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Session Date</label>
                     <input value={sessionDate} onChange={(event) => setSessionDate(event.target.value)} type="date" className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 sm:h-11 sm:rounded-xl" />
@@ -992,7 +1033,11 @@ export function DisciplineClient({
                     <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Session Name</label>
                     <input value={sessionType} onChange={(event) => setSessionType(event.target.value)} placeholder="Sunday Service" className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 sm:h-11 sm:rounded-xl" />
                   </div>
-                  <button type="button" onClick={() => openAttendanceSession(sessionDate, sessionType)} className="col-span-2 inline-flex h-10 w-full items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700 sm:h-11 sm:rounded-xl md:col-span-1 md:w-auto">
+                  <button type="button" onClick={() => setAttendanceImportModal(true)} className="inline-flex h-10 w-full items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-4 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 sm:h-11 sm:rounded-xl md:w-auto">
+                    <FileUp className="mr-2 size-4" />
+                    Import CSV
+                  </button>
+                  <button type="button" onClick={() => openAttendanceSession(sessionDate, sessionType)} className="inline-flex h-10 w-full items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700 sm:h-11 sm:rounded-xl md:w-auto">
                     <Play className="mr-2 size-4" />
                     Start Session
                   </button>
@@ -1594,6 +1639,80 @@ export function DisciplineClient({
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {attendanceImportModal && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/45 p-4">
+          <div className="w-full max-w-xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Import Historical Attendance</h3>
+                <p className="mt-0.5 text-xs text-slate-500">Upload attendance saved from Excel as CSV.</p>
+              </div>
+              <button type="button" onClick={() => setAttendanceImportModal(false)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Close attendance import">
+                <X className="size-5" />
+              </button>
+            </div>
+
+            <form onSubmit={submitAttendanceImport} className="space-y-4 p-5">
+              <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
+                <p className="font-semibold">Expected columns</p>
+                <p className="mt-1 leading-5">Session Date, Session Name, Email, Full Name, Status, On Time, Communicated, Discipline Points, Late Minutes, Notes.</p>
+                <p className="mt-2 text-xs text-blue-700">
+                  Use <strong>DD/MM/YYYY</strong> or <strong>YYYY-MM-DD</strong>. Status can be Present, Late, Absent, or Excused. Email is the preferred user match; Full Name is used when email is empty.
+                </p>
+              </div>
+
+              <div>
+                <p className="mb-2 text-xs text-slate-500">For older files without Session Date and Session Name columns, these values will be used for every row:</p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-[160px_1fr]">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-600">Session Date</label>
+                    <input type="date" value={sessionDate} onChange={(event) => setSessionDate(event.target.value)} className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-600">Session Name</label>
+                    <input value={sessionType} onChange={(event) => setSessionType(event.target.value)} placeholder="Sunday Service" className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+                  </div>
+                </div>
+              </div>
+
+              <button type="button" onClick={downloadAttendanceTemplate} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-50">
+                <Download className="size-4" />
+                Download CSV Template
+              </button>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-600">Attendance CSV file</label>
+                <input
+                  type="file"
+                  accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain"
+                  required
+                  onChange={(event) => setAttendanceImportFile(event.target.files?.[0] ?? null)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-blue-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-blue-700 hover:file:bg-blue-100"
+                />
+              </div>
+
+              <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <input type="checkbox" checked={completeImportedSessions} onChange={(event) => setCompleteImportedSessions(event.target.checked)} className="mt-0.5 size-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+                <span>
+                  <span className="block text-sm font-semibold text-slate-800">Mark imported sessions as completed</span>
+                  <span className="block text-xs text-slate-500">Recommended for historical attendance so it remains locked from normal editing.</span>
+                </span>
+              </label>
+
+              <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
+                <button type="button" onClick={() => setAttendanceImportModal(false)} disabled={isImportingAttendance} className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-60">
+                  Cancel
+                </button>
+                <button type="submit" disabled={isImportingAttendance || !attendanceImportFile} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
+                  <FileUp className="size-4" />
+                  {isImportingAttendance ? "Importing..." : "Import Attendance"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

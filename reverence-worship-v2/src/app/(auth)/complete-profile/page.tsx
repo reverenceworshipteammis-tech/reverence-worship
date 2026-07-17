@@ -30,6 +30,7 @@ export default async function CompleteProfilePage() {
           province: user.province,
           district: user.district,
           sector: user.sector,
+          cell: user.cell,
           village: user.village,
         }}
       />
