@@ -45,7 +45,7 @@ export async function getUserPerformanceData(userId: number, year: number, range
   ]));
 
   const goodBehavior = disciplineRecords.filter((record) => record.type === "positive").length;
-  const presentCount = attendanceRecords.filter((record) => ["present", "late"].includes(record.status)).length;
+  const presentCount = attendanceRecords.filter((record) => record.status === "present").length;
   const communicatedCount = attendanceRecords.filter((record) => record.communicated).length;
   const expectedContribution = money(contribution?.annualAmount);
   const paidContribution = payments.reduce((sum, payment) => sum + money(payment.amount), 0);

@@ -460,6 +460,7 @@ model AttendanceSession {
   sessionDate DateTime  @map("session_date") @db.Date
   sessionType String    @map("session_type")
   isCompleted Boolean   @default(false) @map("is_completed")
+  isImported  Boolean   @default(false) @map("is_imported")
   completedAt DateTime? @map("completed_at")
   completedBy Int?      @map("completed_by")
   createdAt   DateTime  @default(now()) @map("created_at")

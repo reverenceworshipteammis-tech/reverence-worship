@@ -155,7 +155,7 @@ export function LandingPageClient({ dashboardHref, registrationEnabled, videos, 
             </div>
             <div className="mt-7 flex flex-wrap gap-3">
               <a href="#music" className="rounded-full bg-white px-5 py-3 text-sm font-bold text-blue-700">Explore our music</a>
-              <a href="#join" className="rounded-full border border-white/60 px-5 py-3 text-sm font-bold text-white">Join the community</a>
+              <a href="#join" className="rounded-full border border-white/60 px-5 py-3 text-sm font-bold text-white">Join us</a>
             </div>
           </div>
         </div>

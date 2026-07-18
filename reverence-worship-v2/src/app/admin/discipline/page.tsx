@@ -31,6 +31,13 @@ function monthEnd() {
   return date;
 }
 
+function yearStart() {
+  const date = new Date();
+  date.setMonth(0, 1);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
 async function safeRead<T>(promise: Promise<T>, fallback: T) {
   try {
     return await promise;
@@ -43,7 +50,13 @@ async function safeRead<T>(promise: Promise<T>, fallback: T) {
 export default async function DisciplinePage({
   searchParams,
 }: {
-  searchParams: Promise<{ start_date?: string; end_date?: string; tab?: string }>;
+  searchParams: Promise<{
+    start_date?: string;
+    end_date?: string;
+    attendance_start_date?: string;
+    attendance_end_date?: string;
+    tab?: string;
+  }>;
 }) {
   const user = await requirePageAccess("discipline");
   const permissions = await getUserPermissionSet(user);
@@ -51,6 +64,8 @@ export default async function DisciplinePage({
   const params = await searchParams;
   const startDate = params.start_date ? new Date(`${params.start_date}T00:00:00`) : monthStart();
   const endDate = params.end_date ? new Date(`${params.end_date}T23:59:59`) : monthEnd();
+  const attendanceStartDate = params.attendance_start_date ? new Date(`${params.attendance_start_date}T00:00:00`) : yearStart();
+  const attendanceEndDate = params.attendance_end_date ? new Date(`${params.attendance_end_date}T23:59:59`) : monthEnd();
 
   if (!canManage) {
     const ownPermissions = await prisma.permissionRequest.findMany({
@@ -68,12 +83,14 @@ export default async function DisciplinePage({
         canManage={false}
         startDate={dateValue(startDate)}
         endDate={dateValue(endDate)}
+        attendanceStartDate={dateValue(attendanceStartDate)}
+        attendanceEndDate={dateValue(attendanceEndDate)}
         stats={{ permissionRequests: ownPermissions.length, attendanceSessions: 0, disciplineSessions: 0, avgGoodBehavior: 0 }}
         recentAttendanceSessions={[]}
         recentPermissions={[]}
         attendanceRecords={[]}
         attendanceSessionStates={[]}
-        users={[{ id: user.id, name: user.name, email: user.email, phone: user.phone }]}
+        users={[{ id: user.id, name: user.name, email: user.email, phone: user.phone, joinedDate: dateValue(user.createdAt) }]}
         permissions={ownPermissions.map((permission) => ({
           id: permission.id,
           userId: permission.userId,
@@ -133,6 +150,7 @@ export default async function DisciplinePage({
       prisma.attendanceRecord.count({
         where: {
           sessionDate: { gte: startDate, lte: endDate },
+          user: { is: { OR: [{ membershipType: null }, { membershipType: { not: "temporary" } }] } },
         },
       }),
       0,
@@ -141,7 +159,8 @@ export default async function DisciplinePage({
       prisma.attendanceRecord.count({
         where: {
           sessionDate: { gte: startDate, lte: endDate },
-          status: { in: ["present", "late"] },
+          status: "present",
+          user: { is: { OR: [{ membershipType: null }, { membershipType: { not: "temporary" } }] } },
         },
       }),
       0,
@@ -180,7 +199,7 @@ export default async function DisciplinePage({
     safeRead(
       prisma.attendanceRecord.findMany({
         where: {
-          sessionDate: { gte: startDate, lte: endDate },
+          user: { is: { OR: [{ membershipType: null }, { membershipType: { not: "temporary" } }] } },
         },
         orderBy: [{ sessionDate: "desc" }, { sessionType: "asc" }, { user: { name: "asc" } }],
         include: {
@@ -191,9 +210,12 @@ export default async function DisciplinePage({
     ),
     safeRead(
       prisma.user.findMany({
-        where: { status: "active" },
+        where: {
+          status: "active",
+          OR: [{ membershipType: null }, { membershipType: { not: "temporary" } }],
+        },
         orderBy: { name: "asc" },
-        select: { id: true, name: true, email: true, phone: true },
+        select: { id: true, name: true, email: true, phone: true, createdAt: true },
       }),
       [],
     ),
@@ -220,9 +242,6 @@ export default async function DisciplinePage({
     ),
     safeRead(
       prisma.attendanceSession.findMany({
-        where: {
-          sessionDate: { gte: startDate, lte: endDate },
-        },
         orderBy: [{ sessionDate: "desc" }, { sessionType: "asc" }],
       }),
       [],
@@ -250,6 +269,8 @@ export default async function DisciplinePage({
       canManage
       startDate={dateValue(startDate)}
       endDate={dateValue(endDate)}
+      attendanceStartDate={dateValue(attendanceStartDate)}
+      attendanceEndDate={dateValue(attendanceEndDate)}
       stats={{
         permissionRequests,
         attendanceSessions: attendanceSessionCount,
@@ -290,9 +311,16 @@ export default async function DisciplinePage({
         sessionDate: dateValue(session.sessionDate),
         sessionType: session.sessionType,
         isCompleted: session.isCompleted,
+        isImported: session.isImported,
         updatedAt: session.updatedAt.toISOString(),
       }))}
-      users={activeUsers}
+      users={activeUsers.map((activeUser) => ({
+        id: activeUser.id,
+        name: activeUser.name,
+        email: activeUser.email,
+        phone: activeUser.phone,
+        joinedDate: dateValue(activeUser.createdAt),
+      }))}
       permissions={permissionList.map((permission) => ({
         id: permission.id,
         userId: permission.userId,

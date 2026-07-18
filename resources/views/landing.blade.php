@@ -235,7 +235,7 @@
                     </div>
                     <div class="actions">
                         <a class="btn btn-gold" href="#music">Explore our music</a>
-                        <a class="btn btn-light" href="#join">Join the community</a>
+                        <a class="btn btn-light" href="#join">Join us</a>
                     </div>
                 </div>
             </div>

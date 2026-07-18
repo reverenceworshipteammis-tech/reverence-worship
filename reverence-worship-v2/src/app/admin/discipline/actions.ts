@@ -20,7 +20,7 @@ type ImportedAttendanceRecord = {
   userId: number;
   sessionDate: string;
   sessionType: string;
-  status: "present" | "late" | "absent" | "excused";
+  status: "present" | "absent" | "excused";
   onTime: boolean;
   communicated: boolean;
   disciplinePoints: number;
@@ -146,16 +146,25 @@ function importedStatus(value: string, presenceValue: string) {
   return null;
 }
 
-function normalizeImportedName(value: string) {
-  return value.trim().replace(/\s+/g, " ").toLowerCase();
-}
-
 function importedValue(row: Record<string, string>, ...headers: string[]) {
   for (const header of headers.map(normalizeImportHeader)) {
     const value = row[header]?.trim();
     if (value) return value;
   }
   return "";
+}
+
+function isDatabaseConnectionFailure(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+  return /connection|timeout|timed out|terminated|ECONNRESET|ETIMEDOUT/i.test(message);
+}
+
+function attendanceImportDatabaseFailure(error: unknown) {
+  console.error("Attendance import database operation failed", error);
+  if (isDatabaseConnectionFailure(error)) {
+    return "The database connection timed out before the import could finish. No partial import was saved. Please wait a moment and retry the same file.";
+  }
+  return "Attendance could not be saved because of a database error. No partial import was saved. Please retry.";
 }
 
 function readDisciplineRecords(formData: FormData) {
@@ -184,6 +193,20 @@ async function writeAttendanceSession(formData: FormData, complete: boolean) {
   }
 
   const sessionDate = dateOnly(sessionDateValue);
+  const attendanceUsers = await prisma.user.findMany({
+    where: { id: { in: records.map((record) => Number(record.userId)) } },
+    select: { id: true, createdAt: true, membershipType: true },
+  });
+  const ineligibleUserIds = attendanceUsers
+    .filter((attendanceUser) => attendanceUser.createdAt.toISOString().slice(0, 10) > sessionDateValue)
+    .map((attendanceUser) => attendanceUser.id);
+  if (ineligibleUserIds.length > 0) {
+    return { ok: false, message: "Attendance can only include users who joined on or before the session date." };
+  }
+  if (attendanceUsers.some((attendanceUser) => attendanceUser.membershipType === "temporary")) {
+    return { ok: false, message: "Temporary members are not included in attendance." };
+  }
+
   const existingSession = await prisma.attendanceSession.findUnique({
     where: {
       sessionDate_sessionType: {
@@ -241,8 +264,12 @@ async function writeAttendanceSession(formData: FormData, complete: boolean) {
     });
 
     for (const record of records) {
-      const status = record.status || "present";
+      const requestedStatus = (record.status || "present").trim().toLowerCase();
+      const status = requestedStatus === "late"
+        ? "present"
+        : ["present", "absent", "excused"].includes(requestedStatus) ? requestedStatus : "present";
       const hasOfficialPermission = Boolean(record.hasOfficialPermission);
+      const onTime = requestedStatus === "late" ? false : Boolean(record.onTime);
       await tx.attendanceRecord.upsert({
         where: {
           userId_sessionDate_sessionType: {
@@ -253,7 +280,7 @@ async function writeAttendanceSession(formData: FormData, complete: boolean) {
         },
         update: {
           status,
-          onTime: hasOfficialPermission ? true : Boolean(record.onTime),
+          onTime: hasOfficialPermission ? true : onTime,
           communicated: hasOfficialPermission ? true : Boolean(record.communicated),
           disciplinePoints: hasOfficialPermission ? 1 : Number(record.disciplinePoints) || 0,
           lateMinutes: Number(record.lateMinutes) || 0,
@@ -265,7 +292,7 @@ async function writeAttendanceSession(formData: FormData, complete: boolean) {
           sessionDate,
           sessionType,
           status,
-          onTime: hasOfficialPermission ? true : Boolean(record.onTime),
+          onTime: hasOfficialPermission ? true : onTime,
           communicated: hasOfficialPermission ? true : Boolean(record.communicated),
           disciplinePoints: hasOfficialPermission ? 1 : Number(record.disciplinePoints) || 0,
           lateMinutes: Number(record.lateMinutes) || 0,
@@ -297,48 +324,71 @@ export async function completeAttendanceSession(formData: FormData) {
 }
 
 export async function importAttendanceCsv(formData: FormData) {
-  const admin = await requirePermission("discipline", "mark-attendance");
-  const file = formData.get("file");
+  let admin: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    admin = await requirePermission("discipline", "mark-attendance");
+  } catch (error) {
+    if (isDatabaseConnectionFailure(error)) {
+      return { ok: false, message: attendanceImportDatabaseFailure(error) };
+    }
+    throw error;
+  }
+  const multipleFiles = formData.getAll("files").filter((value): value is File => value instanceof File && value.size > 0);
+  const legacyFile = formData.get("file");
+  const files = multipleFiles.length > 0
+    ? multipleFiles
+    : legacyFile instanceof File && legacyFile.size > 0 ? [legacyFile] : [];
   const completeSessions = formData.get("completeSessions") === "true";
   const fallbackSessionDate = importedDate(readString(formData, "fallbackSessionDate") ?? "");
   const fallbackSessionName = readString(formData, "fallbackSessionName") ?? "";
 
-  if (!(file instanceof File) || file.size === 0) {
-    return { ok: false, message: "Choose a CSV file to import." };
+  if (files.length === 0) {
+    return { ok: false, message: "Choose one or more CSV files to import." };
   }
-  if (file.size > 20 * 1024 * 1024) {
-    return { ok: false, message: "The CSV file must be smaller than 20 MB." };
+  if (files.length > 100) {
+    return { ok: false, message: "Import no more than 100 CSV files at once." };
   }
-  if (/\.(xlsx|xls)$/i.test(file.name)) {
-    return { ok: false, message: "Save the Excel workbook as CSV UTF-8 before importing it." };
+  const oversizedFile = files.find((file) => file.size > 20 * 1024 * 1024);
+  if (oversizedFile) {
+    return { ok: false, message: `${oversizedFile.name} is larger than the 20 MB per-file limit.` };
+  }
+  const excelFile = files.find((file) => /\.(xlsx|xls)$/i.test(file.name));
+  if (excelFile) {
+    return { ok: false, message: `Save ${excelFile.name} as CSV UTF-8 before importing it.` };
   }
 
-  const table = parseDelimitedRows(decodeImportFile(await file.arrayBuffer()));
-  if (table.length < 2) {
-    return { ok: false, message: "The file has no attendance rows." };
+  const sourceRows: Array<{ values: Record<string, string>; fileName: string; rowNumber: number }> = [];
+  for (const file of files) {
+    const table = parseDelimitedRows(decodeImportFile(await file.arrayBuffer()));
+    if (table.length < 2) {
+      return { ok: false, message: `${file.name} has no attendance rows.` };
+    }
+    const headers = table[0].map(normalizeImportHeader);
+    table.slice(1).forEach((cells, index) => {
+      sourceRows.push({
+        values: Object.fromEntries(headers.map((header, cellIndex) => [header, cells[cellIndex] ?? ""])),
+        fileName: file.name,
+        rowNumber: index + 2,
+      });
+    });
   }
-
-  const headers = table[0].map(normalizeImportHeader);
-  const sourceRows = table.slice(1).map((cells) => Object.fromEntries(headers.map((header, index) => [header, cells[index] ?? ""])));
-  const users = await prisma.user.findMany({ select: { id: true, name: true, email: true } });
+  let users: Array<{ id: number; email: string; createdAt: Date; membershipType: string | null }>;
+  try {
+    users = await prisma.user.findMany({ select: { id: true, email: true, createdAt: true, membershipType: true } });
+  } catch (error) {
+    return { ok: false, message: attendanceImportDatabaseFailure(error) };
+  }
   const usersByEmail = new Map(users.map((user) => [user.email.toLowerCase(), user]));
-  const usersByName = new Map<string, typeof users>();
-  for (const user of users) {
-    const key = normalizeImportedName(user.name);
-    usersByName.set(key, [...(usersByName.get(key) ?? []), user]);
-  }
 
   const parsedRecords = new Map<string, ImportedAttendanceRecord>();
   const failures: string[] = [];
 
-  sourceRows.forEach((row, index) => {
-    const rowNumber = index + 2;
+  sourceRows.forEach(({ values: row, fileName, rowNumber }) => {
+    const location = `${fileName}, row ${rowNumber}`;
     const sessionDate = importedDate(importedValue(row, "Session Date", "Date")) ?? fallbackSessionDate;
     const sessionType = importedValue(row, "Session Name", "Session", "Session Type") || fallbackSessionName;
     const email = importedValue(row, "Email", "Email Address").toLowerCase();
-    const fullName = importedValue(row, "Full Name", "Names", "Name");
-    const matchedByName = fullName ? usersByName.get(normalizeImportedName(fullName)) ?? [] : [];
-    const matchedUser = (email ? usersByEmail.get(email) : undefined) ?? (matchedByName.length === 1 ? matchedByName[0] : undefined);
+    const matchedUser = email ? usersByEmail.get(email) : undefined;
     const presence = importedValue(row, "Points of Presence", "Presence", "Present");
     const statusValue = importedValue(row, "Status", "Attendance Status");
     const permissionStatus = importedValue(row, "Permission Status", "Permission");
@@ -347,25 +397,35 @@ export async function importAttendanceCsv(formData: FormData) {
       : importedStatus(statusValue, presence);
 
     if (!sessionDate) {
-      failures.push(`row ${rowNumber}: invalid or missing Session Date`);
+      failures.push(`${location}: invalid or missing Session Date`);
       return;
     }
     if (!sessionType) {
-      failures.push(`row ${rowNumber}: missing Session Name`);
+      failures.push(`${location}: missing Session Name`);
       return;
     }
     if (!matchedUser) {
-      failures.push(`row ${rowNumber}: user not found${email ? ` (${email})` : fullName ? ` (${fullName})` : ""}`);
+      failures.push(email ? `${location}: no user has email ${email}` : `${location}: missing Email`);
+      return;
+    }
+    if (matchedUser.createdAt.toISOString().slice(0, 10) > sessionDate) {
+      failures.push(`${location}: ${email} joined after the session date`);
+      return;
+    }
+    if (matchedUser.membershipType === "temporary") {
+      failures.push(`${location}: ${email} is a temporary member`);
       return;
     }
     if (!status) {
-      failures.push(`row ${rowNumber}: invalid Status`);
+      failures.push(`${location}: invalid Status`);
       return;
     }
 
     const timeliness = importedValue(row, "On Time", "Timeliness");
-    const onTime = status === "late" || status === "absent" ? false : importBoolean(timeliness, status === "present");
-    const normalizedStatus = status === "present" && !onTime ? "late" : status;
+    const onTime = status === "late" ? false : importBoolean(timeliness, status === "present");
+    // Presence and timeliness are separate dimensions. Legacy "Late" rows
+    // remain accepted, but are stored as Present with On Time = false.
+    const normalizedStatus = status === "late" ? "present" : status;
     const disciplineValue = importedValue(row, "Discipline Points", "Discipline");
     const numericDiscipline = Number(disciplineValue);
     const disciplinePoints = Number.isFinite(numericDiscipline) && disciplineValue.trim()
@@ -383,7 +443,9 @@ export async function importAttendanceCsv(formData: FormData) {
       lateMinutes: Number.isFinite(lateMinutesValue) ? Math.max(0, Math.round(lateMinutesValue)) : 0,
       notes: importedValue(row, "Notes", "Comment", "Comments") || null,
     };
-    parsedRecords.set(`${sessionDate}__${sessionType.toLowerCase()}__${matchedUser.id}`, record);
+    const recordKey = `${sessionDate}__${sessionType.toLowerCase()}__${matchedUser.id}`;
+    if (parsedRecords.has(recordKey)) failures.push(`${location}: duplicate attendance record`);
+    parsedRecords.set(recordKey, record);
   });
 
   if (parsedRecords.size === 0) {
@@ -397,10 +459,15 @@ export async function importAttendanceCsv(formData: FormData) {
   }
 
   const dates = [...new Set([...parsedRecords.values()].map((record) => record.sessionDate))];
-  const existingSessions = await prisma.attendanceSession.findMany({
-    where: { sessionDate: { in: dates.map(dateOnly) } },
-    select: { sessionDate: true, sessionType: true },
-  });
+  let existingSessions: Array<{ sessionDate: Date; sessionType: string }>;
+  try {
+    existingSessions = await prisma.attendanceSession.findMany({
+      where: { sessionDate: { in: dates.map(dateOnly) } },
+      select: { sessionDate: true, sessionType: true },
+    });
+  } catch (error) {
+    return { ok: false, message: attendanceImportDatabaseFailure(error) };
+  }
   const blockedGroups = new Set<string>();
   for (const [key, records] of grouped) {
     const first = records[0];
@@ -413,53 +480,52 @@ export async function importAttendanceCsv(formData: FormData) {
 
   let sessionsImported = 0;
   let recordsImported = 0;
-  await prisma.$transaction(async (tx) => {
-    for (const [key, records] of grouped) {
-      if (blockedGroups.has(key)) continue;
-      const first = records[0];
-      const sessionDate = dateOnly(first.sessionDate);
-      await tx.attendanceSession.upsert({
-        where: { sessionDate_sessionType: { sessionDate, sessionType: first.sessionType } },
-        update: completeSessions ? { isCompleted: true, completedAt: new Date(), completedBy: admin.id } : {},
+  try {
+    await prisma.$transaction(async (tx) => {
+      for (const [key, records] of grouped) {
+        if (blockedGroups.has(key)) continue;
+        const first = records[0];
+        const sessionDate = dateOnly(first.sessionDate);
+        await tx.attendanceSession.upsert({
+          where: { sessionDate_sessionType: { sessionDate, sessionType: first.sessionType } },
+          update: {
+            isImported: true,
+            ...(completeSessions ? { isCompleted: true, completedAt: new Date(), completedBy: admin.id } : {}),
+          },
         create: {
           sessionDate,
           sessionType: first.sessionType,
           isCompleted: completeSessions,
+          isImported: true,
           completedAt: completeSessions ? new Date() : null,
           completedBy: completeSessions ? admin.id : null,
         },
-      });
-      sessionsImported += 1;
-
-      for (const record of records) {
-        await tx.attendanceRecord.upsert({
-          where: { userId_sessionDate_sessionType: { userId: record.userId, sessionDate, sessionType: first.sessionType } },
-          update: {
-            status: record.status,
-            onTime: record.onTime,
-            communicated: record.communicated,
-            disciplinePoints: record.disciplinePoints,
-            lateMinutes: record.lateMinutes,
-            notes: record.notes,
-            markedBy: admin.id,
-          },
-          create: {
-            userId: record.userId,
-            sessionDate,
-            sessionType: first.sessionType,
-            status: record.status,
-            onTime: record.onTime,
-            communicated: record.communicated,
-            disciplinePoints: record.disciplinePoints,
-            lateMinutes: record.lateMinutes,
-            notes: record.notes,
-            markedBy: admin.id,
-          },
         });
-        recordsImported += 1;
+        sessionsImported += 1;
+
+        // An imported file is authoritative for its session: replace the stored
+        // roster so members omitted from the CSV are not displayed as attendees.
+        await tx.attendanceRecord.deleteMany({ where: { sessionDate, sessionType: first.sessionType } });
+        await tx.attendanceRecord.createMany({
+          data: records.map((record) => ({
+              userId: record.userId,
+              sessionDate,
+              sessionType: first.sessionType,
+              status: record.status,
+              onTime: record.onTime,
+              communicated: record.communicated,
+              disciplinePoints: record.disciplinePoints,
+              lateMinutes: record.lateMinutes,
+              notes: record.notes,
+              markedBy: admin.id,
+          })),
+        });
+        recordsImported += records.length;
       }
-    }
-  }, { maxWait: 30_000, timeout: 120_000 });
+    }, { maxWait: 30_000, timeout: 120_000 });
+  } catch (error) {
+    return { ok: false, message: attendanceImportDatabaseFailure(error) };
+  }
 
   revalidatePath("/admin/discipline");
   const skipped = sourceRows.length - recordsImported;
@@ -468,7 +534,7 @@ export async function importAttendanceCsv(formData: FormData) {
   }
   return {
     ok: true,
-    message: `Imported ${recordsImported} attendance record(s) across ${sessionsImported} session(s)${skipped > 0 ? `; skipped ${skipped} row(s): ${failures.slice(0, 3).join("; ")}` : ""}.`,
+    message: `Imported ${recordsImported} attendance record(s) from ${files.length} file(s) across ${sessionsImported} session(s)${skipped > 0 ? `; skipped ${skipped} row(s): ${failures.slice(0, 3).join("; ")}` : ""}.`,
   };
 }
 
@@ -639,7 +705,7 @@ export async function saveDisciplineSession(formData: FormData) {
     where: {
       sessionDate: { gte: dayStart, lte: dayEnd },
       sessionType: attendanceSession.sessionType,
-      status: { equals: "present", mode: "insensitive" },
+      status: { in: ["present", "late"], mode: "insensitive" },
     },
     select: { userId: true },
   });

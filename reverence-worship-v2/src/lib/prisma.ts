@@ -6,7 +6,7 @@ const globalForPrisma = globalThis as unknown as {
   prismaSchemaVersion?: string;
 };
 
-const PRISMA_SCHEMA_VERSION = "2026-07-17-user-cell";
+const PRISMA_SCHEMA_VERSION = "2026-07-17-attendance-import-source";
 
 function databaseUrl() {
   const value = process.env.DATABASE_URL;
@@ -26,10 +26,10 @@ function databaseUrl() {
 const adapter = new PrismaPg({
   connectionString: databaseUrl(),
   max: 5,
-  connectionTimeoutMillis: 10_000,
-  idleTimeoutMillis: 10_000,
+  connectionTimeoutMillis: 30_000,
+  idleTimeoutMillis: 60_000,
   keepAlive: true,
-  keepAliveInitialDelayMillis: 10_000,
+  keepAliveInitialDelayMillis: 5_000,
 });
 
 const existingPrisma = globalForPrisma.prisma;

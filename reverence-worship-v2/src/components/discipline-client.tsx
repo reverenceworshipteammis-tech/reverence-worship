@@ -67,6 +67,7 @@ type AttendanceSessionState = {
   sessionDate: string;
   sessionType: string;
   isCompleted: boolean;
+  isImported: boolean;
   updatedAt: string;
 };
 
@@ -75,6 +76,7 @@ type AttendanceUser = {
   name: string;
   email: string;
   phone: string | null;
+  joinedDate: string;
 };
 
 type AttendanceDraft = {
@@ -171,6 +173,8 @@ export function DisciplineClient({
   canManage,
   startDate,
   endDate,
+  attendanceStartDate,
+  attendanceEndDate,
   stats,
   recentAttendanceSessions,
   recentPermissions,
@@ -185,6 +189,8 @@ export function DisciplineClient({
   canManage: boolean;
   startDate: string;
   endDate: string;
+  attendanceStartDate: string;
+  attendanceEndDate: string;
   stats: DisciplineStats;
   recentAttendanceSessions: RecentAttendanceSession[];
   recentPermissions: RecentPermission[];
@@ -202,18 +208,21 @@ export function DisciplineClient({
   const [to, setTo] = useState(endDate);
   const [showOverflowIndicator, setShowOverflowIndicator] = useState(false);
   const tabNavRef = useRef<HTMLDivElement | null>(null);
-  const [attendanceFrom, setAttendanceFrom] = useState(startDate);
-  const [attendanceTo, setAttendanceTo] = useState(endDate);
+  const [attendanceFrom, setAttendanceFrom] = useState(attendanceStartDate);
+  const [attendanceTo, setAttendanceTo] = useState(attendanceEndDate);
   const [attendanceSessionFilter, setAttendanceSessionFilter] = useState("");
+  const [attendancePage, setAttendancePage] = useState(1);
   const [message, setMessage] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ title: string; message: string } | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{ title: string; message: string; confirmText: string; onConfirm: () => Promise<void> | void } | null>(null);
   const [sessionModal, setSessionModal] = useState(false);
   const [attendanceImportModal, setAttendanceImportModal] = useState(false);
-  const [attendanceImportFile, setAttendanceImportFile] = useState<File | null>(null);
+  const [attendanceImportFiles, setAttendanceImportFiles] = useState<File[]>([]);
+  const [attendanceImportError, setAttendanceImportError] = useState<string | null>(null);
   const [completeImportedSessions, setCompleteImportedSessions] = useState(true);
   const [isImportingAttendance, setIsImportingAttendance] = useState(false);
   const [sessionReadOnly, setSessionReadOnly] = useState(false);
+  const [sessionImported, setSessionImported] = useState(false);
   const [permissionReviewModal, setPermissionReviewModal] = useState<null | "pending" | "rejected">(null);
   const [sessionDate, setSessionDate] = useState(new Date().toISOString().slice(0, 10));
   const [sessionType, setSessionType] = useState("");
@@ -234,6 +243,7 @@ export function DisciplineClient({
   const [permissionReason, setPermissionReason] = useState("");
   const [disciplineFrom, setDisciplineFrom] = useState(startDate);
   const [disciplineTo, setDisciplineTo] = useState(endDate);
+  const [disciplinePage, setDisciplinePage] = useState(1);
   const [disciplineModal, setDisciplineModal] = useState(false);
   const [disciplineDate, setDisciplineDate] = useState(new Date().toISOString().slice(0, 10));
   const [disciplineTitle, setDisciplineTitle] = useState("");
@@ -269,7 +279,16 @@ export function DisciplineClient({
     const params = new URLSearchParams();
     if (from) params.set("start_date", from);
     if (to) params.set("end_date", to);
+    if (attendanceFrom) params.set("attendance_start_date", attendanceFrom);
+    if (attendanceTo) params.set("attendance_end_date", attendanceTo);
     router.push(`/admin/discipline?${params.toString()}`);
+  }
+
+  function resetAttendanceFilters() {
+    setAttendanceFrom(attendanceStartDate);
+    setAttendanceTo(attendanceEndDate);
+    setAttendanceSessionFilter("");
+    setAttendancePage(1);
   }
 
   const filteredAttendance = attendanceRecords.filter((record) => {
@@ -296,8 +315,9 @@ export function DisciplineClient({
           total: 0,
           isCompleted: attendanceSessionStates.some((item) => item.sessionDate === record.sessionDate && item.sessionType === record.sessionType && item.isCompleted),
         };
-        if (record.status === "present") session.present += 1;
-        if (record.status === "late") session.late += 1;
+        const isPresent = ["present", "late"].includes(record.status.trim().toLowerCase());
+        if (isPresent) session.present += 1;
+        if (isPresent && !record.onTime) session.late += 1;
         if (record.status === "absent") session.absent += 1;
         if (record.status === "excused") session.excused += 1;
         session.total += 1;
@@ -306,13 +326,92 @@ export function DisciplineClient({
       }, new Map<string, { key: string; date: string; dateLabel: string; session: string; present: number; late: number; absent: number; excused: number; total: number; isCompleted: boolean }>())
       .values(),
   );
-  const presentCount = filteredAttendance.filter((record) => record.status === "present").length;
-  const lateCount = filteredAttendance.filter((record) => record.status === "late").length;
+  const attendancePageSize = 10;
+  const attendancePageCount = Math.max(1, Math.ceil(attendanceSessions.length / attendancePageSize));
+  const currentAttendancePage = Math.min(attendancePage, attendancePageCount);
+  const paginatedAttendanceSessions = attendanceSessions.slice(
+    (currentAttendancePage - 1) * attendancePageSize,
+    currentAttendancePage * attendancePageSize,
+  );
+  const presentAttendance = filteredAttendance.filter((record) => ["present", "late"].includes(record.status.trim().toLowerCase()));
+  const onTimePresentCount = presentAttendance.filter((record) => record.onTime).length;
+  const lateCount = presentAttendance.filter((record) => !record.onTime).length;
   const absentCount = filteredAttendance.filter((record) => record.status === "absent").length;
   const attendanceTotal = filteredAttendance.length;
-  const presentAvg = attendanceTotal ? Math.round((presentCount / attendanceTotal) * 100) : 0;
+  const timelinessAvg = attendanceTotal ? Math.round((onTimePresentCount / attendanceTotal) * 100) : 0;
   const lateAvg = attendanceTotal ? Math.round((lateCount / attendanceTotal) * 100) : 0;
   const absentAvg = attendanceTotal ? Math.round((absentCount / attendanceTotal) * 100) : 0;
+
+  function exportFilteredAttendanceCsv() {
+    if (filteredAttendance.length === 0) {
+      setNotice({ title: "Attendance Export", message: "No attendance records match the selected filters." });
+      return;
+    }
+
+    const headers = ["User", "Sessions Attended", "Present", "Timeliness", "Communicated", "Total Points", "Present", "Timeliness", "Communicated", "Average"];
+    const summaries = new Map<string, {
+      userName: string;
+      sessions: number;
+      present: number;
+      onTime: number;
+      communicated: number;
+      totalPoints: number;
+    }>();
+
+    for (const record of filteredAttendance) {
+      const key = record.userEmail.toLowerCase();
+      const summary = summaries.get(key) ?? {
+        userName: record.userName,
+        sessions: 0,
+        present: 0,
+        onTime: 0,
+        communicated: 0,
+        totalPoints: 0,
+      };
+      const isPresent = ["present", "late"].includes(record.status.trim().toLowerCase());
+      summary.sessions += 1;
+      summary.present += Number(isPresent);
+      summary.onTime += Number(record.onTime);
+      summary.communicated += Number(record.communicated);
+      summary.totalPoints += Number(isPresent) + Number(record.onTime) + Number(record.communicated) + Math.max(0, record.disciplinePoints);
+      summaries.set(key, summary);
+    }
+
+    const reportRows = [...summaries.values()].map((summary) => {
+      const presentPercent = summary.sessions ? Math.round((summary.present / summary.sessions) * 100) : 0;
+      const onTimePercent = summary.sessions ? Math.round((summary.onTime / summary.sessions) * 100) : 0;
+      const communicatedPercent = summary.sessions ? Math.round((summary.communicated / summary.sessions) * 100) : 0;
+      const average = Math.round((presentPercent + onTimePercent + communicatedPercent) / 3);
+      return { summary, presentPercent, onTimePercent, communicatedPercent, average };
+    }).sort((left, right) =>
+      right.average - left.average ||
+      right.summary.totalPoints - left.summary.totalPoints ||
+      left.summary.userName.localeCompare(right.summary.userName),
+    );
+    const rows = reportRows.map(({ summary, presentPercent, onTimePercent, communicatedPercent, average }) => [
+      summary.userName,
+      summary.sessions,
+      summary.present,
+      summary.onTime,
+      summary.communicated,
+      summary.totalPoints,
+      `${presentPercent}%`,
+      `${onTimePercent}%`,
+      `${communicatedPercent}%`,
+      `${average}%`,
+    ]);
+    const csvCell = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
+    const csv = `\uFEFF${[headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n")}\r\n`;
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    const sessionPart = attendanceSessionFilter ? attendanceSessionFilter.replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_+|_+$/g, "") : "all_sessions";
+    link.href = url;
+    link.download = `attendance_report_${attendanceFrom || "all"}_to_${attendanceTo || "all"}_${sessionPart}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
   const permissionsForSessionDate = permissions.filter((permission) => permission.startDateValue <= sessionDate && permission.endDateValue >= sessionDate);
   const sessionPermissionStats = {
     approved: permissionsForSessionDate.filter((permission) => permission.status === "approved").length,
@@ -344,7 +443,10 @@ export function DisciplineClient({
     return Number(draft.present) + Number(draft.onTime) + Number(draft.communicated) + Number(draft.discipline);
   }
 
-  const filteredSessionUsers = users.filter((user) => {
+  const eligibleAttendanceUsers = users.filter((user) =>
+    user.joinedDate <= sessionDate && (!sessionImported || attendanceDrafts.some((draft) => draft.userId === user.id)),
+  );
+  const filteredSessionUsers = eligibleAttendanceUsers.filter((user) => {
     const query = sessionUserSearch.trim().toLowerCase();
     if (!query) return true;
     return user.name.toLowerCase().includes(query) || user.email.toLowerCase().includes(query);
@@ -363,7 +465,7 @@ export function DisciplineClient({
     }
 
     const headers = ["No", "Names", "Permission Status", "Points of Presence", "Timeliness", "Communication", "Discipline", "Total Points"];
-    const rows = users.map((user, index) => {
+    const rows = eligibleAttendanceUsers.map((user, index) => {
       const draft = attendanceDrafts.find((item) => item.userId === user.id);
       const permission = permissionForUser(user.id);
       return [
@@ -393,7 +495,9 @@ export function DisciplineClient({
 
   function downloadAttendanceTemplate() {
     const headers = ["Session Date", "Session Name", "Email", "Full Name", "Status", "On Time", "Communicated", "Discipline Points", "Late Minutes", "Notes"];
-    const csv = `\uFEFF${headers.map((header) => `"${header}"`).join(",")}\r\n`;
+    const example = ["17/02/2026", "Sunday Service", "replace-with-user-email@example.com", "Example Member", "Present", "Yes", "Yes", "1", "0", "Example row - replace or delete before import"];
+    const csvCell = (value: string) => `"${value.replaceAll('"', '""')}"`;
+    const csv = `\uFEFF${headers.map(csvCell).join(",")}\r\n${example.map(csvCell).join(",")}\r\n`;
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const link = document.createElement("a");
     link.href = url;
@@ -406,24 +510,32 @@ export function DisciplineClient({
 
   async function submitAttendanceImport(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!attendanceImportFile) {
-      setNotice({ title: "Attendance Import", message: "Choose a CSV file to import." });
+    if (attendanceImportFiles.length === 0) {
+      setAttendanceImportError("Choose one or more CSV files to import.");
       return;
     }
 
     const formData = new FormData();
-    formData.set("file", attendanceImportFile);
+    attendanceImportFiles.forEach((file) => formData.append("files", file));
     formData.set("completeSessions", String(completeImportedSessions));
     formData.set("fallbackSessionDate", sessionDate);
     formData.set("fallbackSessionName", sessionType.trim());
+    setAttendanceImportError(null);
     setIsImportingAttendance(true);
-    const result = await importAttendanceCsv(formData);
-    setIsImportingAttendance(false);
-    setMessage(result.message);
-    if (result.ok) {
+    try {
+      const result = await importAttendanceCsv(formData);
+      if (!result.ok) {
+        setAttendanceImportError(result.message);
+        return;
+      }
+      setMessage(result.message);
       setAttendanceImportModal(false);
-      setAttendanceImportFile(null);
+      setAttendanceImportFiles([]);
       router.refresh();
+    } catch (error) {
+      setAttendanceImportError(error instanceof Error ? error.message : "Attendance import failed. Please try again.");
+    } finally {
+      setIsImportingAttendance(false);
     }
   }
 
@@ -441,12 +553,17 @@ export function DisciplineClient({
     const completed = Boolean(exactSession?.isCompleted);
     const existing = attendanceRecords.filter((record) => record.sessionDate === date && record.sessionType === type);
     const pendingPermissionsForDate = permissions.filter((permission) => permission.status === "pending" && permission.startDateValue <= date && permission.endDateValue >= date);
+    const usesStoredRoster = Boolean(exactSession?.isImported) || existing.length > 0;
+    const sessionUsers = usesStoredRoster
+      ? users.filter((user) => existing.some((record) => record.userId === user.id))
+      : users.filter((user) => user.joinedDate <= date);
     setSessionDate(date);
     setSessionType(type);
     setSessionReadOnly(completed);
+    setSessionImported(usesStoredRoster);
     setSessionUserSearch("");
     setAttendanceDrafts(
-      users.map((user) => {
+      sessionUsers.map((user) => {
         const record = existing.find((item) => item.userId === user.id);
         const permission = permissions.find((item) => item.userId === user.id && item.startDateValue <= date && item.endDateValue >= date);
         const hasApprovedPermission = permission?.status === "approved";
@@ -486,7 +603,7 @@ export function DisciplineClient({
       JSON.stringify(
         attendanceDrafts.map((draft) => ({
           ...draft,
-          status: draft.present ? (draft.onTime ? "present" : "late") : draft.status === "excused" ? "excused" : "absent",
+          status: draft.present ? "present" : draft.status === "excused" ? "excused" : "absent",
           disciplinePoints: draft.discipline ? 1 : 0,
         })),
       ),
@@ -678,6 +795,75 @@ export function DisciplineClient({
       }, new Map<string, { key: string; date: string; dateLabel: string; title: string; good: number; bad: number; records: DisciplineRecord[] }>())
       .values(),
   );
+  const disciplinePageSize = 10;
+  const disciplinePageCount = Math.max(1, Math.ceil(disciplineSessions.length / disciplinePageSize));
+  const currentDisciplinePage = Math.min(disciplinePage, disciplinePageCount);
+  const paginatedDisciplineSessions = disciplineSessions.slice(
+    (currentDisciplinePage - 1) * disciplinePageSize,
+    currentDisciplinePage * disciplinePageSize,
+  );
+
+  function exportDisciplineReportCsv() {
+    if (filteredDisciplineRecords.length === 0) {
+      setNotice({ title: "Discipline Export", message: "No discipline records match the selected date range." });
+      return;
+    }
+
+    const headers = ["User", "Sessions Recorded", "Good Behavior", "Bad Behavior", "Total Points", "Good Behavior %"];
+    const summaries = new Map<number, {
+      userName: string;
+      sessions: number;
+      good: number;
+      bad: number;
+      totalPoints: number;
+    }>();
+
+    for (const record of filteredDisciplineRecords) {
+      const summary = summaries.get(record.userId) ?? {
+        userName: record.userName,
+        sessions: 0,
+        good: 0,
+        bad: 0,
+        totalPoints: 0,
+      };
+      const isGood = record.type === "positive";
+      summary.sessions += 1;
+      summary.good += Number(isGood);
+      summary.bad += Number(!isGood);
+      summary.totalPoints += record.points;
+      summaries.set(record.userId, summary);
+    }
+
+    const rows = [...summaries.values()]
+      .map((summary) => ({
+        ...summary,
+        goodPercent: summary.sessions ? Math.round((summary.good / summary.sessions) * 100) : 0,
+      }))
+      .sort((left, right) =>
+        right.goodPercent - left.goodPercent ||
+        right.totalPoints - left.totalPoints ||
+        left.userName.localeCompare(right.userName),
+      )
+      .map((summary) => [
+        summary.userName,
+        summary.sessions,
+        summary.good,
+        summary.bad,
+        summary.totalPoints,
+        `${summary.goodPercent}%`,
+      ]);
+
+    const csvCell = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
+    const csv = `\uFEFF${[headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n")}\r\n`;
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `discipline_report_${disciplineFrom || "all"}_to_${disciplineTo || "all"}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
 
   function disciplineAttendanceSessionForDate(date: string) {
     return attendanceSessionStates
@@ -689,7 +875,7 @@ export function DisciplineClient({
     const attendanceSession = disciplineAttendanceSessionForDate(date);
     const presentUserIds = new Set(
       attendanceRecords
-        .filter((record) => record.sessionDate === date && record.sessionType === attendanceSession?.sessionType && record.status.trim().toLowerCase() === "present")
+        .filter((record) => record.sessionDate === date && record.sessionType === attendanceSession?.sessionType && ["present", "late"].includes(record.status.trim().toLowerCase()))
         .map((record) => record.userId),
     );
     const existing = disciplineRecords.filter((record) => record.createdAtValue === date && record.title === title);
@@ -1018,7 +1204,7 @@ export function DisciplineClient({
 
               <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-4">
                 <AttendanceStat label="Total Sessions" value={attendanceSessions.length} icon={CalendarCheck} tone="sky" />
-                <AttendanceStat label="Timeliness" value={`${presentAvg}%`} icon={CheckCircle2} tone="emerald" />
+                <AttendanceStat label="Timeliness" value={`${timelinessAvg}%`} icon={CheckCircle2} tone="emerald" />
                 <AttendanceStat label="Late Avg" value={`${lateAvg}%`} icon={Clock} tone="amber" />
                 <AttendanceStat label="Absent Avg" value={`${absentAvg}%`} icon={XCircle} tone="rose" />
               </div>
@@ -1033,7 +1219,7 @@ export function DisciplineClient({
                     <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Session Name</label>
                     <input value={sessionType} onChange={(event) => setSessionType(event.target.value)} placeholder="Sunday Service" className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 sm:h-11 sm:rounded-xl" />
                   </div>
-                  <button type="button" onClick={() => setAttendanceImportModal(true)} className="inline-flex h-10 w-full items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-4 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 sm:h-11 sm:rounded-xl md:w-auto">
+                  <button type="button" onClick={() => { setAttendanceImportError(null); setAttendanceImportModal(true); }} className="inline-flex h-10 w-full items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-4 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 sm:h-11 sm:rounded-xl md:w-auto">
                     <FileUp className="mr-2 size-4" />
                     Import CSV
                   </button>
@@ -1047,25 +1233,25 @@ export function DisciplineClient({
               <div className="grid grid-cols-2 items-end gap-2 sm:gap-3 lg:grid-cols-5">
                 <div>
                   <label className="mb-1 block text-xs text-gray-600">From</label>
-                  <input value={attendanceFrom} onChange={(event) => setAttendanceFrom(event.target.value)} type="date" className="h-9 w-full rounded-lg border border-gray-300 px-2 text-xs sm:h-auto sm:px-3 sm:py-2 sm:text-sm" />
+                  <input value={attendanceFrom} onChange={(event) => { setAttendanceFrom(event.target.value); setAttendancePage(1); }} type="date" className="h-9 w-full rounded-lg border border-gray-300 px-2 text-xs sm:h-auto sm:px-3 sm:py-2 sm:text-sm" />
                 </div>
                 <div>
                   <label className="mb-1 block text-xs text-gray-600">To</label>
-                  <input value={attendanceTo} onChange={(event) => setAttendanceTo(event.target.value)} type="date" className="h-9 w-full rounded-lg border border-gray-300 px-2 text-xs sm:h-auto sm:px-3 sm:py-2 sm:text-sm" />
+                  <input value={attendanceTo} onChange={(event) => { setAttendanceTo(event.target.value); setAttendancePage(1); }} type="date" className="h-9 w-full rounded-lg border border-gray-300 px-2 text-xs sm:h-auto sm:px-3 sm:py-2 sm:text-sm" />
                 </div>
                 <div className="col-span-2 lg:col-span-1">
                   <label className="mb-1 block text-xs text-gray-600">Session</label>
-                  <select value={attendanceSessionFilter} onChange={(event) => setAttendanceSessionFilter(event.target.value)} className="h-9 w-full rounded-lg border border-gray-300 bg-white px-2 text-xs sm:h-auto sm:px-3 sm:py-2 sm:text-sm">
+                  <select value={attendanceSessionFilter} onChange={(event) => { setAttendanceSessionFilter(event.target.value); setAttendancePage(1); }} className="h-9 w-full rounded-lg border border-gray-300 bg-white px-2 text-xs sm:h-auto sm:px-3 sm:py-2 sm:text-sm">
                     <option value="">All Sessions</option>
                     {sessionTypes.map((type) => (
                       <option key={type} value={type}>{type}</option>
                     ))}
                   </select>
                 </div>
-                <button type="button" onClick={() => setAttendanceSessionFilter("")} className="h-9 w-full rounded-lg bg-slate-100 px-3 text-xs text-slate-700 transition hover:bg-slate-200 sm:h-auto sm:px-4 sm:py-2 sm:text-sm">
+                <button type="button" onClick={resetAttendanceFilters} className="h-9 w-full rounded-lg bg-slate-100 px-3 text-xs text-slate-700 transition hover:bg-slate-200 sm:h-auto sm:px-4 sm:py-2 sm:text-sm">
                   Reset
                 </button>
-                <button type="button" className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-sky-100 px-3 text-xs text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-200 sm:h-auto sm:gap-2 sm:px-4 sm:py-2 sm:text-sm">
+                <button type="button" onClick={exportFilteredAttendanceCsv} className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-sky-100 px-3 text-xs text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-200 sm:h-auto sm:gap-2 sm:px-4 sm:py-2 sm:text-sm">
                   <FileText className="size-4" />
                   Export
                 </button>
@@ -1084,8 +1270,8 @@ export function DisciplineClient({
                     </tr>
                   </thead>
                   <tbody>
-                    {attendanceSessions.length ? attendanceSessions.map((session) => {
-                      const present = session.present + session.late;
+                    {attendanceSessions.length ? paginatedAttendanceSessions.map((session) => {
+                      const present = session.present;
                       const absent = session.absent + session.excused;
                       const rate = session.total ? Math.round((present / session.total) * 100) : 0;
                       const rateColor = rate >= 75 ? "text-emerald-600" : rate >= 50 ? "text-amber-600" : "text-rose-600";
@@ -1118,8 +1304,8 @@ export function DisciplineClient({
               </div>
 
               <div className="space-y-1.5 md:hidden">
-                {attendanceSessions.length ? attendanceSessions.map((session) => {
-                  const present = session.present + session.late;
+                {attendanceSessions.length ? paginatedAttendanceSessions.map((session) => {
+                  const present = session.present;
                   const absent = session.absent + session.excused;
                   const rate = session.total ? Math.round((present / session.total) * 100) : 0;
                   return (
@@ -1145,6 +1331,35 @@ export function DisciplineClient({
                   );
                 }) : <div className="rounded-xl border border-dashed border-gray-200 bg-white p-8 text-center text-gray-500">No attendance records found</div>}
               </div>
+
+              {attendanceSessions.length > attendancePageSize && (
+                <div className="flex flex-col items-center justify-between gap-3 rounded-xl border border-gray-100 bg-white px-4 py-3 shadow-sm sm:flex-row">
+                  <p className="text-xs text-slate-500 sm:text-sm">
+                    Showing {(currentAttendancePage - 1) * attendancePageSize + 1}–{Math.min(currentAttendancePage * attendancePageSize, attendanceSessions.length)} of {attendanceSessions.length} sessions
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setAttendancePage((page) => Math.max(1, page - 1))}
+                      disabled={currentAttendancePage === 1}
+                      className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 sm:text-sm"
+                    >
+                      Previous
+                    </button>
+                    <span className="min-w-24 text-center text-xs font-medium text-slate-600 sm:text-sm">
+                      Page {currentAttendancePage} of {attendancePageCount}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setAttendancePage((page) => Math.min(attendancePageCount, page + 1))}
+                      disabled={currentAttendancePage === attendancePageCount}
+                      className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 sm:text-sm"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ) : activeTab === "permission" ? (
             <div className="space-y-4 sm:space-y-6">
@@ -1349,11 +1564,11 @@ export function DisciplineClient({
                   <div className="min-w-[260px] flex-1">
                     <label className="mb-1 block text-sm font-medium text-gray-700">Time Range</label>
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <input value={disciplineFrom} onChange={(event) => setDisciplineFrom(event.target.value)} type="date" className="rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-blue-500" />
-                      <input value={disciplineTo} onChange={(event) => setDisciplineTo(event.target.value)} type="date" className="rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-blue-500" />
+                      <input value={disciplineFrom} onChange={(event) => { setDisciplineFrom(event.target.value); setDisciplinePage(1); }} type="date" className="rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-blue-500" />
+                      <input value={disciplineTo} onChange={(event) => { setDisciplineTo(event.target.value); setDisciplinePage(1); }} type="date" className="rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-blue-500" />
                     </div>
                   </div>
-                  <button type="button" className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700">
+                  <button type="button" onClick={exportDisciplineReportCsv} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700">
                     <FileText className="mr-1 inline size-4" />
                     Export
                   </button>
@@ -1374,7 +1589,7 @@ export function DisciplineClient({
                       </tr>
                     </thead>
                     <tbody>
-                      {disciplineSessions.length ? disciplineSessions.map((session) => {
+                      {disciplineSessions.length ? paginatedDisciplineSessions.map((session) => {
                         const total = session.good + session.bad;
                         const percent = total ? Math.round((session.good / total) * 100) : 100;
                         const badRecords = session.records.filter((record) => record.type !== "positive");
@@ -1409,7 +1624,7 @@ export function DisciplineClient({
               </div>
 
               <div className="space-y-3 md:hidden">
-                {disciplineSessions.length ? disciplineSessions.map((session) => {
+                {disciplineSessions.length ? paginatedDisciplineSessions.map((session) => {
                   const total = session.good + session.bad;
                   const percent = total ? Math.round((session.good / total) * 100) : 100;
                   return (
@@ -1433,6 +1648,35 @@ export function DisciplineClient({
                   );
                 }) : <div className="rounded-xl border border-dashed border-gray-200 bg-white p-8 text-center text-gray-500">No discipline sessions found</div>}
               </div>
+
+              {disciplineSessions.length > disciplinePageSize && (
+                <div className="flex flex-col items-center justify-between gap-3 rounded-xl border border-gray-100 bg-white px-4 py-3 shadow-sm sm:flex-row">
+                  <p className="text-xs text-slate-500 sm:text-sm">
+                    Showing {(currentDisciplinePage - 1) * disciplinePageSize + 1}–{Math.min(currentDisciplinePage * disciplinePageSize, disciplineSessions.length)} of {disciplineSessions.length} sessions
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setDisciplinePage((page) => Math.max(1, page - 1))}
+                      disabled={currentDisciplinePage === 1}
+                      className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 sm:text-sm"
+                    >
+                      Previous
+                    </button>
+                    <span className="min-w-24 text-center text-xs font-medium text-slate-600 sm:text-sm">
+                      Page {currentDisciplinePage} of {disciplinePageCount}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setDisciplinePage((page) => Math.min(disciplinePageCount, page + 1))}
+                      disabled={currentDisciplinePage === disciplinePageCount}
+                      className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 sm:text-sm"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ) : activeTab === "action-plans" ? (
             <div className="space-y-3 sm:space-y-4">
@@ -1649,7 +1893,7 @@ export function DisciplineClient({
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
               <div>
                 <h3 className="text-lg font-bold text-slate-900">Import Historical Attendance</h3>
-                <p className="mt-0.5 text-xs text-slate-500">Upload attendance saved from Excel as CSV.</p>
+                <p className="mt-0.5 text-xs text-slate-500">Select one or many attendance CSV files in a single upload.</p>
               </div>
               <button type="button" onClick={() => setAttendanceImportModal(false)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Close attendance import">
                 <X className="size-5" />
@@ -1661,8 +1905,9 @@ export function DisciplineClient({
                 <p className="font-semibold">Expected columns</p>
                 <p className="mt-1 leading-5">Session Date, Session Name, Email, Full Name, Status, On Time, Communicated, Discipline Points, Late Minutes, Notes.</p>
                 <p className="mt-2 text-xs text-blue-700">
-                  Use <strong>DD/MM/YYYY</strong> or <strong>YYYY-MM-DD</strong>. Status can be Present, Late, Absent, or Excused. Email is the preferred user match; Full Name is used when email is empty.
+                  Use <strong>DD/MM/YYYY</strong> or <strong>YYYY-MM-DD</strong>. Status can be Present, Absent, or Excused. For a late member, use Present with On Time set to No. <strong>Email is required</strong> and is the only field used to match a user; Full Name is for reference only.
                 </p>
+                <p className="mt-1 text-xs font-medium text-blue-700">Replace or delete the example row included in the downloaded template before importing.</p>
               </div>
 
               <div>
@@ -1685,15 +1930,27 @@ export function DisciplineClient({
               </button>
 
               <div>
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-600">Attendance CSV file</label>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-600">Attendance CSV files</label>
                 <input
                   type="file"
+                  multiple
                   accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain"
                   required
-                  onChange={(event) => setAttendanceImportFile(event.target.files?.[0] ?? null)}
+                  onChange={(event) => { setAttendanceImportError(null); setAttendanceImportFiles(Array.from(event.target.files ?? [])); }}
                   className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-blue-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-blue-700 hover:file:bg-blue-100"
                 />
+                {attendanceImportFiles.length > 0 && (
+                  <p className="mt-2 text-xs font-medium text-slate-600">
+                    {attendanceImportFiles.length} file{attendanceImportFiles.length === 1 ? "" : "s"} selected
+                  </p>
+                )}
               </div>
+
+              {attendanceImportError && (
+                <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                  {attendanceImportError}
+                </div>
+              )}
 
               <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <input type="checkbox" checked={completeImportedSessions} onChange={(event) => setCompleteImportedSessions(event.target.checked)} className="mt-0.5 size-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
@@ -1707,7 +1964,7 @@ export function DisciplineClient({
                 <button type="button" onClick={() => setAttendanceImportModal(false)} disabled={isImportingAttendance} className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-60">
                   Cancel
                 </button>
-                <button type="submit" disabled={isImportingAttendance || !attendanceImportFile} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
+                <button type="submit" disabled={isImportingAttendance || attendanceImportFiles.length === 0} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
                   <FileUp className="size-4" />
                   {isImportingAttendance ? "Importing..." : "Import Attendance"}
                 </button>
@@ -1762,7 +2019,7 @@ export function DisciplineClient({
               <div className="hidden grid-cols-4 gap-3 md:grid">
                 <div className="rounded-xl border border-blue-100 bg-blue-50 p-3">
                   <p className="text-xs font-medium text-gray-600">Total Users</p>
-                  <p className="text-2xl font-bold text-blue-600">{users.length}</p>
+                  <p className="text-2xl font-bold text-blue-600">{eligibleAttendanceUsers.length}</p>
                 </div>
                 <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
                   <p className="text-xs font-medium text-gray-600">Present</p>
