@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Mail, MapPin, Menu, Phone } from "lucide-react";
+import { Download, Mail, MapPin, Menu, Phone } from "lucide-react";
 
 type LandingVideo = {
   id: number;
@@ -34,6 +34,11 @@ type LandingPageClientProps = {
   videos: LandingVideo[];
   pictures: LandingPicture[];
   events: LandingEvent[];
+};
+
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
 };
 
 function truncate(value: string, length: number) {
@@ -80,6 +85,8 @@ function SocialIcon({ name }: { name: "instagram" | "youtube" | "spotify" | "app
 export function LandingPageClient({ dashboardHref, registrationEnabled, videos, pictures, events }: LandingPageClientProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [heroIndex, setHeroIndex] = useState(0);
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [installMessage, setInstallMessage] = useState("");
   const heroPictures = pictures.length > 0 ? pictures : [{ id: 0, title: "Reverence Worship", imagePath: "/logo.png", description: null, isHero: true }];
 
   useEffect(() => {
@@ -92,8 +99,76 @@ export function LandingPageClient({ dashboardHref, registrationEnabled, videos, 
     return () => window.clearInterval(interval);
   }, [heroPictures.length]);
 
+  useEffect(() => {
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+    }
+
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as BeforeInstallPromptEvent);
+      setInstallMessage("");
+    };
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  async function handleInstallApp() {
+    const isStandalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone);
+    const isMobileDevice = /android|iphone|ipad|ipod/i.test(window.navigator.userAgent);
+
+    if (isStandalone) {
+      setInstallMessage("The Reverence app is already installed on this device.");
+      return;
+    }
+
+    if (!installPrompt) {
+      if (isMobileDevice) {
+        setInstallMessage("Open your browser menu and choose Add to Home screen.");
+        return;
+      }
+
+      setInstallMessage("Click the install icon in your browser address bar, or refresh and press Get App again.");
+      return;
+    }
+
+    await installPrompt.prompt();
+    const choice = await installPrompt.userChoice;
+    setInstallPrompt(null);
+    setInstallMessage(choice.outcome === "accepted" ? "Installing Reverence Worship app." : "Installation was cancelled.");
+  }
+
   return (
     <main className="min-h-screen bg-white text-slate-900">
+      <div className="fixed bottom-4 right-4 z-40 flex max-w-[calc(100%-32px)] flex-col items-end gap-2 sm:bottom-6 sm:right-6">
+        {installMessage ? (
+          <p className="max-w-[240px] rounded-2xl bg-slate-950/90 px-3 py-2 text-right text-xs leading-5 text-white shadow-xl">
+            {installMessage}
+          </p>
+        ) : null}
+        <button
+          type="button"
+          onClick={handleInstallApp}
+          className="inline-flex items-center gap-2 rounded-full border border-white/40 bg-blue-600/95 px-2.5 py-2 text-left text-white shadow-2xl shadow-blue-950/25 backdrop-blur transition hover:-translate-y-0.5 hover:bg-blue-700"
+        >
+          <Image
+            src="/Reverence%20mobile%20app%20icon.jpeg"
+            alt="Reverence mobile app icon"
+            width={36}
+            height={36}
+            className="size-9 shrink-0 rounded-full object-cover"
+          />
+          <span className="pr-1 text-xs font-bold leading-tight sm:text-sm">Get App</span>
+          <Download className="size-4 shrink-0 text-blue-100" aria-hidden />
+        </button>
+      </div>
+
       <header className="fixed inset-x-0 top-0 z-50 border-y border-white/15 bg-blue-600/75 text-white shadow-lg backdrop-blur">
         <div className="relative mx-auto flex min-h-[58px] w-[min(100%,calc(100%-18px))] items-center gap-2 overflow-visible md:min-h-16 md:w-[min(1080px,calc(100%-28px))] md:gap-5">
           <a href="#home" className="inline-flex shrink-0 items-center gap-2 md:gap-3">
