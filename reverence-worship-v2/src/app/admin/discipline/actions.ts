@@ -263,7 +263,9 @@ async function writeAttendanceSession(formData: FormData, complete: boolean) {
   try {
     await prisma.$transaction(async (tx) => {
       if (!existingSession) {
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`attendance:${sessionDateValue}`}))`;
+        // Advisory locks return PostgreSQL `void`, which Prisma's query-result
+        // deserializer cannot read. Execute the statement without requesting rows.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`attendance:${sessionDateValue}`}))`;
         const sessionOnDate = await tx.attendanceSession.findFirst({
           where: { sessionDate },
           select: { sessionType: true },
