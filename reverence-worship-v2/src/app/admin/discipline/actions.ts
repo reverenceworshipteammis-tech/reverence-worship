@@ -271,52 +271,35 @@ async function writeAttendanceSession(formData: FormData, complete: boolean) {
         if (sessionOnDate) throw new Error(`ATTENDANCE_SESSION_EXISTS:${sessionOnDate.sessionType}`);
       }
 
-    await tx.attendanceSession.upsert({
-      where: {
-        sessionDate_sessionType: {
-          sessionDate,
-          sessionType,
-        },
-      },
-      update: {
-        isCompleted: complete,
-        completedAt: complete ? new Date() : null,
-        completedBy: complete ? user.id : null,
-      },
-      create: {
-        sessionDate,
-        sessionType,
-        isCompleted: complete,
-        completedAt: complete ? new Date() : null,
-        completedBy: complete ? user.id : null,
-      },
-    });
-
-    for (const record of records) {
-      const requestedStatus = (record.status || "present").trim().toLowerCase();
-      const status = requestedStatus === "late"
-        ? "present"
-        : ["present", "absent", "excused"].includes(requestedStatus) ? requestedStatus : "present";
-      const hasOfficialPermission = Boolean(record.hasOfficialPermission);
-      const onTime = requestedStatus === "late" ? false : Boolean(record.onTime);
-      await tx.attendanceRecord.upsert({
+      await tx.attendanceSession.upsert({
         where: {
-          userId_sessionDate_sessionType: {
-            userId: Number(record.userId),
+          sessionDate_sessionType: {
             sessionDate,
             sessionType,
           },
         },
         update: {
-          status,
-          onTime: hasOfficialPermission ? true : onTime,
-          communicated: hasOfficialPermission ? true : Boolean(record.communicated),
-          disciplinePoints: hasOfficialPermission ? 1 : Number(record.disciplinePoints) || 0,
-          lateMinutes: Number(record.lateMinutes) || 0,
-          notes: record.notes?.trim() || null,
-          markedBy: user.id,
+          isCompleted: complete,
+          completedAt: complete ? new Date() : null,
+          completedBy: complete ? user.id : null,
         },
         create: {
+          sessionDate,
+          sessionType,
+          isCompleted: complete,
+          completedAt: complete ? new Date() : null,
+          completedBy: complete ? user.id : null,
+        },
+      });
+
+      const attendanceRows = records.map((record) => {
+        const requestedStatus = (record.status || "present").trim().toLowerCase();
+        const status = requestedStatus === "late"
+          ? "present"
+          : ["present", "absent", "excused"].includes(requestedStatus) ? requestedStatus : "present";
+        const hasOfficialPermission = Boolean(record.hasOfficialPermission);
+        const onTime = requestedStatus === "late" ? false : Boolean(record.onTime);
+        return {
           userId: Number(record.userId),
           sessionDate,
           sessionType,
@@ -327,16 +310,31 @@ async function writeAttendanceSession(formData: FormData, complete: boolean) {
           lateMinutes: Number(record.lateMinutes) || 0,
           notes: record.notes?.trim() || null,
           markedBy: user.id,
-        },
+        };
       });
-    }
+
+      // The modal submits the complete roster. Replacing it in two bulk queries keeps
+      // remote database transactions short; one upsert per member can exceed the
+      // interactive transaction timeout on larger rosters.
+      await tx.attendanceRecord.deleteMany({
+        where: { sessionDate, sessionType },
+      });
+      await tx.attendanceRecord.createMany({
+        data: attendanceRows,
+      });
     });
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("ATTENDANCE_SESSION_EXISTS:")) {
       const existingName = error.message.slice("ATTENDANCE_SESSION_EXISTS:".length);
       return { ok: false, message: `Only one attendance session is allowed per day. Reopen "${existingName}" for this date.` };
     }
-    throw error;
+    console.error("Attendance session save failed", error);
+    return {
+      ok: false,
+      message: isDatabaseConnectionFailure(error)
+        ? "The database connection timed out before attendance could be saved. Please retry."
+        : "Attendance could not be saved because of a database error. Please retry.",
+    };
   }
 
   revalidatePath("/admin/discipline");

@@ -627,12 +627,22 @@ export function DisciplineClient({
       return;
     }
     setIsSaving(true);
-    const result = await saveAttendanceSession(buildAttendanceFormData());
-    setMessage(result.message);
-    setIsSaving(false);
-    if (result.ok) {
-      if (closeAfterSave) setSessionModal(false);
-      router.refresh();
+    try {
+      const result = await saveAttendanceSession(buildAttendanceFormData());
+      setMessage(result.message);
+      if (result.ok) {
+        if (closeAfterSave) setSessionModal(false);
+        router.refresh();
+      } else {
+        setNotice({ title: "Attendance Not Saved", message: result.message });
+      }
+    } catch (error) {
+      setNotice({
+        title: "Attendance Not Saved",
+        message: error instanceof Error ? error.message : "Attendance could not be saved. Please retry.",
+      });
+    } finally {
+      setIsSaving(false);
     }
   }
 
@@ -646,12 +656,22 @@ export function DisciplineClient({
       return;
     }
     setIsSaving(true);
-    const result = await completeAttendanceSession(buildAttendanceFormData());
-    setMessage(result.message);
-    setIsSaving(false);
-    if (result.ok) {
-      setSessionModal(false);
-      router.refresh();
+    try {
+      const result = await completeAttendanceSession(buildAttendanceFormData());
+      setMessage(result.message);
+      if (result.ok) {
+        setSessionModal(false);
+        router.refresh();
+      } else {
+        setNotice({ title: "Attendance Not Completed", message: result.message });
+      }
+    } catch (error) {
+      setNotice({
+        title: "Attendance Not Completed",
+        message: error instanceof Error ? error.message : "Attendance could not be completed. Please retry.",
+      });
+    } finally {
+      setIsSaving(false);
     }
   }
 
