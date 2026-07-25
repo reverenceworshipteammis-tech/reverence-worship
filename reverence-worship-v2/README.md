@@ -20,6 +20,19 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Email delivery
+
+Copy the SMTP variables from `.env.example` into `.env` for local development and into the hosting provider's environment settings for production. `SMTP_HOST` and `SMTP_FROM` are required. When `SMTP_USER` is set, `SMTP_PASSWORD` is also required.
+
+For Gmail, use `smtp.gmail.com`, port `587`, `SMTP_SECURE=false`, and a Google App Password rather than the normal account password. Set `APP_URL` to the deployed application URL so email action links work, and set `CRON_SECRET` so queued-email retries can run.
+
+After changing environment variables, restart or redeploy the application. Then open **System Settings → Notifications** to:
+
+- verify email-delivery configuration;
+- send a test email to the signed-in administrator;
+- retry queued email deliveries;
+- inspect queued and failed delivery counts.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

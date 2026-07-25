@@ -1,6 +1,8 @@
 import "server-only";
 
 import nodemailer from "nodemailer";
+import { getEmailConfiguration } from "@/lib/email-config";
+import { NOTIFICATION_CATEGORIES, notificationCategory } from "@/lib/notification-rules";
 import { prisma } from "@/lib/prisma";
 
 type NotifyUsersInput = {
@@ -19,6 +21,11 @@ type NotifyUsersInput = {
 
 let transporter: ReturnType<typeof nodemailer.createTransport> | null = null;
 
+export type EmailDeliveryResult = {
+  status: "sent" | "pending" | "failed" | "skipped";
+  error: string | null;
+};
+
 type NotificationSettings = {
   inAppEnabled: boolean;
   emailEnabled: boolean;
@@ -29,25 +36,11 @@ function uniqueIds(ids: number[]) {
   return [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))];
 }
 
-function smtpConfigured() {
-  return Boolean(process.env.SMTP_HOST && process.env.SMTP_FROM);
-}
-
 function settingToBoolean(value: unknown, fallback = true) {
   if (typeof value === "boolean") return value;
   if (typeof value === "string") return value === "1" || value === "true";
   if (typeof value === "number") return value === 1;
   return fallback;
-}
-
-function notificationCategory(type: string) {
-  if (["expense_approval", "expense_status", "finance"].includes(type)) return "finance";
-  if (["form", "permission"].includes(type)) return "form";
-  if (["task"].includes(type)) return "task";
-  if (["announcement"].includes(type)) return "announcement";
-  if (["security"].includes(type)) return "security";
-  if (["system"].includes(type)) return "system";
-  return "account";
 }
 
 async function getNotificationSettings(): Promise<NotificationSettings> {
@@ -58,7 +51,7 @@ async function getNotificationSettings(): Promise<NotificationSettings> {
   const settings = new Map(rows.map((row) => [row.key, row.value]));
 
   const enabledTypes = new Set<string>();
-  for (const type of ["account", "security", "announcement", "form", "task", "finance", "system"]) {
+  for (const type of NOTIFICATION_CATEGORIES) {
     if (settingToBoolean(settings.get(`notification_${type}_enabled`), true)) enabledTypes.add(type);
   }
 
@@ -71,13 +64,17 @@ async function getNotificationSettings(): Promise<NotificationSettings> {
 
 function mailTransport() {
   if (transporter) return transporter;
+  const configuration = getEmailConfiguration();
   transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT || 587),
-    secure: process.env.SMTP_SECURE === "true",
+    port: configuration.port,
+    secure: configuration.secure,
     auth: process.env.SMTP_USER
       ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD }
       : undefined,
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 30_000,
   });
   return transporter;
 }
@@ -94,14 +91,16 @@ function emailHtml(title: string, message: string, link?: string) {
 
 export async function deliverEmail(deliveryId: number) {
   const delivery = await prisma.emailDelivery.findUnique({ where: { id: deliveryId } });
-  if (!delivery || delivery.status === "sent") return;
+  if (!delivery) return { status: "skipped", error: "Email delivery was not found." } satisfies EmailDeliveryResult;
+  if (delivery.status === "sent") return { status: "sent", error: null } satisfies EmailDeliveryResult;
 
-  if (!smtpConfigured()) {
+  const configuration = getEmailConfiguration();
+  if (!configuration.configured) {
     await prisma.emailDelivery.update({
       where: { id: delivery.id },
-      data: { status: "pending", lastError: "SMTP is not configured.", nextAttemptAt: new Date(Date.now() + 60 * 60 * 1000) },
+      data: { status: "pending", lastError: configuration.issue, nextAttemptAt: new Date(Date.now() + 60 * 60 * 1000) },
     });
-    return;
+    return { status: "pending", error: configuration.issue } satisfies EmailDeliveryResult;
   }
 
   try {
@@ -116,17 +115,20 @@ export async function deliverEmail(deliveryId: number) {
       where: { id: delivery.id },
       data: { status: "sent", attempts: { increment: 1 }, sentAt: new Date(), lastError: null, nextAttemptAt: null },
     });
+    return { status: "sent", error: null } satisfies EmailDeliveryResult;
   } catch (error) {
     const attempts = delivery.attempts + 1;
+    const message = error instanceof Error ? error.message.slice(0, 1000) : String(error).slice(0, 1000);
     await prisma.emailDelivery.update({
       where: { id: delivery.id },
       data: {
         status: attempts >= 3 ? "failed" : "pending",
         attempts,
-        lastError: error instanceof Error ? error.message.slice(0, 1000) : String(error).slice(0, 1000),
+        lastError: message,
         nextAttemptAt: attempts >= 3 ? null : new Date(Date.now() + attempts * 15 * 60 * 1000),
       },
     });
+    return { status: attempts >= 3 ? "failed" : "pending", error: message } satisfies EmailDeliveryResult;
   }
 }
 
@@ -145,39 +147,43 @@ export async function notifyUsers(input: NotifyUsersInput) {
     let notification: { id: number } | null = null;
 
     if (settings.inAppEnabled) {
-      const existing = dedupeKey ? await prisma.notification.findUnique({ where: { dedupeKey } }) : null;
-      if (existing) {
-        notificationIds.push(existing.id);
-        continue;
-      }
-
-      notification = await prisma.notification.create({
-        data: {
-          userId: user.id,
-          type: input.type,
-          title: input.title,
-          message: input.message,
-          link: input.link,
-          sourceType: input.sourceType,
-          sourceId: input.sourceId,
-          dedupeKey,
-        },
-      });
+      const data = {
+        userId: user.id,
+        type: input.type,
+        title: input.title,
+        message: input.message,
+        link: input.link,
+        sourceType: input.sourceType,
+        sourceId: input.sourceId,
+        dedupeKey,
+      };
+      notification = dedupeKey
+        ? await prisma.notification.upsert({
+            where: { dedupeKey },
+            update: {},
+            create: data,
+          })
+        : await prisma.notification.create({ data });
       notificationIds.push(notification.id);
     }
 
     if (settings.emailEnabled && input.sendEmail !== false && user.email) {
-      const delivery = await prisma.emailDelivery.create({
-        data: {
-          userId: user.id,
-          notificationId: notification?.id,
-          recipient: user.email,
-          subject: input.emailSubject ?? input.title,
-          text: input.emailText ?? input.message,
-          html: emailHtml(input.title, input.emailText ?? input.message, input.link),
-        },
-      });
-      await deliverEmail(delivery.id);
+      const data = {
+        userId: user.id,
+        notificationId: notification?.id,
+        recipient: user.email,
+        subject: input.emailSubject ?? input.title,
+        text: input.emailText ?? input.message,
+        html: emailHtml(input.title, input.emailText ?? input.message, input.link),
+      };
+      const delivery = notification
+        ? await prisma.emailDelivery.upsert({
+            where: { notificationId: notification.id },
+            update: {},
+            create: data,
+          })
+        : await prisma.emailDelivery.create({ data });
+      if (delivery.status === "pending") await deliverEmail(delivery.id);
     }
   }
 
@@ -185,20 +191,20 @@ export async function notifyUsers(input: NotifyUsersInput) {
 }
 
 export async function notifyEmailAddress(recipient: string, subject: string, message: string) {
-  if (!recipient) return;
+  if (!recipient) return { status: "skipped", error: "Recipient email is required." } satisfies EmailDeliveryResult;
   const settings = await getNotificationSettings();
-  if (!settings.emailEnabled) return;
+  if (!settings.emailEnabled) return { status: "skipped", error: "Email notifications are disabled in System Settings." } satisfies EmailDeliveryResult;
   const delivery = await prisma.emailDelivery.create({
     data: { recipient, subject, text: message, html: emailHtml(subject, message) },
   });
-  await deliverEmail(delivery.id);
+  return deliverEmail(delivery.id);
 }
 
 export async function sendCriticalSystemEmail(subject: string, message: string) {
   const settings = await getNotificationSettings();
   if (!settings.emailEnabled || !settings.enabledTypes.has("system")) return false;
   const recipients = (process.env.SYSTEM_ALERT_EMAIL ?? "").split(",").map((item) => item.trim()).filter(Boolean);
-  if (!recipients.length || !smtpConfigured()) return false;
+  if (!recipients.length || !getEmailConfiguration().configured) return false;
   await mailTransport().sendMail({
     from: process.env.SMTP_FROM,
     to: recipients,
@@ -211,7 +217,7 @@ export async function sendCriticalSystemEmail(subject: string, message: string) 
 
 export async function userIdsForRoles(roleNames: string[]) {
   const users = await prisma.user.findMany({
-    where: { roles: { some: { role: { name: { in: roleNames } } } } },
+    where: { status: "active", roles: { some: { role: { name: { in: roleNames } } } } },
     select: { id: true },
   });
   return users.map((user) => user.id);
@@ -220,6 +226,7 @@ export async function userIdsForRoles(roleNames: string[]) {
 export async function userIdsWithPermission(pageName: string, featureName: string) {
   const users = await prisma.user.findMany({
     where: {
+      status: "active",
       roles: {
         some: {
           role: {
@@ -236,7 +243,10 @@ export async function userIdsWithPermission(pageName: string, featureName: strin
 export async function userIdsForAnnouncement(targetType: string, targetRoles: string | null, targetUsers: string | null) {
   if (targetType === "users") {
     try {
-      return uniqueIds((JSON.parse(targetUsers ?? "[]") as unknown[]).map(Number));
+      const userIds = uniqueIds((JSON.parse(targetUsers ?? "[]") as unknown[]).map(Number));
+      if (!userIds.length) return [];
+      const users = await prisma.user.findMany({ where: { id: { in: userIds }, status: "active" }, select: { id: true } });
+      return users.map((user) => user.id);
     } catch {
       return [];
     }
@@ -264,9 +274,50 @@ export async function notifySuperAdmins(input: Omit<NotifyUsersInput, "userIds">
   return notifyUsers({ ...input, userIds: await userIdsForRoles(["super-admin"]) });
 }
 
-export async function processPendingEmailDeliveries(limit = 50) {
+export async function reconcilePendingPermissionNotifications(limit = 100) {
+  const [requests, approverIds] = await Promise.all([
+    prisma.permissionRequest.findMany({
+      where: { status: "pending" },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+      select: { id: true, type: true },
+    }),
+    userIdsWithPermission("discipline", "approve-permission-requests"),
+  ]);
+
+  for (const request of requests) {
+    await notifyUsers({
+      userIds: approverIds,
+      type: "permission",
+      title: "Permission request submitted",
+      message: `A new ${request.type} permission request is awaiting review.`,
+      link: "/admin/discipline?tab=permission&status=pending",
+      sourceType: "permission_request",
+      sourceId: request.id,
+      dedupeKey: `permission:${request.id}:submitted`,
+    });
+  }
+
+  return { requests: requests.length, approvers: approverIds.length };
+}
+
+export async function verifyEmailTransport() {
+  const configuration = getEmailConfiguration();
+  if (!configuration.configured) return { ok: false, message: configuration.issue ?? "SMTP is not configured." };
+  try {
+    await mailTransport().verify();
+    return { ok: true, message: "SMTP connection and authentication succeeded." };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+export async function processPendingEmailDeliveries(limit = 50, includeScheduled = false) {
   const deliveries = await prisma.emailDelivery.findMany({
-    where: { status: "pending", OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: new Date() } }] },
+    where: {
+      status: "pending",
+      ...(includeScheduled ? {} : { OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: new Date() } }] }),
+    },
     orderBy: { createdAt: "asc" },
     take: limit,
     select: { id: true },

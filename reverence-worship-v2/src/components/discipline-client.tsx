@@ -6,6 +6,7 @@ import { BarChart3, BookOpen, CalendarCheck, CheckCircle2, ClipboardList, Clock,
 import {
   approvePermissionRequest,
   completeAttendanceSession,
+  completeDisciplineSession,
   deleteDisciplineActionPlan,
   deleteDisciplineActionPlanTask,
   deleteAttendanceSession,
@@ -90,7 +91,6 @@ type AttendanceDraft = {
   disciplinePoints: number;
   lateMinutes: number;
   notes: string;
-  disabled: boolean;
   hasOfficialPermission: boolean;
 };
 
@@ -129,6 +129,13 @@ type DisciplineRecord = {
   resolvedNotes: string | null;
   createdAt: string;
   createdAtValue: string;
+};
+
+type DisciplineSessionState = {
+  sessionDate: string;
+  title: string;
+  isCompleted: boolean;
+  updatedAt: string;
 };
 
 type DisciplineActionPlanTask = {
@@ -183,6 +190,7 @@ export function DisciplineClient({
   attendanceSessionStates,
   users,
   permissions,
+  disciplineSessionStates,
   disciplineRecords,
   actionPlans,
 }: {
@@ -199,6 +207,7 @@ export function DisciplineClient({
   attendanceSessionStates: AttendanceSessionState[];
   users: AttendanceUser[];
   permissions: Permission[];
+  disciplineSessionStates: DisciplineSessionState[];
   disciplineRecords: DisciplineRecord[];
   actionPlans: DisciplineActionPlan[];
 }) {
@@ -251,6 +260,7 @@ export function DisciplineClient({
   const [disciplineTo, setDisciplineTo] = useState(endDate);
   const [disciplinePage, setDisciplinePage] = useState(1);
   const [disciplineModal, setDisciplineModal] = useState(false);
+  const [disciplineSessionReadOnly, setDisciplineSessionReadOnly] = useState(false);
   const [disciplineDate, setDisciplineDate] = useState(new Date().toISOString().slice(0, 10));
   const [disciplineTitle, setDisciplineTitle] = useState("");
   const [disciplineSearch, setDisciplineSearch] = useState("");
@@ -445,7 +455,6 @@ export function DisciplineClient({
   }
 
   function totalAttendancePoints(draft: AttendanceDraft) {
-    if (draft.hasOfficialPermission) return 3;
     return Number(draft.present) + Number(draft.onTime) + Number(draft.communicated) + Number(draft.discipline);
   }
 
@@ -573,19 +582,18 @@ export function DisciplineClient({
         const record = existing.find((item) => item.userId === user.id);
         const permission = permissions.find((item) => item.userId === user.id && item.startDateValue <= date && item.endDateValue >= date);
         const hasApprovedPermission = permission?.status === "approved";
-        const present = hasApprovedPermission ? false : record ? ["present", "late"].includes(record.status) : true;
-        const discipline = hasApprovedPermission ? true : record ? record.disciplinePoints > 0 : true;
+        const present = record ? ["present", "late"].includes(record.status) : !hasApprovedPermission;
+        const discipline = record ? record.disciplinePoints > 0 : true;
         return {
           userId: user.id,
           present,
           status: present ? "present" : "absent",
-          onTime: hasApprovedPermission ? true : record?.onTime ?? true,
-          communicated: hasApprovedPermission ? true : record?.communicated ?? true,
+          onTime: record?.onTime ?? true,
+          communicated: record?.communicated ?? true,
           discipline,
           disciplinePoints: discipline ? 1 : 0,
           lateMinutes: record?.lateMinutes ?? 0,
           notes: record?.notes ?? "",
-          disabled: hasApprovedPermission,
           hasOfficialPermission: hasApprovedPermission,
         };
       }),
@@ -873,11 +881,15 @@ export function DisciplineClient({
     filteredDisciplineRecords
       .reduce((map, record) => {
         const key = `${record.createdAtValue}__${record.title}`;
+        const storedSession = disciplineSessionStates.find(
+          (session) => session.sessionDate === record.createdAtValue && session.title === record.title,
+        );
         const session = map.get(key) ?? {
           key,
           date: record.createdAtValue,
           dateLabel: record.createdAt,
           title: record.title,
+          isCompleted: storedSession?.isCompleted ?? false,
           good: 0,
           bad: 0,
           records: [] as DisciplineRecord[],
@@ -887,7 +899,7 @@ export function DisciplineClient({
         session.records.push(record);
         map.set(key, session);
         return map;
-      }, new Map<string, { key: string; date: string; dateLabel: string; title: string; good: number; bad: number; records: DisciplineRecord[] }>())
+      }, new Map<string, { key: string; date: string; dateLabel: string; title: string; isCompleted: boolean; good: number; bad: number; records: DisciplineRecord[] }>())
       .values(),
   );
   const disciplinePageSize = 10;
@@ -999,18 +1011,24 @@ export function DisciplineClient({
       return;
     }
     const sessionTitle = title || `Discipline Session - ${date}`;
+    const storedSession = disciplineSessionStates.find(
+      (session) => session.sessionDate === date && session.title === sessionTitle,
+    );
     setDisciplineDate(date);
     setDisciplineTitle(sessionTitle);
+    setDisciplineSessionReadOnly(Boolean(storedSession?.isCompleted));
     setDisciplineSearch("");
     setDisciplineDrafts(disciplineDraftsForDate(date, sessionTitle));
     setDisciplineModal(true);
   }
 
   function updateDisciplineDraft(userId: number, patch: Partial<DisciplineDraft>) {
+    if (disciplineSessionReadOnly) return;
     setDisciplineDrafts((current) => current.map((draft) => (draft.userId === userId ? { ...draft, ...patch } : draft)));
   }
 
   function setAllDiscipline(behaviour: "good" | "bad") {
+    if (disciplineSessionReadOnly) return;
     setDisciplineDrafts((current) =>
       current.map((draft) => ({
         ...draft,
@@ -1021,7 +1039,11 @@ export function DisciplineClient({
     );
   }
 
-  async function submitDisciplineSession() {
+  async function submitDisciplineSession(complete = false) {
+    if (disciplineSessionReadOnly) {
+      setNotice({ title: "Notice", message: "This discipline session is completed and cannot be edited." });
+      return;
+    }
     if (!disciplineTitle.trim()) {
       setNotice({ title: "Notice", message: "Please enter a session title" });
       return;
@@ -1036,18 +1058,18 @@ export function DisciplineClient({
     formData.set("title", disciplineTitle.trim());
     formData.set("recordsJson", JSON.stringify(disciplineDrafts));
     try {
-      const result = await saveDisciplineSession(formData);
+      const result = await (complete ? completeDisciplineSession(formData) : saveDisciplineSession(formData));
       setMessage(result.message);
       if (result.ok) {
         setDisciplineModal(false);
         router.refresh();
       } else {
-        setNotice({ title: "Discipline Records Not Saved", message: result.message });
+        setNotice({ title: complete ? "Discipline Session Not Completed" : "Discipline Records Not Saved", message: result.message });
       }
     } catch (error) {
       setNotice({
-        title: "Discipline Records Not Saved",
-        message: error instanceof Error ? error.message : "The discipline records could not be saved. Please retry.",
+        title: complete ? "Discipline Session Not Completed" : "Discipline Records Not Saved",
+        message: error instanceof Error ? error.message : `The discipline session could not be ${complete ? "completed" : "saved"}. Please retry.`,
       });
     } finally {
       setIsSaving(false);
@@ -1273,22 +1295,30 @@ export function DisciplineClient({
                     {recentAttendanceSessions.length ? (
                       recentAttendanceSessions.map((session) => (
                         <div key={`${session.sessionDate}-${session.sessionType}`} className="flex items-center justify-between gap-3 px-4 py-3 transition hover:bg-gray-50">
-                          <div>
-                            <h4 className="text-sm font-medium text-gray-800">{session.sessionType}</h4>
+                          <div className="min-w-0">
+                            <h4 className="truncate text-sm font-medium text-gray-800">{session.sessionType}</h4>
                             <p className="mt-0.5 flex items-center gap-1 text-xs text-gray-400">
                               <CalendarCheck className="size-3.5" />
                               {session.sessionDateLabel}
                             </p>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => openAttendanceSession(session.sessionDate, session.sessionType)}
-                            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100"
-                            aria-label={`View ${session.sessionType} attendance session`}
-                          >
-                            <Eye className="size-3.5" />
-                            View
-                          </button>
+                          <div className="flex shrink-0 items-center gap-2">
+                            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold ${
+                              session.isCompleted ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                            }`}>
+                              {session.isCompleted ? <CheckCircle2 className="size-3" /> : <Clock className="size-3" />}
+                              {session.isCompleted ? "Completed" : "In Progress"}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => openAttendanceSession(session.sessionDate, session.sessionType)}
+                              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100"
+                              aria-label={`View ${session.sessionType} attendance session`}
+                            >
+                              <Eye className="size-3.5" />
+                              View
+                            </button>
+                          </div>
                         </div>
                       ))
                     ) : (
@@ -1757,6 +1787,7 @@ export function DisciplineClient({
                       <tr>
                         <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500">Date</th>
                         <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500">Session</th>
+                        <th className="px-6 py-3 text-center text-xs font-medium uppercase text-gray-500">Status</th>
                         <th className="px-6 py-3 text-center text-xs font-medium uppercase text-gray-500">Good Behavior</th>
                         <th className="px-6 py-3 text-center text-xs font-medium uppercase text-gray-500">Bad Behavior</th>
                         <th className="px-6 py-3 text-center text-xs font-medium uppercase text-gray-500">Good Behavior %</th>
@@ -1772,6 +1803,14 @@ export function DisciplineClient({
                           <tr key={session.key} className="border-b hover:bg-gray-50">
                             <td className="px-6 py-3 text-sm text-gray-600">{session.dateLabel}</td>
                             <td className="px-6 py-3 text-sm font-semibold text-gray-900">{session.title}</td>
+                            <td className="px-6 py-3 text-center">
+                              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold ${
+                                session.isCompleted ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                              }`}>
+                                {session.isCompleted ? <CheckCircle2 className="size-3.5" /> : <Clock className="size-3.5" />}
+                                {session.isCompleted ? "Completed" : "In Progress"}
+                              </span>
+                            </td>
                             <td className="px-6 py-3 text-center text-sm font-semibold text-green-600">{session.good}</td>
                             <td className="px-6 py-3 text-center text-sm font-semibold text-red-600">{session.bad}</td>
                             <td className="px-6 py-3 text-center text-sm font-semibold text-blue-600">{percent}%</td>
@@ -1790,7 +1829,7 @@ export function DisciplineClient({
                         );
                       }) : (
                         <tr>
-                          <td colSpan={6} className="py-12 text-center text-gray-500">No discipline sessions found</td>
+                          <td colSpan={7} className="py-12 text-center text-gray-500">No discipline sessions found</td>
                         </tr>
                       )}
                     </tbody>
@@ -1805,11 +1844,19 @@ export function DisciplineClient({
                   return (
                     <div key={session.key} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
                       <div className="flex items-start justify-between gap-3">
-                        <div>
+                        <div className="min-w-0">
                           <p className="font-semibold text-slate-900">{session.title}</p>
                           <p className="text-sm text-slate-500">{session.dateLabel}</p>
                         </div>
-                        <span className="text-lg font-bold text-blue-600">{percent}%</span>
+                        <div className="flex shrink-0 flex-col items-end gap-1">
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold ${
+                            session.isCompleted ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                          }`}>
+                            {session.isCompleted ? <CheckCircle2 className="size-3" /> : <Clock className="size-3" />}
+                            {session.isCompleted ? "Completed" : "In Progress"}
+                          </span>
+                          <span className="text-lg font-bold text-blue-600">{percent}%</span>
+                        </div>
                       </div>
                       <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
                         <div className="rounded-lg bg-emerald-50 p-2 text-emerald-700"><span className="block text-xs">Good</span><strong>{session.good}</strong></div>
@@ -2237,7 +2284,7 @@ export function DisciplineClient({
                 </div>
               )}
 
-              <div className="grid grid-cols-4 gap-1 sm:hidden">
+              <div className="grid grid-cols-4 gap-1 md:hidden">
                 <div className="rounded-lg bg-blue-50 px-1 py-1.5 text-center">
                   <p className="text-[10px] text-gray-600">Present</p>
                   <p className="text-sm font-bold text-blue-600">{sessionDraftSummary.present}</p>
@@ -2256,26 +2303,34 @@ export function DisciplineClient({
                 </div>
               </div>
 
-              <div className="hidden grid-cols-4 gap-3 md:grid">
-                <div className="rounded-xl border border-blue-100 bg-blue-50 p-3">
-                  <p className="text-xs font-medium text-gray-600">Total Users</p>
-                  <p className="text-2xl font-bold text-blue-600">{eligibleAttendanceUsers.length}</p>
+              <div className="hidden gap-2 md:grid md:grid-cols-3 lg:grid-cols-[160px_1.5fr_repeat(4,1fr)]">
+                <div className="min-w-0">
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">Session Date</label>
+                  <input value={sessionDate} disabled={sessionReadOnly} onChange={(event) => setSessionDate(event.target.value)} type="date" className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-50 disabled:text-gray-500" />
                 </div>
-                <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
-                  <p className="text-xs font-medium text-gray-600">Present</p>
-                  <p className="text-2xl font-bold text-emerald-600">{sessionDraftSummary.present}</p>
+                <div className="min-w-0">
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">Session Name</label>
+                  <input value={sessionType} disabled={sessionReadOnly} onChange={(event) => setSessionType(event.target.value)} className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-50 disabled:text-gray-500" />
                 </div>
-                <div className="rounded-xl border border-rose-100 bg-rose-50 p-3">
-                  <p className="text-xs font-medium text-gray-600">Absent</p>
-                  <p className="text-2xl font-bold text-rose-600">{sessionDraftSummary.absent}</p>
+                <div className="flex min-h-[55px] min-w-0 flex-col justify-center rounded-lg border border-blue-100 bg-blue-50 px-3 py-1.5">
+                  <p className="truncate text-[10px] font-medium text-gray-600">Total Users</p>
+                  <p className="text-xl font-bold leading-tight text-blue-600">{eligibleAttendanceUsers.length}</p>
                 </div>
-                <div className="rounded-xl border border-green-100 bg-green-50 p-3">
-                  <p className="text-xs font-medium text-gray-600">Approved Permissions</p>
-                  <p className="text-2xl font-bold text-green-600">{sessionPermissionStats.approved}</p>
+                <div className="flex min-h-[55px] min-w-0 flex-col justify-center rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-1.5">
+                  <p className="truncate text-[10px] font-medium text-gray-600">Present</p>
+                  <p className="text-xl font-bold leading-tight text-emerald-600">{sessionDraftSummary.present}</p>
+                </div>
+                <div className="flex min-h-[55px] min-w-0 flex-col justify-center rounded-lg border border-rose-100 bg-rose-50 px-3 py-1.5">
+                  <p className="truncate text-[10px] font-medium text-gray-600">Absent</p>
+                  <p className="text-xl font-bold leading-tight text-rose-600">{sessionDraftSummary.absent}</p>
+                </div>
+                <div className="flex min-h-[55px] min-w-0 flex-col justify-center rounded-lg border border-green-100 bg-green-50 px-3 py-1.5">
+                  <p className="truncate text-[10px] font-medium text-gray-600" title="Approved Permissions">Approved Permissions</p>
+                  <p className="text-xl font-bold leading-tight text-green-600">{sessionPermissionStats.approved}</p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 md:grid-cols-[220px_minmax(260px,1fr)] md:gap-3">
+              <div className="grid grid-cols-2 gap-2 md:hidden">
                 <div>
                   <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Session Date</label>
                   <input value={sessionDate} disabled={sessionReadOnly} onChange={(event) => setSessionDate(event.target.value)} type="date" className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:bg-gray-50 disabled:text-gray-500 sm:h-10 sm:px-3 sm:text-sm" />
@@ -2391,13 +2446,12 @@ export function DisciplineClient({
                               ) : (
                                 <YesNoButton
                                   value={draft.present}
-                                  disabled={draft.disabled}
                                   onToggle={() => updateDraft(user.id, { present: !draft.present, status: !draft.present ? "present" : "absent" })}
                                 />
                               )}
                             </td>
                             <td className="px-3 py-3 text-center">
-                              {sessionReadOnly ? <ReadonlyYesNo value={draft.onTime} /> : <YesNoButton value={draft.onTime} disabled={draft.disabled} onToggle={() => updateDraft(user.id, { onTime: !draft.onTime })} />}
+                              {sessionReadOnly ? <ReadonlyYesNo value={draft.onTime} /> : <YesNoButton value={draft.onTime} onToggle={() => updateDraft(user.id, { onTime: !draft.onTime })} />}
                             </td>
                             <td className="px-3 py-3 text-center">
                               {sessionReadOnly ? <ReadonlyYesNo value={draft.communicated} /> : <YesNoButton value={draft.communicated} onToggle={() => updateDraft(user.id, { communicated: !draft.communicated })} />}
@@ -2408,7 +2462,6 @@ export function DisciplineClient({
                               ) : (
                                 <YesNoButton
                                   value={draft.discipline}
-                                  disabled={draft.disabled}
                                   onToggle={() => updateDraft(user.id, { discipline: !draft.discipline, disciplinePoints: !draft.discipline ? 1 : 0 })}
                                 />
                               )}
@@ -2457,10 +2510,10 @@ export function DisciplineClient({
                           )}
                         </div>
                         <div className="grid grid-cols-4 gap-1 text-sm">
-                          <MobileAttendanceToggle label="Present" value={draft.present} readOnly={sessionReadOnly} disabled={draft.disabled} onToggle={() => updateDraft(user.id, { present: !draft.present, status: !draft.present ? "present" : "absent" })} />
-                          <MobileAttendanceToggle label="Time" value={draft.onTime} readOnly={sessionReadOnly} disabled={draft.disabled} onToggle={() => updateDraft(user.id, { onTime: !draft.onTime })} />
+                          <MobileAttendanceToggle label="Present" value={draft.present} readOnly={sessionReadOnly} onToggle={() => updateDraft(user.id, { present: !draft.present, status: !draft.present ? "present" : "absent" })} />
+                          <MobileAttendanceToggle label="Time" value={draft.onTime} readOnly={sessionReadOnly} onToggle={() => updateDraft(user.id, { onTime: !draft.onTime })} />
                           <MobileAttendanceToggle label="Comm." value={draft.communicated} readOnly={sessionReadOnly} onToggle={() => updateDraft(user.id, { communicated: !draft.communicated })} />
-                          <MobileAttendanceToggle label="Disc." value={draft.discipline} readOnly={sessionReadOnly} disabled={draft.disabled} onToggle={() => updateDraft(user.id, { discipline: !draft.discipline, disciplinePoints: !draft.discipline ? 1 : 0 })} />
+                          <MobileAttendanceToggle label="Disc." value={draft.discipline} readOnly={sessionReadOnly} onToggle={() => updateDraft(user.id, { discipline: !draft.discipline, disciplinePoints: !draft.discipline ? 1 : 0 })} />
                         </div>
                       </div>
                     );
@@ -2763,20 +2816,28 @@ export function DisciplineClient({
           <div className="fixed inset-0 bg-gray-900/50" onClick={() => setDisciplineModal(false)} />
           <div className="relative max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-xl bg-white shadow-xl">
             <div className="flex items-center justify-between border-b px-4 py-3">
-              <h3 className="text-lg font-semibold text-gray-800">Record Discipline</h3>
+              <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800">
+                Record Discipline
+                {disciplineSessionReadOnly && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">Completed</span>}
+              </h3>
               <button onClick={() => setDisciplineModal(false)} className="text-gray-400 hover:text-gray-600" aria-label="Close">
                 <X className="size-5" />
               </button>
             </div>
             <div className="max-h-[calc(90vh-108px)] overflow-y-auto p-4">
+              {disciplineSessionReadOnly && (
+                <div className="mb-4 rounded-lg bg-amber-100 px-3 py-2 text-sm font-medium text-amber-800">
+                  This discipline session is completed and cannot be edited.
+                </div>
+              )}
               <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700">Session Date *</label>
-                  <input value={disciplineDate} onChange={(event) => { const date = event.target.value; setDisciplineDate(date); setDisciplineDrafts(disciplineDraftsForDate(date, disciplineTitle)); }} type="date" className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-blue-500" />
+                  <input value={disciplineDate} disabled={disciplineSessionReadOnly} onChange={(event) => { const date = event.target.value; setDisciplineDate(date); setDisciplineDrafts(disciplineDraftsForDate(date, disciplineTitle)); }} type="date" className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500" />
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700">Session Title *</label>
-                  <input value={disciplineTitle} onChange={(event) => setDisciplineTitle(event.target.value)} placeholder="e.g., Sunday Service, Bible Study" className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-blue-500" />
+                  <input value={disciplineTitle} disabled={disciplineSessionReadOnly} onChange={(event) => setDisciplineTitle(event.target.value)} placeholder="e.g., Sunday Service, Bible Study" className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500" />
                 </div>
               </div>
 
@@ -2784,10 +2845,12 @@ export function DisciplineClient({
                 <div className="border-b bg-gray-50 px-3 py-2">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-gray-700">Members Discipline</span>
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => setAllDiscipline("good")} className="rounded bg-green-100 px-2 py-1 text-xs text-green-700 hover:bg-green-200">All Good</button>
-                      <button type="button" onClick={() => setAllDiscipline("bad")} className="rounded bg-red-100 px-2 py-1 text-xs text-red-700 hover:bg-red-200">All Bad</button>
-                    </div>
+                    {!disciplineSessionReadOnly && (
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => setAllDiscipline("good")} className="rounded bg-green-100 px-2 py-1 text-xs text-green-700 hover:bg-green-200">All Good</button>
+                        <button type="button" onClick={() => setAllDiscipline("bad")} className="rounded bg-red-100 px-2 py-1 text-xs text-red-700 hover:bg-red-200">All Bad</button>
+                      </div>
+                    )}
                   </div>
                   <div className="relative mt-2">
                     <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
@@ -2815,6 +2878,7 @@ export function DisciplineClient({
                             <td className="px-2 py-2 text-center">
                               <select
                                 value={draft.behaviour}
+                                disabled={disciplineSessionReadOnly}
                                 onChange={(event) => {
                                   const behaviour = event.target.value as "good" | "bad";
                                   updateDisciplineDraft(user.id, {
@@ -2823,7 +2887,7 @@ export function DisciplineClient({
                                     points: behaviour === "good" ? 1 : 0,
                                   });
                                 }}
-                                className="w-full rounded border border-gray-300 px-1.5 py-1 text-sm"
+                                className="w-full rounded border border-gray-300 px-1.5 py-1 text-sm disabled:bg-gray-100 disabled:text-gray-500"
                               >
                                 <option value="good">Good</option>
                                 <option value="bad">Bad</option>
@@ -2833,9 +2897,9 @@ export function DisciplineClient({
                               <input
                                 value={draft.description}
                                 onChange={(event) => updateDisciplineDraft(user.id, { description: event.target.value })}
-                                readOnly={draft.behaviour === "good"}
+                                readOnly={disciplineSessionReadOnly || draft.behaviour === "good"}
                                 placeholder={draft.behaviour === "good" ? "Good" : "Enter description..."}
-                                className={`w-full rounded border border-gray-300 px-2 py-1 text-sm ${draft.behaviour === "good" ? "bg-gray-100" : ""}`}
+                                className={`w-full rounded border border-gray-300 px-2 py-1 text-sm ${disciplineSessionReadOnly || draft.behaviour === "good" ? "bg-gray-100 text-gray-500" : ""}`}
                               />
                             </td>
                             <td className="px-2 py-2 text-center">
@@ -2854,11 +2918,19 @@ export function DisciplineClient({
               </div>
             </div>
             <div className="flex justify-end gap-3 border-t bg-gray-50 px-4 py-3">
-              <button onClick={() => setDisciplineModal(false)} className="rounded-lg border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-100">Cancel</button>
-              <button disabled={isSaving} onClick={submitDisciplineSession} className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-60">
-                <Save className="mr-1 inline size-4" />
-                {isSaving ? "Saving..." : "Save Records"}
-              </button>
+              <button type="button" onClick={() => setDisciplineModal(false)} className="rounded-lg border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-100">{disciplineSessionReadOnly ? "Close" : "Cancel"}</button>
+              {!disciplineSessionReadOnly && (
+                <>
+                  <button type="button" disabled={isSaving} onClick={() => submitDisciplineSession(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">
+                    <CheckCircle2 className="size-4" />
+                    {isSaving ? "Saving..." : "Complete Session"}
+                  </button>
+                  <button type="button" disabled={isSaving} onClick={() => submitDisciplineSession(false)} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-60">
+                    <Save className="size-4" />
+                    {isSaving ? "Saving..." : "Save Records"}
+                  </button>
+                </>
+              )}
             </div>
           </div>
           </div>

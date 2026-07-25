@@ -6,7 +6,7 @@ const globalForPrisma = globalThis as unknown as {
   prismaSchemaVersion?: string;
 };
 
-const PRISMA_SCHEMA_VERSION = "2026-07-17-attendance-import-source";
+const PRISMA_SCHEMA_VERSION = "2026-07-25-discipline-session-completion";
 
 function databaseUrl() {
   const value = process.env.DATABASE_URL;
@@ -42,6 +42,7 @@ export const prisma =
   "attendanceRecord" in existingPrisma &&
   "attendanceSession" in existingPrisma &&
   "permissionRequest" in existingPrisma &&
+  "disciplineSession" in existingPrisma &&
   "disciplineRecord" in existingPrisma &&
   "financeTermSetting" in existingPrisma &&
   "contribution" in existingPrisma &&

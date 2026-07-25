@@ -1,7 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
-import { notifySuperAdmins, notifyUsers, processPendingEmailDeliveries, userIdsForAnnouncement, userIdsWithPermission } from "@/lib/notifications";
+import { notifySuperAdmins, notifyUsers, processPendingEmailDeliveries, reconcilePendingPermissionNotifications, userIdsForAnnouncement, userIdsWithPermission } from "@/lib/notifications";
 
 function dayBounds(offsetDays = 0) {
   const start = new Date();
@@ -17,8 +17,9 @@ function dateLabel(date: Date) {
 }
 
 export async function runScheduledNotificationJobs() {
-  const results = { emailsProcessed: 0, announcements: 0, formReminders: 0, taskReminders: 0, familyReminders: 0, systemAlerts: 0 };
+  const results = { emailsProcessed: 0, permissionRequestsChecked: 0, announcements: 0, formReminders: 0, taskReminders: 0, familyReminders: 0, systemAlerts: 0 };
   results.emailsProcessed = await processPendingEmailDeliveries();
+  results.permissionRequestsChecked = (await reconcilePendingPermissionNotifications()).requests;
 
   const today = dayBounds();
   const scheduledAnnouncements = await prisma.announcement.findMany({

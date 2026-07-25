@@ -1,7 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireUser } from "@/lib/auth";
+import { requirePageAccess } from "@/lib/auth";
+import { getEmailConfiguration } from "@/lib/email-config";
+import { notifyEmailAddress, processPendingEmailDeliveries, reconcilePendingPermissionNotifications, verifyEmailTransport } from "@/lib/notifications";
 import { prisma } from "@/lib/prisma";
 
 type ActionResult = {
@@ -36,7 +38,7 @@ async function saveSettings(
   values: Record<string, SettingValue>,
   message: string,
 ) {
-  const user = await requireUser();
+  const user = await requirePageAccess("settings");
 
   await prisma.$transaction(async (tx) => {
     for (const [key, value] of Object.entries(values)) {
@@ -120,6 +122,7 @@ export async function updateNotificationSettings(formData: FormData) {
         notification_account_enabled: readBoolean(formData, "notification_account_enabled"),
         notification_security_enabled: readBoolean(formData, "notification_security_enabled"),
         notification_announcement_enabled: readBoolean(formData, "notification_announcement_enabled"),
+        notification_permission_enabled: readBoolean(formData, "notification_permission_enabled"),
         notification_form_enabled: readBoolean(formData, "notification_form_enabled"),
         notification_task_enabled: readBoolean(formData, "notification_task_enabled"),
         notification_finance_enabled: readBoolean(formData, "notification_finance_enabled"),
@@ -136,7 +139,7 @@ export async function updateNotificationSettings(formData: FormData) {
 }
 
 export async function clearSystemCache() {
-  const user = await requireUser();
+  const user = await requirePageAccess("settings");
 
   await prisma.activityLog.create({
     data: {
@@ -149,4 +152,53 @@ export async function clearSystemCache() {
 
   revalidatePath("/", "layout");
   return { ok: true, message: "System cache cleared successfully." } satisfies ActionResult;
+}
+
+export async function sendTestEmail() {
+  const user = await requirePageAccess("settings");
+  const configuration = getEmailConfiguration();
+  if (!configuration.configured) {
+    return { ok: false, message: configuration.issue ?? "SMTP is not configured." } satisfies ActionResult;
+  }
+
+  const verification = await verifyEmailTransport();
+  if (!verification.ok) {
+    return { ok: false, message: `SMTP verification failed: ${verification.message}` } satisfies ActionResult;
+  }
+
+  const result = await notifyEmailAddress(
+    user.email,
+    "Reverence Worship email test",
+    "Email delivery is configured correctly. This test was requested from System Settings.",
+  );
+  return result.status === "sent"
+    ? { ok: true, message: `Test email sent successfully to ${user.email}.` }
+    : { ok: false, message: result.error ?? "The test email was not sent." };
+}
+
+export async function retryQueuedEmails() {
+  await requirePageAccess("settings");
+  const configuration = getEmailConfiguration();
+  if (!configuration.configured) {
+    return { ok: false, message: configuration.issue ?? "SMTP is not configured." } satisfies ActionResult;
+  }
+
+  const verification = await verifyEmailTransport();
+  if (!verification.ok) {
+    return { ok: false, message: `SMTP verification failed: ${verification.message}` } satisfies ActionResult;
+  }
+
+  const requeued = await prisma.emailDelivery.updateMany({
+    where: { status: "failed" },
+    data: { status: "pending", attempts: 0, nextAttemptAt: null },
+  });
+  const reconciled = await reconcilePendingPermissionNotifications();
+  const processed = await processPendingEmailDeliveries(100, true);
+  revalidatePath("/admin/settings");
+  return {
+    ok: true,
+    message: processed
+      ? `Processed ${processed} unsent email${processed === 1 ? "" : "s"}${requeued.count ? `, including ${requeued.count} previously failed` : ""}, and checked ${reconciled.requests} pending permission request${reconciled.requests === 1 ? "" : "s"}.`
+      : `No unsent emails remained after checking ${reconciled.requests} pending permission request${reconciled.requests === 1 ? "" : "s"}.`,
+  } satisfies ActionResult;
 }

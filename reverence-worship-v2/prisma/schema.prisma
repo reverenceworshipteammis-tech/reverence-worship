@@ -71,6 +71,7 @@ model User {
   attendanceRecords           AttendanceRecord[]      @relation("AttendanceUser")
   markedAttendanceRecords     AttendanceRecord[]      @relation("AttendanceMarker")
   completedAttendanceSessions AttendanceSession[]     @relation("AttendanceSessionCompleter")
+  completedDisciplineSessions DisciplineSession[]     @relation("DisciplineSessionCompleter")
   permissionRequests          PermissionRequest[]     @relation("PermissionRequester")
   approvedPermissionRequests  PermissionRequest[]     @relation("PermissionApprover")
   disciplineRecords           DisciplineRecord[]      @relation("DisciplineUser")
@@ -507,6 +508,22 @@ model DisciplineSection {
   records DisciplineRecord[]
 
   @@map("discipline_sections")
+}
+
+model DisciplineSession {
+  sessionDate DateTime  @map("session_date") @db.Date
+  title       String
+  isCompleted Boolean   @default(false) @map("is_completed")
+  completedAt DateTime? @map("completed_at")
+  completedBy Int?      @map("completed_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  completer User? @relation("DisciplineSessionCompleter", fields: [completedBy], references: [id], onDelete: SetNull)
+
+  @@id([sessionDate, title])
+  @@index([sessionDate])
+  @@map("discipline_sessions")
 }
 
 model DisciplineRecord {

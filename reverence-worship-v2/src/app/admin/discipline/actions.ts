@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getUserPermissionSet, permissionSetHas, requirePermission } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { notifyUsers, userIdsForRoles } from "@/lib/notifications";
+import { notifyUsers, userIdsWithPermission } from "@/lib/notifications";
 
 type AttendanceRecordInput = {
   userId: number;
@@ -13,7 +13,6 @@ type AttendanceRecordInput = {
   disciplinePoints?: number;
   lateMinutes?: number;
   notes?: string;
-  hasOfficialPermission?: boolean;
 };
 
 type ImportedAttendanceRecord = {
@@ -299,16 +298,15 @@ async function writeAttendanceSession(formData: FormData, complete: boolean) {
         const status = requestedStatus === "late"
           ? "present"
           : ["present", "absent", "excused"].includes(requestedStatus) ? requestedStatus : "present";
-        const hasOfficialPermission = Boolean(record.hasOfficialPermission);
         const onTime = requestedStatus === "late" ? false : Boolean(record.onTime);
         return {
           userId: Number(record.userId),
           sessionDate,
           sessionType,
           status,
-          onTime: hasOfficialPermission ? true : onTime,
-          communicated: hasOfficialPermission ? true : Boolean(record.communicated),
-          disciplinePoints: hasOfficialPermission ? 1 : Number(record.disciplinePoints) || 0,
+          onTime,
+          communicated: Boolean(record.communicated),
+          disciplinePoints: Number(record.disciplinePoints) || 0,
           lateMinutes: Number(record.lateMinutes) || 0,
           notes: record.notes?.trim() || null,
           markedBy: user.id,
@@ -784,7 +782,7 @@ export async function savePermissionRequest(formData: FormData) {
   }
 
   if (!(Number.isFinite(id) && id > 0)) {
-    await notifyUsers({ userIds: await userIdsForRoles(["discipline-dpt"]), type: "permission", title: "Permission request submitted", message: `A new ${type} permission request is awaiting review.`, link: "/admin/discipline", sourceType: "permission_request", sourceId: request.id, dedupeKey: `permission:${request.id}:submitted` });
+    await notifyUsers({ userIds: await userIdsWithPermission("discipline", "approve-permission-requests"), type: "permission", title: "Permission request submitted", message: `A new ${type} permission request is awaiting review.`, link: "/admin/discipline?tab=permission&status=pending", sourceType: "permission_request", sourceId: request.id, dedupeKey: `permission:${request.id}:submitted` });
   }
 
   revalidatePath("/admin/discipline");
@@ -854,7 +852,7 @@ export async function deletePermissionRequest(id: number) {
   return { ok: true, message: "Permission request deleted." };
 }
 
-export async function saveDisciplineSession(formData: FormData) {
+async function writeDisciplineSession(formData: FormData, complete: boolean) {
   const user = await requirePermission("discipline", "record-discipline");
   const sessionDateValue = readString(formData, "sessionDate");
   const title = readString(formData, "title");
@@ -867,6 +865,19 @@ export async function saveDisciplineSession(formData: FormData) {
   const createdAt = dateOnly(sessionDateValue);
   const dayStart = new Date(`${sessionDateValue}T00:00:00`);
   const dayEnd = new Date(`${sessionDateValue}T23:59:59`);
+  const existingSession = await prisma.disciplineSession.findUnique({
+    where: {
+      sessionDate_title: {
+        sessionDate: createdAt,
+        title,
+      },
+    },
+    select: { isCompleted: true },
+  });
+
+  if (existingSession?.isCompleted) {
+    return { ok: false, message: "This discipline session is completed and cannot be edited." };
+  }
 
   const attendanceSession = await prisma.attendanceSession.findFirst({
     where: { sessionDate: { gte: dayStart, lte: dayEnd }, isCompleted: true },
@@ -900,6 +911,99 @@ export async function saveDisciplineSession(formData: FormData) {
     return { ok: false, message: "Discipline records can only include members marked Present on this date. Refresh and try again." };
   }
 
+  try {
+    await prisma.$transaction(async (tx) => {
+      const currentSession = await tx.disciplineSession.findUnique({
+        where: {
+          sessionDate_title: {
+            sessionDate: createdAt,
+            title,
+          },
+        },
+        select: { isCompleted: true },
+      });
+
+      if (currentSession?.isCompleted) {
+        throw new Error("DISCIPLINE_SESSION_COMPLETED");
+      }
+
+      await tx.disciplineSession.upsert({
+        where: {
+          sessionDate_title: {
+            sessionDate: createdAt,
+            title,
+          },
+        },
+        update: {
+          isCompleted: complete,
+          completedAt: complete ? new Date() : null,
+          completedBy: complete ? user.id : null,
+        },
+        create: {
+          sessionDate: createdAt,
+          title,
+          isCompleted: complete,
+          completedAt: complete ? new Date() : null,
+          completedBy: complete ? user.id : null,
+        },
+      });
+
+      await tx.disciplineRecord.deleteMany({
+        where: {
+          title,
+          createdAt: {
+            gte: dayStart,
+            lte: dayEnd,
+          },
+        },
+      });
+
+      await tx.disciplineRecord.createMany({
+        data: records.map((record) => {
+          const isGood = record.behaviour === "good";
+          return {
+            userId: Number(record.userId),
+            title,
+            description: record.description?.trim() || (isGood ? "Good" : null),
+            points: Number.isFinite(Number(record.points)) ? Number(record.points) : isGood ? 1 : 0,
+            type: isGood ? "positive" : "warning",
+            status: "active",
+            recordedBy: user.id,
+            createdAt,
+          };
+        }),
+      });
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === "DISCIPLINE_SESSION_COMPLETED") {
+      return { ok: false, message: "This discipline session is completed and cannot be edited." };
+    }
+    console.error("Discipline session save failed", error);
+    return { ok: false, message: "The discipline session could not be saved. Please retry." };
+  }
+
+  revalidatePath("/admin/discipline");
+
+  return {
+    ok: true,
+    message: complete ? "Discipline session completed successfully." : "Discipline session saved successfully.",
+  };
+}
+
+export async function saveDisciplineSession(formData: FormData) {
+  return writeDisciplineSession(formData, false);
+}
+
+export async function completeDisciplineSession(formData: FormData) {
+  return writeDisciplineSession(formData, true);
+}
+
+export async function deleteDisciplineSession(sessionDateValue: string, title: string) {
+  await requirePermission("discipline", "delete-discipline");
+  const sessionDate = dateOnly(sessionDateValue);
+  const dayStart = new Date(`${sessionDateValue}T00:00:00`);
+  const dayEnd = new Date(`${sessionDateValue}T23:59:59`);
+
   await prisma.$transaction(async (tx) => {
     await tx.disciplineRecord.deleteMany({
       where: {
@@ -910,42 +1014,9 @@ export async function saveDisciplineSession(formData: FormData) {
         },
       },
     });
-
-    await tx.disciplineRecord.createMany({
-      data: records.map((record) => {
-        const isGood = record.behaviour === "good";
-        return {
-          userId: Number(record.userId),
-          title,
-          description: record.description?.trim() || (isGood ? "Good" : null),
-          points: Number.isFinite(Number(record.points)) ? Number(record.points) : isGood ? 1 : 0,
-          type: isGood ? "positive" : "warning",
-          status: "active",
-          recordedBy: user.id,
-          createdAt,
-        };
-      }),
+    await tx.disciplineSession.deleteMany({
+      where: { sessionDate, title },
     });
-  });
-
-  revalidatePath("/admin/discipline");
-
-  return { ok: true, message: "Discipline session saved successfully." };
-}
-
-export async function deleteDisciplineSession(sessionDateValue: string, title: string) {
-  await requirePermission("discipline", "delete-discipline");
-  const dayStart = new Date(`${sessionDateValue}T00:00:00`);
-  const dayEnd = new Date(`${sessionDateValue}T23:59:59`);
-
-  await prisma.disciplineRecord.deleteMany({
-    where: {
-      title,
-      createdAt: {
-        gte: dayStart,
-        lte: dayEnd,
-      },
-    },
   });
 
   revalidatePath("/admin/discipline");

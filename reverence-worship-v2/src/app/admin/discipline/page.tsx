@@ -109,6 +109,7 @@ export default async function DisciplinePage({
           createdAt: formatDate(permission.createdAt),
           createdAtValue: dateValue(permission.createdAt),
         }))}
+        disciplineSessionStates={[]}
         disciplineRecords={[]}
         actionPlans={[]}
       />
@@ -128,6 +129,7 @@ export default async function DisciplinePage({
     permissionList,
     disciplineRecords,
     attendanceSessionStates,
+    disciplineSessionStates,
     actionPlans,
   ] = await Promise.all([
     safeRead(
@@ -166,9 +168,9 @@ export default async function DisciplinePage({
       0,
     ),
     safeRead(
-      prisma.disciplineRecord.count({
+      prisma.disciplineSession.count({
         where: {
-          createdAt: { gte: startDate, lte: endDate },
+          sessionDate: { gte: startDate, lte: endDate },
         },
       }),
       0,
@@ -244,6 +246,12 @@ export default async function DisciplinePage({
       [],
     ),
     safeRead(
+      prisma.disciplineSession.findMany({
+        orderBy: [{ sessionDate: "desc" }, { title: "asc" }],
+      }),
+      [],
+    ),
+    safeRead(
       prisma.actionPlan.findMany({
         where: { department: "discipline" },
         orderBy: { createdAt: "desc" },
@@ -309,6 +317,12 @@ export default async function DisciplinePage({
         sessionType: session.sessionType,
         isCompleted: session.isCompleted,
         isImported: session.isImported,
+        updatedAt: session.updatedAt.toISOString(),
+      }))}
+      disciplineSessionStates={disciplineSessionStates.map((session) => ({
+        sessionDate: dateValue(session.sessionDate),
+        title: session.title,
+        isCompleted: session.isCompleted,
         updatedAt: session.updatedAt.toISOString(),
       }))}
       users={activeUsers.map((activeUser) => ({

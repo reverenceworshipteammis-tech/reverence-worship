@@ -1,5 +1,6 @@
 import { SettingsClient, type SettingsValues } from "@/components/settings-client";
 import { requirePageAccess } from "@/lib/auth";
+import { getEmailConfiguration } from "@/lib/email-config";
 import { prisma } from "@/lib/prisma";
 
 function boolValue(value: unknown, fallback = false) {
@@ -17,11 +18,16 @@ function numberValue(value: unknown, fallback: number) {
 export default async function SettingsPage() {
   await requirePageAccess("settings");
 
-  const rows = await prisma.systemSetting.findMany({
-    orderBy: [{ group: "asc" }, { key: "asc" }],
-  });
+  const [rows, pendingEmails, failedEmails] = await Promise.all([
+    prisma.systemSetting.findMany({
+      orderBy: [{ group: "asc" }, { key: "asc" }],
+    }),
+    prisma.emailDelivery.count({ where: { status: "pending" } }),
+    prisma.emailDelivery.count({ where: { status: "failed" } }),
+  ]);
 
   const settings = new Map(rows.map((row) => [row.key, row.value]));
+  const emailConfiguration = getEmailConfiguration();
   const values: SettingsValues = {
     registrationEnabled: boolValue(settings.get("registration_enabled"), true),
     sessionLifetime: Math.min(numberValue(settings.get("session_lifetime"), 10), 10),
@@ -32,10 +38,19 @@ export default async function SettingsPage() {
       accountEnabled: boolValue(settings.get("notification_account_enabled"), true),
       securityEnabled: boolValue(settings.get("notification_security_enabled"), true),
       announcementEnabled: boolValue(settings.get("notification_announcement_enabled"), true),
+      permissionEnabled: boolValue(settings.get("notification_permission_enabled"), true),
       formEnabled: boolValue(settings.get("notification_form_enabled"), true),
       taskEnabled: boolValue(settings.get("notification_task_enabled"), true),
       financeEnabled: boolValue(settings.get("notification_finance_enabled"), true),
       systemEnabled: boolValue(settings.get("notification_system_enabled"), true),
+    },
+    emailInfrastructure: {
+      configured: emailConfiguration.configured,
+      issue: emailConfiguration.issue,
+      appUrlConfigured: emailConfiguration.appUrlConfigured,
+      cronSecretConfigured: emailConfiguration.cronSecretConfigured,
+      pendingEmails,
+      failedEmails,
     },
   };
 

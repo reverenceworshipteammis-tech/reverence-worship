@@ -1,9 +1,11 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { Bell, BrushCleaning, ShieldCheck, UserPlus } from "lucide-react";
+import { Bell, BrushCleaning, CheckCircle2, MailCheck, RefreshCw, ShieldCheck, TriangleAlert, UserPlus } from "lucide-react";
 import {
   clearSystemCache,
+  retryQueuedEmails,
+  sendTestEmail,
   updateAccessSettings,
   updateNotificationSettings,
   updateSecuritySettings,
@@ -20,10 +22,19 @@ export type SettingsValues = {
     accountEnabled: boolean;
     securityEnabled: boolean;
     announcementEnabled: boolean;
+    permissionEnabled: boolean;
     formEnabled: boolean;
     taskEnabled: boolean;
     financeEnabled: boolean;
     systemEnabled: boolean;
+  };
+  emailInfrastructure: {
+    configured: boolean;
+    issue: string | null;
+    appUrlConfigured: boolean;
+    cronSecretConfigured: boolean;
+    pendingEmails: number;
+    failedEmails: number;
   };
 };
 
@@ -166,6 +177,41 @@ export function SettingsClient({ values }: { values: SettingsValues }) {
 
         <div className={activeTab === "notifications" ? "block" : "hidden"}>
           <form ref={notificationRef} onChange={() => autoSave("notifications", updateNotificationSettings, notificationRef.current)} className="p-4 sm:p-6">
+            <div className={`mb-5 rounded-xl border p-4 ${
+              values.emailInfrastructure.configured ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"
+            }`}>
+              <div className="flex items-start gap-3">
+                {values.emailInfrastructure.configured
+                  ? <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-emerald-700" aria-hidden="true" />
+                  : <TriangleAlert className="mt-0.5 size-5 shrink-0 text-amber-700" aria-hidden="true" />}
+                <div className="min-w-0 flex-1">
+                  <h3 className={`font-semibold ${values.emailInfrastructure.configured ? "text-emerald-900" : "text-amber-900"}`}>Email Delivery Health</h3>
+                  <p className={`mt-1 text-sm ${values.emailInfrastructure.configured ? "text-emerald-800" : "text-amber-800"}`}>
+                    {values.emailInfrastructure.configured ? "SMTP environment variables are present." : values.emailInfrastructure.issue}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs font-medium">
+                    <span className={`rounded-full px-2.5 py-1 ${values.emailInfrastructure.appUrlConfigured ? "bg-emerald-100 text-emerald-700" : "bg-white/70 text-amber-800"}`}>
+                      Email links: {values.emailInfrastructure.appUrlConfigured ? "Configured" : "APP_URL missing"}
+                    </span>
+                    <span className={`rounded-full px-2.5 py-1 ${values.emailInfrastructure.cronSecretConfigured ? "bg-emerald-100 text-emerald-700" : "bg-white/70 text-amber-800"}`}>
+                      Retry job: {values.emailInfrastructure.cronSecretConfigured ? "Configured" : "CRON_SECRET missing"}
+                    </span>
+                    <span className="rounded-full bg-white/70 px-2.5 py-1 text-slate-700">Queued: {values.emailInfrastructure.pendingEmails}</span>
+                    <span className="rounded-full bg-white/70 px-2.5 py-1 text-slate-700">Failed: {values.emailInfrastructure.failedEmails}</span>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button type="button" onClick={() => runButtonAction(sendTestEmail)} disabled={pending} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60">
+                      <MailCheck className="size-4" aria-hidden="true" />
+                      Send Test Email
+                    </button>
+                    <button type="button" onClick={() => runButtonAction(retryQueuedEmails)} disabled={pending || values.emailInfrastructure.pendingEmails + values.emailInfrastructure.failedEmails === 0} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">
+                      <RefreshCw className="size-4" aria-hidden="true" />
+                      Retry Unsent Emails
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.15fr_0.85fr]">
               <div className="space-y-4">
                 <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
@@ -181,6 +227,7 @@ export function SettingsClient({ values }: { values: SettingsValues }) {
                     <CheckField name="notification_account_enabled" label="Account updates" note="Approvals, deactivations, role changes." defaultChecked={values.notifications.accountEnabled} />
                     <CheckField name="notification_security_enabled" label="Security alerts" note="Password reset, password/email changes." defaultChecked={values.notifications.securityEnabled} />
                     <CheckField name="notification_announcement_enabled" label="Announcements" note="Admin announcements and broadcasts." defaultChecked={values.notifications.announcementEnabled} />
+                    <CheckField name="notification_permission_enabled" label="Permission requests" note="New requests and approval or rejection decisions." defaultChecked={values.notifications.permissionEnabled} />
                     <CheckField name="notification_form_enabled" label="Forms" note="Available forms and submission reminders." defaultChecked={values.notifications.formEnabled} />
                     <CheckField name="notification_task_enabled" label="Tasks" note="Assigned task and overdue task reminders." defaultChecked={values.notifications.taskEnabled} />
                     <CheckField name="notification_finance_enabled" label="Finance" note="Expense approvals, payments, contributions." defaultChecked={values.notifications.financeEnabled} />
