@@ -19,7 +19,7 @@ export default async function ProbationPage({
   searchParams: Promise<{ record?: string; status?: string }>;
 }) {
   const user = await requirePageAccess("probation");
-  const [params, permissions, defaultDurationSetting, probations, eligibleMembers] = await Promise.all([
+  const [params, permissions, defaultDurationSetting, probations, eligibleMembers, decisionApprovers] = await Promise.all([
     searchParams,
     getUserPermissionSet(user),
     getSystemSetting("probation_default_duration_months"),
@@ -27,6 +27,7 @@ export default async function ProbationPage({
       orderBy: [{ state: "asc" }, { currentExpectedEndDate: "asc" }, { createdAt: "desc" }],
       include: {
         member: { select: { id: true, name: true, email: true, phone: true, status: true } },
+        assignedAdmin: { select: { name: true } },
         creator: { select: { name: true } },
         updater: { select: { name: true } },
         decisionMaker: { select: { name: true } },
@@ -53,12 +54,22 @@ export default async function ProbationPage({
       orderBy: { name: "asc" },
       select: { id: true, name: true, email: true },
     }),
+    prisma.user.findMany({
+      where: {
+        id: { not: user.id },
+        status: "active",
+        roles: { some: { role: { name: { in: ["admin", "super-admin"] } } } },
+      },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+      select: { id: true, name: true, email: true },
+    }),
   ]);
 
   const canViewConfidential = permissionSetHas(permissions, "probation", "view-confidential-comments");
   const canViewDiscipline = permissionSetHas(permissions, "discipline", "view");
   const isAdministrator = user.roles.some(({ role }) => role.name === "admin" || role.name === "super-admin");
   const isDisciplineLeader = user.roles.some(({ role }) => role.name === "discipline-dpt");
+  const canRequestFinalDecision = isDisciplineLeader || user.roles.some(({ role }) => role.name === "super-admin");
   const rows: ProbationRow[] = await Promise.all(probations.map(async (probation) => {
     const monitoring = await getProbationMonitoring(probation);
     const dates = probationDateSummary(probation.currentExpectedEndDate);
@@ -83,6 +94,9 @@ export default async function ProbationPage({
       updatedAt: probation.updatedAt.toISOString(),
       monitoring,
       canApprovePendingDecision: isAdministrator && probation.assignedAdminId === user.id,
+      pendingApproverName: probation.decisionRequests.some((decision) => decision.status === "pending")
+        ? probation.assignedAdmin.name
+        : null,
       extensions: probation.extensions.map((extension) => ({
         id: extension.id,
         previousExpectedEndDate: dateValue(extension.previousExpectedEndDate)!,
@@ -116,6 +130,7 @@ export default async function ProbationPage({
     <ProbationClient
       rows={rows}
       eligibleMembers={eligibleMembers}
+      decisionApprovers={decisionApprovers}
       defaultDurationMonths={defaultDurationMonths}
       initialRecordId={Number(params.record) || null}
       initialStatus={params.status ?? "open"}
@@ -125,8 +140,8 @@ export default async function ProbationPage({
         update: permissionSetHas(permissions, "probation", "update"),
         viewConfidential: canViewConfidential,
         extend: permissionSetHas(permissions, "probation", "extend"),
-        complete: isDisciplineLeader && permissionSetHas(permissions, "probation", "complete"),
-        terminate: isDisciplineLeader && permissionSetHas(permissions, "probation", "terminate"),
+        complete: canRequestFinalDecision && permissionSetHas(permissions, "probation", "complete"),
+        terminate: canRequestFinalDecision && permissionSetHas(permissions, "probation", "terminate"),
         reopen: permissionSetHas(permissions, "probation", "reopen"),
         export: permissionSetHas(permissions, "probation", "export"),
       }}
