@@ -56,11 +56,13 @@ export default async function DisciplinePage({
     attendance_start_date?: string;
     attendance_end_date?: string;
     tab?: string;
+    member?: string;
   }>;
 }) {
   const user = await requirePageAccess("discipline");
   const permissions = await getUserPermissionSet(user);
   const canManage = permissionSetHas(permissions, "discipline", "view");
+  const canViewProbation = permissionSetHas(permissions, "probation", "view");
   const params = await searchParams;
   const startDate = params.start_date ? new Date(`${params.start_date}T00:00:00`) : monthStart();
   const endDate = params.end_date ? new Date(`${params.end_date}T23:59:59`) : monthEnd();
@@ -80,7 +82,9 @@ export default async function DisciplinePage({
     return (
       <DisciplineClient
         initialTab="permission"
+        initialMemberId={null}
         canManage={false}
+        canViewProbation={false}
         startDate={dateValue(startDate)}
         endDate={dateValue(endDate)}
         attendanceStartDate={dateValue(attendanceStartDate)}
@@ -270,8 +274,10 @@ export default async function DisciplinePage({
 
   return (
     <DisciplineClient
-      initialTab={params.tab === "permission" ? "permission" : "overview"}
+      initialTab={["overview", "attendance", "permission", "discipline-records", "action-plans"].includes(params.tab ?? "") ? params.tab! : "overview"}
+      initialMemberId={Number(params.member) || null}
       canManage
+      canViewProbation={canViewProbation}
       startDate={dateValue(startDate)}
       endDate={dateValue(endDate)}
       attendanceStartDate={dateValue(attendanceStartDate)}

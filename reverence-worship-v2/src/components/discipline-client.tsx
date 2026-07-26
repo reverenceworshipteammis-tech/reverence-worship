@@ -1,8 +1,8 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BarChart3, BookOpen, CalendarCheck, CheckCircle2, ClipboardList, Clock, Download, Edit, Eye, FileText, FileUp, Filter, Gavel, Info, MailOpen, Play, Plus, Save, Search, Smile, Trash2, TriangleAlert, X, XCircle } from "lucide-react";
+import { BookOpen, CalendarCheck, CheckCircle2, ClipboardList, Clock, Download, Edit, Eye, FileText, FileUp, Filter, Gavel, Info, MailOpen, Play, Plus, Save, Search, Smile, Trash2, TriangleAlert, X, XCircle } from "lucide-react";
 import {
   approvePermissionRequest,
   completeAttendanceSession,
@@ -22,8 +22,8 @@ import {
   saveDisciplineSession,
   savePermissionRequest,
 } from "@/app/admin/discipline/actions";
-import { MobileTabScroller } from "@/components/mobile-tab-scroller";
 import { useAppDialog } from "@/components/app-dialog-provider";
+import { DisciplineWorkspaceTabs } from "@/components/discipline-workspace-tabs";
 
 type DisciplineStats = {
   permissionRequests: number;
@@ -178,7 +178,9 @@ type DisciplineDraft = {
 
 export function DisciplineClient({
   initialTab,
+  initialMemberId,
   canManage,
+  canViewProbation,
   startDate,
   endDate,
   attendanceStartDate,
@@ -195,7 +197,9 @@ export function DisciplineClient({
   actionPlans,
 }: {
   initialTab: string;
+  initialMemberId: number | null;
   canManage: boolean;
+  canViewProbation: boolean;
   startDate: string;
   endDate: string;
   attendanceStartDate: string;
@@ -213,14 +217,14 @@ export function DisciplineClient({
 }) {
   const router = useRouter();
   const { prompt } = useAppDialog();
+  const initialMember = initialMemberId ? users.find((user) => user.id === initialMemberId) : null;
   const [activeTab, setActiveTab] = useState(initialTab);
   const [from, setFrom] = useState(startDate);
   const [to, setTo] = useState(endDate);
-  const [showOverflowIndicator, setShowOverflowIndicator] = useState(false);
-  const tabNavRef = useRef<HTMLDivElement | null>(null);
   const [attendanceFrom, setAttendanceFrom] = useState(attendanceStartDate);
   const [attendanceTo, setAttendanceTo] = useState(attendanceEndDate);
   const [attendanceSessionFilter, setAttendanceSessionFilter] = useState("");
+  const [attendanceMemberFilter, setAttendanceMemberFilter] = useState(initialMemberId ? String(initialMemberId) : "");
   const [attendancePage, setAttendancePage] = useState(1);
   const [message, setMessage] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ title: string; message: string } | null>(null);
@@ -239,7 +243,7 @@ export function DisciplineClient({
   const [attendanceDrafts, setAttendanceDrafts] = useState<AttendanceDraft[]>([]);
   const [sessionUserSearch, setSessionUserSearch] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-  const [permissionSearch, setPermissionSearch] = useState("");
+  const [permissionSearch, setPermissionSearch] = useState(initialMember?.name ?? "");
   const [permissionStatus, setPermissionStatus] = useState("all");
   const [permissionFrom, setPermissionFrom] = useState("");
   const [permissionTo, setPermissionTo] = useState("");
@@ -263,33 +267,13 @@ export function DisciplineClient({
   const [disciplineSessionReadOnly, setDisciplineSessionReadOnly] = useState(false);
   const [disciplineDate, setDisciplineDate] = useState(new Date().toISOString().slice(0, 10));
   const [disciplineTitle, setDisciplineTitle] = useState("");
-  const [disciplineSearch, setDisciplineSearch] = useState("");
+  const [disciplineSearch, setDisciplineSearch] = useState(initialMember?.name ?? "");
   const [disciplineDrafts, setDisciplineDrafts] = useState<DisciplineDraft[]>([]);
   const [actionPlanModal, setActionPlanModal] = useState(false);
   const [taskModal, setTaskModal] = useState(false);
   const [editingActionPlan, setEditingActionPlan] = useState<DisciplineActionPlan | null>(null);
   const [editingActionTask, setEditingActionTask] = useState<DisciplineActionPlanTask | null>(null);
   const [taskPlan, setTaskPlan] = useState<DisciplineActionPlan | null>(null);
-
-  const departmentTabs = [
-    { id: "overview", label: "Overview", mobileLabel: "Home", icon: BarChart3 },
-    { id: "attendance", label: "Attendance", mobileLabel: "Attend", icon: CalendarCheck },
-    { id: "permission", label: "Permission Requests", mobileLabel: "Requests", icon: MailOpen },
-    { id: "discipline-records", label: "Discipline Records", mobileLabel: "Records", icon: BookOpen },
-    { id: "action-plans", label: "Action Plans", mobileLabel: "Plans", icon: ClipboardList },
-  ];
-  const tabs = canManage ? departmentTabs : departmentTabs.filter((tab) => tab.id === "permission");
-
-  useEffect(() => {
-    const measure = () => {
-      if (!tabNavRef.current) return;
-      setShowOverflowIndicator(tabNavRef.current.scrollWidth > tabNavRef.current.clientWidth + 4);
-    };
-
-    measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, [tabs.length]);
 
   function applyRange() {
     const params = new URLSearchParams();
@@ -304,6 +288,7 @@ export function DisciplineClient({
     setAttendanceFrom(attendanceStartDate);
     setAttendanceTo(attendanceEndDate);
     setAttendanceSessionFilter("");
+    setAttendanceMemberFilter("");
     setAttendancePage(1);
   }
 
@@ -311,7 +296,8 @@ export function DisciplineClient({
     const matchesFrom = !attendanceFrom || record.sessionDate >= attendanceFrom;
     const matchesTo = !attendanceTo || record.sessionDate <= attendanceTo;
     const matchesSession = !attendanceSessionFilter || record.sessionType === attendanceSessionFilter;
-    return matchesFrom && matchesTo && matchesSession;
+    const matchesMember = !attendanceMemberFilter || record.userId === Number(attendanceMemberFilter);
+    return matchesFrom && matchesTo && matchesSession && matchesMember;
   });
 
   const sessionTypes = Array.from(new Set(attendanceRecords.map((record) => record.sessionType))).sort();
@@ -1225,28 +1211,12 @@ export function DisciplineClient({
   return (
     <div className="mx-auto max-w-7xl space-y-4 px-2 py-4 sm:px-4 sm:py-6">
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm">
-        <div className="px-3 py-3 md:hidden">
-          <MobileTabScroller tabs={tabs} value={activeTab} onChange={setActiveTab} />
-        </div>
-        <nav className="hidden flex-wrap border-b border-gray-200 md:flex">
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            const selected = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition ${
-                  selected ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"
-                }`}
-              >
-                <Icon className="size-4" aria-hidden="true" />
-                {tab.label}
-              </button>
-            );
-          })}
-        </nav>
+        <DisciplineWorkspaceTabs
+          activeTab={activeTab}
+          mode={canManage ? "manage" : "permission-only"}
+          showProbation={canManage && canViewProbation}
+          onDisciplineTabChange={setActiveTab}
+        />
 
         <div className="p-3 sm:p-6">
           {message && <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-700">{message}</div>}
@@ -1400,7 +1370,7 @@ export function DisciplineClient({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 items-end gap-2 sm:gap-3 lg:grid-cols-5">
+              <div className="grid grid-cols-2 items-end gap-2 sm:gap-3 lg:grid-cols-6">
                 <div>
                   <label className="mb-1 block text-xs text-gray-600">From</label>
                   <input value={attendanceFrom} onChange={(event) => { setAttendanceFrom(event.target.value); setAttendancePage(1); }} type="date" className="h-9 w-full rounded-lg border border-gray-300 px-2 text-xs sm:h-auto sm:px-3 sm:py-2 sm:text-sm" />
@@ -1416,6 +1386,13 @@ export function DisciplineClient({
                     {sessionTypes.map((type) => (
                       <option key={type} value={type}>{type}</option>
                     ))}
+                  </select>
+                </div>
+                <div className="col-span-2 lg:col-span-1">
+                  <label className="mb-1 block text-xs text-gray-600">Member</label>
+                  <select value={attendanceMemberFilter} onChange={(event) => { setAttendanceMemberFilter(event.target.value); setAttendancePage(1); }} className="h-9 w-full rounded-lg border border-gray-300 bg-white px-2 text-xs sm:h-auto sm:px-3 sm:py-2 sm:text-sm">
+                    <option value="">All Members</option>
+                    {users.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
                   </select>
                 </div>
                 <button type="button" onClick={resetAttendanceFilters} className="h-9 w-full rounded-lg bg-slate-100 px-3 text-xs text-slate-700 transition hover:bg-slate-200 sm:h-auto sm:px-4 sm:py-2 sm:text-sm">
@@ -2037,7 +2014,7 @@ export function DisciplineClient({
           ) : (
             <div className="rounded-xl border border-gray-100 bg-white p-10 text-center">
               <ClipboardList className="mx-auto mb-3 size-10 text-gray-300" aria-hidden="true" />
-              <h2 className="text-lg font-bold text-gray-900">{tabs.find((tab) => tab.id === activeTab)?.label}</h2>
+              <h2 className="text-lg font-bold text-gray-900">Discipline workspace</h2>
               <p className="mt-1 text-sm text-gray-500">We will build this tab next.</p>
             </div>
           )}

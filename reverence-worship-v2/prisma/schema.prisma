@@ -25,12 +25,32 @@ enum MembershipType {
   visitor
 }
 
+enum ProbationState {
+  active
+  extended
+  completed
+  terminated
+}
+
+enum ProbationDecisionType {
+  completed
+  terminated
+}
+
+enum ProbationDecisionStatus {
+  pending
+  approved
+  rejected
+  cancelled
+}
+
 model User {
   id                 Int             @id @default(autoincrement())
   name               String
   email              String          @unique
   passwordHash       String?         @map("password_hash")
   mustChangePassword Boolean         @default(false) @map("must_change_password")
+  sessionVersion     Int             @default(0) @map("session_version")
   status             UserStatus      @default(pending)
   emailVerifiedAt    DateTime?       @map("email_verified_at")
   phone              String?
@@ -59,54 +79,62 @@ model User {
   createdAt          DateTime        @default(now()) @map("created_at")
   updatedAt          DateTime        @updatedAt @map("updated_at")
 
-  createdBy                   User?                   @relation("CreatedUsers", fields: [createdById], references: [id], onDelete: SetNull)
-  created                     User[]                  @relation("CreatedUsers")
+  createdBy                   User?                      @relation("CreatedUsers", fields: [createdById], references: [id], onDelete: SetNull)
+  created                     User[]                     @relation("CreatedUsers")
   roles                       UserRole[]
   logs                        ActivityLog[]
   familyMembership            FamilyMember?
-  parentFamily                Family?                 @relation("FamilyParent")
-  assignedFamilyTasks         FamilyTask[]            @relation("AssignedFamilyTasks")
-  createdActionPlans          ActionPlan[]            @relation("CreatedActionPlans")
-  assignedActionPlanTasks     ActionPlanTask[]        @relation("AssignedActionPlanTasks")
-  attendanceRecords           AttendanceRecord[]      @relation("AttendanceUser")
-  markedAttendanceRecords     AttendanceRecord[]      @relation("AttendanceMarker")
-  completedAttendanceSessions AttendanceSession[]     @relation("AttendanceSessionCompleter")
-  completedDisciplineSessions DisciplineSession[]     @relation("DisciplineSessionCompleter")
-  permissionRequests          PermissionRequest[]     @relation("PermissionRequester")
-  approvedPermissionRequests  PermissionRequest[]     @relation("PermissionApprover")
-  disciplineRecords           DisciplineRecord[]      @relation("DisciplineUser")
-  recordedDisciplineRecords   DisciplineRecord[]      @relation("DisciplineRecorder")
-  resolvedDisciplineRecords   DisciplineRecord[]      @relation("DisciplineResolver")
-  createdPlaylists            Playlist[]              @relation("CreatedPlaylists")
-  createdSongs                Song[]                  @relation("CreatedSongs")
-  createdGallery              PhotoGallery[]          @relation("CreatedGallery")
-  createdServiceTeams         ServiceTeam[]           @relation("CreatedServiceTeams")
+  parentFamily                Family?                    @relation("FamilyParent")
+  assignedFamilyTasks         FamilyTask[]               @relation("AssignedFamilyTasks")
+  createdActionPlans          ActionPlan[]               @relation("CreatedActionPlans")
+  assignedActionPlanTasks     ActionPlanTask[]           @relation("AssignedActionPlanTasks")
+  attendanceRecords           AttendanceRecord[]         @relation("AttendanceUser")
+  markedAttendanceRecords     AttendanceRecord[]         @relation("AttendanceMarker")
+  completedAttendanceSessions AttendanceSession[]        @relation("AttendanceSessionCompleter")
+  completedDisciplineSessions DisciplineSession[]        @relation("DisciplineSessionCompleter")
+  permissionRequests          PermissionRequest[]        @relation("PermissionRequester")
+  approvedPermissionRequests  PermissionRequest[]        @relation("PermissionApprover")
+  disciplineRecords           DisciplineRecord[]         @relation("DisciplineUser")
+  recordedDisciplineRecords   DisciplineRecord[]         @relation("DisciplineRecorder")
+  resolvedDisciplineRecords   DisciplineRecord[]         @relation("DisciplineResolver")
+  createdPlaylists            Playlist[]                 @relation("CreatedPlaylists")
+  createdSongs                Song[]                     @relation("CreatedSongs")
+  createdGallery              PhotoGallery[]             @relation("CreatedGallery")
+  createdServiceTeams         ServiceTeam[]              @relation("CreatedServiceTeams")
   teamMemberships             TeamMember[]
-  createdBoardItems           PublicBoardItem[]       @relation("CreatedBoardItems")
-  createdLandingVideos        LandingYoutubeVideo[]   @relation("CreatedLandingVideos")
-  createdFeaturedImages       LandingFeaturedImage[]  @relation("CreatedFeaturedImages")
-  createdSpiritualForms       SpiritualForm[]         @relation("CreatedSpiritualForms")
+  createdBoardItems           PublicBoardItem[]          @relation("CreatedBoardItems")
+  createdLandingVideos        LandingYoutubeVideo[]      @relation("CreatedLandingVideos")
+  createdFeaturedImages       LandingFeaturedImage[]     @relation("CreatedFeaturedImages")
+  createdSpiritualForms       SpiritualForm[]            @relation("CreatedSpiritualForms")
   formSubmissions             FormSubmission[]
-  contributions               Contribution[]          @relation("ContributionUser")
-  createdContributions        Contribution[]          @relation("ContributionCreator")
-  payments                    Payment[]               @relation("PaymentUser")
-  createdPayments             Payment[]               @relation("PaymentCreator")
-  createdGifts                Gift[]                  @relation("GiftCreator")
-  createdExpenses             Expense[]               @relation("ExpenseCreator")
-  approvedExpenses            Expense[]               @relation("ExpenseApprover")
-  firstApprovalExpenses       Expense[]               @relation("ExpenseFirstApprover")
-  secondApprovalExpenses      Expense[]               @relation("ExpenseSecondApprover")
-  voidedExpenses              Expense[]               @relation("ExpenseVoider")
-  requestedExpenseVoids       Expense[]               @relation("ExpenseVoidRequester")
-  financeReconciliations      FinanceReconciliation[] @relation("FinanceReconciler")
-  createdSponsors             Sponsor[]               @relation("SponsorCreator")
-  createdSponsorPayments      SponsorPayment[]        @relation("SponsorPaymentCreator")
-  createdAnnouncements        Announcement[]          @relation("CreatedAnnouncements")
-  publishedAnnouncements      Announcement[]          @relation("PublishedAnnouncements")
+  contributions               Contribution[]             @relation("ContributionUser")
+  createdContributions        Contribution[]             @relation("ContributionCreator")
+  payments                    Payment[]                  @relation("PaymentUser")
+  createdPayments             Payment[]                  @relation("PaymentCreator")
+  createdGifts                Gift[]                     @relation("GiftCreator")
+  createdExpenses             Expense[]                  @relation("ExpenseCreator")
+  approvedExpenses            Expense[]                  @relation("ExpenseApprover")
+  firstApprovalExpenses       Expense[]                  @relation("ExpenseFirstApprover")
+  secondApprovalExpenses      Expense[]                  @relation("ExpenseSecondApprover")
+  voidedExpenses              Expense[]                  @relation("ExpenseVoider")
+  requestedExpenseVoids       Expense[]                  @relation("ExpenseVoidRequester")
+  financeReconciliations      FinanceReconciliation[]    @relation("FinanceReconciler")
+  createdSponsors             Sponsor[]                  @relation("SponsorCreator")
+  createdSponsorPayments      SponsorPayment[]           @relation("SponsorPaymentCreator")
+  createdAnnouncements        Announcement[]             @relation("CreatedAnnouncements")
+  publishedAnnouncements      Announcement[]             @relation("PublishedAnnouncements")
   announcementReads           AnnouncementUserRead[]
   notifications               Notification[]
   emailDeliveries             EmailDelivery[]
   passwordResetTokens         PasswordResetToken[]
+  probations                  Probation[]                @relation("ProbationMember")
+  assignedProbations          Probation[]                @relation("ProbationAssignedAdmin")
+  createdProbations           Probation[]                @relation("ProbationCreator")
+  updatedProbations           Probation[]                @relation("ProbationUpdater")
+  decidedProbations           Probation[]                @relation("ProbationDecisionMaker")
+  probationExtensions         ProbationExtension[]       @relation("ProbationExtender")
+  requestedProbationDecisions ProbationDecisionRequest[] @relation("ProbationDecisionRequester")
+  reviewedProbationDecisions  ProbationDecisionRequest[] @relation("ProbationDecisionReviewer")
 
   @@index([status])
   @@index([membershipType])
@@ -551,6 +579,79 @@ model DisciplineRecord {
   @@index([status])
   @@index([sectionId])
   @@map("discipline_records")
+}
+
+model Probation {
+  id                            Int            @id @default(autoincrement())
+  userId                        Int            @map("user_id")
+  originalStartDate             DateTime       @map("original_start_date") @db.Date
+  originalExpectedEndDate       DateTime       @map("original_expected_end_date") @db.Date
+  currentExpectedEndDate        DateTime       @map("current_expected_end_date") @db.Date
+  state                         ProbationState @default(active)
+  assignedAdminId               Int            @map("assigned_admin_id")
+  memberVisibleSummary          String?        @map("member_visible_summary")
+  confidentialComments          String?        @map("confidential_comments")
+  finalDecisionComments         String?        @map("final_decision_comments")
+  decisionDate                  DateTime?      @map("decision_date")
+  decidedById                   Int?           @map("decided_by_id")
+  createdById                   Int            @map("created_by_id")
+  updatedById                   Int            @map("updated_by_id")
+  memberRoleRemovedOnEnrollment Boolean        @default(false) @map("member_role_removed_on_enrollment")
+  createdAt                     DateTime       @default(now()) @map("created_at")
+  updatedAt                     DateTime       @updatedAt @map("updated_at")
+
+  member           User                       @relation("ProbationMember", fields: [userId], references: [id], onDelete: Cascade)
+  assignedAdmin    User                       @relation("ProbationAssignedAdmin", fields: [assignedAdminId], references: [id], onDelete: Restrict)
+  creator          User                       @relation("ProbationCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  updater          User                       @relation("ProbationUpdater", fields: [updatedById], references: [id], onDelete: Restrict)
+  decisionMaker    User?                      @relation("ProbationDecisionMaker", fields: [decidedById], references: [id], onDelete: SetNull)
+  extensions       ProbationExtension[]
+  decisionRequests ProbationDecisionRequest[]
+
+  @@index([userId, state])
+  @@index([assignedAdminId, state])
+  @@index([state, currentExpectedEndDate])
+  @@map("probations")
+}
+
+model ProbationExtension {
+  id                      Int      @id @default(autoincrement())
+  probationId             Int      @map("probation_id")
+  previousExpectedEndDate DateTime @map("previous_expected_end_date") @db.Date
+  newExpectedEndDate      DateTime @map("new_expected_end_date") @db.Date
+  reason                  String
+  comments                String?
+  extendedById            Int      @map("extended_by_id")
+  extensionDate           DateTime @default(now()) @map("extension_date")
+
+  probation Probation @relation(fields: [probationId], references: [id], onDelete: Cascade)
+  extender  User      @relation("ProbationExtender", fields: [extendedById], references: [id], onDelete: Restrict)
+
+  @@index([probationId, extensionDate])
+  @@map("probation_extensions")
+}
+
+model ProbationDecisionRequest {
+  id             Int                     @id @default(autoincrement())
+  probationId    Int                     @map("probation_id")
+  requestedState ProbationDecisionType   @map("requested_state")
+  reason         String
+  comments       String
+  status         ProbationDecisionStatus @default(pending)
+  requestedById  Int                     @map("requested_by_id")
+  requestedAt    DateTime                @default(now()) @map("requested_at")
+  reviewedById   Int?                    @map("reviewed_by_id")
+  reviewedAt     DateTime?               @map("reviewed_at")
+  reviewComments String?                 @map("review_comments")
+
+  probation Probation @relation(fields: [probationId], references: [id], onDelete: Cascade)
+  requester User      @relation("ProbationDecisionRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+  reviewer  User?     @relation("ProbationDecisionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([probationId, requestedAt])
+  @@index([status, requestedAt])
+  @@index([requestedById])
+  @@map("probation_decision_requests")
 }
 
 model Playlist {

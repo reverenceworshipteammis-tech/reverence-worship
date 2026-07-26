@@ -63,6 +63,12 @@ const roles = [
     description: "Default access for members to view, submit, and track personal activity.",
     isSystem: true,
   },
+  {
+    name: "probation-member",
+    displayName: "Probation Member",
+    description: "Normal member dashboard access while membership probation is being evaluated.",
+    isSystem: true,
+  },
 ];
 
 const modules = [
@@ -72,6 +78,7 @@ const modules = [
   ["intercession", "Intercession", "/intercession", "BookOpen"],
   ["social-fellowship", "Social Fellowship", "/social-fellowship", "Handshake"],
   ["discipline", "Discipline", "/discipline", "ClipboardCheck"],
+  ["probation", "Probation", "/probation", "UserRoundCheck"],
   ["finance", "Finance", "/finance", "Wallet"],
   ["family", "Family", "/family", "Home"],
   ["contributions", "My Contributions", "/contributions", "HandCoins"],
@@ -166,6 +173,17 @@ const featureDefinitionsByPage: Record<string, FeatureDefinition[]> = {
     { name: "resolve-discipline", label: "Resolve Discipline Records", description: "Resolve or close discipline records." },
     { name: "delete-discipline", label: "Delete Discipline Records", description: "Remove discipline records." },
     { name: "manage-action-plans", label: "Manage Discipline Action Plans", description: "Create and update Discipline DPT action plans." },
+  ],
+  probation: [
+    { name: "view", label: "View Probation Members", description: "Open the probation dashboard and member records." },
+    { name: "enroll", label: "Enroll Probation Members", description: "Start a member's probation period." },
+    { name: "update", label: "Update Probation Details", description: "Update member-visible and confidential probation details." },
+    { name: "view-confidential-comments", label: "View Confidential Review Comments", description: "Read and update confidential probation comments." },
+    { name: "extend", label: "Extend Probation", description: "Extend an open probation period with a required reason." },
+    { name: "complete", label: "Request Probation Completion", description: "Request administrator approval to complete probation." },
+    { name: "terminate", label: "Request Probation Termination", description: "Request administrator approval to terminate probation." },
+    { name: "reopen", label: "Reopen Closed Probation", description: "Reopen a completed or terminated probation record without a separate administrator approval." },
+    { name: "export", label: "Export Probation Reports", description: "Download probation monitoring reports." },
   ],
   finance: [
     { name: "view", label: "View Finance DPT", description: "Open financial contribution, payment, sponsor, and expense tabs." },
@@ -323,9 +341,14 @@ async function main() {
     "super-admin": allPageFeatures,
     admin: allPageFeatures,
     member: normalUserPermissions,
+    "probation-member": normalUserPermissions,
     parent: { ...normalUserPermissions, parent: ["view"] },
     "music-dpt": { ...normalUserPermissions, "music-ministry": allPageFeatures["music-ministry"] },
-    "discipline-dpt": { ...normalUserPermissions, discipline: allPageFeatures.discipline },
+    "discipline-dpt": {
+      ...normalUserPermissions,
+      discipline: allPageFeatures.discipline,
+      probation: allPageFeatures.probation,
+    },
     "social-dpt": { ...normalUserPermissions, "social-fellowship": allPageFeatures["social-fellowship"] },
     "finance-dpt": { ...normalUserPermissions, finance: allPageFeatures.finance },
     "intercession-dpt": { ...normalUserPermissions, intercession: allPageFeatures.intercession },
@@ -356,6 +379,16 @@ async function main() {
       });
     }
   }
+
+  await prisma.systemSetting.upsert({
+    where: { key: "probation_default_duration_months" },
+    update: {},
+    create: {
+      key: "probation_default_duration_months",
+      value: 4,
+      group: "probation",
+    },
+  });
 
   console.log(
     `Seeded ${roles.length} roles, ${pages.length} pages, ${features.length} features, and default role permissions.`,

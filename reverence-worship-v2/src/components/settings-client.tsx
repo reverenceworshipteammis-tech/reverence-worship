@@ -1,13 +1,14 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { Bell, BrushCleaning, CheckCircle2, MailCheck, RefreshCw, ShieldCheck, TriangleAlert, UserPlus } from "lucide-react";
+import { Bell, BrushCleaning, CalendarClock, CheckCircle2, MailCheck, RefreshCw, ShieldCheck, TriangleAlert, UserPlus } from "lucide-react";
 import {
   clearSystemCache,
   retryQueuedEmails,
   sendTestEmail,
   updateAccessSettings,
   updateNotificationSettings,
+  updateProbationSettings,
   updateSecuritySettings,
 } from "@/app/admin/settings/actions";
 import { MobileTabScroller } from "@/components/mobile-tab-scroller";
@@ -16,6 +17,7 @@ export type SettingsValues = {
   registrationEnabled: boolean;
   sessionLifetime: number;
   passwordMinLength: number;
+  probationDefaultDurationMonths: number;
   notifications: {
     inAppEnabled: boolean;
     emailEnabled: boolean;
@@ -43,11 +45,12 @@ type Result = {
   message: string;
 };
 
-type TabId = "access" | "security" | "notifications" | "maintenance";
+type TabId = "access" | "security" | "probation" | "notifications" | "maintenance";
 
 const tabs = [
   { id: "access" as const, label: "Access", icon: UserPlus },
   { id: "security" as const, label: "Security", icon: ShieldCheck },
+  { id: "probation" as const, label: "Probation", icon: CalendarClock },
   { id: "notifications" as const, label: "Notifications", icon: Bell },
   { id: "maintenance" as const, label: "Maintenance", icon: BrushCleaning },
 ];
@@ -58,6 +61,7 @@ export function SettingsClient({ values }: { values: SettingsValues }) {
   const [pending, startTransition] = useTransition();
   const accessRef = useRef<HTMLFormElement>(null);
   const securityRef = useRef<HTMLFormElement>(null);
+  const probationRef = useRef<HTMLFormElement>(null);
   const notificationRef = useRef<HTMLFormElement>(null);
   const autoSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
@@ -242,6 +246,27 @@ export function SettingsClient({ values }: { values: SettingsValues }) {
                   "Keep in-app notifications on to verify app behavior.",
                   "Disable categories you are not testing now.",
                   "SMTP settings still control whether emails can be delivered.",
+                ]}
+              />
+            </div>
+            <AutoSaveNote pending={pending} />
+          </form>
+        </div>
+
+        <div className={activeTab === "probation" ? "block" : "hidden"}>
+          <form ref={probationRef} onChange={() => autoSave("probation", updateProbationSettings, probationRef.current)} className="p-4 sm:p-6">
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.15fr_0.85fr]">
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <Field label="Default Probation Duration (months)" note="Used to suggest the expected end date in full calendar months. The leader can still choose a different date.">
+                  <input name="probation_default_duration_months" type="number" min={1} max={24} required defaultValue={values.probationDefaultDurationMonths} className={inputClass} />
+                </Field>
+              </div>
+              <ImpactCard
+                title="How this setting works"
+                items={[
+                  "It affects newly opened enrollment forms.",
+                  "It does not change existing probation dates.",
+                  "Extensions always create a separate history record.",
                 ]}
               />
             </div>

@@ -66,6 +66,7 @@ async function saveSettings(
   revalidatePath("/");
   revalidatePath("/login");
   revalidatePath("/register");
+  revalidatePath("/admin/probation");
   return { ok: true, message } satisfies ActionResult;
 }
 
@@ -108,6 +109,23 @@ export async function updateSecuritySettings(formData: FormData) {
     return {
       ok: false,
       message: error instanceof Error ? error.message : "Failed to update security settings.",
+    };
+  }
+}
+
+export async function updateProbationSettings(formData: FormData) {
+  try {
+    const durationMonths = readNumber(formData, "probation_default_duration_months", 4);
+    assertRange(durationMonths, 1, 24, "Default probation duration");
+    return saveSettings(
+      "probation",
+      { probation_default_duration_months: Math.round(durationMonths) },
+      "Default probation duration updated successfully.",
+    );
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Failed to update probation settings.",
     };
   }
 }

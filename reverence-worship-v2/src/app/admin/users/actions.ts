@@ -111,7 +111,7 @@ async function roleIdsWithMemberBase(roleIds: number[]) {
     uniqueRoleIds.length > 0
       ? (
           await prisma.role.findMany({
-            where: { id: { in: uniqueRoleIds }, name: { not: "super-admin" } },
+            where: { id: { in: uniqueRoleIds }, name: { notIn: ["super-admin", "probation-member"] } },
             select: { id: true },
           })
         ).map((role) => role.id)
@@ -129,6 +129,21 @@ async function roleIdsWithMemberBase(roleIds: number[]) {
   }
 
   return normalizedRoleIds;
+}
+
+async function roleIdsPreservingProbation(userId: number, selectedRoleIds: number[]) {
+  const openProbation = await prisma.probation.findFirst({
+    where: { userId, state: { in: ["active", "extended"] } },
+    select: { id: true },
+  });
+  if (!openProbation) return roleIdsWithMemberBase(selectedRoleIds);
+
+  const roles = await prisma.role.findMany({
+    where: { id: { in: selectedRoleIds }, name: { notIn: ["super-admin", "member", "probation-member"] } },
+    select: { id: true },
+  });
+  const probationRole = await prisma.role.findUnique({ where: { name: "probation-member" }, select: { id: true } });
+  return [...new Set([...roles.map((role) => role.id), ...(probationRole ? [probationRole.id] : [])])];
 }
 
 async function isSuperAdminUser(userId: number) {
@@ -517,7 +532,13 @@ export async function importUsersCsvAction(
 
   const existingUsers = await prisma.user.findMany({
     where: { email: { in: uniqueRows.map((row) => row.email) } },
-    select: { id: true, email: true, googleId: true, passwordHash: true },
+    select: {
+      id: true,
+      email: true,
+      googleId: true,
+      passwordHash: true,
+      probations: { select: { id: true }, take: 1 },
+    },
   });
   const existingByEmail = new Map(existingUsers.map((user) => [user.email, user]));
   const newRows = uniqueRows.filter((row) => !existingByEmail.has(row.email));
@@ -525,6 +546,11 @@ export async function importUsersCsvAction(
   for (const row of uniqueRows) {
     const existing = existingByEmail.get(row.email);
     if (!existing) continue;
+    if (existing.probations.length) {
+      skipped += 1;
+      failures.push(`${row.email}: this account has probation history and must be updated through the probation workflow`);
+      continue;
+    }
 
     try {
       await prisma.user.update({
@@ -607,6 +633,20 @@ export async function runUserTableAction(formData: FormData) {
 
   const affectedUser = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, email: true, status: true } });
   if (!affectedUser) return { ok: false, message: "User not found." };
+  const probation = await prisma.probation.findFirst({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+    select: { state: true },
+  });
+  if ((action === "approve" || action === "activate") && probation?.state === "terminated") {
+    return { ok: false, message: "This account was disabled by probation termination. Reopen the probation record to reactivate it." };
+  }
+  if (action === "deactivate" && (probation?.state === "active" || probation?.state === "extended")) {
+    return { ok: false, message: "This member has an open probation. Use the probation termination approval workflow." };
+  }
+  if ((action === "reject" || action === "delete") && probation) {
+    return { ok: false, message: "Accounts with probation history must be preserved and cannot be deleted." };
+  }
 
   if (action === "approve" || action === "activate") {
     await prisma.user.update({
@@ -621,7 +661,7 @@ export async function runUserTableAction(formData: FormData) {
   if (action === "deactivate") {
     await prisma.user.update({
       where: { id: userId },
-      data: { status: "inactive" },
+      data: { status: "inactive", sessionVersion: { increment: 1 } },
     });
   }
 
@@ -673,7 +713,7 @@ export async function updateUserRoleAction(formData: FormData) {
     return { ok: false, message: "Super Admin is internal and cannot be changed from roles." };
   }
 
-  const roleIds = await roleIdsWithMemberBase([roleId]);
+  const roleIds = await roleIdsPreservingProbation(userId, [roleId]);
 
   await prisma.userRole.deleteMany({ where: { userId } });
   await prisma.userRole.createMany({
@@ -707,6 +747,17 @@ export async function updateUserAction(
 
   const currentUser = await prisma.user.findUnique({ where: { id: parsed.data.userId }, select: { email: true, status: true } });
   if (!currentUser) return { ok: false, message: "User not found." };
+  const probation = await prisma.probation.findFirst({
+    where: { userId: parsed.data.userId },
+    orderBy: { createdAt: "desc" },
+    select: { state: true },
+  });
+  if (parsed.data.status === "active" && probation?.state === "terminated") {
+    return { ok: false, message: "This account was disabled by probation termination. Reopen the probation record to reactivate it." };
+  }
+  if (parsed.data.status === "inactive" && (probation?.state === "active" || probation?.state === "extended")) {
+    return { ok: false, message: "This member has an open probation. Use the probation termination approval workflow." };
+  }
 
   const existingUser = await prisma.user.findFirst({
     where: {
@@ -741,6 +792,7 @@ export async function updateUserAction(
       occupation: parsed.data.occupation || null,
       skills: parsed.data.skills || null,
       status: parsed.data.status,
+      ...(currentUser.status !== "inactive" && parsed.data.status === "inactive" ? { sessionVersion: { increment: 1 } } : {}),
       emailVerifiedAt: parsed.data.status === "active" ? new Date() : null,
       ...(passwordHash ? { passwordHash } : {}),
       ...(passwordHash ? { mustChangePassword: passwordChangedByAnotherUser } : {}),
@@ -799,16 +851,16 @@ export async function updateUserRolesAction(
   const admin = await requirePermission("users", "assign-roles", "/admin/users");
 
   const userId = Number(formData.get("userId"));
-  const roleIds = await roleIdsWithMemberBase(
+  const selectedRoleIds =
     formData
       .getAll("roles")
       .map((roleId) => Number(roleId))
-      .filter(Number.isFinite),
-  );
+      .filter(Number.isFinite);
 
   if (!Number.isFinite(userId)) {
     return { ok: false, message: "Invalid user." };
   }
+  const roleIds = await roleIdsPreservingProbation(userId, selectedRoleIds);
 
   if (await isSuperAdminUser(userId)) {
     return { ok: false, message: "Super Admin is internal and cannot be changed from roles." };

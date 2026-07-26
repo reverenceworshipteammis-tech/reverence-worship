@@ -322,6 +322,20 @@ async function writeAttendanceSession(formData: FormData, complete: boolean) {
       await tx.attendanceRecord.createMany({
         data: attendanceRows,
       });
+      await tx.activityLog.create({
+        data: {
+          userId: user.id,
+          action: existingSession ? (complete ? "attendance.completed" : "attendance.corrected") : (complete ? "attendance.created-and-completed" : "attendance.created"),
+          module: "discipline",
+          metadata: {
+            sessionDate: sessionDateValue,
+            sessionType,
+            recordCount: attendanceRows.length,
+            affectedUserIds: attendanceRows.map((row) => row.userId),
+            completed: complete,
+          },
+        },
+      });
     });
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("ATTENDANCE_SESSION_EXISTS:")) {
@@ -549,6 +563,14 @@ export async function importAttendanceCsv(formData: FormData) {
         });
         recordsImported += records.length;
       }
+      await tx.activityLog.create({
+        data: {
+          userId: admin.id,
+          action: "attendance.imported",
+          module: "discipline",
+          metadata: { files: files.map((file) => file.name), sessionsImported, recordsImported, completeSessions },
+        },
+      });
     }, { maxWait: 30_000, timeout: 120_000 });
   } catch (error) {
     return { ok: false, message: attendanceImportDatabaseFailure(error) };
@@ -566,7 +588,7 @@ export async function importAttendanceCsv(formData: FormData) {
 }
 
 export async function deleteAttendanceSession(sessionDateValue: string, sessionType: string) {
-  await requirePermission("discipline", "delete-attendance");
+  const user = await requirePermission("discipline", "delete-attendance");
   const sessionDate = dateOnly(sessionDateValue);
 
   await prisma.$transaction(async (tx) => {
@@ -580,6 +602,14 @@ export async function deleteAttendanceSession(sessionDateValue: string, sessionT
       where: {
         sessionDate,
         sessionType,
+      },
+    });
+    await tx.activityLog.create({
+      data: {
+        userId: user.id,
+        action: "attendance.deleted",
+        module: "discipline",
+        metadata: { sessionDate: sessionDateValue, sessionType },
       },
     });
   });
@@ -784,6 +814,14 @@ export async function savePermissionRequest(formData: FormData) {
   if (!(Number.isFinite(id) && id > 0)) {
     await notifyUsers({ userIds: await userIdsWithPermission("discipline", "approve-permission-requests"), type: "permission", title: "Permission request submitted", message: `A new ${type} permission request is awaiting review.`, link: "/admin/discipline?tab=permission&status=pending", sourceType: "permission_request", sourceId: request.id, dedupeKey: `permission:${request.id}:submitted` });
   }
+  await prisma.activityLog.create({
+    data: {
+      userId: user.id,
+      action: Number.isFinite(id) && id > 0 ? "permission-request.updated" : "permission-request.created",
+      module: "discipline",
+      metadata: { permissionRequestId: request.id, affectedUserId: userId, startDate: startDateValue, endDate: endDateValue },
+    },
+  });
 
   revalidatePath("/admin/discipline");
 
@@ -804,6 +842,14 @@ export async function approvePermissionRequest(id: number) {
   });
 
   await notifyUsers({ userIds: [request.userId], type: "permission", title: "Permission request approved", message: `Your ${request.type} permission request was approved.`, link: "/admin/discipline", sourceType: "permission_request", sourceId: request.id, dedupeKey: `permission:${request.id}:approved` });
+  await prisma.activityLog.create({
+    data: {
+      userId: user.id,
+      action: "permission-request.approved",
+      module: "discipline",
+      metadata: { permissionRequestId: request.id, affectedUserId: request.userId },
+    },
+  });
 
   revalidatePath("/admin/discipline");
 
@@ -834,6 +880,14 @@ export async function rejectPermissionRequest(id: number, reason: string) {
 
   const request = await prisma.permissionRequest.findUnique({ where: { id }, select: { userId: true, type: true } });
   if (request) await notifyUsers({ userIds: [request.userId], type: "permission", title: "Permission request rejected", message: `Your ${request.type} permission request was rejected: ${rejectionReason}`, link: "/admin/discipline", sourceType: "permission_request", sourceId: id, dedupeKey: `permission:${id}:rejected` });
+  await prisma.activityLog.create({
+    data: {
+      userId: user.id,
+      action: "permission-request.rejected",
+      module: "discipline",
+      metadata: { permissionRequestId: id, affectedUserId: request?.userId, reason: rejectionReason },
+    },
+  });
 
   revalidatePath("/admin/discipline");
 
@@ -841,10 +895,18 @@ export async function rejectPermissionRequest(id: number, reason: string) {
 }
 
 export async function deletePermissionRequest(id: number) {
-  await requirePermission("discipline", "delete-permission-requests");
+  const user = await requirePermission("discipline", "delete-permission-requests");
 
   await prisma.permissionRequest.delete({
     where: { id },
+  });
+  await prisma.activityLog.create({
+    data: {
+      userId: user.id,
+      action: "permission-request.deleted",
+      module: "discipline",
+      metadata: { permissionRequestId: id },
+    },
   });
 
   revalidatePath("/admin/discipline");

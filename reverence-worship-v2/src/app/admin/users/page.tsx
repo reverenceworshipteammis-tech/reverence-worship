@@ -66,7 +66,7 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
   const [roles, total, statusCounts, membershipCounts, genderCounts] = await withDatabaseRetry(() =>
     Promise.all([
       prisma.role.findMany({
-        where: { name: { not: "super-admin" } },
+        where: { name: { notIn: ["super-admin", "probation-member"] } },
         orderBy: { displayName: "asc" },
         select: {
           id: true,

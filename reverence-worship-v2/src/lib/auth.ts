@@ -11,6 +11,7 @@ export const SESSION_IDLE_MAX_AGE_SECONDS = 60 * 10;
 
 type SessionPayload = {
   userId: number;
+  sessionVersion?: number;
 };
 
 export type PermissionKey =
@@ -28,9 +29,16 @@ function authSecret() {
 }
 
 export async function createSession(userId: number) {
-  const sessionLifetimeMinutes = settingToNumber(await getSystemSetting("session_lifetime"), 10);
+  const [sessionLifetimeSetting, user] = await Promise.all([
+    getSystemSetting("session_lifetime"),
+    prisma.user.findUnique({ where: { id: userId }, select: { status: true, sessionVersion: true } }),
+  ]);
+  if (!user || user.status !== "active") {
+    throw new Error("Only an active account can start a session.");
+  }
+  const sessionLifetimeMinutes = settingToNumber(sessionLifetimeSetting, 10);
   const maxAgeSeconds = Math.max(60, Math.min(sessionLifetimeMinutes, 10) * 60);
-  const token = jwt.sign({ userId } satisfies SessionPayload, authSecret(), {
+  const token = jwt.sign({ userId, sessionVersion: user.sessionVersion } satisfies SessionPayload, authSecret(), {
     expiresIn: maxAgeSeconds,
   });
 
@@ -66,12 +74,17 @@ export async function getCurrentUser() {
   }
 
   const payload = verifySessionToken(token);
-  if (!payload) {
+  if (!payload || (payload.sessionVersion !== undefined && !Number.isInteger(payload.sessionVersion))) {
     return null;
   }
+  const sessionVersion = payload.sessionVersion ?? 0;
 
-  return prisma.user.findUnique({
-    where: { id: payload.userId },
+  return prisma.user.findFirst({
+    where: {
+      id: payload.userId,
+      status: "active",
+      sessionVersion,
+    },
     include: {
       roles: {
         include: {

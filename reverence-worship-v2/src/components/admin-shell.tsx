@@ -157,7 +157,9 @@ export function AdminShell({
   const canViewAnnouncementsPage = hasPagePermission(user.permissions, "announcements");
   const currentUrl = `${pathname}${searchParams.size ? `?${searchParams.toString()}` : ""}`;
   const currentPageTitle =
-    visibleNavGroups
+    pathname.startsWith("/admin/probation")
+      ? "Discipline DPT"
+      : visibleNavGroups
       .flatMap((group) => group.items)
       .filter((item) => {
         const itemPath = item.href.split("?")[0];
@@ -338,7 +340,11 @@ export function AdminShell({
                 <div className="space-y-1">
                   {group.items.map((item) => {
                     const className = `admin-nav-item ${
-                      pathname === item.href || pathname.startsWith(`${item.href}/`) ? "active" : ""
+                      pathname === item.href
+                      || pathname.startsWith(`${item.href}/`)
+                      || (item.page === "discipline" && pathname.startsWith("/admin/probation"))
+                        ? "active"
+                        : ""
                     }`;
                     const content = (
                       <>

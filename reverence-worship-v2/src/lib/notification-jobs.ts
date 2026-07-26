@@ -17,11 +17,63 @@ function dateLabel(date: Date) {
 }
 
 export async function runScheduledNotificationJobs() {
-  const results = { emailsProcessed: 0, permissionRequestsChecked: 0, announcements: 0, formReminders: 0, taskReminders: 0, familyReminders: 0, systemAlerts: 0 };
+  const results = { emailsProcessed: 0, permissionRequestsChecked: 0, probationReminders: 0, announcements: 0, formReminders: 0, taskReminders: 0, familyReminders: 0, systemAlerts: 0 };
   results.emailsProcessed = await processPendingEmailDeliveries();
   results.permissionRequestsChecked = (await reconcilePendingPermissionNotifications()).requests;
 
   const today = dayBounds();
+  const probationLeaders = await userIdsWithPermission("probation", "view");
+  const openProbations = await prisma.probation.findMany({
+    where: { state: { in: ["active", "extended"] } },
+    select: {
+      id: true,
+      userId: true,
+      currentExpectedEndDate: true,
+      assignedAdminId: true,
+      member: { select: { name: true } },
+    },
+  });
+  for (const probation of openProbations) {
+    const endDay = new Date(probation.currentExpectedEndDate);
+    endDay.setUTCHours(0, 0, 0, 0);
+    const daysRemaining = Math.round((endDay.getTime() - today.start.getTime()) / 86_400_000);
+    if ([14, 7, 1].includes(daysRemaining)) {
+      await notifyUsers({
+        userIds: [probation.userId],
+        type: "probation",
+        title: `Probation review due in ${daysRemaining} day${daysRemaining === 1 ? "" : "s"}`,
+        message: `Your probation review is due ${dateLabel(probation.currentExpectedEndDate)}.`,
+        link: "/admin/dashboard",
+        sourceType: "probation",
+        sourceId: probation.id,
+        dedupeKey: `probation:${probation.id}:review:${daysRemaining}-days:member`,
+      });
+      await notifyUsers({
+        userIds: [probation.assignedAdminId, ...probationLeaders],
+        type: "probation",
+        title: `Probation review due in ${daysRemaining} day${daysRemaining === 1 ? "" : "s"}`,
+        message: `${probation.member.name}'s probation review is due ${dateLabel(probation.currentExpectedEndDate)}.`,
+        link: `/admin/probation?record=${probation.id}`,
+        sourceType: "probation",
+        sourceId: probation.id,
+        dedupeKey: `probation:${probation.id}:review:${daysRemaining}-days:leaders`,
+      });
+      results.probationReminders += 1;
+    } else if (daysRemaining < 0) {
+      await notifyUsers({
+        userIds: [...probationLeaders, probation.assignedAdminId],
+        type: "probation",
+        title: "Probation review overdue",
+        message: `${probation.member.name}'s probation review was due ${dateLabel(probation.currentExpectedEndDate)} and needs a leader decision.`,
+        link: `/admin/probation?record=${probation.id}`,
+        sourceType: "probation",
+        sourceId: probation.id,
+        dedupeKey: `probation:${probation.id}:overdue:${today.start.toISOString().slice(0, 10)}`,
+      });
+      results.probationReminders += 1;
+    }
+  }
+
   const scheduledAnnouncements = await prisma.announcement.findMany({
     where: { status: "scheduled", scheduledDate: { lte: today.end } },
   });

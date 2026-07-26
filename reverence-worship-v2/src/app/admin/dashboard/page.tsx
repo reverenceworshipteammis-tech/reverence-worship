@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   BookOpen,
+  CalendarClock,
   Clock,
   FileText,
   HandCoins,
@@ -12,6 +13,7 @@ import {
   UserPlus,
   UserX,
   Users,
+  TriangleAlert,
 } from "lucide-react";
 import { requirePageAccess } from "@/lib/auth";
 import { withDatabaseRetry } from "@/lib/database-retry";
@@ -20,6 +22,8 @@ import { PerformanceSummaryCards } from "@/components/performance-client";
 import { getPerformanceDateRange } from "@/lib/performance-date-range";
 import { getUserPerformanceData, type PerformanceMetrics } from "@/lib/user-performance";
 import { ProfileModalTrigger } from "@/components/profile-modal";
+import { getProbationMonitoring, probationDateSummary } from "@/lib/probation-data";
+import { PROBATION_GOOD_THRESHOLD } from "@/lib/probation-rules";
 
 const systemCountLabels = [
   "Forms",
@@ -75,11 +79,11 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
   const { metrics } = await getUserPerformanceData(user.id, year, { from: range.fromDate, to: range.toDate, label: range.label });
 
   if (hasRole(roles, "super-admin")) {
-    return <SuperAdminDashboard userName={user.name} metrics={metrics} fromDate={range.from} toDate={range.to} />;
+    return <SuperAdminDashboard userId={user.id} userName={user.name} metrics={metrics} fromDate={range.from} toDate={range.to} />;
   }
 
   if (hasRole(roles, "admin")) {
-    return <AdminOperationsDashboard userName={user.name} metrics={metrics} fromDate={range.from} toDate={range.to} />;
+    return <AdminOperationsDashboard userId={user.id} userName={user.name} metrics={metrics} fromDate={range.from} toDate={range.to} />;
   }
 
   const departmentRole = roles.find((role) =>
@@ -87,13 +91,13 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
   ) as DepartmentRole | undefined;
 
   if (departmentRole) {
-    return <DepartmentDashboard userName={user.name} metrics={metrics} fromDate={range.from} toDate={range.to} />;
+    return <DepartmentDashboard userId={user.id} userName={user.name} metrics={metrics} fromDate={range.from} toDate={range.to} canManageProbation={departmentRole === "discipline-dpt"} />;
   }
 
-  return <MemberDashboard userName={user.name} metrics={metrics} fromDate={range.from} toDate={range.to} />;
+  return <MemberDashboard userId={user.id} userName={user.name} metrics={metrics} fromDate={range.from} toDate={range.to} />;
 }
 
-async function SuperAdminDashboard({ userName, metrics, fromDate, toDate }: { userName: string; metrics: PerformanceMetrics; fromDate: string; toDate: string }) {
+async function SuperAdminDashboard({ userId, userName, metrics, fromDate, toDate }: { userId: number; userName: string; metrics: PerformanceMetrics; fromDate: string; toDate: string }) {
   const [
     pendingUsers,
     inactiveUsers,
@@ -182,6 +186,8 @@ async function SuperAdminDashboard({ userName, metrics, fromDate, toDate }: { us
       />
 
       <DashboardPerformance metrics={metrics} fromDate={fromDate} toDate={toDate} />
+      <ProbationMemberDashboardCard userId={userId} />
+      <ProbationTodoPanel userId={userId} />
 
       <Panel className="mb-4">
         <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2 2xl:grid-cols-4">
@@ -205,31 +211,36 @@ async function SuperAdminDashboard({ userName, metrics, fromDate, toDate }: { us
   );
 }
 
-function AdminOperationsDashboard({ userName, metrics, fromDate, toDate }: { userName: string; metrics: PerformanceMetrics; fromDate: string; toDate: string }) {
+function AdminOperationsDashboard({ userId, userName, metrics, fromDate, toDate }: { userId: number; userName: string; metrics: PerformanceMetrics; fromDate: string; toDate: string }) {
   return (
     <RoleDashboard
+      userId={userId}
       message={`Welcome back, ${userName}!`}
       performanceMetrics={metrics}
       fromDate={fromDate}
       toDate={toDate}
+      showProbationTodo
     />
   );
 }
 
-function DepartmentDashboard({ userName, metrics, fromDate, toDate }: { userName: string; metrics: PerformanceMetrics; fromDate: string; toDate: string }) {
+function DepartmentDashboard({ userId, userName, metrics, fromDate, toDate, canManageProbation }: { userId: number; userName: string; metrics: PerformanceMetrics; fromDate: string; toDate: string; canManageProbation: boolean }) {
   return (
     <RoleDashboard
+      userId={userId}
       message={`Welcome back, ${userName}!`}
       performanceMetrics={metrics}
       fromDate={fromDate}
       toDate={toDate}
+      showProbationTodo={canManageProbation}
     />
   );
 }
 
-function MemberDashboard({ userName, metrics, fromDate, toDate }: { userName: string; metrics: PerformanceMetrics; fromDate: string; toDate: string }) {
+function MemberDashboard({ userId, userName, metrics, fromDate, toDate }: { userId: number; userName: string; metrics: PerformanceMetrics; fromDate: string; toDate: string }) {
   return (
     <RoleDashboard
+      userId={userId}
       message={`Welcome back, ${userName}!`}
       performanceMetrics={metrics}
       fromDate={fromDate}
@@ -280,15 +291,19 @@ function DashboardHero({
 }
 
 function RoleDashboard({
+  userId,
   message,
   performanceMetrics,
   fromDate,
   toDate,
+  showProbationTodo = false,
 }: {
+  userId: number;
   message: string;
   performanceMetrics: PerformanceMetrics;
   fromDate: string;
   toDate: string;
+  showProbationTodo?: boolean;
 }) {
   return (
     <div className="super-admin-dashboard mx-auto max-w-7xl px-3 py-3 sm:px-4 sm:py-4 lg:px-5">
@@ -300,9 +315,79 @@ function RoleDashboard({
       />
 
       <DashboardPerformance metrics={performanceMetrics} fromDate={fromDate} toDate={toDate} />
+      <ProbationMemberDashboardCard userId={userId} />
+      {showProbationTodo ? <ProbationTodoPanel userId={userId} /> : null}
 
       <QuickActions actions={personalQuickActions} />
     </div>
+  );
+}
+
+async function ProbationMemberDashboardCard({ userId }: { userId: number }) {
+  const probation = await prisma.probation.findFirst({
+    where: { userId, state: { in: ["active", "extended"] } },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!probation) return null;
+  const monitoring = await getProbationMonitoring(probation);
+  const dates = probationDateSummary(probation.currentExpectedEndDate);
+  const scores = [
+    { label: "Attendance", rate: monitoring.attendance.rate },
+    { label: "Communication", rate: monitoring.communication.rate },
+    { label: "Discipline", rate: monitoring.discipline.rate },
+  ];
+  const format = (date: Date) => new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(date);
+
+  return (
+    <section className="mb-4 overflow-hidden rounded-xl border border-blue-200 bg-white shadow-sm">
+      <div className="flex flex-col gap-3 border-b border-blue-100 bg-blue-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-blue-600">Membership probation</p>
+          <h2 className="mt-0.5 text-lg font-black text-slate-900">{probation.state === "extended" ? "Probation extended" : dates.isOverdue ? "Review overdue" : "Probation active"}</h2>
+        </div>
+        <span className={`rounded-full px-3 py-1 text-xs font-bold ${dates.isOverdue ? "bg-rose-100 text-rose-800" : probation.state === "extended" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"}`}>
+          {dates.isOverdue ? `${Math.abs(dates.daysRemaining)} day(s) overdue` : `${dates.daysRemaining} day(s) remaining`}
+        </span>
+      </div>
+      <div className="space-y-4 p-4">
+        <div className="grid gap-3 sm:grid-cols-3">
+          {scores.map((score) => (
+            <div key={score.label} className="rounded-lg border border-slate-200 p-3">
+              <p className="text-xs font-semibold text-slate-500">{score.label}</p>
+              <p className={`mt-1 text-xl font-black ${score.rate >= PROBATION_GOOD_THRESHOLD ? "text-emerald-700" : "text-rose-700"}`}>{score.rate}%</p>
+            </div>
+          ))}
+        </div>
+        <div className="text-sm text-slate-600">
+          <p><strong>Period:</strong> {format(probation.originalStartDate)} – {format(probation.currentExpectedEndDate)}</p>
+        </div>
+        {probation.memberVisibleSummary ? <p className="rounded-lg bg-slate-50 p-3 text-sm leading-6 text-slate-700">{probation.memberVisibleSummary}</p> : null}
+        <p className="text-xs text-slate-500">Approved: {monitoring.permissions.approved} · Rejected: {monitoring.permissions.rejected} · Pending: {monitoring.permissions.pending} permission request(s)</p>
+      </div>
+    </section>
+  );
+}
+
+async function ProbationTodoPanel({ userId }: { userId: number }) {
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const [overdue, assignedDecisions] = await Promise.all([
+    prisma.probation.count({
+      where: { state: { in: ["active", "extended"] }, currentExpectedEndDate: { lt: today } },
+    }),
+    prisma.probationDecisionRequest.count({
+      where: { status: "pending", probation: { assignedAdminId: userId } },
+    }),
+  ]);
+  if (!overdue && !assignedDecisions) return null;
+  return (
+    <Panel className="mb-4">
+      <PanelHeader title="My To Do" />
+      <div className="grid gap-3 p-4 sm:grid-cols-2">
+        <AttentionItem item={{ label: "Overdue probation reviews", value: overdue, note: "Open records past their expected end date", href: "/admin/probation?status=overdue", icon: TriangleAlert, color: "bg-rose-50 text-rose-700" }} />
+        <AttentionItem item={{ label: "Decisions assigned to me", value: assignedDecisions, note: "Completion or termination requests awaiting approval", href: "/admin/probation", icon: CalendarClock, color: "bg-violet-50 text-violet-700" }} />
+      </div>
+    </Panel>
   );
 }
 

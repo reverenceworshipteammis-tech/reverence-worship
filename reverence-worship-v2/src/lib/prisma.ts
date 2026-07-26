@@ -6,7 +6,7 @@ const globalForPrisma = globalThis as unknown as {
   prismaSchemaVersion?: string;
 };
 
-const PRISMA_SCHEMA_VERSION = "2026-07-25-discipline-session-completion";
+const PRISMA_SCHEMA_VERSION = "2026-07-26-probation-management";
 
 function databaseUrl() {
   const value = process.env.DATABASE_URL;
@@ -58,7 +58,10 @@ export const prisma =
   "activityLog" in existingPrisma &&
   "notification" in existingPrisma &&
   "emailDelivery" in existingPrisma &&
-  "passwordResetToken" in existingPrisma
+  "passwordResetToken" in existingPrisma &&
+  "probation" in existingPrisma &&
+  "probationExtension" in existingPrisma &&
+  "probationDecisionRequest" in existingPrisma
     ? existingPrisma
     : new PrismaClient({ adapter });
 

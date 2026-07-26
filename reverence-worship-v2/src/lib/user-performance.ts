@@ -27,14 +27,27 @@ function formatPeriod(records: Array<{ sessionDate: Date }>) {
 export async function getUserPerformanceData(userId: number, year: number, range?: PerformanceRange) {
   const yearStart = range?.from ?? new Date(`${year}-01-01T00:00:00.000Z`);
   const yearEnd = range?.to ?? new Date(`${year}-12-31T23:59:59.999Z`);
+  const latestCompletedProbation = await prisma.probation.findFirst({
+    where: { userId, state: "completed", decisionDate: { not: null, lte: yearEnd } },
+    orderBy: { decisionDate: "desc" },
+    select: { decisionDate: true },
+  });
+  const membershipPerformanceStart = latestCompletedProbation?.decisionDate
+    ? new Date(Date.UTC(
+        latestCompletedProbation.decisionDate.getUTCFullYear(),
+        latestCompletedProbation.decisionDate.getUTCMonth(),
+        latestCompletedProbation.decisionDate.getUTCDate(),
+      ))
+    : yearStart;
+  const attendanceAndDisciplineStart = membershipPerformanceStart > yearStart ? membershipPerformanceStart : yearStart;
 
   const [disciplineRecords, attendanceRecords, contribution, payments] = await withDatabaseRetry(() => Promise.all([
     prisma.disciplineRecord.findMany({
-      where: { userId, createdAt: { gte: yearStart, lte: yearEnd } },
+      where: { userId, createdAt: { gte: attendanceAndDisciplineStart, lte: yearEnd } },
       orderBy: { createdAt: "desc" },
     }),
     prisma.attendanceRecord.findMany({
-      where: { userId, sessionDate: { gte: yearStart, lte: yearEnd } },
+      where: { userId, sessionDate: { gte: attendanceAndDisciplineStart, lte: yearEnd } },
       orderBy: [{ sessionDate: "desc" }, { createdAt: "desc" }],
     }),
     prisma.contribution.findUnique({ where: { userId_year: { userId, year } } }),
