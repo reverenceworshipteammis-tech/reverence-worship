@@ -113,6 +113,7 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
         skills: user.skills,
         status: user.status,
         createdAt: formatDate(user.createdAt),
+        createdAtValue: user.createdAt.toISOString(),
         roles: user.roles.map(({ role }) => ({
           id: role.id,
           name: role.name,

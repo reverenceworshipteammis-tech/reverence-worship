@@ -1,9 +1,12 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useActionState, useMemo, useState, useTransition } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   CheckCircle2,
   Clock3,
   Download,
@@ -53,7 +56,16 @@ type UserRow = {
   skills: string | null;
   status: "active" | "pending" | "inactive";
   createdAt: string;
+  createdAtValue: string;
   roles: Role[];
+};
+
+type SortField = "name" | "status" | "registered";
+type SortDirection = "asc" | "desc";
+
+type UserSort = {
+  field: SortField;
+  direction: SortDirection;
 };
 
 type Stats = {
@@ -127,6 +139,42 @@ function hasFullSystemAccess(user: UserRow) {
   return user.roles.some((role) => role.name === "super-admin");
 }
 
+function SortButton({
+  field,
+  label,
+  sort,
+  onSort,
+}: {
+  field: SortField;
+  label: string;
+  sort: UserSort;
+  onSort: (field: SortField) => void;
+}) {
+  const active = sort.field === field;
+  const Icon = active ? (sort.direction === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
+  const nextDirection = active
+    ? sort.direction === "asc"
+      ? "descending"
+      : "ascending"
+    : field === "registered"
+      ? "descending"
+      : "ascending";
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(field)}
+      className={`inline-flex size-6 items-center justify-center rounded-md transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 ${
+        active ? "bg-blue-100 text-blue-700" : "text-gray-400 hover:bg-gray-200 hover:text-gray-700"
+      }`}
+      aria-label={`Sort ${label} ${nextDirection}`}
+      title={`Sort ${label} ${nextDirection}`}
+    >
+      <Icon className="size-3.5" aria-hidden="true" />
+    </button>
+  );
+}
+
 export function UserManagementClient({
   users,
   roles,
@@ -138,6 +186,11 @@ export function UserManagementClient({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [searchInput, setSearchInput] = useState(() => {
+    const value = searchParams.get("search") ?? "";
+    return { urlValue: value, value };
+  });
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [viewUser, setViewUser] = useState<UserRow | null>(null);
@@ -145,6 +198,7 @@ export function UserManagementClient({
   const [rolesUser, setRolesUser] = useState<UserRow | null>(null);
   const [message, setMessage] = useState<UserActionState | null>(null);
   const [confirmAction, setConfirmAction] = useState<{ user: UserRow; action: string } | null>(null);
+  const [sort, setSort] = useState<UserSort>({ field: "registered", direction: "desc" });
   const [isPending, startTransition] = useTransition();
   const [createState, createAction] = useActionState<UserActionState, FormData>(
     createUserAction,
@@ -172,7 +226,65 @@ export function UserManagementClient({
     [searchParams],
   );
 
-  function pushFilters(filters: { search?: string; role?: string; status?: string }) {
+  const searchValue =
+    searchInput.urlValue === currentFilters.search ? searchInput.value : currentFilters.search;
+
+  useEffect(
+    () => () => {
+      if (searchTimerRef.current) {
+        clearTimeout(searchTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  const sortedUsers = useMemo(() => {
+    const direction = sort.direction === "asc" ? 1 : -1;
+
+    return [...users].sort((first, second) => {
+      let comparison = 0;
+
+      if (sort.field === "registered") {
+        comparison = Date.parse(first.createdAtValue) - Date.parse(second.createdAtValue);
+      } else {
+        comparison = first[sort.field].localeCompare(second[sort.field], undefined, {
+          sensitivity: "base",
+        });
+      }
+
+      if (comparison === 0) {
+        comparison = first.name.localeCompare(second.name, undefined, { sensitivity: "base" });
+      }
+
+      return comparison * direction;
+    });
+  }, [sort, users]);
+
+  function handleSort(field: SortField) {
+    setSort((current) => {
+      if (current.field === field) {
+        return {
+          field,
+          direction: current.direction === "asc" ? "desc" : "asc",
+        };
+      }
+
+      return {
+        field,
+        direction: field === "registered" ? "desc" : "asc",
+      };
+    });
+  }
+
+  function pushFilters(
+    filters: { search?: string; role?: string; status?: string },
+    navigation: "push" | "replace" = "push",
+  ) {
+    if (searchTimerRef.current) {
+      clearTimeout(searchTimerRef.current);
+      searchTimerRef.current = null;
+    }
+
     const params = new URLSearchParams();
     const search = filters.search?.trim() ?? "";
     const role = filters.role ?? "";
@@ -183,8 +295,33 @@ export function UserManagementClient({
     if (status) params.set("status", status);
 
     startTransition(() => {
-      router.push(`/admin/users${params.toString() ? `?${params.toString()}` : ""}`);
+      const url = `/admin/users${params.toString() ? `?${params.toString()}` : ""}`;
+
+      if (navigation === "replace") {
+        router.replace(url, { scroll: false });
+      } else {
+        router.push(url);
+      }
     });
+  }
+
+  function handleSearchChange(value: string) {
+    setSearchInput({ urlValue: currentFilters.search, value });
+
+    if (searchTimerRef.current) {
+      clearTimeout(searchTimerRef.current);
+    }
+
+    searchTimerRef.current = setTimeout(() => {
+      pushFilters(
+        {
+          search: value,
+          role: currentFilters.role,
+          status: currentFilters.status,
+        },
+        "replace",
+      );
+    }, 350);
   }
 
   function applyFilters(formData: FormData) {
@@ -196,6 +333,13 @@ export function UserManagementClient({
   }
 
   function resetFilters() {
+    setSearchInput({ urlValue: currentFilters.search, value: "" });
+
+    if (searchTimerRef.current) {
+      clearTimeout(searchTimerRef.current);
+      searchTimerRef.current = null;
+    }
+
     startTransition(() => {
       router.push("/admin/users");
     });
@@ -318,14 +462,15 @@ export function UserManagementClient({
                 type="text"
                 name="search"
                 placeholder="Search..."
-                defaultValue={currentFilters.search}
+                value={searchValue}
+                onChange={(event) => handleSearchChange(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Escape") {
-                    event.currentTarget.value = "";
+                    setSearchInput({ urlValue: currentFilters.search, value: "" });
                     pushFilters({
                       role: currentFilters.role,
                       status: currentFilters.status,
-                    });
+                    }, "replace");
                   }
                 }}
                 className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -341,7 +486,7 @@ export function UserManagementClient({
                 defaultValue={currentFilters.role}
                 onChange={(event) =>
                   pushFilters({
-                    search: currentFilters.search,
+                    search: searchValue,
                     role: event.target.value,
                     status: currentFilters.status,
                   })
@@ -363,7 +508,7 @@ export function UserManagementClient({
                 defaultValue={currentFilters.status}
                 onChange={(event) =>
                   pushFilters({
-                    search: currentFilters.search,
+                    search: searchValue,
                     role: currentFilters.role,
                     status: event.target.value,
                   })
@@ -440,8 +585,14 @@ export function UserManagementClient({
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  User / Email
+                <th
+                  aria-sort={sort.field === "name" ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}
+                  className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    User / Email
+                    <SortButton field="name" label="user name" sort={sort} onSort={handleSort} />
+                  </span>
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                   Phone
@@ -449,11 +600,23 @@ export function UserManagementClient({
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                   Role
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Status
+                <th
+                  aria-sort={sort.field === "status" ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}
+                  className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    Status
+                    <SortButton field="status" label="status" sort={sort} onSort={handleSort} />
+                  </span>
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Registered
+                <th
+                  aria-sort={sort.field === "registered" ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}
+                  className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    Registered
+                    <SortButton field="registered" label="registration date" sort={sort} onSort={handleSort} />
+                  </span>
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                   Actions
@@ -461,7 +624,7 @@ export function UserManagementClient({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 bg-white">
-              {users.map((user) => {
+              {sortedUsers.map((user) => {
                 const visibleRoles = displayRoles(user);
                 const fullSystemAccess = hasFullSystemAccess(user);
 
@@ -535,7 +698,7 @@ export function UserManagementClient({
         </div>
 
         <div className="block divide-y divide-gray-200 md:hidden">
-          {users.map((user) => {
+          {sortedUsers.map((user) => {
             const visibleRoles = displayRoles(user);
             const fullSystemAccess = hasFullSystemAccess(user);
 
