@@ -407,6 +407,16 @@ export function AdminShell({
             </div>
 
             <div className="flex items-center gap-2">
+              <Link
+                href="/"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-sm font-semibold text-blue-700 transition hover:border-blue-300 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                aria-label="Back to Home Page"
+                title="Back to Home Page"
+              >
+                <Home className="size-4" aria-hidden="true" />
+                <span className="hidden md:inline">Back to Home Page</span>
+              </Link>
+
               <div className="relative z-40">
                 <button
                   className="admin-notification-bell relative text-gray-600 hover:text-gray-800"

@@ -2,6 +2,7 @@ import "server-only";
 
 import nodemailer from "nodemailer";
 import { getEmailConfiguration } from "@/lib/email-config";
+import { escapeHtml, formatEmailMessage } from "@/lib/email-html";
 import { NOTIFICATION_CATEGORIES, notificationCategory } from "@/lib/notification-rules";
 import { prisma } from "@/lib/prisma";
 
@@ -79,14 +80,10 @@ function mailTransport() {
   return transporter;
 }
 
-function escapeHtml(value: string) {
-  return value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[character] ?? character);
-}
-
 function emailHtml(title: string, message: string, link?: string) {
   const appUrl = (process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
   const actionUrl = link && appUrl ? `${appUrl}${link}` : null;
-  return `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#1f2937"><h2 style="color:#1d4ed8">${escapeHtml(title)}</h2><p style="line-height:1.6">${escapeHtml(message)}</p>${actionUrl ? `<p><a href="${escapeHtml(actionUrl)}" style="display:inline-block;background:#2563eb;color:white;text-decoration:none;padding:10px 16px;border-radius:8px">Open Reverence Worship</a></p>` : ""}<p style="font-size:12px;color:#6b7280">This is an automated message from Reverence Worship.</p></div>`;
+  return `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#1f2937"><h2 style="color:#1d4ed8">${escapeHtml(title)}</h2><p style="line-height:1.6">${formatEmailMessage(message)}</p>${actionUrl ? `<p><a href="${escapeHtml(actionUrl)}" style="display:inline-block;background:#2563eb;color:white;text-decoration:none;padding:10px 16px;border-radius:8px">Open Reverence Worship</a></p>` : ""}<p style="font-size:12px;color:#6b7280">This is an automated message from Reverence Worship.</p></div>`;
 }
 
 export async function deliverEmail(deliveryId: number) {
