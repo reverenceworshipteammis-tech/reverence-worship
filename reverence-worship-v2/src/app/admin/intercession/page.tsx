@@ -1,5 +1,6 @@
 import { IntercessionClient } from "@/components/intercession-client";
 import { getUserPermissionSet, permissionSetHas, requireUser } from "@/lib/auth";
+import { memberCanViewScore, memberResultLabel, memberResultState } from "@/lib/intercession-result-rules";
 import { prisma } from "@/lib/prisma";
 
 function formatDate(date: Date) {
@@ -33,7 +34,7 @@ function asQuestions(value: unknown) {
     : [];
 }
 
-export default async function IntercessionPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
+export default async function IntercessionPage({ searchParams }: { searchParams: Promise<{ tab?: string; section?: string }> }) {
   const user = await requireUser();
   const params = await searchParams;
   const permissions = await getUserPermissionSet(user);
@@ -122,11 +123,20 @@ export default async function IntercessionPage({ searchParams }: { searchParams:
   return (
     <IntercessionClient
       initialTab={intercessionPermissions.canReadBible && (params.tab === "bible" || !intercessionPermissions.canSubmitForms) ? "bible" : "forms"}
+      initialSection={params.section === "results" ? "results" : "available"}
       showDepartmentNavigation={showDepartmentNavigation}
       permissions={intercessionPermissions}
       forms={serializedForms}
       mySubmissions={mySubmissions.map((submission) => {
         const questions = asQuestions(submission.form.questions);
+        const settings = asObject(submission.form.settings);
+        const resultInput = {
+          isQuiz: Boolean(settings.is_quiz),
+          releaseGrade: String(settings.release_grade ?? "never"),
+          score: submission.score,
+          isReleased: submission.isReleased,
+        };
+        const resultState = memberResultState(resultInput);
         return {
           id: submission.id,
           formId: submission.formId,
@@ -134,7 +144,8 @@ export default async function IntercessionPage({ searchParams }: { searchParams:
           formDescription: submission.form.description,
           questionCount: questions.length,
           submittedAt: formatDate(submission.submittedAt),
-          score: submission.score,
+          score: memberCanViewScore(resultInput) ? submission.score : null,
+          resultStatus: memberResultLabel(resultState),
         };
       })}
       reportRows={users.map((reportUser) => {

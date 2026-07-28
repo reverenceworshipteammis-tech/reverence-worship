@@ -68,6 +68,7 @@ type FormSubmission = {
   questionCount: number;
   submittedAt: string;
   score: number | null;
+  resultStatus: string;
 };
 
 type ReportRow = {
@@ -174,6 +175,7 @@ type Section = "available" | "results" | "manage" | "reports";
 
 export function IntercessionClient({
   initialTab,
+  initialSection,
   showDepartmentNavigation,
   permissions,
   forms,
@@ -182,6 +184,7 @@ export function IntercessionClient({
   actionPlans,
 }: {
   initialTab: "forms" | "bible";
+  initialSection: Section;
   showDepartmentNavigation: boolean;
   permissions: IntercessionPermissions;
   forms: SpiritualForm[];
@@ -191,7 +194,7 @@ export function IntercessionClient({
 }) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<string>(initialTab);
-  const [section, setSection] = useState<Section>("available");
+  const [section, setSection] = useState<Section>(initialSection);
   const [query, setQuery] = useState("");
   const [reportSearch, setReportSearch] = useState("");
   const [reportStatus, setReportStatus] = useState("all");
@@ -756,7 +759,7 @@ export function IntercessionClient({
                     return (
                       <Link
                         key={submission.id}
-                        href={`/admin/intercession/forms/${submission.formId}/take`}
+                        href={`/admin/intercession/submissions/${submission.id}`}
                         className="block rounded-xl border border-gray-200 p-4 transition hover:shadow-md sm:p-5"
                       >
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -775,7 +778,7 @@ export function IntercessionClient({
                           </div>
                           <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
                             <CheckCircle2 className="size-3" aria-hidden="true" />
-                            {submission.score === null ? "Submitted" : `${submission.score} pts`}
+                            {submission.score === null ? submission.resultStatus : `${submission.score}%`}
                           </span>
                         </div>
                       </Link>
