@@ -45,7 +45,6 @@ export function IntercessionTakeForm({
   const [isPending, startTransition] = useTransition();
 
   const limitOneResponse = settings.limit_one_response !== false;
-  const releaseGrade = settings.release_grade ?? "never";
   const displayQuestions = useMemo(() => {
     const visible = questions
       .map((question, index) => ({ question, index }))
@@ -90,9 +89,9 @@ export function IntercessionTakeForm({
   return (
     <div className="mx-auto max-w-5xl px-3 py-5 sm:px-4 sm:py-8">
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
-        <div className="bg-blue-600 px-5 py-6 sm:px-8">
-          <div className="flex items-center justify-between text-white">
-            <Link href="/admin/intercession" className="flex items-center gap-2 text-sm text-white/80 hover:text-white">
+        <div className="border-b border-sky-100 bg-gradient-to-br from-white via-sky-50 to-cyan-50/40 px-5 py-6 sm:px-8">
+          <div className="flex items-center justify-between text-sky-700">
+            <Link href="/admin/intercession" className="flex items-center gap-2 text-sm text-sky-700 hover:text-sky-900">
               <ArrowLeft className="size-4" aria-hidden="true" />
               Back to Forms
             </Link>
@@ -102,19 +101,10 @@ export function IntercessionTakeForm({
             </div>
           </div>
           <div className="mt-4">
-            <h1 className="mb-2 text-3xl font-bold text-white">{form.title}</h1>
-            {form.description && <p className="whitespace-pre-line text-blue-100">{form.description}</p>}
+            <h1 className="mb-2 text-3xl font-bold text-slate-900">{form.title}</h1>
+            {form.description && <p className="whitespace-pre-line text-slate-600">{form.description}</p>}
           </div>
         </div>
-
-        {settings.is_quiz && releaseGrade !== "immediately" && (
-          <div className="mx-5 mt-4 flex items-center gap-3 rounded-lg border border-yellow-200 bg-yellow-50 p-3 sm:mx-8">
-            <Info className="size-5 text-yellow-500" aria-hidden="true" />
-            <span className="text-sm text-yellow-700">
-              {releaseGrade === "later" ? "Your score will be released after manual review." : "Your score will not be shown."}
-            </span>
-          </div>
-        )}
 
         {settings.show_progress_bar && (
           <div className="px-5 pt-6 sm:px-8">
@@ -148,14 +138,13 @@ export function IntercessionTakeForm({
           </div>
 
           <div className="border-t border-gray-200 bg-white px-5 py-5 sm:px-8">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-sm text-gray-500">{displayQuestions.length} question(s)</div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
               <button
                 disabled={isPending || displayQuestions.length === 0}
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-8 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60"
               >
                 {isPending ? <CheckCircle2 className="size-4" /> : <Send className="size-4" />}
-                {isPending ? "Submitting..." : "Submit Form"}
+                {isPending ? "Submitting..." : "Submit"}
               </button>
             </div>
           </div>
@@ -203,7 +192,17 @@ function QuestionField({
       </div>
 
       {question.type === "short_answer" && (
-        <input name={name} required={question.required} onChange={(event) => onAnswered(Boolean(event.target.value))} className="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+        <textarea
+          name={name}
+          required={question.required}
+          rows={1}
+          onChange={(event) => {
+            event.currentTarget.style.height = "auto";
+            event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`;
+            onAnswered(Boolean(event.currentTarget.value));
+          }}
+          className="w-full resize-none overflow-hidden rounded-lg border border-gray-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+        />
       )}
       {question.type === "paragraph" && (
         <textarea name={name} required={question.required} rows={4} onChange={(event) => onAnswered(Boolean(event.target.value))} className="w-full resize-y rounded-lg border border-gray-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
