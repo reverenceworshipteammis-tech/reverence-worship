@@ -2,6 +2,7 @@ import { SettingsClient, type SettingsValues } from "@/components/settings-clien
 import { requirePageAccess } from "@/lib/auth";
 import { getEmailConfiguration } from "@/lib/email-config";
 import { prisma } from "@/lib/prisma";
+import { normalizeSessionLifetimeMinutes } from "@/lib/session-policy";
 
 function boolValue(value: unknown, fallback = false) {
   if (typeof value === "boolean") return value;
@@ -30,7 +31,7 @@ export default async function SettingsPage() {
   const emailConfiguration = getEmailConfiguration();
   const values: SettingsValues = {
     registrationEnabled: boolValue(settings.get("registration_enabled"), true),
-    sessionLifetime: Math.min(numberValue(settings.get("session_lifetime"), 10), 10),
+    sessionLifetime: normalizeSessionLifetimeMinutes(settings.get("session_lifetime")),
     passwordMinLength: numberValue(settings.get("password_min_length"), 6),
     probationDefaultDurationMonths: numberValue(settings.get("probation_default_duration_months"), 4),
     notifications: {

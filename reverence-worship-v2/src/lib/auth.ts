@@ -4,10 +4,10 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import jwt from "jsonwebtoken";
 import { prisma } from "@/lib/prisma";
+import { normalizeSessionLifetimeMinutes } from "@/lib/session-policy";
 import { getSystemSetting, settingToNumber } from "@/lib/system-settings";
 
 export const SESSION_COOKIE = "reverence_session";
-export const SESSION_IDLE_MAX_AGE_SECONDS = 60 * 10;
 
 type SessionPayload = {
   userId: number;
@@ -36,8 +36,10 @@ export async function createSession(userId: number) {
   if (!user || user.status !== "active") {
     throw new Error("Only an active account can start a session.");
   }
-  const sessionLifetimeMinutes = settingToNumber(sessionLifetimeSetting, 10);
-  const maxAgeSeconds = Math.max(60, Math.min(sessionLifetimeMinutes, 10) * 60);
+  const sessionLifetimeMinutes = normalizeSessionLifetimeMinutes(
+    settingToNumber(sessionLifetimeSetting, 10),
+  );
+  const maxAgeSeconds = sessionLifetimeMinutes * 60;
   const token = jwt.sign({ userId, sessionVersion: user.sessionVersion } satisfies SessionPayload, authSecret(), {
     expiresIn: maxAgeSeconds,
   });

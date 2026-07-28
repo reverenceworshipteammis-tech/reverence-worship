@@ -5,6 +5,11 @@ import { requirePageAccess } from "@/lib/auth";
 import { getEmailConfiguration } from "@/lib/email-config";
 import { notifyEmailAddress, processPendingEmailDeliveries, reconcilePendingPermissionNotifications, verifyEmailTransport } from "@/lib/notifications";
 import { prisma } from "@/lib/prisma";
+import {
+  DEFAULT_SESSION_LIFETIME_MINUTES,
+  MAX_SESSION_LIFETIME_MINUTES,
+  MIN_SESSION_LIFETIME_MINUTES,
+} from "@/lib/session-policy";
 
 type ActionResult = {
   ok: boolean;
@@ -91,10 +96,15 @@ export async function updateAccessSettings(formData: FormData) {
 
 export async function updateSecuritySettings(formData: FormData) {
   try {
-    const sessionLifetime = readNumber(formData, "session_lifetime", 10);
+    const sessionLifetime = readNumber(formData, "session_lifetime", DEFAULT_SESSION_LIFETIME_MINUTES);
     const passwordMinLength = readNumber(formData, "password_min_length", 6);
 
-    assertRange(sessionLifetime, 1, 10, "Session lifetime");
+    assertRange(
+      sessionLifetime,
+      MIN_SESSION_LIFETIME_MINUTES,
+      MAX_SESSION_LIFETIME_MINUTES,
+      "Session lifetime",
+    );
     assertRange(passwordMinLength, 6, 255, "Minimum password length");
 
     return saveSettings(

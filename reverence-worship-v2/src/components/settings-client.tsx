@@ -12,6 +12,10 @@ import {
   updateSecuritySettings,
 } from "@/app/admin/settings/actions";
 import { MobileTabScroller } from "@/components/mobile-tab-scroller";
+import {
+  MAX_SESSION_LIFETIME_MINUTES,
+  MIN_SESSION_LIFETIME_MINUTES,
+} from "@/lib/session-policy";
 
 export type SettingsValues = {
   registrationEnabled: boolean;
@@ -168,8 +172,16 @@ export function SettingsClient({ values }: { values: SettingsValues }) {
         <div className={activeTab === "security" ? "block" : "hidden"}>
           <form ref={securityRef} onChange={() => autoSave("security", updateSecuritySettings, securityRef.current)} className="p-4 sm:p-6">
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-              <Field label="Session Lifetime (minutes)" note="Maximum is 10 minutes. Active users are refreshed; idle users are logged out automatically.">
-                <input name="session_lifetime" type="number" min={1} max={10} required defaultValue={Math.min(values.sessionLifetime, 10)} className={inputClass} />
+              <Field label="Session Lifetime (minutes)" note="Maximum is 60 minutes. Active users are refreshed; idle users are logged out automatically.">
+                <input
+                  name="session_lifetime"
+                  type="number"
+                  min={MIN_SESSION_LIFETIME_MINUTES}
+                  max={MAX_SESSION_LIFETIME_MINUTES}
+                  required
+                  defaultValue={values.sessionLifetime}
+                  className={inputClass}
+                />
               </Field>
               <Field label="Minimum Password Length" note="Affects new public registrations. Minimum allowed value is 6.">
                 <input name="password_min_length" type="number" min={6} max={255} required defaultValue={values.passwordMinLength} className={inputClass} />

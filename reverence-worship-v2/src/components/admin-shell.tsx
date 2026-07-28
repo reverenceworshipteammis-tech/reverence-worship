@@ -97,7 +97,6 @@ const mobileNavItems = [
   { label: "Settings", href: "/admin/settings", page: "settings", icon: Settings },
 ];
 
-const IDLE_LOGOUT_MS = 10 * 60 * 1000;
 const SESSION_PING_MS = 60 * 1000;
 
 function hasPagePermission(permissions: string[], page: string) {
@@ -128,9 +127,11 @@ function navGroupsForPermissions(permissions: string[], roles: string[], isParen
 
 export function AdminShell({
   user,
+  sessionLifetimeMinutes,
   children,
 }: Readonly<{
   user: AdminUser;
+  sessionLifetimeMinutes: number;
   children: React.ReactNode;
 }>) {
   const [collapsed, setCollapsed] = useState(false);
@@ -242,7 +243,7 @@ export function AdminShell({
 
     const interval = window.setInterval(() => {
       const idleFor = Date.now() - lastActivityRef.current;
-      if (idleFor >= IDLE_LOGOUT_MS) {
+      if (idleFor >= sessionLifetimeMinutes * 60 * 1000) {
         void logoutForIdle();
         return;
       }
@@ -256,7 +257,7 @@ export function AdminShell({
       events.forEach((eventName) => window.removeEventListener(eventName, markActive));
       window.clearInterval(interval);
     };
-  }, [router]);
+  }, [router, sessionLifetimeMinutes]);
 
   function openNotificationDropdown() {
     const shouldLoadNotifications = !notificationOpen && !notificationsLoaded;
