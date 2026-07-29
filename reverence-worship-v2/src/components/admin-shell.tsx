@@ -42,6 +42,7 @@ import {
   ProfileModalTrigger,
   type ProfileModalData,
 } from "@/components/profile-modal";
+import { ADMIN_NOTIFICATIONS_CHANGED_EVENT } from "@/lib/admin-notification-events";
 
 type AdminUser = {
   name: string;
@@ -193,6 +194,12 @@ export function AdminShell({
   useEffect(() => {
     const timeout = window.setTimeout(() => void loadNotifications(), 0);
     return () => window.clearTimeout(timeout);
+  }, []);
+
+  useEffect(() => {
+    const reloadNotifications = () => void loadNotifications();
+    window.addEventListener(ADMIN_NOTIFICATIONS_CHANGED_EVENT, reloadNotifications);
+    return () => window.removeEventListener(ADMIN_NOTIFICATIONS_CHANGED_EVENT, reloadNotifications);
   }, []);
 
   useEffect(() => {

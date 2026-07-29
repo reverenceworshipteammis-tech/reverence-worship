@@ -24,6 +24,10 @@ import { getUserPerformanceData, type PerformanceMetrics } from "@/lib/user-perf
 import { ProfileModalTrigger } from "@/components/profile-modal";
 import { getProbationMonitoring, probationDateSummary } from "@/lib/probation-data";
 import { PROBATION_GOOD_THRESHOLD } from "@/lib/probation-rules";
+import {
+  DashboardBulletinCarousel,
+  type DashboardBulletin,
+} from "@/components/dashboard-bulletin-carousel";
 
 const systemCountLabels = [
   "Forms",
@@ -70,20 +74,136 @@ function hasRole(roles: string[], role: RoleName) {
   return roles.includes(role);
 }
 
+function announcementIsForUser(
+  announcement: { targetType: string; targetRoles: string | null; targetUsers: string | null },
+  userId: number,
+  roleIds: number[],
+  roleNames: string[],
+) {
+  if (announcement.targetType === "all") return true;
+
+  const rawTargets = announcement.targetType === "roles" ? announcement.targetRoles : announcement.targetUsers;
+  if (!rawTargets) return false;
+
+  try {
+    const targets = JSON.parse(rawTargets) as unknown;
+    if (!Array.isArray(targets)) return false;
+    if (announcement.targetType === "users") return targets.some((target) => Number(target) === userId);
+    if (announcement.targetType === "roles") {
+      return targets.some((target) => roleIds.includes(Number(target)) || roleNames.includes(String(target)));
+    }
+  } catch {
+    return false;
+  }
+
+  return false;
+}
+
+function bulletinDate(date: Date) {
+  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(date);
+}
+
+async function getDashboardBulletins(userId: number, roleIds: number[], roleNames: string[]): Promise<DashboardBulletin[]> {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const [announcements, notifications] = await withDatabaseRetry(() => Promise.all([
+    prisma.announcement.findMany({
+      where: {
+        status: "active",
+        OR: [{ expiryDate: null }, { expiryDate: { gte: today } }],
+      },
+      orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
+      select: {
+        id: true,
+        title: true,
+        content: true,
+        priority: true,
+        targetType: true,
+        targetRoles: true,
+        targetUsers: true,
+        publishedAt: true,
+        createdAt: true,
+      },
+    }),
+    prisma.notification.findMany({
+      where: { userId, readAt: null },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      select: {
+        id: true,
+        title: true,
+        message: true,
+        link: true,
+        type: true,
+        sourceType: true,
+        createdAt: true,
+      },
+    }),
+  ]));
+
+  const announcementItems: Array<DashboardBulletin & { sortDate: Date }> = announcements
+    .filter((announcement) => announcementIsForUser(announcement, userId, roleIds, roleNames))
+    .map((announcement) => {
+      const sortDate = announcement.publishedAt ?? announcement.createdAt;
+      return {
+        id: `announcement-${announcement.id}`,
+        kind: "announcement",
+        title: announcement.title,
+        message: announcement.content,
+        href: "/admin/announcements",
+        dateLabel: bulletinDate(sortDate),
+        urgent: ["urgent", "critical", "high"].includes(announcement.priority.toLowerCase()),
+        sortDate,
+      };
+    });
+
+  const notificationItems: Array<DashboardBulletin & { sortDate: Date }> = notifications
+    .filter((notification) => notification.sourceType !== "announcement")
+    .map((notification) => ({
+      id: `notification-${notification.id}`,
+      kind: "notification",
+      title: notification.title,
+      message: notification.message,
+      href: notification.link ?? "/admin/dashboard",
+      dateLabel: bulletinDate(notification.createdAt),
+      urgent: ["urgent", "critical", "system"].includes(notification.type.toLowerCase()),
+      sourceId: notification.id,
+      sortDate: notification.createdAt,
+    }));
+
+  return [...announcementItems, ...notificationItems]
+    .sort((a, b) => b.sortDate.getTime() - a.sortDate.getTime())
+    .slice(0, 10)
+    .map((item) => ({
+      id: item.id,
+      kind: item.kind,
+      title: item.title,
+      message: item.message,
+      href: item.href,
+      dateLabel: item.dateLabel,
+      urgent: item.urgent,
+      sourceId: item.sourceId,
+    }));
+}
+
 export default async function AdminDashboardPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
   const user = await requirePageAccess("dashboard");
   const params = await searchParams;
   const roles = user.roles.map((userRole) => userRole.role.name);
+  const roleIds = user.roles.map((userRole) => userRole.roleId);
   const year = new Date().getFullYear();
   const range = getPerformanceDateRange(year, params.from, params.to);
-  const { metrics } = await getUserPerformanceData(user.id, year, { from: range.fromDate, to: range.toDate, label: range.label });
+  const [{ metrics }, bulletins] = await Promise.all([
+    getUserPerformanceData(user.id, year, { from: range.fromDate, to: range.toDate, label: range.label }),
+    getDashboardBulletins(user.id, roleIds, roles),
+  ]);
 
   if (hasRole(roles, "super-admin")) {
-    return <SuperAdminDashboard userId={user.id} userName={user.name} metrics={metrics} fromDate={range.from} toDate={range.to} />;
+    return <SuperAdminDashboard userId={user.id} userName={user.name} metrics={metrics} fromDate={range.from} toDate={range.to} bulletins={bulletins} />;
   }
 
   if (hasRole(roles, "admin")) {
-    return <AdminOperationsDashboard userId={user.id} userName={user.name} metrics={metrics} fromDate={range.from} toDate={range.to} />;
+    return <AdminOperationsDashboard userId={user.id} userName={user.name} metrics={metrics} fromDate={range.from} toDate={range.to} bulletins={bulletins} />;
   }
 
   const departmentRole = roles.find((role) =>
@@ -91,13 +211,13 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
   ) as DepartmentRole | undefined;
 
   if (departmentRole) {
-    return <DepartmentDashboard userId={user.id} userName={user.name} metrics={metrics} fromDate={range.from} toDate={range.to} canManageProbation={departmentRole === "discipline-dpt"} />;
+    return <DepartmentDashboard userId={user.id} userName={user.name} metrics={metrics} fromDate={range.from} toDate={range.to} canManageProbation={departmentRole === "discipline-dpt"} bulletins={bulletins} />;
   }
 
-  return <MemberDashboard userId={user.id} userName={user.name} metrics={metrics} fromDate={range.from} toDate={range.to} />;
+  return <MemberDashboard userId={user.id} userName={user.name} metrics={metrics} fromDate={range.from} toDate={range.to} bulletins={bulletins} />;
 }
 
-async function SuperAdminDashboard({ userId, userName, metrics, fromDate, toDate }: { userId: number; userName: string; metrics: PerformanceMetrics; fromDate: string; toDate: string }) {
+async function SuperAdminDashboard({ userId, userName, metrics, fromDate, toDate, bulletins }: { userId: number; userName: string; metrics: PerformanceMetrics; fromDate: string; toDate: string; bulletins: DashboardBulletin[] }) {
   const [
     pendingUsers,
     inactiveUsers,
@@ -179,6 +299,7 @@ async function SuperAdminDashboard({ userId, userName, metrics, fromDate, toDate
     <div className="super-admin-dashboard mx-auto max-w-7xl px-3 py-3 sm:px-4 sm:py-4 lg:px-5">
       <DashboardHero
         message={`Welcome back, ${userName}!`}
+        bulletins={bulletins}
         actions={[
           { label: "Activity Logs", href: "/admin/logs", icon: Clock, variant: "secondary" },
           { label: "Manage Users", href: "/admin/users", icon: UserPlus, variant: "primary" },
@@ -211,7 +332,7 @@ async function SuperAdminDashboard({ userId, userName, metrics, fromDate, toDate
   );
 }
 
-function AdminOperationsDashboard({ userId, userName, metrics, fromDate, toDate }: { userId: number; userName: string; metrics: PerformanceMetrics; fromDate: string; toDate: string }) {
+function AdminOperationsDashboard({ userId, userName, metrics, fromDate, toDate, bulletins }: { userId: number; userName: string; metrics: PerformanceMetrics; fromDate: string; toDate: string; bulletins: DashboardBulletin[] }) {
   return (
     <RoleDashboard
       userId={userId}
@@ -219,12 +340,13 @@ function AdminOperationsDashboard({ userId, userName, metrics, fromDate, toDate 
       performanceMetrics={metrics}
       fromDate={fromDate}
       toDate={toDate}
+      bulletins={bulletins}
       showProbationTodo
     />
   );
 }
 
-function DepartmentDashboard({ userId, userName, metrics, fromDate, toDate, canManageProbation }: { userId: number; userName: string; metrics: PerformanceMetrics; fromDate: string; toDate: string; canManageProbation: boolean }) {
+function DepartmentDashboard({ userId, userName, metrics, fromDate, toDate, canManageProbation, bulletins }: { userId: number; userName: string; metrics: PerformanceMetrics; fromDate: string; toDate: string; canManageProbation: boolean; bulletins: DashboardBulletin[] }) {
   return (
     <RoleDashboard
       userId={userId}
@@ -232,12 +354,13 @@ function DepartmentDashboard({ userId, userName, metrics, fromDate, toDate, canM
       performanceMetrics={metrics}
       fromDate={fromDate}
       toDate={toDate}
+      bulletins={bulletins}
       showProbationTodo={canManageProbation}
     />
   );
 }
 
-function MemberDashboard({ userId, userName, metrics, fromDate, toDate }: { userId: number; userName: string; metrics: PerformanceMetrics; fromDate: string; toDate: string }) {
+function MemberDashboard({ userId, userName, metrics, fromDate, toDate, bulletins }: { userId: number; userName: string; metrics: PerformanceMetrics; fromDate: string; toDate: string; bulletins: DashboardBulletin[] }) {
   return (
     <RoleDashboard
       userId={userId}
@@ -245,6 +368,7 @@ function MemberDashboard({ userId, userName, metrics, fromDate, toDate }: { user
       performanceMetrics={metrics}
       fromDate={fromDate}
       toDate={toDate}
+      bulletins={bulletins}
     />
   );
 }
@@ -252,8 +376,10 @@ function MemberDashboard({ userId, userName, metrics, fromDate, toDate }: { user
 function DashboardHero({
   message,
   actions,
+  bulletins,
 }: {
   message: string;
+  bulletins: DashboardBulletin[];
   actions: Array<{
     label: string;
     href: string;
@@ -263,8 +389,8 @@ function DashboardHero({
   }>;
 }) {
   return (
-    <div className="dashboard-hero mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-      <h1 className="text-xl font-bold text-slate-900 sm:text-2xl">{message}</h1>
+    <div className="dashboard-hero mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <DashboardBulletinCarousel items={bulletins} welcomeMessage={message} />
       <div className="flex flex-col gap-2 sm:flex-row">
         {actions.map((action) => {
           const className = action.variant === "primary" ? "dashboard-hero-primary" : "dashboard-hero-secondary";
@@ -296,6 +422,7 @@ function RoleDashboard({
   performanceMetrics,
   fromDate,
   toDate,
+  bulletins,
   showProbationTodo = false,
 }: {
   userId: number;
@@ -303,15 +430,17 @@ function RoleDashboard({
   performanceMetrics: PerformanceMetrics;
   fromDate: string;
   toDate: string;
+  bulletins: DashboardBulletin[];
   showProbationTodo?: boolean;
 }) {
   return (
     <div className="super-admin-dashboard mx-auto max-w-7xl px-3 py-3 sm:px-4 sm:py-4 lg:px-5">
       <DashboardHero
         message={message}
-        actions={[
-          { label: "My Profile", href: "/admin/profile", icon: UserCheck, variant: "secondary", opensProfile: true },
-        ]}
+        bulletins={bulletins}
+        actions={bulletins.length > 0
+          ? []
+          : [{ label: "My Profile", href: "/admin/profile", icon: UserCheck, variant: "secondary", opensProfile: true }]}
       />
 
       <DashboardPerformance metrics={performanceMetrics} fromDate={fromDate} toDate={toDate} />
@@ -400,16 +529,16 @@ function DashboardPerformance({ metrics, fromDate, toDate }: { metrics: Performa
   
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-          <form method="get" className="flex flex-col gap-2 sm:flex-row sm:items-end">
-            <label className="block">
+          <form method="get" className="grid grid-cols-2 gap-2 sm:flex sm:items-end">
+            <label className="block min-w-0">
               <span className="mb-1 block text-xs font-medium text-gray-600">From</span>
-              <input name="from" type="date" min={`${metrics.discipline.year}-01-01`} max={`${metrics.discipline.year}-12-31`} defaultValue={fromDate} className="h-9 rounded-lg border border-gray-300 bg-white px-2 text-xs text-gray-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+              <input name="from" type="date" min={`${metrics.discipline.year}-01-01`} max={`${metrics.discipline.year}-12-31`} defaultValue={fromDate} className="h-9 w-full min-w-0 rounded-lg border border-gray-300 bg-white px-2 text-xs text-gray-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
             </label>
-            <label className="block">
+            <label className="block min-w-0">
               <span className="mb-1 block text-xs font-medium text-gray-600">To</span>
-              <input name="to" type="date" min={`${metrics.discipline.year}-01-01`} max={`${metrics.discipline.year}-12-31`} defaultValue={toDate} className="h-9 rounded-lg border border-gray-300 bg-white px-2 text-xs text-gray-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+              <input name="to" type="date" min={`${metrics.discipline.year}-01-01`} max={`${metrics.discipline.year}-12-31`} defaultValue={toDate} className="h-9 w-full min-w-0 rounded-lg border border-gray-300 bg-white px-2 text-xs text-gray-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
             </label>
-            <button type="submit" className="h-9 rounded-lg bg-blue-600 px-4 text-xs font-semibold text-white transition hover:bg-blue-700">Apply</button>
+            <button type="submit" className="col-span-2 h-9 rounded-lg bg-blue-600 px-4 text-xs font-semibold text-white transition hover:bg-blue-700">Apply</button>
           </form>
           <Link href={`/admin/performance?from=${fromDate}&to=${toDate}`} className="inline-flex h-9 items-center text-sm font-semibold text-blue-600 hover:text-blue-700">View details</Link>
         </div>

@@ -610,6 +610,43 @@ input {
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08), 0 8px 24px rgba(59, 130, 246, 0.06);
 }
 
+@keyframes dashboard-bulletin-enter {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes dashboard-bulletin-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.dashboard-bulletin-enter {
+  animation: dashboard-bulletin-enter 280ms ease-out;
+}
+
+.dashboard-bulletin-progress {
+  width: 100%;
+  transform-origin: left;
+  animation: dashboard-bulletin-progress 5s linear;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-bulletin-enter,
+  .dashboard-bulletin-progress {
+    animation: none;
+  }
+}
+
 .dashboard-hero-secondary,
 .dashboard-hero-primary {
   display: inline-flex;

@@ -135,19 +135,19 @@ export function PerformanceSummaryCards({
   detailsHref?: string;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {cardMeta.map((card) => {
         const tone = performanceTone(metrics[card.type].rate);
-        const className = `min-h-[200px] rounded-xl border bg-white p-5 text-left shadow-sm transition hover:shadow-md ${tone.hover} ${activeType === card.type ? "border-blue-400 ring-2 ring-blue-100" : "border-gray-200"}`;
+        const className = `min-h-[160px] rounded-xl border bg-white p-4 text-left shadow-sm transition hover:shadow-md ${tone.hover} ${activeType === card.type ? "border-blue-400 ring-2 ring-blue-100" : "border-gray-200"}`;
         const content = (
           <>
             <div className="flex items-center justify-between">
-              <h2 className="font-bold text-gray-900">{card.title}</h2>
+              <h2 className="text-sm font-bold leading-tight text-gray-900">{card.title}</h2>
               <ChevronRight className="size-4 text-gray-300" aria-hidden />
             </div>
-            <div className="mt-6 flex items-center gap-4">
-              <div className="size-20 shrink-0 rounded-full p-[6px]" style={{ background: `conic-gradient(${tone.accent} ${metrics[card.type].rate}%, #e5e7eb 0)` }}>
-                <div className="flex size-full items-center justify-center rounded-full bg-white text-xl font-bold">{metrics[card.type].rate}%</div>
+            <div className="mt-4 flex items-center gap-3">
+              <div className="size-[68px] shrink-0 rounded-full p-[5px]" style={{ background: `conic-gradient(${tone.accent} ${metrics[card.type].rate}%, #e5e7eb 0)` }}>
+                <div className="flex size-full items-center justify-center rounded-full bg-white text-lg font-bold">{metrics[card.type].rate}%</div>
               </div>
               <CardText type={card.type} metrics={metrics} />
             </div>
@@ -170,15 +170,15 @@ export function PerformanceSummaryCards({
 
 function CardText({ type, metrics }: { type: PerformanceType; metrics: PerformanceMetrics }) {
   if (type === "discipline") {
-    return <div className="text-sm"><p className="font-semibold text-gray-600">Good Behavior Rate</p><p className="mt-1 text-gray-900">{metrics.discipline.good} good / {metrics.discipline.total} records</p><p className="mt-1 text-xs text-gray-500">{metrics.discipline.period ?? `Year ${metrics.discipline.year}`}</p></div>;
+    return <div className="min-w-0 text-[13px] leading-snug"><p className="font-semibold text-gray-600">Good Behavior Rate</p><p className="mt-0.5 text-gray-900">{metrics.discipline.good} good / {metrics.discipline.total} records</p><p className="mt-0.5 text-[11px] text-gray-500">{metrics.discipline.period ?? `Year ${metrics.discipline.year}`}</p></div>;
   }
   if (type === "attendance") {
-    return <div className="text-sm"><p className="font-semibold text-gray-600">Attendance Rate</p><p className="mt-1 text-gray-900">{metrics.attendance.present} attended / {metrics.attendance.total} sessions</p><p className="mt-1 text-xs text-gray-500">{metrics.attendance.period}</p></div>;
+    return <div className="min-w-0 text-[13px] leading-snug"><p className="font-semibold text-gray-600">Attendance Rate</p><p className="mt-0.5 text-gray-900">{metrics.attendance.present} attended / {metrics.attendance.total} sessions</p><p className="mt-0.5 text-[11px] text-gray-500">{metrics.attendance.period}</p></div>;
   }
   if (type === "communication") {
-    return <div className="text-sm"><p className="font-semibold text-gray-600">Communication Rate</p><p className="mt-1 text-gray-900">{metrics.communication.communicated} communicated / {metrics.communication.total} sessions</p><p className="mt-1 text-xs text-gray-500">{metrics.communication.period}</p></div>;
+    return <div className="min-w-0 text-[13px] leading-snug"><p className="font-semibold text-gray-600">Communication Rate</p><p className="mt-0.5 text-gray-900">{metrics.communication.communicated} communicated / {metrics.communication.total} sessions</p><p className="mt-0.5 text-[11px] text-gray-500">{metrics.communication.period}</p></div>;
   }
-  return <div className="text-sm"><p className="font-semibold text-gray-600">Contribution Rate</p><p className="mt-1 text-gray-900">{rwf(metrics.contribution.paid)} / {rwf(metrics.contribution.expected)}</p><p className="mt-1 text-xs text-gray-500">{metrics.contribution.period ?? `Year ${metrics.contribution.year}`}</p></div>;
+  return <div className="min-w-0 text-[13px] leading-snug"><p className="font-semibold text-gray-600">Contribution Rate</p><p className="mt-0.5 text-gray-900">{rwf(metrics.contribution.paid)} / {rwf(metrics.contribution.expected)}</p><p className="mt-0.5 text-[11px] text-gray-500">{metrics.contribution.period ?? `Year ${metrics.contribution.year}`}</p></div>;
 }
 
 function Summary({ label, value, className }: { label: string; value: string; className: string }) {
