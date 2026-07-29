@@ -27,7 +27,7 @@ function parseIdList(value: string) {
 }
 
 function normalizeStatus(status: string, scheduledDate: string) {
-  if (status === "draft") return "draft";
+  if (status === "draft" || status === "archived") return status;
   if (status === "scheduled" || scheduledDate) return "scheduled";
   return "active";
 }
@@ -127,6 +127,7 @@ export async function saveAnnouncement(formData: FormData) {
       sourceType: "announcement",
       sourceId: announcement.id,
       dedupeKey: `announcement:${announcement.id}:${announcement.updatedAt.getTime()}`,
+      sendEmail: false,
     });
   }
 
@@ -181,29 +182,32 @@ export async function toggleAnnouncementStatus(id: number) {
       sourceType: "announcement",
       sourceId: updated.id,
       dedupeKey: `announcement:${updated.id}:published:${updated.updatedAt.getTime()}`,
+      sendEmail: false,
     });
   }
 
   revalidatePath("/admin/announcements");
-  return { ok: true, message: nextStatus === "active" ? "Announcement published." : "Announcement moved to draft." };
+  return { ok: true, message: nextStatus === "active" ? "Announcement published." : "Announcement unpublished." };
 }
 
-export async function markAnnouncementSent(id: number) {
-  const user = await requirePermission("announcements", "publish", "/admin/announcements");
+export async function sendAnnouncementEmail(id: number) {
+  await requirePermission("announcements", "publish", "/admin/announcements");
 
   if (!Number.isInteger(id) || id <= 0) {
     return { ok: false, message: "Announcement not found." };
   }
 
-  const announcement = await prisma.announcement.update({
+  const announcement = await prisma.announcement.findUnique({
     where: { id },
-    data: {
-      emailSent: true,
-      status: "active",
-      publishedBy: user.id,
-      publishedAt: new Date(),
-    },
   });
+
+  if (!announcement) {
+    return { ok: false, message: "Announcement not found." };
+  }
+
+  if (announcement.status !== "active") {
+    return { ok: false, message: "Publish the announcement before sending it by email." };
+  }
 
   await notifyUsers({
     userIds: await userIdsForAnnouncement(announcement.targetType, announcement.targetRoles, announcement.targetUsers),
@@ -214,8 +218,14 @@ export async function markAnnouncementSent(id: number) {
     sourceType: "announcement",
     sourceId: announcement.id,
     dedupeKey: `announcement:${announcement.id}:sent:${announcement.updatedAt.getTime()}`,
+    sendInApp: false,
+  });
+
+  await prisma.announcement.update({
+    where: { id },
+    data: { emailSent: true },
   });
 
   revalidatePath("/admin/announcements");
-  return { ok: true, message: "Announcement marked as sent." };
+  return { ok: true, message: "Announcement email sent." };
 }

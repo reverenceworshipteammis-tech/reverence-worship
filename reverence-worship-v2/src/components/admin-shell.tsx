@@ -174,9 +174,9 @@ export function AdminShell({
         return queryDifference || b.href.length - a.href.length;
       })[0]?.label ?? "Reverence Worship";
 
-  async function loadNotifications() {
+  const loadNotifications = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     setNotificationError(null);
-    setPending(true);
+    if (!silent) setPending(true);
     try {
       const result = await getAdminNotifications();
       if (result.ok) {
@@ -187,20 +187,35 @@ export function AdminShell({
         setNotificationError("Could not load notifications.");
       }
     } finally {
-      setPending(false);
+      if (!silent) setPending(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => void loadNotifications(), 0);
     return () => window.clearTimeout(timeout);
-  }, []);
+  }, [loadNotifications]);
 
   useEffect(() => {
-    const reloadNotifications = () => void loadNotifications();
+    const reloadNotifications = () => void loadNotifications({ silent: true });
     window.addEventListener(ADMIN_NOTIFICATIONS_CHANGED_EVENT, reloadNotifications);
     return () => window.removeEventListener(ADMIN_NOTIFICATIONS_CHANGED_EVENT, reloadNotifications);
-  }, []);
+  }, [loadNotifications]);
+
+  useEffect(() => {
+    const refreshNotifications = () => {
+      if (document.visibilityState === "visible") {
+        void loadNotifications({ silent: true });
+      }
+    };
+    const interval = window.setInterval(refreshNotifications, 45_000);
+    document.addEventListener("visibilitychange", refreshNotifications);
+
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refreshNotifications);
+    };
+  }, [loadNotifications]);
 
   useEffect(() => {
     const openProfile = () => {
@@ -294,6 +309,7 @@ export function AdminShell({
     try {
       await markAllAdminNotificationsRead();
       await loadNotifications();
+      router.refresh();
     } finally {
       setPending(false);
     }

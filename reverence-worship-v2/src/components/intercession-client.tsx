@@ -1541,15 +1541,16 @@ function BibleReaderTab() {
   const [version, setVersion] = useState("bysb");
   const [compare, setCompare] = useState("");
   const [book, setBook] = useState("EXO");
-  const [chapter, setChapter] = useState(27);
+  const [chapterInput, setChapterInput] = useState("27");
   const [search, setSearch] = useState("");
   const [result, setResult] = useState<BibleResult | null>(null);
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
 
   const selectedBook = bibleBooks.find((item) => item.code === book) ?? bibleBooks[0];
+  const chapter = Number(chapterInput);
   const canGoPrevious = selectedBook ? chapter > 1 : false;
-  const canGoNext = selectedBook ? chapter < selectedBook.chapters : false;
+  const canGoNext = selectedBook ? chapter >= 1 && chapter < selectedBook.chapters : false;
   const primaryVersion = bibleVersions.find((item) => item.key === version) ?? bibleVersions[0];
   const useKinyarwanda = ["BYSB", "BIR"].includes(primaryVersion.code.toUpperCase());
   const copy = getBibleReaderCopy(useKinyarwanda);
@@ -1591,7 +1592,7 @@ function BibleReaderTab() {
         throw new Error(data.message || "Unable to load the selected chapter right now.");
       }
 
-      setChapter(nextChapter);
+      setChapterInput(String(nextChapter));
       setResult(data);
     } catch (error) {
       setResult(null);
@@ -1604,7 +1605,23 @@ function BibleReaderTab() {
   function changeBook(nextBook: string) {
     const selected = bibleBooks.find((item) => item.code === nextBook) ?? bibleBooks[0];
     setBook(selected.code);
-    setChapter((current) => Math.min(current, selected.chapters));
+    setChapterInput((current) => current === "" ? "" : String(Math.min(Number(current), selected.chapters)));
+  }
+
+  function changeChapter(nextValue: string) {
+    if (nextValue === "") {
+      setChapterInput("");
+      return;
+    }
+
+    if (!/^\d+$/.test(nextValue)) return;
+    const nextChapter = Number(nextValue);
+    if (nextChapter < 1) {
+      setChapterInput("");
+      return;
+    }
+
+    setChapterInput(String(Math.min(nextChapter, selectedBook.chapters)));
   }
 
   function changeVersion(nextVersion: string) {
@@ -1656,7 +1673,16 @@ function BibleReaderTab() {
             </label>
             <label>
               <span className="mb-0.5 block text-[11px] font-semibold text-slate-900 sm:mb-1 sm:text-sm">{useKinyarwanda ? "Igice" : "Chapter"}</span>
-              <input type="number" min={1} max={selectedBook.chapters} value={chapter} onChange={(event) => setChapter(Number(event.target.value))} className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:h-auto sm:rounded-xl sm:px-4 sm:py-3 sm:text-sm sm:focus:ring-4" />
+              <input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={selectedBook.chapters}
+                value={chapterInput}
+                placeholder={`1-${selectedBook.chapters}`}
+                onChange={(event) => changeChapter(event.target.value)}
+                className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:h-auto sm:rounded-xl sm:px-4 sm:py-3 sm:text-sm sm:focus:ring-4"
+              />
               <span className="mt-1 hidden text-xs font-medium text-slate-400 sm:block">
                 {useKinyarwanda
                   ? selectedBook.chapters === 1 ? "Iki gitabo gifite igice 1." : `Iki gitabo gifite ibice ${selectedBook.chapters}.`

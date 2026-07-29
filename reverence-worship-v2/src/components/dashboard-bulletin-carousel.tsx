@@ -96,7 +96,7 @@ export function DashboardBulletinCarousel({
   }
 
   async function openBulletin(event: MouseEvent<HTMLAnchorElement>) {
-    if (activeItem.kind !== "notification" || activeItem.sourceId === undefined) return;
+    if (activeItem.sourceId === undefined) return;
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
 
     event.preventDefault();
@@ -104,7 +104,7 @@ export function DashboardBulletinCarousel({
     setOpeningNotification(true);
 
     try {
-      await markAdminNotificationRead("notification", activeItem.sourceId);
+      await markAdminNotificationRead(activeItem.kind, activeItem.sourceId);
       window.dispatchEvent(new Event(ADMIN_NOTIFICATIONS_CHANGED_EVENT));
     } catch {
       // Opening the destination remains available if read-state synchronization fails.
@@ -127,7 +127,7 @@ export function DashboardBulletinCarousel({
           onMouseLeave={stopHoverPause}
           onFocus={() => setIsFocused(true)}
           onBlur={stopFocusPause}
-          aria-busy={openingNotification && activeItem.kind === "notification"}
+          aria-busy={openingNotification}
           className={`dashboard-bulletin-enter group relative flex size-full min-w-0 items-center gap-3 overflow-hidden rounded-lg border-l-4 px-3 py-3 transition-colors hover:bg-white/75 sm:gap-4 sm:px-4 ${tone.surface}`}
         >
           <span

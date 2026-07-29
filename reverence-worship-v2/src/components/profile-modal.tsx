@@ -115,11 +115,11 @@ export function ProfileModal({
         aria-labelledby="profile-modal-title"
         className="relative z-10 flex max-h-[100dvh] w-full flex-col overflow-hidden bg-white shadow-2xl sm:max-h-[90vh] sm:max-w-4xl sm:rounded-2xl"
       >
-        <div className="relative bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-6 text-white sm:px-7 sm:py-7">
+        <div className="relative border-b border-sky-100 bg-gradient-to-br from-white via-sky-50 to-cyan-50/40 px-5 py-6 text-slate-900 sm:px-7 sm:py-7">
           <button
             ref={closeButtonRef}
             type="button"
-            className="absolute right-4 top-4 flex size-9 items-center justify-center rounded-full bg-white/15 text-white transition hover:bg-white/25 focus:outline-none focus:ring-2 focus:ring-white"
+            className="absolute right-4 top-4 flex size-9 items-center justify-center rounded-full border border-sky-200 bg-white/90 text-sky-700 shadow-sm transition hover:bg-sky-50 focus:outline-none focus:ring-2 focus:ring-sky-300"
             aria-label="Close profile"
             onClick={onClose}
           >
@@ -127,7 +127,7 @@ export function ProfileModal({
           </button>
 
           <div className="flex items-center gap-4 pr-10 sm:gap-5">
-            <div className="relative flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white/90 bg-white/20 text-2xl font-bold sm:size-24">
+            <div className="relative flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white bg-sky-100 text-2xl font-bold text-sky-700 shadow-sm ring-1 ring-sky-200 sm:size-24">
               {profile.avatarUrl ? (
                 <Image src={profile.avatarUrl} alt={profile.name} fill sizes="96px" className="object-cover" />
               ) : (
@@ -135,11 +135,11 @@ export function ProfileModal({
               )}
             </div>
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-100">My Profile</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">My Profile</p>
               <h2 id="profile-modal-title" className="mt-1 break-words text-xl font-bold sm:text-2xl">
                 {profile.name}
               </h2>
-              <p className="mt-1 break-all text-sm text-blue-100">{profile.email}</p>
+              <p className="mt-1 break-all text-sm text-slate-600">{profile.email}</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <ProfileBadge icon={BadgeCheck} label={formatEnum(profile.status)} />
                 {(profile.roleLabels.length ? profile.roleLabels : ["Member"]).map((role) => (
@@ -169,7 +169,7 @@ export function ProfileModal({
               <InfoRow label="Sector" value={display(profile.sector)} icon={MapPin} />
               <InfoRow label="Cell" value={display(profile.cell)} icon={MapPin} />
               <InfoRow label="Village" value={display(profile.village)} icon={Home} />
-              <InfoRow label="Emergency Name" value={display(profile.emergencyName)} icon={Users} />
+              <InfoRow label="Nick Name" value={display(profile.emergencyName)} icon={Users} />
               <InfoRow label="Emergency Phone" value={display(profile.emergencyPhone)} icon={Phone} />
               <InfoRow label="Notes" value={display(profile.notes)} icon={NotebookText} last />
             </ProfileSection>
@@ -182,7 +182,7 @@ export function ProfileModal({
 
 function ProfileBadge({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1 text-xs font-medium text-white ring-1 ring-white/25">
+    <span className="inline-flex items-center gap-1 rounded-full bg-white/90 px-2.5 py-1 text-xs font-medium text-slate-700 shadow-sm ring-1 ring-sky-200">
       <Icon className="size-3.5" aria-hidden="true" />
       {label}
     </span>

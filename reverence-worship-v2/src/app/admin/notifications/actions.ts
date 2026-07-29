@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { maintainNotificationArchive } from "@/lib/notification-maintenance";
 
 export type AdminNotification = {
   id: string;
@@ -14,10 +15,6 @@ export type AdminNotification = {
   readAt: string | null;
   link: string;
 };
-
-function isSuperAdmin(roleNames: string[]) {
-  return roleNames.includes("super-admin");
-}
 
 function hasWorkspaceRole(roleNames: string[]) {
   const workspaceRoles = new Set([
@@ -31,11 +28,6 @@ function hasWorkspaceRole(roleNames: string[]) {
   ]);
 
   return roleNames.some((roleName) => workspaceRoles.has(roleName));
-}
-
-function isPublishedForm(settings: unknown) {
-  if (!settings || typeof settings !== "object" || Array.isArray(settings)) return false;
-  return (settings as { is_published?: unknown }).is_published === true;
 }
 
 function announcementIsForUser(
@@ -78,56 +70,37 @@ async function safeRead<T>(promise: Promise<T>, fallback: T) {
 
 export async function getAdminNotifications() {
   const user = await requireUser();
+  await maintainNotificationArchive().catch((error) => {
+    console.error("Unable to maintain notification archive", error);
+  });
   const roleNames = user.roles.map((userRole) => userRole.role.name);
   const roleIds = user.roles.map((userRole) => userRole.role.id);
-  const superAdmin = isSuperAdmin(roleNames);
   const workspaceUser = hasWorkspaceRole(roleNames);
   const notifications: AdminNotification[] = [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
-  const [storedNotifications, announcements, activeForms, userFormSubmissions, assignedTasks, expenses, expenseDecisions] = await Promise.all([
+  const [storedNotifications, announcements] = await Promise.all([
     safeRead(prisma.notification.findMany({
       where: { userId: user.id, readAt: null },
       orderBy: { createdAt: "desc" },
       take: 30,
     }), []),
     safeRead(prisma.announcement.findMany({
-      where: { status: "active" },
+      where: {
+        status: "active",
+        OR: [{ expiryDate: null }, { expiryDate: { gte: today } }],
+      },
       include: { reads: { where: { userId: user.id }, take: 1 } },
       orderBy: { createdAt: "desc" },
       take: 30,
     }), []),
-    safeRead(prisma.spiritualForm.findMany({
-      where: { isActive: true },
-      orderBy: { createdAt: "desc" },
-      take: 30,
-    }), []),
-    safeRead(prisma.formSubmission.findMany({
-      where: { userId: user.id },
-      select: { formId: true },
-    }), []),
-    safeRead(prisma.actionPlanTask.findMany({
-      where: { assignedTo: user.id, NOT: { status: "completed" } },
-      orderBy: { createdAt: "desc" },
-      take: 10,
-    }), []),
-    safeRead(prisma.expense.findMany({
-      where: {
-        status: { in: ["pending", "void_pending"] },
-        OR: [{ approverId1: user.id }, { approverId2: user.id }],
-      },
-      include: { creator: { select: { name: true } } },
-      orderBy: { createdAt: "desc" },
-      take: 10,
-    }), []),
-    safeRead(prisma.expense.findMany({
-      where: { OR: [{ createdBy: user.id }, { voidRequestedBy: user.id }], status: { in: ["approved", "rejected", "voided"] }, updatedAt: { gte: new Date(Date.now() - 30 * 86_400_000) } },
-      include: { approver: { select: { name: true } } },
-      orderBy: { updatedAt: "desc" },
-      take: 10,
-    }), []),
   ]);
 
   for (const notification of storedNotifications) {
+    // Announcement visibility is governed by AnnouncementUserRead below.
+    if (notification.type === "announcement" || notification.sourceType === "announcement") continue;
+
     notifications.push({
       id: `notification-${notification.id}`,
       sourceId: notification.id,
@@ -155,107 +128,6 @@ export async function getAdminNotifications() {
       createdAt: announcement.createdAt.toISOString(),
       readAt: null,
       link: workspaceUser ? "/admin/announcements" : "/admin/dashboard",
-    });
-  }
-
-  const submittedFormIds = new Set(userFormSubmissions.map((submission) => submission.formId));
-  for (const form of activeForms) {
-    if (!isPublishedForm(form.settings) || submittedFormIds.has(form.id)) continue;
-
-    notifications.push({
-      id: `form-${form.id}`,
-      sourceId: form.id,
-      type: "form",
-      title: "Form to Complete",
-      message: form.title,
-      createdAt: form.createdAt.toISOString(),
-      readAt: null,
-      link: `/admin/intercession/forms/${form.id}/take`,
-    });
-  }
-
-  if (superAdmin) {
-    const [pendingUsers, permissionRequests] = await Promise.all([
-      prisma.user.findMany({
-        where: { status: "pending", createdById: null, emailVerifiedAt: null },
-        orderBy: { createdAt: "desc" },
-        take: 10,
-      }),
-      prisma.permissionRequest.findMany({
-        where: { status: "pending" },
-        include: { user: { select: { name: true } } },
-        orderBy: { createdAt: "desc" },
-        take: 10,
-      }),
-    ]);
-
-    for (const pendingUser of pendingUsers) {
-      notifications.push({
-        id: `pending_user-${pendingUser.id}`,
-        sourceId: pendingUser.id,
-        type: "pending_user",
-        title: "New User Registration",
-        message: `${pendingUser.name} (${pendingUser.email}) needs approval`,
-        createdAt: pendingUser.createdAt.toISOString(),
-        readAt: null,
-        link: "/admin/users?status=pending",
-      });
-    }
-
-    for (const permission of permissionRequests) {
-      notifications.push({
-        id: `permission-${permission.id}`,
-        sourceId: permission.id,
-        type: "permission",
-        title: "Permission Request",
-        message: `${permission.user.name} requested permission (${permission.type})`,
-        createdAt: permission.createdAt.toISOString(),
-        readAt: null,
-        link: "/admin/discipline?tab=permission&status=pending",
-      });
-    }
-  }
-
-  for (const task of assignedTasks) {
-    notifications.push({
-      id: `task-${task.id}`,
-      sourceId: task.id,
-      type: "task",
-      title: "Pending Task",
-      message: task.taskName,
-      createdAt: task.createdAt.toISOString(),
-      readAt: null,
-      link: "/admin/social-fellowship?tab=tasks",
-    });
-  }
-
-  for (const expense of expenses) {
-    notifications.push({
-      id: `expense_approval-${expense.id}`,
-      sourceId: expense.id,
-      type: "expense_approval",
-      title: expense.status === "void_pending" ? "Expense Void Approval Required" : "Expense Approval Required",
-      message: expense.status === "void_pending"
-        ? `A void request for RWF ${expense.amount.toString()} needs your approval`
-        : `${expense.creator?.name ?? "A member"} submitted an expense of RWF ${expense.amount.toString()}`,
-      createdAt: expense.createdAt.toISOString(),
-      readAt: null,
-      link: "/admin/finance/approvals",
-    });
-  }
-
-  for (const expense of expenseDecisions) {
-    const voidRejected = expense.status === "approved" && expense.rejectionReason?.startsWith("Void request rejected:");
-    const decisionTitle = expense.status === "voided" ? "Expense Void Approved" : voidRejected ? "Expense Void Rejected" : expense.status === "approved" ? "Expense Approved" : "Expense Rejected";
-    notifications.push({
-      id: `expense_status-${expense.id}-${expense.status}`,
-      sourceId: expense.id,
-      type: "expense_status",
-      title: decisionTitle,
-      message: `${expense.approver?.name ?? "The approver"} ${expense.status === "voided" ? "approved voiding" : voidRejected ? "rejected voiding" : expense.status} the expense of RWF ${expense.amount.toString()}${expense.rejectionReason ? `: ${expense.rejectionReason}` : "."}`,
-      createdAt: expense.updatedAt.toISOString(),
-      readAt: null,
-      link: "/admin/finance?tab=expenses",
     });
   }
 

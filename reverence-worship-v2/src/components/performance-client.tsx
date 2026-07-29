@@ -67,16 +67,16 @@ export function PerformanceClient({ year, fromDate, toDate, rangeLabel, metrics,
           <h1 className="text-xl font-bold text-gray-900">My Performance</h1>
 
         </div>
-        <form method="get" className="flex flex-col gap-2 sm:flex-row sm:items-end">
-          <label className="block">
+        <form method="get" className="grid grid-cols-2 gap-2 sm:flex sm:items-end">
+          <label className="block min-w-0">
             <span className="mb-1 block text-xs font-medium text-gray-600">From</span>
-            <input name="from" type="date" min={`${year}-01-01`} max={`${year}-12-31`} defaultValue={fromDate} className="h-9 rounded-lg border border-gray-300 bg-white px-2 text-xs text-gray-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+            <input name="from" type="date" min={`${year}-01-01`} max={`${year}-12-31`} defaultValue={fromDate} className="h-9 w-full min-w-0 rounded-lg border border-gray-300 bg-white px-2 text-xs text-gray-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
           </label>
-          <label className="block">
+          <label className="block min-w-0">
             <span className="mb-1 block text-xs font-medium text-gray-600">To</span>
-            <input name="to" type="date" min={`${year}-01-01`} max={`${year}-12-31`} defaultValue={toDate} className="h-9 rounded-lg border border-gray-300 bg-white px-2 text-xs text-gray-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+            <input name="to" type="date" min={`${year}-01-01`} max={`${year}-12-31`} defaultValue={toDate} className="h-9 w-full min-w-0 rounded-lg border border-gray-300 bg-white px-2 text-xs text-gray-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
           </label>
-          <button type="submit" className="h-9 rounded-lg bg-blue-600 px-4 text-xs font-semibold text-white transition hover:bg-blue-700">Apply</button>
+          <button type="submit" className="col-span-2 h-9 rounded-lg bg-blue-600 px-4 text-xs font-semibold text-white transition hover:bg-blue-700">Apply</button>
         </form>
       </div>
 
@@ -138,7 +138,7 @@ export function PerformanceSummaryCards({
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {cardMeta.map((card) => {
         const tone = performanceTone(metrics[card.type].rate);
-        const className = `min-h-[160px] rounded-xl border bg-white p-4 text-left shadow-sm transition hover:shadow-md ${tone.hover} ${activeType === card.type ? "border-blue-400 ring-2 ring-blue-100" : "border-gray-200"}`;
+        const className = `rounded-xl border bg-white p-4 text-left shadow-sm transition hover:shadow-md ${tone.hover} ${activeType === card.type ? "border-blue-400 ring-2 ring-blue-100" : "border-gray-200"}`;
         const content = (
           <>
             <div className="flex items-center justify-between">

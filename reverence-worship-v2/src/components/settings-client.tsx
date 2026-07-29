@@ -16,6 +16,10 @@ import {
   MAX_SESSION_LIFETIME_MINUTES,
   MIN_SESSION_LIFETIME_MINUTES,
 } from "@/lib/session-policy";
+import {
+  MAX_NOTIFICATION_RETENTION_DAYS,
+  MIN_NOTIFICATION_RETENTION_DAYS,
+} from "@/lib/notification-retention-policy";
 
 export type SettingsValues = {
   registrationEnabled: boolean;
@@ -33,6 +37,7 @@ export type SettingsValues = {
     taskEnabled: boolean;
     financeEnabled: boolean;
     systemEnabled: boolean;
+    retentionDays: number;
   };
   emailInfrastructure: {
     configured: boolean;
@@ -249,6 +254,19 @@ export function SettingsClient({ values }: { values: SettingsValues }) {
                     <CheckField name="notification_finance_enabled" label="Finance" note="Expense approvals, payments, contributions." defaultChecked={values.notifications.financeEnabled} />
                     <CheckField name="notification_system_enabled" label="System alerts" note="System health and delivery failure alerts." defaultChecked={values.notifications.systemEnabled} />
                   </div>
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-white p-4">
+                  <Field label="Read notification retention (days)" note="Read notifications older than this are deleted automatically. Expired announcements are archived separately.">
+                    <input
+                      name="notification_retention_days"
+                      type="number"
+                      min={MIN_NOTIFICATION_RETENTION_DAYS}
+                      max={MAX_NOTIFICATION_RETENTION_DAYS}
+                      required
+                      defaultValue={values.notifications.retentionDays}
+                      className={inputClass}
+                    />
+                  </Field>
                 </div>
               </div>
               <ImpactCard

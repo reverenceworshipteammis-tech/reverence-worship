@@ -3,6 +3,7 @@ import { requirePageAccess } from "@/lib/auth";
 import { getEmailConfiguration } from "@/lib/email-config";
 import { prisma } from "@/lib/prisma";
 import { normalizeSessionLifetimeMinutes } from "@/lib/session-policy";
+import { normalizeNotificationRetentionDays } from "@/lib/notification-retention-policy";
 
 function boolValue(value: unknown, fallback = false) {
   if (typeof value === "boolean") return value;
@@ -45,6 +46,7 @@ export default async function SettingsPage() {
       taskEnabled: boolValue(settings.get("notification_task_enabled"), true),
       financeEnabled: boolValue(settings.get("notification_finance_enabled"), true),
       systemEnabled: boolValue(settings.get("notification_system_enabled"), true),
+      retentionDays: normalizeNotificationRetentionDays(settings.get("notification_retention_days")),
     },
     emailInfrastructure: {
       configured: emailConfiguration.configured,

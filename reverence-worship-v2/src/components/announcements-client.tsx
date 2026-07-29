@@ -1,13 +1,14 @@
 "use client";
 
-import { FormEvent, useMemo, useState, useTransition } from "react";
+import { FormEvent, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useAppDialog } from "@/components/app-dialog-provider";
-import { CheckCircle2, Eye, MailCheck, Megaphone, Pencil, Plus, RefreshCw, Search, Send, Trash2, X } from "lucide-react";
+import { ADMIN_NOTIFICATIONS_CHANGED_EVENT } from "@/lib/admin-notification-events";
+import { BarChart3, CheckCircle2, Eye, MailCheck, Megaphone, Pencil, Plus, RefreshCw, Search, Send, Trash2, Upload, X } from "lucide-react";
 import {
   deleteAnnouncement,
-  markAnnouncementSent,
   saveAnnouncement,
+  sendAnnouncementEmail,
   toggleAnnouncementStatus,
 } from "@/app/admin/announcements/actions";
 
@@ -38,6 +39,20 @@ type Announcement = {
   targetUsers: number[];
   recipientLabel: string;
   recipientCount: number;
+  deliveredCount: number;
+  readCount: number;
+  readRate: number;
+  readers: Array<{
+    id: number;
+    name: string;
+    email: string;
+    readAt: string;
+  }>;
+  unreadRecipients: Array<{
+    id: number;
+    name: string;
+    email: string;
+  }>;
   emailSent: boolean;
   createdByName: string;
   publishedByName: string | null;
@@ -51,13 +66,11 @@ type Result = {
 };
 
 export function AnnouncementsClient({
-  stats,
   announcements,
   roles,
   users,
   readOnly,
 }: {
-  stats: { total: number; active: number; scheduled: number; draft: number; expired: number };
   announcements: Announcement[];
   roles: RoleOption[];
   users: UserOption[];
@@ -67,14 +80,21 @@ export function AnnouncementsClient({
   const { confirm } = useAppDialog();
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [modal, setModal] = useState<"compose" | "edit" | "view" | null>(null);
+  const [modal, setModal] = useState<"compose" | "edit" | "view" | "analytics" | null>(null);
   const [selected, setSelected] = useState<Announcement | null>(null);
+  const [analyticsAudience, setAnalyticsAudience] = useState<"read" | "unread">("read");
   const [targetType, setTargetType] = useState<"all" | "roles" | "users">("all");
   const [selectedRoles, setSelectedRoles] = useState<number[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<number[]>([]);
   const [userSearch, setUserSearch] = useState("");
   const [result, setResult] = useState<Result | null>(null);
   const [pending, startTransition] = useTransition();
+
+  useEffect(() => {
+    if (!result?.ok) return;
+    const timeout = window.setTimeout(() => setResult(null), 5_000);
+    return () => window.clearTimeout(timeout);
+  }, [result]);
 
   const filteredAnnouncements = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -135,6 +155,7 @@ export function AnnouncementsClient({
       if (response.ok) {
         closeModal();
         router.refresh();
+        window.dispatchEvent(new Event(ADMIN_NOTIFICATIONS_CHANGED_EVENT));
       }
     });
   }
@@ -144,7 +165,10 @@ export function AnnouncementsClient({
     startTransition(async () => {
       const response = await action();
       setResult(response);
-      if (response.ok) router.refresh();
+      if (response.ok) {
+        router.refresh();
+        window.dispatchEvent(new Event(ADMIN_NOTIFICATIONS_CHANGED_EVENT));
+      }
     });
   }
 
@@ -175,12 +199,18 @@ export function AnnouncementsClient({
       </div>
 
       {result && (
-        <div className={`rounded-lg border px-4 py-3 text-sm ${result.ok ? "border-green-100 bg-green-50 text-green-700" : "border-red-100 bg-red-50 text-red-700"}`}>
-          {result.message}
+        <div className={`flex items-center justify-between gap-3 rounded-lg border px-4 py-3 text-sm ${result.ok ? "border-green-100 bg-green-50 text-green-700" : "border-red-100 bg-red-50 text-red-700"}`} role={result.ok ? "status" : "alert"}>
+          <span>{result.message}</span>
+          <button
+            type="button"
+            onClick={() => setResult(null)}
+            className="shrink-0 rounded p-1 transition hover:bg-black/5"
+            aria-label="Dismiss message"
+          >
+            <X className="size-4" aria-hidden="true" />
+          </button>
         </div>
       )}
-
-    
 
       <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
@@ -199,6 +229,7 @@ export function AnnouncementsClient({
               <option value="active">Active</option>
               <option value="scheduled">Scheduled</option>
               <option value="draft">Draft</option>
+              <option value="archived">Archived</option>
             </select>
             <button type="button" onClick={() => router.refresh()} className="inline-flex h-10 items-center justify-center rounded-lg border border-gray-200 px-3 text-gray-500 hover:bg-gray-50" title="Refresh">
               <RefreshCw className="size-4" />
@@ -212,36 +243,68 @@ export function AnnouncementsClient({
               <button type="button" onClick={() => { setSelected(announcement); setModal("view"); }} className="min-w-0 flex-1 text-left">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className={`rounded-full px-2 py-1 text-xs font-semibold capitalize ${statusBadge(announcement.status)}`}>{announcement.status}</span>
-                  {announcement.emailSent && <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-1 text-xs font-semibold text-green-700"><CheckCircle2 className="size-3" /> Sent</span>}
+                  {announcement.emailSent && <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-1 text-xs font-semibold text-green-700"><CheckCircle2 className="size-3" /> Email sent</span>}
                   <span className="text-xs text-gray-400">To: {announcement.recipientLabel}</span>
                 </div>
                 <h3 className="mt-2 truncate text-sm font-semibold text-gray-900">{announcement.title}</h3>
                 <p className="mt-1 line-clamp-2 text-sm text-gray-500">{announcement.content}</p>
                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400">
                   <span>{announcement.recipientCount} recipient(s)</span>
+                  {!readOnly ? <span>{announcement.deliveredCount} delivered</span> : null}
+                  {!readOnly ? <span>{announcement.readCount} read ({announcement.readRate}%)</span> : null}
                   <span>Created: {announcement.createdAt}</span>
                   <span>By {announcement.createdByName}</span>
                   {announcement.publishedAt !== "-" && <span>Published: {announcement.publishedAt}</span>}
                 </div>
               </button>
-              <div className="flex flex-wrap gap-2 lg:opacity-0 lg:transition lg:group-hover:opacity-100">
-                <button type="button" onClick={() => { setSelected(announcement); setModal("view"); }} className="rounded-lg border border-gray-200 px-3 py-2 text-gray-600 hover:bg-white" title="View">
-                  <Eye className="size-4" />
-                </button>
-                {!readOnly && <><button type="button" onClick={() => openEdit(announcement)} className="rounded-lg border border-gray-200 px-3 py-2 text-blue-600 hover:bg-blue-50" title="Edit">
-                  <Pencil className="size-4" />
-                </button>
-                <button type="button" onClick={() => runAction(() => toggleAnnouncementStatus(announcement.id))} disabled={pending} className="rounded-lg border border-gray-200 px-3 py-2 text-indigo-600 hover:bg-indigo-50" title={announcement.status === "active" ? "Move to draft" : "Publish"}>
-                  <Send className="size-4" />
-                </button>
-                {!announcement.emailSent && (
-                  <button type="button" onClick={() => runAction(() => markAnnouncementSent(announcement.id))} disabled={pending} className="rounded-lg border border-green-100 bg-green-50 px-3 py-2 text-green-700 hover:bg-green-100" title="Mark sent">
-                    <MailCheck className="size-4" />
+              <div className="flex shrink-0 flex-col gap-2 lg:items-end">
+                {!readOnly ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelected(announcement);
+                      setAnalyticsAudience("read");
+                      setModal("analytics");
+                    }}
+                    className="flex w-full items-center gap-3 rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2 text-left transition hover:border-blue-200 hover:bg-blue-50 lg:w-[270px]"
+                    title="View announcement analytics"
+                  >
+                    <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-white text-blue-700 shadow-sm">
+                      <BarChart3 className="size-4" aria-hidden="true" />
+                    </span>
+                    <span className="grid min-w-0 flex-1 grid-cols-3 divide-x divide-blue-100">
+                      <span className="px-2 first:pl-0"><strong className="block text-sm text-slate-900">{announcement.deliveredCount}</strong><small className="text-[10px] text-slate-500">Delivered</small></span>
+                      <span className="px-2"><strong className="block text-sm text-slate-900">{announcement.readCount}</strong><small className="text-[10px] text-slate-500">Read</small></span>
+                      <span className="px-2 pr-0"><strong className="block text-sm text-blue-700">{announcement.readRate}%</strong><small className="text-[10px] text-slate-500">Rate</small></span>
+                    </span>
                   </button>
-                )}
-                <button type="button" onClick={() => removeAnnouncement(announcement)} disabled={pending} className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-red-600 hover:bg-red-100" title="Delete">
-                  <Trash2 className="size-4" />
-                </button></>}
+                ) : null}
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => { setSelected(announcement); setModal("view"); }} className="rounded-lg border border-gray-200 px-3 py-2 text-gray-600 hover:bg-white" title="View">
+                    <Eye className="size-4" />
+                  </button>
+                  {!readOnly && <><button type="button" onClick={() => openEdit(announcement)} className="rounded-lg border border-gray-200 px-3 py-2 text-blue-600 hover:bg-blue-50" title="Edit">
+                    <Pencil className="size-4" />
+                  </button>
+                  <button type="button" onClick={() => runAction(() => toggleAnnouncementStatus(announcement.id))} disabled={pending} className="rounded-lg border border-gray-200 px-3 py-2 text-indigo-600 hover:bg-indigo-50" title={announcement.status === "active" ? "Unpublish" : "Publish"} aria-label={announcement.status === "active" ? "Unpublish announcement" : "Publish announcement"}>
+                    {announcement.status === "active" ? (
+                      <span className="relative inline-flex size-4">
+                        <Upload className="size-4" />
+                        <span className="absolute left-1/2 top-1/2 h-0.5 w-5 -translate-x-1/2 -translate-y-1/2 rotate-45 rounded-full bg-current shadow-[0_0_0_1px_white]" aria-hidden="true" />
+                      </span>
+                    ) : (
+                      <Upload className="size-4" />
+                    )}
+                  </button>
+                  {announcement.status === "active" && !announcement.emailSent && (
+                    <button type="button" onClick={() => runAction(() => sendAnnouncementEmail(announcement.id))} disabled={pending} className="rounded-lg border border-green-100 bg-green-50 px-3 py-2 text-green-700 hover:bg-green-100" title="Send email" aria-label="Send announcement by email">
+                      <MailCheck className="size-4" />
+                    </button>
+                  )}
+                  <button type="button" onClick={() => removeAnnouncement(announcement)} disabled={pending} className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-red-600 hover:bg-red-100" title="Delete">
+                    <Trash2 className="size-4" />
+                  </button></>}
+                </div>
               </div>
             </article>
           )) : (
@@ -356,6 +419,7 @@ export function AnnouncementsClient({
                       <option value="active">Active</option>
                       <option value="scheduled">Scheduled</option>
                       <option value="draft">Draft</option>
+                      <option value="archived">Archived</option>
                     </select>
                   </label>
                   <label className="space-y-1">
@@ -404,8 +468,15 @@ export function AnnouncementsClient({
               <div className="mb-4 flex flex-wrap gap-2">
                 <span className={`rounded-full px-2 py-1 text-xs font-semibold capitalize ${statusBadge(selected.status)}`}>{selected.status}</span>
                 <span className="rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-600">{selected.recipientCount} recipient(s)</span>
-                {selected.emailSent && <span className="rounded-full bg-green-50 px-2 py-1 text-xs font-semibold text-green-700">Sent</span>}
+                {selected.emailSent && <span className="rounded-full bg-green-50 px-2 py-1 text-xs font-semibold text-green-700">Email sent</span>}
               </div>
+              {!readOnly ? (
+                <div className="mb-4 grid grid-cols-3 gap-2 rounded-xl border border-blue-100 bg-blue-50/60 p-3 text-center">
+                  <div><p className="text-lg font-bold text-slate-900">{selected.deliveredCount}</p><p className="text-[11px] text-slate-500">Delivered</p></div>
+                  <div><p className="text-lg font-bold text-slate-900">{selected.readCount}</p><p className="text-[11px] text-slate-500">Read</p></div>
+                  <div><p className="text-lg font-bold text-blue-700">{selected.readRate}%</p><p className="text-[11px] text-slate-500">Read rate</p></div>
+                </div>
+              ) : null}
               <p className="whitespace-pre-wrap text-sm leading-7 text-gray-700">{selected.content}</p>
             </div>
             <div className="flex flex-col-reverse gap-2 border-t px-5 py-4 sm:flex-row sm:justify-end">
@@ -415,22 +486,125 @@ export function AnnouncementsClient({
           </div>
         </div>
       )}
-    </div>
-  );
-}
 
-function StatCard({ label, value, tone = "gray" }: { label: string; value: number; tone?: "gray" | "green" | "blue" | "amber" | "rose" }) {
-  const tones = {
-    gray: "bg-gray-50 text-gray-800",
-    green: "bg-green-50 text-green-700",
-    blue: "bg-blue-50 text-blue-700",
-    amber: "bg-amber-50 text-amber-700",
-    rose: "bg-rose-50 text-rose-700",
-  };
-  return (
-    <div className={`rounded-lg border border-gray-100 p-4 shadow-sm ${tones[tone]}`}>
-      <p className="text-xs font-semibold uppercase text-gray-500">{label}</p>
-      <p className="mt-1 text-2xl font-bold">{value}</p>
+      {modal === "analytics" && selected && (
+        <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-900/40 p-3">
+          <div className="max-h-[92vh] w-full max-w-2xl overflow-hidden rounded-xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-3 border-b px-5 py-4">
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-700">
+                  <BarChart3 className="size-5" aria-hidden="true" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Announcement analytics</p>
+                  <h3 className="mt-1 truncate text-lg font-semibold text-gray-900">{selected.title}</h3>
+                  <p className="mt-0.5 text-xs text-gray-500">{selected.recipientLabel} · {selected.recipientCount} recipient(s)</p>
+                </div>
+              </div>
+              <button type="button" onClick={closeModal} className="shrink-0 text-gray-400 hover:text-gray-600" aria-label="Close analytics">
+                <X className="size-5" />
+              </button>
+            </div>
+
+            <div className="max-h-[calc(92vh-145px)] overflow-y-auto p-5">
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3 text-center">
+                  <p className="text-xl font-bold text-slate-900">{selected.deliveredCount}</p>
+                  <p className="text-[11px] font-medium text-slate-500">In-app delivered</p>
+                </div>
+                <div className="rounded-xl border border-amber-100 bg-amber-50/60 p-3 text-center">
+                  <p className="text-xl font-bold text-slate-900">{selected.readCount}</p>
+                  <p className="text-[11px] font-medium text-slate-500">Users who read</p>
+                </div>
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3 text-center">
+                  <p className="text-xl font-bold text-emerald-700">{selected.readRate}%</p>
+                  <p className="text-[11px] font-medium text-slate-500">Read rate</p>
+                </div>
+              </div>
+
+              <div className="mt-5">
+                <div className="mb-4 grid grid-cols-2 rounded-xl bg-slate-100 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setAnalyticsAudience("read")}
+                    className={`rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                      analyticsAudience === "read"
+                        ? "bg-white text-blue-700 shadow-sm"
+                        : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    Read ({selected.readers.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAnalyticsAudience("unread")}
+                    className={`rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                      analyticsAudience === "unread"
+                        ? "bg-white text-amber-700 shadow-sm"
+                        : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    Delivered, not yet read ({selected.unreadRecipients.length})
+                  </button>
+                </div>
+
+                {analyticsAudience === "read" ? (
+                  selected.readers.length > 0 ? (
+                    <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200">
+                      {selected.readers.map((reader) => (
+                        <div key={reader.id} className="flex items-center gap-3 px-3 py-3">
+                          <span className="grid size-9 shrink-0 place-items-center rounded-full bg-slate-100 text-xs font-bold uppercase text-slate-600">
+                            {reader.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("")}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-semibold text-slate-900">{reader.name}</span>
+                            <span className="block truncate text-xs text-slate-500">{reader.email}</span>
+                          </span>
+                          <span className="shrink-0 text-right text-[11px] text-slate-400">
+                            <span className="block font-medium text-emerald-700">Read</span>
+                            {reader.readAt}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center">
+                      <Eye className="mx-auto mb-2 size-7 text-slate-300" aria-hidden="true" />
+                      <p className="text-sm font-medium text-slate-600">No recipients have read this announcement yet.</p>
+                    </div>
+                  )
+                ) : selected.unreadRecipients.length > 0 ? (
+                  <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200">
+                    {selected.unreadRecipients.map((recipient) => (
+                      <div key={recipient.id} className="flex items-center gap-3 px-3 py-3">
+                        <span className="grid size-9 shrink-0 place-items-center rounded-full bg-amber-50 text-xs font-bold uppercase text-amber-700">
+                          {recipient.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("")}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-semibold text-slate-900">{recipient.name}</span>
+                          <span className="block truncate text-xs text-slate-500">{recipient.email}</span>
+                        </span>
+                        <span className="shrink-0 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                          Not read
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-emerald-200 bg-emerald-50/50 px-4 py-8 text-center">
+                    <CheckCircle2 className="mx-auto mb-2 size-7 text-emerald-500" aria-hidden="true" />
+                    <p className="text-sm font-medium text-emerald-800">Everyone who received this announcement has read it.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex justify-end border-t bg-slate-50 px-5 py-4">
+              <button type="button" onClick={closeModal} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -440,5 +614,6 @@ function statusBadge(status: string) {
   if (status === "scheduled") return "bg-blue-100 text-blue-700";
   if (status === "draft") return "bg-yellow-100 text-yellow-700";
   if (status === "expired") return "bg-red-100 text-red-700";
+  if (status === "archived") return "bg-slate-100 text-slate-600";
   return "bg-gray-100 text-gray-700";
 }

@@ -17,6 +17,7 @@ type NotifyUsersInput = {
   dedupeKey?: string;
   emailSubject?: string;
   emailText?: string;
+  sendInApp?: boolean;
   sendEmail?: boolean;
 };
 
@@ -143,7 +144,7 @@ export async function notifyUsers(input: NotifyUsersInput) {
     const dedupeKey = input.dedupeKey ? `${input.dedupeKey}:user:${user.id}` : null;
     let notification: { id: number } | null = null;
 
-    if (settings.inAppEnabled) {
+    if (settings.inAppEnabled && input.sendInApp !== false) {
       const data = {
         userId: user.id,
         type: input.type,

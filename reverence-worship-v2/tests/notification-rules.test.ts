@@ -2,6 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { getEmailConfiguration } from "../src/lib/email-config";
 import { notificationCategory } from "../src/lib/notification-rules";
+import {
+  DEFAULT_NOTIFICATION_RETENTION_DAYS,
+  MAX_NOTIFICATION_RETENTION_DAYS,
+  MIN_NOTIFICATION_RETENTION_DAYS,
+  normalizeNotificationRetentionDays,
+} from "../src/lib/notification-retention-policy";
 
 test("SMTP host and sender are required", () => {
   const configuration = getEmailConfiguration({});
@@ -58,4 +64,11 @@ test("finance-related notification types use the finance category", () => {
   for (const type of ["expense", "expense_approval", "expense_status", "finance", "contribution", "payment"]) {
     assert.equal(notificationCategory(type), "finance");
   }
+});
+
+test("notification retention stays within the supported range", () => {
+  assert.equal(normalizeNotificationRetentionDays(undefined), DEFAULT_NOTIFICATION_RETENTION_DAYS);
+  assert.equal(normalizeNotificationRetentionDays(1), MIN_NOTIFICATION_RETENTION_DAYS);
+  assert.equal(normalizeNotificationRetentionDays(120), 120);
+  assert.equal(normalizeNotificationRetentionDays(99999), MAX_NOTIFICATION_RETENTION_DAYS);
 });

@@ -100,6 +100,22 @@ function announcementIsForUser(
 }
 
 function bulletinDate(date: Date) {
+  const dayKey = (value: Date) => {
+    const parts = new Intl.DateTimeFormat("en", {
+      timeZone: "Africa/Kigali",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(value);
+    const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? "";
+    return `${part("year")}-${part("month")}-${part("day")}`;
+  };
+  const now = new Date();
+  const elapsedMinutes = Math.max(0, Math.floor((now.getTime() - date.getTime()) / 60_000));
+  if (elapsedMinutes < 1) return "Just now";
+  if (elapsedMinutes < 60) return `${elapsedMinutes}m ago`;
+  if (dayKey(date) === dayKey(now)) return `${Math.floor(elapsedMinutes / 60)}h ago`;
+  if (dayKey(date) === dayKey(new Date(now.getTime() - 86_400_000))) return "Yesterday";
   return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(date);
 }
 
@@ -123,6 +139,11 @@ async function getDashboardBulletins(userId: number, roleIds: number[], roleName
         targetUsers: true,
         publishedAt: true,
         createdAt: true,
+        reads: {
+          where: { userId },
+          select: { readAt: true },
+          take: 1,
+        },
       },
     }),
     prisma.notification.findMany({
@@ -142,7 +163,10 @@ async function getDashboardBulletins(userId: number, roleIds: number[], roleName
   ]));
 
   const announcementItems: Array<DashboardBulletin & { sortDate: Date }> = announcements
-    .filter((announcement) => announcementIsForUser(announcement, userId, roleIds, roleNames))
+    .filter((announcement) =>
+      announcement.reads.length === 0 &&
+      announcementIsForUser(announcement, userId, roleIds, roleNames),
+    )
     .map((announcement) => {
       const sortDate = announcement.publishedAt ?? announcement.createdAt;
       return {
@@ -153,12 +177,13 @@ async function getDashboardBulletins(userId: number, roleIds: number[], roleName
         href: "/admin/announcements",
         dateLabel: bulletinDate(sortDate),
         urgent: ["urgent", "critical", "high"].includes(announcement.priority.toLowerCase()),
+        sourceId: announcement.id,
         sortDate,
       };
     });
 
   const notificationItems: Array<DashboardBulletin & { sortDate: Date }> = notifications
-    .filter((notification) => notification.sourceType !== "announcement")
+    .filter((notification) => notification.sourceType !== "announcement" && notification.type !== "announcement")
     .map((notification) => ({
       id: `notification-${notification.id}`,
       kind: "notification",
@@ -173,7 +198,7 @@ async function getDashboardBulletins(userId: number, roleIds: number[], roleName
 
   return [...announcementItems, ...notificationItems]
     .sort((a, b) => b.sortDate.getTime() - a.sortDate.getTime())
-    .slice(0, 10)
+    .slice(0, 5)
     .map((item) => ({
       id: item.id,
       kind: item.kind,
@@ -308,7 +333,7 @@ async function SuperAdminDashboard({ userId, userName, metrics, fromDate, toDate
 
       <DashboardPerformance metrics={metrics} fromDate={fromDate} toDate={toDate} />
       <ProbationMemberDashboardCard userId={userId} />
-      <ProbationTodoPanel userId={userId} />
+      <DashboardTodoPanel userId={userId} includeProbation />
 
       <Panel className="mb-4">
         <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2 2xl:grid-cols-4">
@@ -445,7 +470,7 @@ function RoleDashboard({
 
       <DashboardPerformance metrics={performanceMetrics} fromDate={fromDate} toDate={toDate} />
       <ProbationMemberDashboardCard userId={userId} />
-      {showProbationTodo ? <ProbationTodoPanel userId={userId} /> : null}
+      <DashboardTodoPanel userId={userId} includeProbation={showProbationTodo} />
 
       <QuickActions actions={personalQuickActions} />
     </div>
@@ -497,24 +522,109 @@ async function ProbationMemberDashboardCard({ userId }: { userId: number }) {
   );
 }
 
-async function ProbationTodoPanel({ userId }: { userId: number }) {
+function isPublishedForm(settings: unknown) {
+  if (!settings || typeof settings !== "object" || Array.isArray(settings)) return false;
+  return (settings as { is_published?: unknown }).is_published === true;
+}
+
+function formIsStillAvailable(settings: unknown, today: string) {
+  if (!isPublishedForm(settings)) return false;
+  const deadline = (settings as { submission_deadline?: unknown }).submission_deadline;
+  return typeof deadline !== "string" || !deadline || deadline >= today;
+}
+
+async function DashboardTodoPanel({ userId, includeProbation = false }: { userId: number; includeProbation?: boolean }) {
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
-  const [overdue, assignedDecisions] = await Promise.all([
-    prisma.probation.count({
+  const todayValue = today.toISOString().slice(0, 10);
+  const [forms, submissions, assignedTasks, expenseApprovals, permissionApprovals, overdueProbations, assignedDecisions] = await withDatabaseRetry(() => Promise.all([
+    prisma.spiritualForm.findMany({
+      where: { isActive: true },
+      select: { id: true, settings: true },
+    }),
+    prisma.formSubmission.findMany({
+      where: { userId },
+      select: { formId: true },
+    }),
+    prisma.actionPlanTask.count({
+      where: { assignedTo: userId, NOT: { status: "completed" }, progress: { lt: 100 } },
+    }),
+    prisma.expense.count({
+      where: {
+        status: { in: ["pending", "void_pending"] },
+        OR: [{ approverId1: userId }, { approverId2: userId }],
+      },
+    }),
+    includeProbation ? prisma.permissionRequest.count({ where: { status: "pending" } }) : Promise.resolve(0),
+    includeProbation ? prisma.probation.count({
       where: { state: { in: ["active", "extended"] }, currentExpectedEndDate: { lt: today } },
-    }),
-    prisma.probationDecisionRequest.count({
+    }) : Promise.resolve(0),
+    includeProbation ? prisma.probationDecisionRequest.count({
       where: { status: "pending", probation: { assignedAdminId: userId } },
-    }),
-  ]);
-  if (!overdue && !assignedDecisions) return null;
+    }) : Promise.resolve(0),
+  ]));
+
+  const submittedFormIds = new Set(submissions.map((submission) => submission.formId));
+  const incompleteForms = forms.filter((form) =>
+    !submittedFormIds.has(form.id) && formIsStillAvailable(form.settings, todayValue),
+  ).length;
+  const items: DashboardCard[] = [
+    ...(incompleteForms > 0 ? [{
+      label: "Forms to complete",
+      value: incompleteForms,
+      note: "Published forms awaiting your response",
+      href: "/admin/intercession?tab=forms",
+      icon: FileText,
+      color: "bg-violet-50 text-violet-700",
+    }] : []),
+    ...(assignedTasks > 0 ? [{
+      label: "Assigned tasks",
+      value: assignedTasks,
+      note: "Tasks that are not yet completed",
+      href: "/admin/social-fellowship?tab=tasks",
+      icon: CalendarClock,
+      color: "bg-sky-50 text-sky-700",
+    }] : []),
+    ...(expenseApprovals > 0 ? [{
+      label: "Expense approvals",
+      value: expenseApprovals,
+      note: "Expense decisions awaiting your review",
+      href: "/admin/finance/approvals",
+      icon: HandCoins,
+      color: "bg-emerald-50 text-emerald-700",
+    }] : []),
+    ...(permissionApprovals > 0 ? [{
+      label: "Permission approvals",
+      value: permissionApprovals,
+      note: "Member requests awaiting a decision",
+      href: "/admin/discipline?tab=permission&status=pending",
+      icon: Shield,
+      color: "bg-blue-50 text-blue-700",
+    }] : []),
+    ...(overdueProbations > 0 ? [{
+      label: "Overdue probation reviews",
+      value: overdueProbations,
+      note: "Open records past their expected end date",
+      href: "/admin/probation?status=overdue",
+      icon: TriangleAlert,
+      color: "bg-rose-50 text-rose-700",
+    }] : []),
+    ...(assignedDecisions > 0 ? [{
+      label: "Decisions assigned to me",
+      value: assignedDecisions,
+      note: "Completion or termination requests awaiting approval",
+      href: "/admin/probation",
+      icon: CalendarClock,
+      color: "bg-amber-50 text-amber-700",
+    }] : []),
+  ];
+
+  if (!items.length) return null;
   return (
     <Panel className="mb-4">
       <PanelHeader title="My To Do" />
-      <div className="grid gap-3 p-4 sm:grid-cols-2">
-        <AttentionItem item={{ label: "Overdue probation reviews", value: overdue, note: "Open records past their expected end date", href: "/admin/probation?status=overdue", icon: TriangleAlert, color: "bg-rose-50 text-rose-700" }} />
-        <AttentionItem item={{ label: "Decisions assigned to me", value: assignedDecisions, note: "Completion or termination requests awaiting approval", href: "/admin/probation", icon: CalendarClock, color: "bg-violet-50 text-violet-700" }} />
+      <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+        {items.map((item) => <AttentionItem key={item.label} item={item} />)}
       </div>
     </Panel>
   );
