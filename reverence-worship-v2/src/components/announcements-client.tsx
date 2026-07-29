@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useAppDialog } from "@/components/app-dialog-provider";
 import { ADMIN_NOTIFICATIONS_CHANGED_EVENT } from "@/lib/admin-notification-events";
-import { BarChart3, CheckCircle2, Eye, MailCheck, Megaphone, Pencil, Plus, RefreshCw, Search, Send, Trash2, Upload, X } from "lucide-react";
+import { BarChart3, CheckCircle2, ChevronLeft, ChevronRight, Eye, MailCheck, Megaphone, Pencil, Plus, RefreshCw, Search, Send, Trash2, Upload, X } from "lucide-react";
 import {
   deleteAnnouncement,
   saveAnnouncement,
@@ -65,6 +65,8 @@ type Result = {
   message: string;
 };
 
+const ANNOUNCEMENTS_PER_PAGE = 5;
+
 export function AnnouncementsClient({
   announcements,
   roles,
@@ -80,6 +82,7 @@ export function AnnouncementsClient({
   const { confirm } = useAppDialog();
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [page, setPage] = useState(1);
   const [modal, setModal] = useState<"compose" | "edit" | "view" | "analytics" | null>(null);
   const [selected, setSelected] = useState<Announcement | null>(null);
   const [analyticsAudience, setAnalyticsAudience] = useState<"read" | "unread">("read");
@@ -104,6 +107,10 @@ export function AnnouncementsClient({
       return matchesSearch && matchesStatus;
     });
   }, [announcements, query, statusFilter]);
+  const totalPages = Math.max(1, Math.ceil(filteredAnnouncements.length / ANNOUNCEMENTS_PER_PAGE));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * ANNOUNCEMENTS_PER_PAGE;
+  const visibleAnnouncements = filteredAnnouncements.slice(pageStart, pageStart + ANNOUNCEMENTS_PER_PAGE);
 
   const filteredUsers = useMemo(() => {
     const needle = userSearch.trim().toLowerCase();
@@ -217,14 +224,14 @@ export function AnnouncementsClient({
           <div className="flex items-center gap-3">
             <Megaphone className="size-5 text-blue-600" />
             <h2 className="text-lg font-semibold text-gray-800">Sent Messages</h2>
-            <span className="text-sm text-gray-500">({filteredAnnouncements.length} messages)</span>
+            <span className="text-sm text-gray-500">({filteredAnnouncements.length} message{filteredAnnouncements.length === 1 ? "" : "s"})</span>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
-              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search messages..." className="h-10 w-full rounded-lg border border-gray-300 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:w-72" />
+              <input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Search messages..." className="h-10 w-full rounded-lg border border-gray-300 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:w-72" />
             </div>
-            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
+            <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }} className="h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
               <option value="all">All Statuses</option>
               <option value="active">Active</option>
               <option value="scheduled">Scheduled</option>
@@ -238,7 +245,7 @@ export function AnnouncementsClient({
         </div>
 
         <div className="divide-y divide-gray-100">
-          {filteredAnnouncements.length ? filteredAnnouncements.map((announcement) => (
+          {visibleAnnouncements.length ? visibleAnnouncements.map((announcement) => (
             <article key={announcement.id} className="group flex flex-col gap-3 px-4 py-4 transition hover:bg-gray-50 lg:flex-row lg:items-center lg:justify-between">
               <button type="button" onClick={() => { setSelected(announcement); setModal("view"); }} className="min-w-0 flex-1 text-left">
                 <div className="flex flex-wrap items-center gap-2">
@@ -315,6 +322,36 @@ export function AnnouncementsClient({
             </div>
           )}
         </div>
+        {filteredAnnouncements.length > ANNOUNCEMENTS_PER_PAGE ? (
+          <div className="flex flex-col gap-3 border-t border-gray-100 bg-gray-50/70 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-gray-500">
+              Showing {pageStart + 1}–{Math.min(pageStart + ANNOUNCEMENTS_PER_PAGE, filteredAnnouncements.length)} of {filteredAnnouncements.length}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+                className="inline-flex size-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:border-blue-200 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+                aria-label="Previous announcements page"
+              >
+                <ChevronLeft className="size-4" aria-hidden="true" />
+              </button>
+              <span className="min-w-20 text-center font-medium text-gray-700">
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage === totalPages}
+                className="inline-flex size-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:border-blue-200 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+                aria-label="Next announcements page"
+              >
+                <ChevronRight className="size-4" aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+        ) : null}
       </section>
 
       {(modal === "compose" || modal === "edit") && (
