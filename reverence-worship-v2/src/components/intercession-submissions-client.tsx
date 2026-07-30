@@ -429,21 +429,6 @@ function ReviewSubmissionModal({
           </button>
         </div>
 
-        <div className="grid gap-3 border-b border-slate-100 bg-slate-50 p-4 sm:grid-cols-3">
-          <StatCard label="Answers" value={submission.answersCount} tone="blue" />
-          {form.isQuiz ? (
-            <StatCard
-              label="Marks"
-              value={submission.earnedPoints === null ? "Awaiting review" : `${submission.earnedPoints}/${submission.totalPoints}`}
-              tone="green"
-            />
-          ) : null}
-          <div className="rounded-lg border border-gray-100 bg-white p-4">
-            <p className="text-xs font-semibold uppercase text-gray-500">Result Status</p>
-            <div className="mt-2"><ResultStatus releaseGrade={form.releaseGrade} /></div>
-          </div>
-        </div>
-
         <div className="max-h-[65vh] overflow-y-auto p-4">
           <div className="space-y-3">
             {submission.answers.length ? (
@@ -451,9 +436,7 @@ function ReviewSubmissionModal({
                 <article key={`${answer.question}-${index}`} className="rounded-xl border border-slate-200 bg-white p-4">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                      <p className="text-xs font-semibold uppercase text-slate-400">Question {index + 1}</p>
-                      <h3 className="mt-1 font-semibold text-slate-900">{answer.question}</h3>
-                      <p className="mt-1 text-xs capitalize text-slate-400">{answer.type.replaceAll("_", " ")}</p>
+                      <h3 className="font-semibold text-slate-900">{answer.question}</h3>
                     </div>
                     {form.isQuiz ? (
                       <span className="w-fit rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
