@@ -9,7 +9,7 @@ import {
   ChevronDown,
   Download,
   Edit,
-  Eye,
+  FileSearch2,
   Layers,
   Lock,
   Plus,
@@ -539,7 +539,7 @@ function PermissionConfirmModal({
 }
 
 function FeatureIcon({ name }: { name: string }) {
-  if (name.startsWith("view") || name.startsWith("read")) return <Eye className="size-3.5" aria-hidden="true" />;
+  if (name.startsWith("view") || name.startsWith("read")) return <FileSearch2 className="size-3.5" aria-hidden="true" />;
   if (name.startsWith("create") || name.startsWith("submit") || name.startsWith("record") || name.startsWith("mark") || name.startsWith("manage")) return <PlusCircle className="size-3.5" aria-hidden="true" />;
   if (name.startsWith("edit") || name.startsWith("change") || name.startsWith("complete") || name.startsWith("resolve") || name.startsWith("publish")) return <Edit className="size-3.5" aria-hidden="true" />;
   if (name.startsWith("delete")) return <Trash2 className="size-3.5" aria-hidden="true" />;
@@ -557,4 +557,3 @@ function featureTone(name: string) {
   if (name.startsWith("export") || name.startsWith("import")) return "bg-purple-50 text-purple-600";
   return "bg-gray-50 text-gray-600";
 }
-

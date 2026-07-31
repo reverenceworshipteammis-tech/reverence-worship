@@ -12,7 +12,7 @@ import {
   ChartPie,
   ClipboardList,
   CreditCard,
-  Eye,
+  FileSearch2,
   FileSpreadsheet,
   FileText,
   FileUp,
@@ -129,6 +129,7 @@ type Expense = {
 };
 
 type FinancePermissions = {
+  manageSettings: boolean;
   manageExpenses: boolean;
   approveExpenses: boolean;
   deleteExpenses: boolean;
@@ -201,6 +202,7 @@ type FinanceTermSetting = {
   numberOfTerms: number;
   termNumbers: number[];
   termPercentages: Record<string, number>;
+  allowMemberCommitment: boolean;
 };
 
 type FinanceNotice = {
@@ -249,7 +251,7 @@ export function FinanceClient({
   const [endDate, setEndDate] = useState(`${year}-12-31`);
   const tabs = [
     { id: "overview", label: "Overview", mobileLabel: "Home", icon: BarChart3 },
-    { id: "settings", label: "Settings", mobileLabel: "Settings", icon: Settings },
+    ...(permissions.manageSettings ? [{ id: "settings", label: "Settings", mobileLabel: "Settings", icon: Settings }] : []),
     { id: "contributions", label: "Contributions", mobileLabel: "Contrib.", icon: HandCoins },
     { id: "payments", label: "Payments", mobileLabel: "Pay", icon: CreditCard },
     { id: "sponsors", label: "Sponsors", mobileLabel: "Sponsors", icon: Users },
@@ -443,7 +445,7 @@ function FinanceLedgerReportsTab({ payments, gifts, sponsors, expenses, permissi
 }) {
   const entries = useMemo(() => {
     const rows = [
-      ...payments.filter((item) => item.status !== "voided").map((item) => ({ sourceType: "payment", sourceId: item.id, date: item.paymentDateRaw, description: `Member payment - ${item.userName}`, income: item.amount, expense: 0, status: item.status })),
+      ...payments.filter((item) => item.status !== "voided").map((item) => ({ sourceType: "payment", sourceId: item.id, date: item.paymentDateRaw, description: item.userName, income: item.amount, expense: 0, status: item.status })),
       ...gifts.filter((item) => item.receivedAmount > 0).map((item) => ({ sourceType: "gift", sourceId: item.id, date: item.dateRaw, description: `Gift - ${item.donorName}`, income: item.receivedAmount, expense: 0, status: item.status })),
       ...sponsors.flatMap((sponsor) => sponsor.payments.map((item) => ({ sourceType: "sponsor_payment", sourceId: item.id, date: item.paymentDateRaw, description: `Sponsor payment - ${sponsor.name}`, income: item.amount, expense: 0, status: "completed" }))),
       ...expenses.filter((item) => item.status === "approved" || item.status === "void_pending").map((item) => ({ sourceType: "expense", sourceId: item.id, date: item.dateRaw, description: item.description || "Expense", income: 0, expense: item.amount, status: item.status })),
@@ -474,7 +476,7 @@ function FinanceLedgerReportsTab({ payments, gifts, sponsors, expenses, permissi
       <div className="flex flex-wrap items-end gap-2">
         <FieldLabel label="From"><input type="date" value={startDate} onChange={(event) => onStartDateChange(event.target.value)} className="h-8 rounded-lg border border-gray-300 px-2 text-xs" /></FieldLabel>
         <FieldLabel label="To"><input type="date" value={endDate} onChange={(event) => onEndDateChange(event.target.value)} className="h-8 rounded-lg border border-gray-300 px-2 text-xs" /></FieldLabel>
-        {permissions.export ? <><button type="button" onClick={exportReport} className="h-8 rounded-lg bg-emerald-600 px-3 text-xs font-medium text-white">Export Excel</button><button type="button" onClick={() => window.print()} className="h-8 rounded-lg border border-gray-300 px-3 text-xs font-medium text-gray-700">Print / Save PDF</button></> : null}
+        {permissions.export ? <button type="button" onClick={exportReport} className="h-8 rounded-lg bg-emerald-600 px-3 text-xs font-medium text-white">Export Excel</button> : null}
       </div>
     </div>
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -1101,6 +1103,7 @@ function FinanceSettingsTab({ currentYear, settings }: { currentYear: number; se
   const initial = settingsByYear.get(currentYear);
   const [numberOfTerms, setNumberOfTerms] = useState(initial?.numberOfTerms ?? 3);
   const [percentages, setPercentages] = useState<number[]>(() => percentagesFromSetting(initial, 3));
+  const [allowMemberCommitment, setAllowMemberCommitment] = useState(initial?.allowMemberCommitment ?? false);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -1121,6 +1124,7 @@ function FinanceSettingsTab({ currentYear, settings }: { currentYear: number; se
     setSelectedYear(nextYear);
     setNumberOfTerms(nextTerms);
     setPercentages(percentagesFromSetting(nextSetting, nextTerms));
+    setAllowMemberCommitment(nextSetting?.allowMemberCommitment ?? false);
     setResult(nextSetting ? null : { ok: true, message: `No existing settings for ${nextYear}. Using defaults.` });
   }
 
@@ -1153,6 +1157,7 @@ function FinanceSettingsTab({ currentYear, settings }: { currentYear: number; se
     formData.set("number_of_terms", String(numberOfTerms));
     formData.set("term_percentages", JSON.stringify(percentages));
     formData.set("term_numbers", JSON.stringify(Array.from({ length: numberOfTerms }, (_, index) => index + 1)));
+    formData.set("allow_member_commitment", String(allowMemberCommitment));
     setResult(null);
     startTransition(async () => {
       setResult(await saveFinanceTermSettings(formData));
@@ -1205,6 +1210,21 @@ function FinanceSettingsTab({ currentYear, settings }: { currentYear: number; se
                 </button>
               </div>
             </div>
+
+            <label className="ml-auto flex cursor-pointer items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 transition hover:border-blue-200 hover:bg-blue-50/50">
+              <span className="text-right">
+                <span className="block text-xs font-semibold text-gray-800">Member commitments</span>
+
+              </span>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={allowMemberCommitment}
+                onChange={(event) => setAllowMemberCommitment(event.target.checked)}
+                className="peer sr-only"
+              />
+              <span className="relative h-6 w-11 shrink-0 rounded-full bg-gray-300 transition-colors peer-checked:bg-blue-600 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-300 peer-focus-visible:ring-offset-2 after:absolute after:left-0.5 after:top-0.5 after:size-5 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:after:translate-x-5" aria-hidden="true" />
+            </label>
           </div>
 
           <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">
@@ -1891,7 +1911,7 @@ function FinancePaymentsTab({
                   <td className="max-w-[180px] truncate px-3 py-2 text-xs text-gray-500">{payment.notes || "-"}</td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-1">
-                      <IconButton label="View Details" icon={Eye} onClick={() => setDetailPayment(payment)} />
+                      <IconButton label="View Details" icon={FileSearch2} onClick={() => setDetailPayment(payment)} />
                       <IconButton label="Edit Payment" icon={Pencil} onClick={() => setEditPayment(payment)} />
                       <IconButton label="Delete Payment" icon={Trash2} onClick={() => deletePayment(payment)} danger />
                     </div>
@@ -2511,7 +2531,7 @@ function FinanceSponsorsTab({ currentYear, sponsors, fromDate, toDate, setFromDa
                   <td className="px-3 py-3">
                     <div className="flex items-center gap-1">
                       {sponsor.status !== "inactive" ? <IconButton label="Record Payment" icon={PlusCircle} onClick={() => setPaymentSponsor(sponsor)} /> : null}
-                      <IconButton label="View History" icon={Eye} onClick={() => setHistorySponsor(sponsor)} />
+                      <IconButton label="View History" icon={FileSearch2} onClick={() => setHistorySponsor(sponsor)} />
                       <IconButton label="Edit Sponsor" icon={Pencil} onClick={() => setEditingSponsor(sponsor)} />
                       {sponsor.status === "inactive" ? <IconButton label="Reactivate Sponsor" icon={UserCheck} onClick={() => restoreSponsor(sponsor)} /> : null}
                       {sponsor.status !== "inactive" ? <IconButton label="Deactivate Sponsor" icon={Trash2} onClick={() => removeSponsor(sponsor)} danger /> : null}
@@ -2604,7 +2624,7 @@ function MemberContributionStat({
   );
 }
 
-function IconButton({ label, onClick, icon: Icon, danger = false }: { label: string; onClick: () => void; icon: typeof Eye; danger?: boolean }) {
+function IconButton({ label, onClick, icon: Icon, danger = false }: { label: string; onClick: () => void; icon: typeof FileSearch2; danger?: boolean }) {
   return (
     <button
       type="button"
@@ -2657,7 +2677,7 @@ function TotalContributionProgress({ paid, annualAmount, progress }: { paid: num
   );
 }
 
-function ContributionActionButton({ label, onClick, icon: Icon, tone }: { label: string; onClick: () => void; icon: typeof Eye; tone: "blue" | "green" | "amber" }) {
+function ContributionActionButton({ label, onClick, icon: Icon, tone }: { label: string; onClick: () => void; icon: typeof FileSearch2; tone: "blue" | "green" | "amber" }) {
   const colors = {
     blue: "text-blue-600 hover:bg-blue-50",
     green: "text-green-600 hover:bg-green-50",
@@ -2670,7 +2690,7 @@ function ContributionActionButton({ label, onClick, icon: Icon, tone }: { label:
   );
 }
 
-function ExpenseActionButton({ label, onClick, icon: Icon, tone }: { label: string; onClick: () => void; icon: typeof Eye; tone: "blue" | "green" | "red" }) {
+function ExpenseActionButton({ label, onClick, icon: Icon, tone }: { label: string; onClick: () => void; icon: typeof FileSearch2; tone: "blue" | "green" | "red" }) {
   const colors = {
     blue: "text-blue-600 hover:bg-blue-50",
     green: "text-green-600 hover:bg-green-50",

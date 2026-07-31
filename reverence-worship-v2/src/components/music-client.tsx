@@ -9,10 +9,9 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  CircleOff,
   ClipboardList,
   Download,
-  Eye,
-  EyeOff,
   FileText,
   FileUp,
   GalleryHorizontal,
@@ -1035,7 +1034,7 @@ export function MusicClient({
                         </div>
                       </div>
                       <div className="flex justify-end gap-3 border-t pt-2 sm:border-t-0 sm:pt-0">
-                        <button type="button" onClick={() => runAction(() => toggleYoutubePublish(video.id))} className="text-black hover:text-gray-600" title="Publish/Hide">{video.isPublished ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button>
+                        <button type="button" onClick={() => runAction(() => toggleYoutubePublish(video.id))} className="text-black hover:text-gray-600" title={video.isPublished ? "Hide video" : "Publish video"}>{video.isPublished ? <CircleOff className="size-4" /> : <CheckCircle2 className="size-4" />}</button>
                         <button type="button" onClick={() => { setEditingYoutube(video); setModal("youtube"); }} className="text-black hover:text-gray-600" title="Edit"><Pencil className="size-4" /></button>
                         <button type="button" onClick={() => askConfirm({ title: "Delete YouTube Video", message: `Delete "${video.title}" from the landing page videos?`, confirmLabel: "Delete Video", action: () => deleteYoutubeVideo(video.id) })} className="text-black hover:text-gray-600" title="Delete"><Trash2 className="size-4" /></button>
                       </div>
@@ -1073,7 +1072,7 @@ export function MusicClient({
                       </div>
                       <div className="flex justify-end gap-3 border-t pt-2 sm:border-t-0 sm:pt-0">
                         <button type="button" onClick={() => runAction(() => toggleFeaturedImageHero(image.id))} className="text-black hover:text-gray-600" title="Hero"><Star className={`size-4 ${image.isHero ? "fill-black" : ""}`} /></button>
-                        <button type="button" onClick={() => runAction(() => toggleFeaturedImagePublish(image.id))} className="text-black hover:text-gray-600" title="Publish/Hide">{image.isPublished ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button>
+                        <button type="button" onClick={() => runAction(() => toggleFeaturedImagePublish(image.id))} className="text-black hover:text-gray-600" title={image.isPublished ? "Hide image" : "Publish image"}>{image.isPublished ? <CircleOff className="size-4" /> : <CheckCircle2 className="size-4" />}</button>
                         <button type="button" onClick={() => { setEditingFeatured(image); setModal("featured"); }} className="text-black hover:text-gray-600" title="Edit"><Pencil className="size-4" /></button>
                         <button type="button" onClick={() => askConfirm({ title: "Delete Featured Image", message: `Delete "${image.title}" from featured images?`, confirmLabel: "Delete Image", action: () => deleteFeaturedImage(image.id) })} className="text-black hover:text-gray-600" title="Delete"><Trash2 className="size-4" /></button>
                       </div>
@@ -1110,7 +1109,7 @@ export function MusicClient({
                         <p className="mt-2 line-clamp-3 text-sm text-gray-600">{item.content}</p>
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
-                        <button type="button" onClick={() => runAction(() => toggleBoardItemPublish(item.id))} className="text-black hover:text-gray-600" title="Publish/Hide">{item.isPublished ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button>
+                        <button type="button" onClick={() => runAction(() => toggleBoardItemPublish(item.id))} className="text-black hover:text-gray-600" title={item.isPublished ? "Hide board item" : "Publish board item"}>{item.isPublished ? <CircleOff className="size-4" /> : <CheckCircle2 className="size-4" />}</button>
                         <button type="button" onClick={() => runAction(() => toggleBoardItemPin(item.id))} className="text-black hover:text-gray-600" title="Pin/Unpin"><Star className={`size-4 ${item.isPinned ? "fill-black" : ""}`} /></button>
                         <button type="button" onClick={() => { setEditingBoardItem(item); setModal("boardItem"); }} className="text-black hover:text-gray-600" title="Edit"><Pencil className="size-4" /></button>
                         <button type="button" onClick={() => askConfirm({ title: "Delete Board Item", message: `Delete "${item.title}" from events and updates?`, confirmLabel: "Delete Item", action: () => deleteBoardItem(item.id) })} className="text-black hover:text-gray-600" title="Delete"><Trash2 className="size-4" /></button>

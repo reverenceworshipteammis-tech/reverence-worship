@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { AlertTriangle, CheckCircle2, ClipboardList, DollarSign, Eye, Plus, Search, Trash2, Users, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ClipboardList, DollarSign, FileSearch2, Plus, Search, Trash2, Users, X } from "lucide-react";
 import {
   completeParentTask,
   createParentTask,
@@ -247,7 +247,7 @@ function ChildrenTab({ childRows, onView }: { childRows: ChildRow[]; onView: (ch
                 </div>
               </div>
               <button type="button" onClick={() => onView(child)} className="rounded-lg bg-blue-600 p-2 text-white hover:bg-blue-700" aria-label="View child details">
-                <Eye className="size-4" />
+                <FileSearch2 className="size-4" />
               </button>
             </div>
             <div className="mt-4 grid gap-2 rounded-xl bg-gray-50 p-3 text-sm">

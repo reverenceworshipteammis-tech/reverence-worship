@@ -149,6 +149,7 @@ export default async function FinancePage() {
       year={year}
       currentUserId={currentUser.id}
       permissions={{
+        manageSettings: permissionSetHas(permissionSet, "finance", "manage-settings"),
         manageExpenses: permissionSetHas(permissionSet, "finance", "manage-expenses"),
         approveExpenses: permissionSetHas(permissionSet, "finance", "approve-expenses"),
         deleteExpenses: permissionSetHas(permissionSet, "finance", "delete-expenses"),
@@ -292,6 +293,7 @@ export default async function FinancePage() {
             numberOfTerms: setting.numberOfTerms ?? termNumbers.length,
             termNumbers,
             termPercentages: parsePercentageMap(setting.termPercentages, termNumbers),
+            allowMemberCommitment: setting.allowMemberCommitment,
           };
         })}
     />

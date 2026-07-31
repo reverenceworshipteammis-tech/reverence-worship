@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { maintainNotificationArchive } from "@/lib/notification-maintenance";
+import { normalizePermissionRequestNotificationMessage } from "@/lib/permission-notification-copy";
 
 export type AdminNotification = {
   id: string;
@@ -106,7 +107,11 @@ export async function getAdminNotifications() {
       sourceId: notification.id,
       type: "notification",
       title: notification.title,
-      message: notification.message,
+      message: normalizePermissionRequestNotificationMessage(
+        notification.sourceType,
+        notification.title,
+        notification.message,
+      ),
       createdAt: notification.createdAt.toISOString(),
       readAt: notification.readAt?.toISOString() ?? null,
       link: notification.link ?? "/admin/dashboard",

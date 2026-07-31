@@ -7,7 +7,7 @@ import {
   Calendar,
   CheckCircle2,
   ClipboardList,
-  Eye,
+  FileSearch2,
   FileText,
   Filter,
   Plus,
@@ -634,7 +634,7 @@ export function SocialFellowshipClient({
                       </div>
                       <div className="flex gap-2 sm:ml-4">
                         <button type="button" onClick={() => { setViewingTask(task); setModal("viewTask"); }} className="rounded-lg border border-gray-200 px-3 py-2 text-gray-600 hover:text-gray-900" title="View">
-                          <Eye className="size-4" />
+                          <FileSearch2 className="size-4" />
                         </button>
                         <button type="button" onClick={() => openTaskModal(task)} className="rounded-lg border border-gray-200 px-3 py-2 text-gray-500 hover:text-blue-600" title="Edit">
                           <FileText className="size-4" />
@@ -785,7 +785,7 @@ export function SocialFellowshipClient({
                       </div>
                       <div className="flex gap-2">
                         <button type="button" onClick={() => { setViewingActionPlan(plan); setModal("viewActionPlan"); }} className="rounded-lg border border-gray-200 px-3 py-2 text-gray-600 hover:text-gray-900" title="View">
-                          <Eye className="size-4" />
+                          <FileSearch2 className="size-4" />
                         </button>
                         <button type="button" onClick={() => openActionPlanModal(plan)} className="rounded-lg border border-gray-200 px-3 py-2 text-gray-500 hover:text-blue-600" title="Edit">
                           <FileText className="size-4" />
@@ -1062,7 +1062,7 @@ export function SocialFellowshipClient({
                         }}
                         className="inline-flex h-8 items-center justify-center gap-1 rounded-lg bg-blue-50 px-2.5 text-xs font-medium text-blue-700 hover:bg-blue-100 sm:h-auto sm:px-3 sm:py-2 sm:text-sm"
                       >
-                        <Eye className="size-3.5 sm:size-4" aria-hidden="true" />
+                        <FileSearch2 className="size-3.5 sm:size-4" aria-hidden="true" />
                         Members
                       </button>
                       <button

@@ -1,6 +1,22 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { canMemberCommitAnnualContribution, parseAnnualContributionAmount } from "../src/lib/annual-contribution-rules";
 import { calculateAvailableBalance, calculateContributionTermTarget, canApproveExpense, validateExpenseRequest } from "../src/lib/finance-rules";
+
+test("member annual contribution commitments require a positive valid amount", () => {
+  assert.equal(parseAnnualContributionAmount("250000"), 250000);
+  assert.equal(parseAnnualContributionAmount("250000.50"), 250000.5);
+  assert.equal(parseAnnualContributionAmount("0"), null);
+  assert.equal(parseAnnualContributionAmount("-100"), null);
+  assert.equal(parseAnnualContributionAmount("100.999"), null);
+  assert.equal(parseAnnualContributionAmount("not-a-number"), null);
+});
+
+test("member annual contribution commitments are available only when administrators enable them", () => {
+  assert.equal(canMemberCommitAnnualContribution({ allowMemberCommitment: true }), true);
+  assert.equal(canMemberCommitAnnualContribution({ allowMemberCommitment: false }), false);
+  assert.equal(canMemberCommitAnnualContribution(null), false);
+});
 
 test("contribution term targets follow the saved percentages", () => {
   assert.equal(calculateContributionTermTarget(2000, 33.33), 666.6);

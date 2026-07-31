@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useAppDialog } from "@/components/app-dialog-provider";
 import { ADMIN_NOTIFICATIONS_CHANGED_EVENT } from "@/lib/admin-notification-events";
-import { BarChart3, CheckCircle2, ChevronLeft, ChevronRight, Eye, MailCheck, Megaphone, Pencil, Plus, RefreshCw, Search, Send, Trash2, Upload, X } from "lucide-react";
+import { BarChart3, CheckCircle2, ChevronLeft, ChevronRight, FileSearch2, MailCheck, Megaphone, Pencil, Plus, RefreshCw, Search, Send, Trash2, Upload, X } from "lucide-react";
 import {
   deleteAnnouncement,
   saveAnnouncement,
@@ -288,7 +288,7 @@ export function AnnouncementsClient({
                 ) : null}
                 <div className="flex flex-wrap gap-2">
                   <button type="button" onClick={() => { setSelected(announcement); setModal("view"); }} className="rounded-lg border border-gray-200 px-3 py-2 text-gray-600 hover:bg-white" title="View">
-                    <Eye className="size-4" />
+                    <FileSearch2 className="size-4" />
                   </button>
                   {!readOnly && <><button type="button" onClick={() => openEdit(announcement)} className="rounded-lg border border-gray-200 px-3 py-2 text-blue-600 hover:bg-blue-50" title="Edit">
                     <Pencil className="size-4" />
@@ -606,7 +606,7 @@ export function AnnouncementsClient({
                     </div>
                   ) : (
                     <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center">
-                      <Eye className="mx-auto mb-2 size-7 text-slate-300" aria-hidden="true" />
+                      <FileSearch2 className="mx-auto mb-2 size-7 text-slate-300" aria-hidden="true" />
                       <p className="text-sm font-medium text-slate-600">No recipients have read this announcement yet.</p>
                     </div>
                   )

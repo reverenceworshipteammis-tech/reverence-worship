@@ -4,6 +4,11 @@ import { revalidatePath } from "next/cache";
 import { getUserPermissionSet, permissionSetHas, requirePermission } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { notifyUsers, userIdsWithPermission } from "@/lib/notifications";
+import {
+  PERMISSION_REQUEST_APPROVED_MESSAGE,
+  PERMISSION_REQUEST_SUBMITTED_MESSAGE,
+  permissionRequestRejectedMessage,
+} from "@/lib/permission-notification-copy";
 
 type AttendanceRecordInput = {
   userId: number;
@@ -812,7 +817,7 @@ export async function savePermissionRequest(formData: FormData) {
   }
 
   if (!(Number.isFinite(id) && id > 0)) {
-    await notifyUsers({ userIds: await userIdsWithPermission("discipline", "approve-permission-requests"), type: "permission", title: "Permission request submitted", message: `A new ${type} permission request is awaiting review.`, link: "/admin/discipline?tab=permission&status=pending", sourceType: "permission_request", sourceId: request.id, dedupeKey: `permission:${request.id}:submitted` });
+    await notifyUsers({ userIds: await userIdsWithPermission("discipline", "approve-permission-requests"), type: "permission", title: "Permission request submitted", message: PERMISSION_REQUEST_SUBMITTED_MESSAGE, link: "/admin/discipline?tab=permission&status=pending", sourceType: "permission_request", sourceId: request.id, dedupeKey: `permission:${request.id}:submitted` });
   }
   await prisma.activityLog.create({
     data: {
@@ -841,7 +846,7 @@ export async function approvePermissionRequest(id: number) {
     },
   });
 
-  await notifyUsers({ userIds: [request.userId], type: "permission", title: "Permission request approved", message: `Your ${request.type} permission request was approved.`, link: "/admin/discipline", sourceType: "permission_request", sourceId: request.id, dedupeKey: `permission:${request.id}:approved` });
+  await notifyUsers({ userIds: [request.userId], type: "permission", title: "Permission request approved", message: PERMISSION_REQUEST_APPROVED_MESSAGE, link: "/admin/discipline", sourceType: "permission_request", sourceId: request.id, dedupeKey: `permission:${request.id}:approved` });
   await prisma.activityLog.create({
     data: {
       userId: user.id,
@@ -878,8 +883,8 @@ export async function rejectPermissionRequest(id: number, reason: string) {
     return { ok: false, message: "This permission request is no longer pending." };
   }
 
-  const request = await prisma.permissionRequest.findUnique({ where: { id }, select: { userId: true, type: true } });
-  if (request) await notifyUsers({ userIds: [request.userId], type: "permission", title: "Permission request rejected", message: `Your ${request.type} permission request was rejected: ${rejectionReason}`, link: "/admin/discipline", sourceType: "permission_request", sourceId: id, dedupeKey: `permission:${id}:rejected` });
+  const request = await prisma.permissionRequest.findUnique({ where: { id }, select: { userId: true } });
+  if (request) await notifyUsers({ userIds: [request.userId], type: "permission", title: "Permission request rejected", message: permissionRequestRejectedMessage(rejectionReason), link: "/admin/discipline", sourceType: "permission_request", sourceId: id, dedupeKey: `permission:${id}:rejected` });
   await prisma.activityLog.create({
     data: {
       userId: user.id,

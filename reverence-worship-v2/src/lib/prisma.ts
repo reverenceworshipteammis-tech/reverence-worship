@@ -6,7 +6,7 @@ const globalForPrisma = globalThis as unknown as {
   prismaSchemaVersion?: string;
 };
 
-const PRISMA_SCHEMA_VERSION = "2026-07-26-probation-management";
+const PRISMA_SCHEMA_VERSION = "2026-07-31-member-contribution-commitment-toggle";
 
 function databaseUrl() {
   const value = process.env.DATABASE_URL;

@@ -60,6 +60,7 @@ export async function saveFinanceTermSettings(formData: FormData) {
   const numberOfTerms = Number(readString(formData, "number_of_terms"));
   const termPercentages = parseNumberList(readString(formData, "term_percentages"));
   const termNumbers = parseNumberList(readString(formData, "term_numbers"));
+  const allowMemberCommitment = readString(formData, "allow_member_commitment") === "true";
 
   if (!Number.isInteger(currentYear) || currentYear < 2000 || currentYear > 2100) {
     return { ok: false, message: "Please select a valid year." };
@@ -94,6 +95,7 @@ export async function saveFinanceTermSettings(formData: FormData) {
         numberOfTerms,
         termPercentages: JSON.stringify(percentageMap),
         termNumbers: JSON.stringify(termNumbers),
+        allowMemberCommitment,
       },
     });
   } else {
@@ -103,12 +105,14 @@ export async function saveFinanceTermSettings(formData: FormData) {
         numberOfTerms,
         termPercentages: JSON.stringify(percentageMap),
         termNumbers: JSON.stringify(termNumbers),
+        allowMemberCommitment,
       },
     });
   }
 
   revalidatePath("/admin/finance");
-  await logFinance(user.id, "finance.settings.saved", { year: currentYear, numberOfTerms });
+  revalidatePath("/admin/contributions");
+  await logFinance(user.id, "finance.settings.saved", { year: currentYear, numberOfTerms, allowMemberCommitment });
   return { ok: true, message: `Settings for ${currentYear} saved successfully.` };
 }
 

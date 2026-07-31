@@ -7,7 +7,7 @@ import {
   CheckCircle2,
   Clock,
   Download,
-  Eye,
+  FileSearch2,
   History,
   Pencil,
   RotateCcw,
@@ -609,7 +609,7 @@ function RowActions({ row, permissions, open }: { row: ProbationRow; permissions
   return (
     <div className="flex flex-wrap justify-end gap-1.5">
       <button type="button" title="View probation details" onClick={() => open({ type: "details", row })} className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 px-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-        <Eye className="size-3.5" /> {decision ? row.canApprovePendingDecision ? "Review decision" : "View pending" : "Details"}
+        <FileSearch2 className="size-3.5" /> {decision ? row.canApprovePendingDecision ? "Review decision" : "View pending" : "Details"}
       </button>
       {permissions.update && isOpen(row) ? <button type="button" title="Edit probation details" onClick={() => open({ type: "edit", row })} className="grid size-8 place-items-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"><Pencil className="size-3.5" /></button> : null}
       {permissions.extend && isOpen(row) && !decision ? <button type="button" title="Extend probation" onClick={() => open({ type: "extend", row })} className="inline-flex h-8 items-center gap-1 rounded-lg border border-amber-200 px-2 text-xs font-semibold text-amber-700 hover:bg-amber-50"><CalendarClock className="size-3.5" /> Extend</button> : null}

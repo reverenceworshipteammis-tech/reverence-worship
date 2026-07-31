@@ -291,13 +291,14 @@ model ActionPlanTask {
 }
 
 model FinanceTermSetting {
-  id              Int      @id @default(autoincrement())
-  currentYear     Int?     @default(2026) @map("current_year")
-  numberOfTerms   Int?     @default(3) @map("number_of_terms")
-  termPercentages String?  @default("[40,30,30]") @map("term_percentages")
-  termNumbers     String?  @default("[1,2,3]") @map("term_numbers")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  id                    Int      @id @default(autoincrement())
+  currentYear           Int?     @default(2026) @map("current_year")
+  numberOfTerms         Int?     @default(3) @map("number_of_terms")
+  termPercentages       String?  @default("[40,30,30]") @map("term_percentages")
+  termNumbers           String?  @default("[1,2,3]") @map("term_numbers")
+  allowMemberCommitment Boolean  @default(false) @map("allow_member_commitment")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
 
   @@map("finance_term_settings")
 }

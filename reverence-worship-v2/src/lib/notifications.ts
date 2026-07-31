@@ -4,6 +4,7 @@ import nodemailer from "nodemailer";
 import { getEmailConfiguration } from "@/lib/email-config";
 import { escapeHtml, formatEmailMessage } from "@/lib/email-html";
 import { NOTIFICATION_CATEGORIES, notificationCategory } from "@/lib/notification-rules";
+import { PERMISSION_REQUEST_SUBMITTED_MESSAGE } from "@/lib/permission-notification-copy";
 import { prisma } from "@/lib/prisma";
 
 type NotifyUsersInput = {
@@ -278,7 +279,7 @@ export async function reconcilePendingPermissionNotifications(limit = 100) {
       where: { status: "pending" },
       orderBy: { createdAt: "desc" },
       take: limit,
-      select: { id: true, type: true },
+      select: { id: true },
     }),
     userIdsWithPermission("discipline", "approve-permission-requests"),
   ]);
@@ -288,7 +289,7 @@ export async function reconcilePendingPermissionNotifications(limit = 100) {
       userIds: approverIds,
       type: "permission",
       title: "Permission request submitted",
-      message: `A new ${request.type} permission request is awaiting review.`,
+      message: PERMISSION_REQUEST_SUBMITTED_MESSAGE,
       link: "/admin/discipline?tab=permission&status=pending",
       sourceType: "permission_request",
       sourceId: request.id,

@@ -18,6 +18,7 @@ import {
 import { requirePageAccess } from "@/lib/auth";
 import { withDatabaseRetry } from "@/lib/database-retry";
 import { prisma } from "@/lib/prisma";
+import { normalizePermissionRequestNotificationMessage } from "@/lib/permission-notification-copy";
 import { PerformanceSummaryCards } from "@/components/performance-client";
 import { getPerformanceDateRange } from "@/lib/performance-date-range";
 import { getUserPerformanceData, type PerformanceMetrics } from "@/lib/user-performance";
@@ -188,7 +189,11 @@ async function getDashboardBulletins(userId: number, roleIds: number[], roleName
       id: `notification-${notification.id}`,
       kind: "notification",
       title: notification.title,
-      message: notification.message,
+      message: normalizePermissionRequestNotificationMessage(
+        notification.sourceType,
+        notification.title,
+        notification.message,
+      ),
       href: notification.link ?? "/admin/dashboard",
       dateLabel: bulletinDate(notification.createdAt),
       urgent: ["urgent", "critical", "system"].includes(notification.type.toLowerCase()),

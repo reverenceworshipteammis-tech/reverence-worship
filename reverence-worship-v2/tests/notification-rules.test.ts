@@ -3,6 +3,10 @@ import test from "node:test";
 import { getEmailConfiguration } from "../src/lib/email-config";
 import { notificationCategory } from "../src/lib/notification-rules";
 import {
+  normalizePermissionRequestNotificationMessage,
+  permissionRequestRejectedMessage,
+} from "../src/lib/permission-notification-copy";
+import {
   DEFAULT_NOTIFICATION_RETENTION_DAYS,
   MAX_NOTIFICATION_RETENTION_DAYS,
   MIN_NOTIFICATION_RETENTION_DAYS,
@@ -58,6 +62,34 @@ test("invalid SMTP ports are rejected", () => {
 test("permission notifications have an independent category", () => {
   assert.equal(notificationCategory("permission"), "permission");
   assert.equal(notificationCategory("form"), "form");
+});
+
+test("permission notification copy does not expose the legacy request type", () => {
+  assert.equal(
+    normalizePermissionRequestNotificationMessage(
+      "permission_request",
+      "Permission request submitted",
+      "A new General permission request is awaiting review.",
+    ),
+    "A new permission request is awaiting review.",
+  );
+  assert.equal(
+    normalizePermissionRequestNotificationMessage(
+      "permission_request",
+      "Permission request approved",
+      "Your General permission request was approved.",
+    ),
+    "Your permission request was approved.",
+  );
+  assert.equal(
+    normalizePermissionRequestNotificationMessage(
+      "permission_request",
+      "Permission request rejected",
+      "Your General permission request was rejected: Dates overlap.",
+    ),
+    "Your permission request was rejected: Dates overlap.",
+  );
+  assert.equal(permissionRequestRejectedMessage("Dates overlap."), "Your permission request was rejected: Dates overlap.");
 });
 
 test("finance-related notification types use the finance category", () => {
