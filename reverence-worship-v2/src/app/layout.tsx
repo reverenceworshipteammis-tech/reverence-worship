@@ -16,6 +16,9 @@ const playfair = Playfair_Display({
 export const metadata: Metadata = {
   title: "Reverence Worship",
   description: "Ministry management for Reverence Worship.",
+  verification: {
+    google: "Wjwy81ZQznEuL3ziUJAh81WVE8eUa4Z4rM9VFNxWWOA",
+  },
   icons: {
     icon: [
       { url: "/icon.png", type: "image/png" },
