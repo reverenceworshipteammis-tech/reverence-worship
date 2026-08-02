@@ -65,7 +65,7 @@ export default async function FinancePage() {
   const permissionSet = await getUserPermissionSet(currentUser);
   const year = new Date().getFullYear();
 
-  const [users, families, contributions, payments, gifts, expenses, sponsors, actionPlans, termSettings] = await Promise.all([
+  const [users, families, contributions, payments, contributionEvents, gifts, expenses, sponsors, actionPlans, termSettings] = await Promise.all([
     safeRead(
       prisma.user.findMany({
         where: { status: "active" },
@@ -94,10 +94,28 @@ export default async function FinancePage() {
     ),
     safeRead(
       prisma.payment.findMany({
-        orderBy: { paymentDate: "desc" },
+        where: { status: { not: "voided" } },
+        orderBy: [{ paymentDate: "desc" }, { createdAt: "desc" }, { id: "desc" }],
         include: {
           user: { select: { id: true, name: true, email: true } },
           creator: { select: { id: true, name: true } },
+        },
+      }),
+      [],
+    ),
+    safeRead(
+      prisma.contributionEvent.findMany({
+        orderBy: [{ status: "asc" }, { startDate: "desc" }, { createdAt: "desc" }],
+        include: {
+          creator: { select: { id: true, name: true } },
+          payments: {
+            where: { status: { not: "voided" } },
+            orderBy: [{ paymentDate: "desc" }, { createdAt: "desc" }],
+            include: {
+              user: { select: { id: true, name: true, email: true } },
+              creator: { select: { id: true, name: true } },
+            },
+          },
         },
       }),
       [],
@@ -149,6 +167,9 @@ export default async function FinancePage() {
       year={year}
       currentUserId={currentUser.id}
       permissions={{
+        manageContributions: permissionSetHas(permissionSet, "finance", "manage-contributions"),
+        managePayments: permissionSetHas(permissionSet, "finance", "manage-payments"),
+        deletePayments: permissionSetHas(permissionSet, "finance", "delete-payments"),
         manageSettings: permissionSetHas(permissionSet, "finance", "manage-settings"),
         manageExpenses: permissionSetHas(permissionSet, "finance", "manage-expenses"),
         approveExpenses: permissionSetHas(permissionSet, "finance", "approve-expenses"),
@@ -197,6 +218,34 @@ export default async function FinancePage() {
         createdByName: item.creator?.name ?? "System",
         createdAt: item.createdAt.toISOString(),
         referenceNumber: item.referenceNumber,
+      }))}
+      contributionEvents={contributionEvents.map((event) => ({
+        id: event.id,
+        title: event.title,
+        description: event.description,
+        startDateRaw: event.startDate.toISOString().slice(0, 10),
+        startDate: formatDate(event.startDate),
+        endDateRaw: event.endDate?.toISOString().slice(0, 10) ?? "",
+        endDate: formatDate(event.endDate),
+        status: event.status,
+        year: event.year,
+        createdByName: event.creator?.name ?? "System",
+        payments: event.payments.map((payment) => ({
+          id: payment.id,
+          eventId: payment.eventId,
+          userId: payment.userId,
+          userName: payment.user?.name ?? "Unknown",
+          userEmail: payment.user?.email ?? "",
+          amount: money(payment.amount),
+          paymentDateRaw: payment.paymentDate.toISOString().slice(0, 10),
+          paymentDate: formatDate(payment.paymentDate),
+          paymentMethod: payment.paymentMethod ?? "cash",
+          referenceNumber: payment.referenceNumber,
+          notes: payment.notes,
+          status: payment.status,
+          createdByName: payment.creator?.name ?? "System",
+          createdAt: payment.createdAt.toISOString(),
+        })),
       }))}
       gifts={gifts.map((item) => ({
         id: item.id,

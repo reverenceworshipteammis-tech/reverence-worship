@@ -5,6 +5,17 @@ export function calculateContributionTermTarget(annualAmount: number, percentage
   return (annualAmount * percentage) / 100;
 }
 
+export function calculateContributionRate(paidAmount: number, committedAmount: number) {
+  if (!Number.isFinite(paidAmount) || paidAmount <= 0 || !Number.isFinite(committedAmount) || committedAmount <= 0) return 0;
+  return Math.round((paidAmount / committedAmount) * 1000) / 10;
+}
+
+export function validateContributionPaymentDate(input: { paymentDate: Date; startDate: Date; endDate: Date | null }) {
+  if (input.paymentDate < input.startDate) return "Payment date cannot be before contributions open.";
+  if (input.endDate && input.paymentDate > input.endDate) return "This contribution deadline has passed. Extend the deadline before recording another payment.";
+  return null;
+}
+
 export function calculateAvailableBalance(input: {
   memberIncome: number;
   giftIncome: number;

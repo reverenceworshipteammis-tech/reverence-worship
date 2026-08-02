@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ActionNotice } from "@/components/action-notice";
 import { DragEvent, FormEvent, useMemo, useState, useTransition } from "react";
 import {
   ArrowLeft,
@@ -316,7 +317,7 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
           </div>
         </div>
 
-        {message && <div className="mx-auto mb-4 max-w-5xl rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-700">{message}</div>}
+        {message && <ActionNotice message={message} tone="info" onClose={() => setMessage(null)} className="mx-auto mb-4 max-w-5xl" />}
 
         {activeArea === "questions" ? (
           <div>

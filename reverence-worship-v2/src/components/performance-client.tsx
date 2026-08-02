@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import type { PerformanceMetrics } from "@/lib/user-performance";
 
-type PerformanceType = "discipline" | "attendance" | "communication" | "contribution";
+export type PerformanceType = "discipline" | "attendance" | "communication" | "contribution";
 
 type PerformanceRecords = {
   discipline: Array<{ id: number; date: string; title: string; description: string | null; type: string; points: number; status: string }>;
@@ -40,8 +40,8 @@ function typeClass(value: string) {
   return value === "positive" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700";
 }
 
-export function PerformanceClient({ year, fromDate, toDate, rangeLabel, metrics, records }: { year: number; fromDate: string; toDate: string; rangeLabel: string; metrics: PerformanceMetrics; records: PerformanceRecords }) {
-  const [activeType, setActiveType] = useState<PerformanceType>("discipline");
+export function PerformanceClient({ year, fromDate, toDate, rangeLabel, initialType, metrics, records }: { year: number; fromDate: string; toDate: string; rangeLabel: string; initialType: PerformanceType; metrics: PerformanceMetrics; records: PerformanceRecords }) {
+  const [activeType, setActiveType] = useState<PerformanceType>(initialType);
   const [requestedPage, setRequestedPage] = useState(1);
   const contributionBalance = Math.max(0, metrics.contribution.expected - metrics.contribution.paid);
   const recordsPerPage = 5;
@@ -68,6 +68,7 @@ export function PerformanceClient({ year, fromDate, toDate, rangeLabel, metrics,
 
         </div>
         <form method="get" className="grid grid-cols-2 gap-2 sm:flex sm:items-end">
+          <input type="hidden" name="type" value={activeType} />
           <label className="block min-w-0">
             <span className="mb-1 block text-xs font-medium text-gray-600">From</span>
             <input name="from" type="date" min={`${year}-01-01`} max={`${year}-12-31`} defaultValue={fromDate} className="h-9 w-full min-w-0 rounded-lg border border-gray-300 bg-white px-2 text-xs text-gray-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
@@ -82,7 +83,7 @@ export function PerformanceClient({ year, fromDate, toDate, rangeLabel, metrics,
 
       <PerformanceSummaryCards metrics={metrics} activeType={activeType} onSelect={selectPerformanceType} />
 
-      <div className="mt-6">
+      <div id="performance-details" className="mt-6 scroll-mt-24">
         <div>
           <h2 className="text-xl font-bold text-gray-900">{titleFor(activeType)}</h2>
           <p className="text-sm text-gray-500">Your personal records for {rangeLabel}.</p>
@@ -138,6 +139,7 @@ export function PerformanceSummaryCards({
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {cardMeta.map((card) => {
         const tone = performanceTone(metrics[card.type].rate);
+        const visualRate = Math.max(0, Math.min(100, metrics[card.type].rate));
         const className = `rounded-xl border bg-white p-4 text-left shadow-sm transition hover:shadow-md ${tone.hover} ${activeType === card.type ? "border-blue-400 ring-2 ring-blue-100" : "border-gray-200"}`;
         const content = (
           <>
@@ -146,7 +148,7 @@ export function PerformanceSummaryCards({
               <ChevronRight className="size-4 text-gray-300" aria-hidden />
             </div>
             <div className="mt-4 flex items-center gap-3">
-              <div className="size-[68px] shrink-0 rounded-full p-[5px]" style={{ background: `conic-gradient(${tone.accent} ${metrics[card.type].rate}%, #e5e7eb 0)` }}>
+              <div className="size-[68px] shrink-0 rounded-full p-[5px]" style={{ background: `conic-gradient(${tone.accent} ${visualRate}%, #e5e7eb 0)` }}>
                 <div className="flex size-full items-center justify-center rounded-full bg-white text-lg font-bold">{metrics[card.type].rate}%</div>
               </div>
               <CardText type={card.type} metrics={metrics} />
@@ -154,12 +156,20 @@ export function PerformanceSummaryCards({
           </>
         );
 
+        if (card.type === "contribution") {
+          return (
+            <Link key={card.type} href="/admin/contributions" className={className}>
+              {content}
+            </Link>
+          );
+        }
+
         return onSelect ? (
           <button key={card.type} type="button" onClick={() => onSelect(card.type)} className={className}>
             {content}
           </button>
         ) : (
-          <Link key={card.type} href={detailsHref} className={className}>
+          <Link key={card.type} href={`${detailsHref}${detailsHref.includes("?") ? "&" : "?"}type=${card.type}#performance-details`} className={className}>
             {content}
           </Link>
         );

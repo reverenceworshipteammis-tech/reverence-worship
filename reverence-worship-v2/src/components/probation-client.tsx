@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ActionNotice } from "@/components/action-notice";
 import {
   CalendarClock,
   CheckCircle2,
@@ -341,9 +342,7 @@ export function ProbationClient({
       </div>
 
       {result ? (
-        <div role="status" className={`rounded-xl border px-4 py-3 text-sm font-medium ${result.ok ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-rose-200 bg-rose-50 text-rose-800"}`}>
-          {result.message}
-        </div>
+        <ActionNotice message={result.message} tone={result.ok ? "success" : "error"} onClose={() => setResult(null)} />
       ) : null}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">

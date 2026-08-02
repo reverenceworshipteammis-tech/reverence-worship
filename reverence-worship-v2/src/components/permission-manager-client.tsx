@@ -2,6 +2,7 @@
 
 import { FormEvent, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { ActionNotice } from "@/components/action-notice";
 import {
   AlertTriangle,
   Check,
@@ -474,27 +475,7 @@ export function PermissionManagerClient({
 }
 
 function PermissionNotice({ notice, onClose }: { notice: Result; onClose: () => void }) {
-  const Icon = notice.ok ? CheckCircle2 : AlertTriangle;
-
-  return (
-    <div
-      className={`mb-4 flex items-start gap-3 rounded-xl border px-4 py-3 text-sm shadow-sm ${
-        notice.ok ? "border-green-200 bg-green-50 text-green-800" : "border-red-200 bg-red-50 text-red-800"
-      }`}
-      role="status"
-    >
-      <span className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full ${notice.ok ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"}`}>
-        <Icon className="size-4" aria-hidden="true" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="font-semibold">{notice.ok ? "Success" : "Notice"}</p>
-        <p className="mt-0.5 leading-5">{notice.message}</p>
-      </div>
-      <button type="button" onClick={onClose} className="rounded-lg p-1 text-current opacity-60 transition hover:bg-white/70 hover:opacity-100" aria-label="Close notice">
-        <X className="size-4" aria-hidden="true" />
-      </button>
-    </div>
-  );
+  return <ActionNotice message={notice.message} tone={notice.ok ? "success" : "error"} onClose={onClose} className="mb-4" />;
 }
 
 function PermissionConfirmModal({

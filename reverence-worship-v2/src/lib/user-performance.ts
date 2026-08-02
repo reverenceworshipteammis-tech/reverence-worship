@@ -1,4 +1,5 @@
 import { withDatabaseRetry } from "@/lib/database-retry";
+import { calculateContributionRate } from "@/lib/finance-rules";
 import { prisma } from "@/lib/prisma";
 
 export type PerformanceMetrics = {
@@ -52,7 +53,7 @@ export async function getUserPerformanceData(userId: number, year: number, range
     }),
     prisma.contribution.findUnique({ where: { userId_year: { userId, year } } }),
     prisma.payment.findMany({
-      where: { userId, year, paymentDate: { gte: yearStart, lte: yearEnd } },
+      where: { userId, year, status: { not: "voided" }, paymentDate: { gte: yearStart, lte: yearEnd } },
       orderBy: [{ paymentDate: "desc" }, { createdAt: "desc" }],
     }),
   ]));
@@ -87,7 +88,7 @@ export async function getUserPerformanceData(userId: number, year: number, range
       year,
     },
     contribution: {
-      rate: expectedContribution > 0 ? Math.min(100, Math.round((paidContribution / expectedContribution) * 100)) : 0,
+      rate: calculateContributionRate(paidContribution, expectedContribution),
       paid: paidContribution,
       expected: expectedContribution,
       year,

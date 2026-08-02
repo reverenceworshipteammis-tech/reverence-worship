@@ -4,8 +4,13 @@ import { useMemo, useState, useTransition } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useAppDialog } from "@/components/app-dialog-provider";
+import { ActionNotice } from "@/components/action-notice";
+import { EventContributionsClient, type FinanceContributionEvent } from "@/components/event-contributions-client";
 import {
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   BarChart3,
   Calculator,
   CheckCircle2,
@@ -50,6 +55,7 @@ import {
   saveSponsor,
   updateFinancePayment,
 } from "@/app/admin/finance/actions";
+import { calculateContributionRate } from "@/lib/finance-rules";
 
 type UserOption = {
   id: number;
@@ -129,6 +135,9 @@ type Expense = {
 };
 
 type FinancePermissions = {
+  manageContributions: boolean;
+  managePayments: boolean;
+  deletePayments: boolean;
   manageSettings: boolean;
   manageExpenses: boolean;
   approveExpenses: boolean;
@@ -225,6 +234,7 @@ export function FinanceClient({
   families,
   contributions,
   payments,
+  contributionEvents,
   gifts,
   expenses,
   sponsors,
@@ -238,6 +248,7 @@ export function FinanceClient({
   families: FamilyOption[];
   contributions: Contribution[];
   payments: Payment[];
+  contributionEvents: FinanceContributionEvent[];
   gifts: GiftItem[];
   expenses: Expense[];
   sponsors: Sponsor[];
@@ -245,8 +256,47 @@ export function FinanceClient({
   termSettings: FinanceTermSetting[];
   permissions: FinancePermissions;
 }) {
-  const currentYearPayments = payments.filter((item) => item.year === year);
+  const currentYearPayments = payments
+    .filter((item) => item.year === year && item.status !== "voided")
+    .sort((firstPayment, secondPayment) =>
+      secondPayment.paymentDateRaw.localeCompare(firstPayment.paymentDateRaw)
+      || secondPayment.createdAt.localeCompare(firstPayment.createdAt)
+      || secondPayment.id - firstPayment.id,
+    );
+  const currentYearEventPayments = contributionEvents
+    .filter((event) => event.year === year)
+    .flatMap((event) => event.payments.map((payment) => ({ ...payment, eventTitle: event.title })))
+    .sort((firstPayment, secondPayment) =>
+      secondPayment.paymentDateRaw.localeCompare(firstPayment.paymentDateRaw)
+      || secondPayment.createdAt.localeCompare(firstPayment.createdAt)
+      || secondPayment.id - firstPayment.id,
+    );
+  const recentIncomePayments = [
+    ...currentYearPayments.map((payment) => ({
+      key: `annual-${payment.id}`,
+      title: payment.userName,
+      subtitle: `${payment.paymentDate} • ${payment.paymentMethod}`,
+      amount: payment.amount,
+      paymentDateRaw: payment.paymentDateRaw,
+      createdAt: payment.createdAt,
+      id: payment.id,
+    })),
+    ...currentYearEventPayments.map((payment) => ({
+      key: `event-${payment.id}`,
+      title: payment.userName,
+      subtitle: `${payment.paymentDate} • ${payment.eventTitle}`,
+      amount: payment.amount,
+      paymentDateRaw: payment.paymentDateRaw,
+      createdAt: payment.createdAt,
+      id: payment.id,
+    })),
+  ].sort((firstPayment, secondPayment) =>
+    secondPayment.paymentDateRaw.localeCompare(firstPayment.paymentDateRaw)
+    || secondPayment.createdAt.localeCompare(firstPayment.createdAt)
+    || secondPayment.id - firstPayment.id,
+  );
   const [activeTab, setActiveTab] = useState("overview");
+  const [contributionView, setContributionView] = useState<"annual" | "events">("annual");
   const [startDate, setStartDate] = useState(`${year}-01-01`);
   const [endDate, setEndDate] = useState(`${year}-12-31`);
   const tabs = [
@@ -268,11 +318,12 @@ export function FinanceClient({
     const totalExpected = memberCommitments + sponsorCommitments;
     const inRange = (date: string) => (!startDate || date >= startDate) && (!endDate || date <= endDate);
     const totalCollected = payments.filter((item) => item.status !== "voided" && inRange(item.paymentDateRaw)).reduce((sum, item) => sum + item.amount, 0);
+    const totalEventContributions = contributionEvents.flatMap((event) => event.payments).filter((item) => item.status !== "voided" && inRange(item.paymentDateRaw)).reduce((sum, item) => sum + item.amount, 0);
     const totalGifts = gifts.filter((item) => inRange(item.dateRaw)).reduce((sum, item) => sum + item.receivedAmount, 0);
     const totalSponsorReceived = sponsors.flatMap((item) => item.payments).filter((item) => inRange(item.paymentDateRaw)).reduce((sum, item) => sum + item.amount, 0);
     const totalExpenses = expenses.filter((item) => (item.status === "approved" || item.status === "void_pending") && inRange(item.dateRaw)).reduce((sum, item) => sum + item.amount, 0);
     const reservedExpenses = expenses.filter((item) => item.status === "pending" && inRange(item.dateRaw)).reduce((sum, item) => sum + item.amount, 0);
-    const totalIncome = totalCollected + totalGifts + totalSponsorReceived;
+    const totalIncome = totalCollected + totalEventContributions + totalGifts + totalSponsorReceived;
     const committedIncomeReceived = totalCollected + totalSponsorReceived;
     const accountBalance = Math.max(totalIncome - totalExpenses - reservedExpenses, 0);
     const pendingAmount = Math.max(totalExpected - committedIncomeReceived, 0);
@@ -280,6 +331,7 @@ export function FinanceClient({
     return {
       totalExpected,
       totalCollected,
+      totalEventContributions,
       totalGifts,
       totalSponsorReceived,
       totalExpenses,
@@ -289,7 +341,7 @@ export function FinanceClient({
       collectionRate,
       reservedExpenses,
     };
-  }, [year, contributions, payments, gifts, sponsors, expenses, startDate, endDate]);
+  }, [year, contributions, payments, contributionEvents, gifts, sponsors, expenses, startDate, endDate]);
 
   return (
     <div className="mx-auto max-w-7xl space-y-4 px-2 py-4 sm:px-4 sm:py-6">
@@ -359,8 +411,8 @@ export function FinanceClient({
 
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 <RecentList title="Recent Payments" empty="No payments yet">
-                  {currentYearPayments.slice(0, 5).map((payment) => (
-                    <RecentRow key={payment.id} title={payment.userName} subtitle={`${payment.paymentDate} • ${payment.paymentMethod}`} amount={payment.amount} />
+                  {recentIncomePayments.slice(0, 5).map((payment) => (
+                    <RecentRow key={payment.key} title={payment.title} subtitle={payment.subtitle} amount={payment.amount} />
                   ))}
                 </RecentList>
                 <RecentList title="Recent Expenses" empty="No expenses yet">
@@ -371,18 +423,40 @@ export function FinanceClient({
               </div>
             </div>
           ) : activeTab === "contributions" ? (
-            <FinanceContributionsTab
-              currentYear={year}
-              users={users}
-              families={families}
-              contributions={contributions}
-              payments={payments}
-              termSettings={termSettings}
-              fromDate={startDate}
-              toDate={endDate}
-              setFromDate={setStartDate}
-              setToDate={setEndDate}
-            />
+            <div className="space-y-4">
+              {contributionView === "annual" ? (
+                <>
+                  <div className="inline-flex rounded-lg bg-gray-100 p-1">
+                    <button type="button" className="rounded-md bg-white px-3 py-1.5 text-sm font-semibold text-blue-600 shadow-sm">Annual Contributions</button>
+                    <button type="button" onClick={() => setContributionView("events")} className="rounded-md px-3 py-1.5 text-sm font-semibold text-gray-600 transition hover:text-gray-900">Other Contributions</button>
+                  </div>
+                  <FinanceContributionsTab
+                    currentYear={year}
+                    users={users}
+                    families={families}
+                    contributions={contributions}
+                    payments={payments}
+                    termSettings={termSettings}
+                    fromDate={startDate}
+                    toDate={endDate}
+                    setFromDate={setStartDate}
+                    setToDate={setEndDate}
+                  />
+                </>
+              ) : (
+                <EventContributionsClient
+                  events={contributionEvents}
+                  users={users}
+                  onShowAnnual={() => setContributionView("annual")}
+                  permissions={{
+                    manageContributions: permissions.manageContributions,
+                    managePayments: permissions.managePayments,
+                    deletePayments: permissions.deletePayments,
+                    export: permissions.export,
+                  }}
+                />
+              )}
+            </div>
           ) : activeTab === "payments" ? (
             <FinancePaymentsTab
               currentYear={year}
@@ -412,6 +486,7 @@ export function FinanceClient({
           ) : activeTab === "ledger" ? (
             <FinanceLedgerReportsTab
               payments={payments}
+              contributionEvents={contributionEvents}
               gifts={gifts}
               sponsors={sponsors}
               expenses={expenses}
@@ -432,8 +507,9 @@ export function FinanceClient({
   );
 }
 
-function FinanceLedgerReportsTab({ payments, gifts, sponsors, expenses, permissions, startDate, endDate, onStartDateChange, onEndDateChange }: {
+function FinanceLedgerReportsTab({ payments, contributionEvents, gifts, sponsors, expenses, permissions, startDate, endDate, onStartDateChange, onEndDateChange }: {
   payments: Payment[];
+  contributionEvents: FinanceContributionEvent[];
   gifts: GiftItem[];
   sponsors: Sponsor[];
   expenses: Expense[];
@@ -443,9 +519,11 @@ function FinanceLedgerReportsTab({ payments, gifts, sponsors, expenses, permissi
   onStartDateChange: (value: string) => void;
   onEndDateChange: (value: string) => void;
 }) {
+  const [requestedPage, setRequestedPage] = useState(1);
   const entries = useMemo(() => {
     const rows = [
       ...payments.filter((item) => item.status !== "voided").map((item) => ({ sourceType: "payment", sourceId: item.id, date: item.paymentDateRaw, description: item.userName, income: item.amount, expense: 0, status: item.status })),
+      ...contributionEvents.flatMap((event) => event.payments.filter((item) => item.status !== "voided").map((item) => ({ sourceType: "event_contribution_payment", sourceId: item.id, date: item.paymentDateRaw, description: `${event.title} - ${item.userName}`, income: item.amount, expense: 0, status: item.status }))),
       ...gifts.filter((item) => item.receivedAmount > 0).map((item) => ({ sourceType: "gift", sourceId: item.id, date: item.dateRaw, description: `Gift - ${item.donorName}`, income: item.receivedAmount, expense: 0, status: item.status })),
       ...sponsors.flatMap((sponsor) => sponsor.payments.map((item) => ({ sourceType: "sponsor_payment", sourceId: item.id, date: item.paymentDateRaw, description: `Sponsor payment - ${sponsor.name}`, income: item.amount, expense: 0, status: "completed" }))),
       ...expenses.filter((item) => item.status === "approved" || item.status === "void_pending").map((item) => ({ sourceType: "expense", sourceId: item.id, date: item.dateRaw, description: item.description || "Expense", income: 0, expense: item.amount, status: item.status })),
@@ -454,10 +532,16 @@ function FinanceLedgerReportsTab({ payments, gifts, sponsors, expenses, permissi
       const balance = (ledger.at(-1)?.balance ?? 0) + row.income - row.expense;
       return [...ledger, { ...row, balance }];
     }, []);
-  }, [payments, gifts, sponsors, expenses, startDate, endDate]);
+  }, [payments, contributionEvents, gifts, sponsors, expenses, startDate, endDate]);
   const income = entries.reduce((sum, item) => sum + item.income, 0);
   const spent = entries.reduce((sum, item) => sum + item.expense, 0);
   const reserved = expenses.filter((item) => item.status === "pending" && (!startDate || item.dateRaw >= startDate) && (!endDate || item.dateRaw <= endDate)).reduce((sum, item) => sum + item.amount, 0);
+  const displayEntries = useMemo(() => [...entries].reverse(), [entries]);
+  const recordsPerPage = 30;
+  const totalPages = Math.max(1, Math.ceil(displayEntries.length / recordsPerPage));
+  const currentPage = Math.min(requestedPage, totalPages);
+  const firstRecordIndex = (currentPage - 1) * recordsPerPage;
+  const paginatedEntries = displayEntries.slice(firstRecordIndex, firstRecordIndex + recordsPerPage);
 
   function exportReport() {
     const rows = [["Date", "Description", "Type", "Income", "Expense", "Running Balance", "Status"], ...entries.map((item) => [item.date, item.description, item.sourceType, item.income, item.expense, item.balance, item.status])];
@@ -474,8 +558,8 @@ function FinanceLedgerReportsTab({ payments, gifts, sponsors, expenses, permissi
     <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-end">
    
       <div className="flex flex-wrap items-end gap-2">
-        <FieldLabel label="From"><input type="date" value={startDate} onChange={(event) => onStartDateChange(event.target.value)} className="h-8 rounded-lg border border-gray-300 px-2 text-xs" /></FieldLabel>
-        <FieldLabel label="To"><input type="date" value={endDate} onChange={(event) => onEndDateChange(event.target.value)} className="h-8 rounded-lg border border-gray-300 px-2 text-xs" /></FieldLabel>
+        <FieldLabel label="From"><input type="date" value={startDate} onChange={(event) => { onStartDateChange(event.target.value); setRequestedPage(1); }} className="h-8 rounded-lg border border-gray-300 px-2 text-xs" /></FieldLabel>
+        <FieldLabel label="To"><input type="date" value={endDate} onChange={(event) => { onEndDateChange(event.target.value); setRequestedPage(1); }} className="h-8 rounded-lg border border-gray-300 px-2 text-xs" /></FieldLabel>
         {permissions.export ? <button type="button" onClick={exportReport} className="h-8 rounded-lg bg-emerald-600 px-3 text-xs font-medium text-white">Export Excel</button> : null}
       </div>
     </div>
@@ -486,11 +570,23 @@ function FinanceLedgerReportsTab({ payments, gifts, sponsors, expenses, permissi
       <ExpenseStat label="Closing balance" value={Math.max(income - spent, 0)} tone="green" icon={Calculator} />
     </div>
     {income - spent - reserved < income * 0.1 && income > 0 ? <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"><AlertTriangle className="size-4" />Available funds after pending approvals are below 10% of income.</div> : null}
-    <div className="overflow-x-auto rounded-lg border border-gray-200">
-      <table className="min-w-full divide-y divide-gray-200 text-sm"><thead className="bg-gray-50"><tr>{["Date", "Description", "Income", "Expense", "Balance"].map((label) => <th key={label} className="px-3 py-2 text-left text-xs uppercase text-gray-500">{label}</th>)}</tr></thead>
-      <tbody className="divide-y divide-gray-100">{entries.length ? [...entries].reverse().map((item) => {
-        return <tr key={`${item.sourceType}-${item.sourceId}`}><td className="whitespace-nowrap px-3 py-2 text-xs text-gray-500">{item.date}</td><td className="px-3 py-2 text-gray-800">{item.description}</td><td className="px-3 py-2 font-medium text-emerald-600">{item.income ? formatCurrency(item.income) : "-"}</td><td className="px-3 py-2 font-medium text-red-600">{item.expense ? formatCurrency(item.expense) : "-"}</td><td className="px-3 py-2 font-semibold">{formatCurrency(item.balance)}</td></tr>;
-      }) : <tr><td colSpan={5} className="px-4 py-10 text-center text-gray-500">No transactions in this date range.</td></tr>}</tbody></table>
+    <div className="overflow-hidden rounded-lg border border-gray-200">
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200 text-sm"><thead className="bg-gray-50"><tr>{["Date", "Description", "Income", "Expense", "Balance"].map((label) => <th key={label} className="px-3 py-2 text-left text-xs uppercase text-gray-500">{label}</th>)}</tr></thead>
+        <tbody className="divide-y divide-gray-100">{paginatedEntries.length ? paginatedEntries.map((item) => {
+          return <tr key={`${item.sourceType}-${item.sourceId}`}><td className="whitespace-nowrap px-3 py-2 text-xs text-gray-500">{item.date}</td><td className="px-3 py-2 text-gray-800">{item.description}</td><td className="px-3 py-2 font-medium text-emerald-600">{item.income ? formatCurrency(item.income) : "-"}</td><td className="px-3 py-2 font-medium text-red-600">{item.expense ? formatCurrency(item.expense) : "-"}</td><td className="px-3 py-2 font-semibold">{formatCurrency(item.balance)}</td></tr>;
+        }) : <tr><td colSpan={5} className="px-4 py-10 text-center text-gray-500">No transactions in this date range.</td></tr>}</tbody></table>
+      </div>
+      {displayEntries.length > recordsPerPage ? (
+        <div className="flex flex-col items-center justify-between gap-3 border-t border-gray-100 px-4 py-3 sm:flex-row">
+          <p className="text-xs text-gray-500">Showing {firstRecordIndex + 1}–{Math.min(firstRecordIndex + recordsPerPage, displayEntries.length)} of {displayEntries.length} records</p>
+          <div className="flex items-center gap-2">
+            <button type="button" disabled={currentPage === 1} onClick={() => setRequestedPage(currentPage - 1)} className="h-8 rounded-lg border border-gray-300 px-3 text-xs font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40">Previous</button>
+            <span className="min-w-20 text-center text-xs font-medium text-gray-600">Page {currentPage} of {totalPages}</span>
+            <button type="button" disabled={currentPage === totalPages} onClick={() => setRequestedPage(currentPage + 1)} className="h-8 rounded-lg border border-gray-300 px-3 text-xs font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40">Next</button>
+          </div>
+        </div>
+      ) : null}
     </div>
   </div>;
 }
@@ -1030,27 +1126,7 @@ function actionPlanStatusBadge(status: string) {
 }
 
 function FinanceNoticeBanner({ notice, onClose }: { notice: FinanceNotice; onClose: () => void }) {
-  const Icon = notice.ok ? CheckCircle2 : AlertTriangle;
-
-  return (
-    <div
-      className={`flex items-start gap-3 rounded-xl border px-4 py-3 text-sm shadow-sm ${
-        notice.ok ? "border-green-200 bg-green-50 text-green-800" : "border-red-200 bg-red-50 text-red-800"
-      }`}
-      role="status"
-    >
-      <span className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full ${notice.ok ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"}`}>
-        <Icon className="size-4" aria-hidden="true" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="font-semibold">{notice.ok ? "Success" : "Notice"}</p>
-        <p className="mt-0.5 leading-5">{notice.message}</p>
-      </div>
-      <button type="button" onClick={onClose} className="rounded-lg p-1 text-current opacity-60 transition hover:bg-white/70 hover:opacity-100" aria-label="Close notice">
-        <X className="size-4" aria-hidden="true" />
-      </button>
-    </div>
-  );
+  return <ActionNotice message={notice.message} tone={notice.ok ? "success" : "error"} onClose={onClose} />;
 }
 
 function FinanceConfirmModal({
@@ -1321,6 +1397,8 @@ type ContributionRow = {
   progress: number;
 };
 
+type ContributionSortField = "member" | "progress" | `term-${number}`;
+
 function FinanceContributionsTab({
   currentYear,
   users,
@@ -1348,6 +1426,8 @@ function FinanceContributionsTab({
   const [familyFilter, setFamilyFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [requestedPage, setRequestedPage] = useState(1);
+  const [sortField, setSortField] = useState<ContributionSortField>("member");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [annualModalUser, setAnnualModalUser] = useState<UserOption | null>(null);
   const [paymentModalUser, setPaymentModalUser] = useState<UserOption | null>(null);
   const [annualModalOpen, setAnnualModalOpen] = useState(false);
@@ -1400,7 +1480,7 @@ function FinanceContributionsTab({
           };
         });
         const totalPaid = termRows.reduce((sum, row) => sum + row.paid, 0);
-        const progress = annualAmount > 0 ? Math.min(100, Math.round((totalPaid / annualAmount) * 100)) : 0;
+        const progress = calculateContributionRate(totalPaid, annualAmount);
         return {
           user,
           contribution,
@@ -1428,16 +1508,47 @@ function FinanceContributionsTab({
     const daysInYear = Math.round((nextYearStart - yearStart) / 86_400_000);
     const totalExpected = Math.round(annualExpected * (selectedDays / daysInYear));
     const pendingAmount = Math.max(totalExpected - totalReceived, 0);
-    const contributionRate = totalExpected > 0 ? Math.round((totalReceived / totalExpected) * 100) : 0;
+    const contributionRate = calculateContributionRate(totalReceived, totalExpected);
 
     return { totalExpected, totalReceived, pendingAmount, contributionRate };
   }, [rows, fromDate, toDate, selectedYear]);
 
+  const sortedRows = useMemo(() => {
+    const direction = sortDirection === "asc" ? 1 : -1;
+    return [...rows].sort((firstRow, secondRow) => {
+      let comparison = 0;
+      if (sortField === "member") comparison = firstRow.user.name.localeCompare(secondRow.user.name, undefined, { sensitivity: "base" });
+      if (sortField === "progress") comparison = firstRow.progress - secondRow.progress;
+      if (sortField.startsWith("term-")) {
+        const termNumber = Number(sortField.slice(5));
+        const firstPaid = firstRow.termRows.find((term) => term.term === termNumber)?.paid ?? 0;
+        const secondPaid = secondRow.termRows.find((term) => term.term === termNumber)?.paid ?? 0;
+        comparison = firstPaid - secondPaid;
+      }
+      return (comparison || firstRow.user.name.localeCompare(secondRow.user.name, undefined, { sensitivity: "base" })) * direction;
+    });
+  }, [rows, sortField, sortDirection]);
+
   const recordsPerPage = 10;
-  const totalPages = Math.max(1, Math.ceil(rows.length / recordsPerPage));
+  const totalPages = Math.max(1, Math.ceil(sortedRows.length / recordsPerPage));
   const currentPage = Math.min(requestedPage, totalPages);
   const firstRecordIndex = (currentPage - 1) * recordsPerPage;
-  const paginatedRows = rows.slice(firstRecordIndex, firstRecordIndex + recordsPerPage);
+  const paginatedRows = sortedRows.slice(firstRecordIndex, firstRecordIndex + recordsPerPage);
+
+  function changeContributionSort(field: ContributionSortField) {
+    if (field === sortField) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection(field === "member" ? "asc" : "desc");
+    }
+    setRequestedPage(1);
+  }
+
+  function contributionSortIcon(field: ContributionSortField) {
+    if (sortField !== field) return <ArrowUpDown className="size-3.5 text-gray-400" aria-hidden="true" />;
+    return sortDirection === "asc" ? <ArrowUp className="size-3.5" aria-hidden="true" /> : <ArrowDown className="size-3.5" aria-hidden="true" />;
+  }
 
   function submitAction(action: (formData: FormData) => Promise<{ ok: boolean; message: string }>, formData: FormData) {
     setResult(null);
@@ -1463,7 +1574,7 @@ function FinanceContributionsTab({
 
     const lines = [
       headers,
-      ...rows.map((row) => [
+      ...sortedRows.map((row) => [
         row.user.name,
         row.user.email,
         row.familyName ?? "",
@@ -1487,8 +1598,8 @@ function FinanceContributionsTab({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col justify-between gap-3 xl:flex-row xl:items-end xl:gap-2">
-        <div className="min-w-0 flex-1 xl:min-w-[650px]">
+      <div className="flex flex-col justify-between gap-3 2xl:flex-row 2xl:items-end 2xl:gap-2">
+        <div className="min-w-0 flex-1 2xl:min-w-[650px]">
           <h2 className="text-base font-semibold text-gray-800">Member Contributions</h2>
           <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
             <MemberContributionStat label="Expected Amount" value={formatCurrency(memberStats.totalExpected)} tone="blue" />
@@ -1497,7 +1608,7 @@ function FinanceContributionsTab({
             <MemberContributionStat label="Contribution Rate" value={`${memberStats.contributionRate}%`} tone="purple" />
           </div>
         </div>
-        <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-end xl:w-auto">
+        <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-end sm:justify-end 2xl:w-auto">
           <div className="grid grid-cols-2 gap-2">
             <FieldLabel label="From date">
               <input
@@ -1511,7 +1622,7 @@ function FinanceContributionsTab({
                   setFamilyFilter("all");
                   setRequestedPage(1);
                 }}
-                className="h-8 w-full rounded-lg border border-gray-300 px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:w-36"
+                className="h-8 w-full rounded-lg border border-gray-300 px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:w-32"
               />
             </FieldLabel>
             <FieldLabel label="To date">
@@ -1524,22 +1635,19 @@ function FinanceContributionsTab({
                   setToDate(event.target.value);
                   setRequestedPage(1);
                 }}
-                className="h-8 w-full rounded-lg border border-gray-300 px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:w-36"
+                className="h-8 w-full rounded-lg border border-gray-300 px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:w-32"
               />
             </FieldLabel>
           </div>
-          <div className="flex w-full flex-col gap-1.5 sm:w-48">
-            <button type="button" onClick={exportCsv} className="inline-flex h-8 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-emerald-600 px-3 text-xs text-white transition hover:bg-emerald-700">
-              <FileSpreadsheet className="size-4" />
-              Export Excel
+          <div className="flex w-full shrink-0 items-center justify-end gap-2 sm:w-auto">
+            <button type="button" onClick={exportCsv} title="Export Excel" aria-label="Export Excel" className="inline-flex size-9 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm transition hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200">
+              <FileSpreadsheet className="size-4" aria-hidden="true" />
             </button>
-            <button type="button" onClick={() => { setPaymentModalUser(null); setPaymentModalOpen(true); }} className="inline-flex h-8 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-blue-600 px-3 text-xs text-white transition hover:bg-blue-700">
-              <HandCoins className="size-4" />
-              Record Payment
+            <button type="button" onClick={() => { setPaymentModalUser(null); setPaymentModalOpen(true); }} title="Record Payment" aria-label="Record Payment" className="inline-flex size-9 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200">
+              <HandCoins className="size-4" aria-hidden="true" />
             </button>
-            <button type="button" onClick={() => { setAnnualModalUser(null); setAnnualModalOpen(true); }} className="inline-flex h-8 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-green-600 px-3 text-xs text-white transition hover:bg-green-700">
-              <PlusCircle className="size-4" />
-              Set Annual Contribution
+            <button type="button" onClick={() => { setAnnualModalUser(null); setAnnualModalOpen(true); }} title="Set Annual Contribution" aria-label="Set Annual Contribution" className="inline-flex size-9 items-center justify-center rounded-xl bg-green-600 text-white shadow-sm transition hover:bg-green-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-200">
+              <PlusCircle className="size-4" aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -1585,13 +1693,29 @@ function FinanceContributionsTab({
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Member</th>
-              {termNumbers.map((term, index) => (
-                <th key={term} className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">
-                  Term {term} <span className="font-normal">({termPercentages[index]?.toFixed(0)}%)</span>
-                </th>
-              ))}
-              <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Total Progress</th>
+              <th aria-sort={sortField === "member" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"} className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">
+                <button type="button" onClick={() => changeContributionSort("member")} title="Sort by Member" className={`inline-flex items-center gap-1 transition hover:text-blue-600 ${sortField === "member" ? "text-blue-600" : "text-gray-500"}`}>
+                  Member
+                  {contributionSortIcon("member")}
+                </button>
+              </th>
+              {termNumbers.map((term, index) => {
+                const field: ContributionSortField = `term-${term}`;
+                return (
+                  <th key={term} aria-sort={sortField === field ? (sortDirection === "asc" ? "ascending" : "descending") : "none"} className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">
+                    <button type="button" onClick={() => changeContributionSort(field)} title={`Sort by Term ${term} paid amount`} className={`inline-flex items-center gap-1 transition hover:text-blue-600 ${sortField === field ? "text-blue-600" : "text-gray-500"}`}>
+                      <span>Term {term} <span className="font-normal">({termPercentages[index]?.toFixed(0)}%)</span></span>
+                      {contributionSortIcon(field)}
+                    </button>
+                  </th>
+                );
+              })}
+              <th aria-sort={sortField === "progress" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"} className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">
+                <button type="button" onClick={() => changeContributionSort("progress")} title="Sort by Total Progress" className={`inline-flex items-center gap-1 transition hover:text-blue-600 ${sortField === "progress" ? "text-blue-600" : "text-gray-500"}`}>
+                  Total Progress
+                  {contributionSortIcon("progress")}
+                </button>
+              </th>
               <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Actions</th>
             </tr>
           </thead>
@@ -1749,6 +1873,8 @@ function FinancePaymentsTab({
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [requestedPage, setRequestedPage] = useState(1);
+  const [sortField, setSortField] = useState<"date" | "member" | "term" | "amount" | "method">("date");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [detailPayment, setDetailPayment] = useState<Payment | null>(null);
   const [editPayment, setEditPayment] = useState<Payment | null>(null);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -1759,12 +1885,22 @@ function FinancePaymentsTab({
 
   const filteredPayments = useMemo(() => {
     const query = search.trim().toLowerCase();
+    const direction = sortDirection === "asc" ? 1 : -1;
     return payments
+      .filter((payment) => payment.status !== "voided")
       .filter((payment) => !fromDate || payment.paymentDateRaw >= fromDate)
       .filter((payment) => !toDate || payment.paymentDateRaw <= toDate)
       .filter((payment) => !query || payment.userName.toLowerCase().includes(query) || payment.userEmail.toLowerCase().includes(query))
-      .sort((a, b) => b.paymentDateRaw.localeCompare(a.paymentDateRaw) || b.id - a.id);
-  }, [payments, fromDate, toDate, search]);
+      .sort((firstPayment, secondPayment) => {
+        let comparison = 0;
+        if (sortField === "date") comparison = firstPayment.paymentDateRaw.localeCompare(secondPayment.paymentDateRaw) || firstPayment.createdAt.localeCompare(secondPayment.createdAt);
+        if (sortField === "member") comparison = firstPayment.userName.localeCompare(secondPayment.userName, undefined, { sensitivity: "base" });
+        if (sortField === "term") comparison = (firstPayment.term ?? 0) - (secondPayment.term ?? 0);
+        if (sortField === "amount") comparison = firstPayment.amount - secondPayment.amount;
+        if (sortField === "method") comparison = methodLabel(firstPayment.paymentMethod).localeCompare(methodLabel(secondPayment.paymentMethod), undefined, { sensitivity: "base" });
+        return (comparison || firstPayment.id - secondPayment.id) * direction;
+      });
+  }, [payments, fromDate, toDate, search, sortField, sortDirection]);
 
   const recordsPerPage = 10;
   const totalPages = Math.max(1, Math.ceil(filteredPayments.length / recordsPerPage));
@@ -1772,7 +1908,17 @@ function FinancePaymentsTab({
   const firstRecordIndex = (currentPage - 1) * recordsPerPage;
   const paginatedPayments = filteredPayments.slice(firstRecordIndex, firstRecordIndex + recordsPerPage);
 
-  const totalPayments = filteredPayments.filter((payment) => payment.status !== "voided").reduce((sum, payment) => sum + payment.amount, 0);
+  const totalPayments = filteredPayments.reduce((sum, payment) => sum + payment.amount, 0);
+
+  function changeSort(field: "date" | "member" | "term" | "amount" | "method") {
+    if (field === sortField) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection(field === "date" ? "desc" : "asc");
+    }
+    setRequestedPage(1);
+  }
 
   function exportCsv() {
     if (fromDate && toDate && fromDate > toDate) {
@@ -1887,9 +2033,23 @@ function FinancePaymentsTab({
           <table className="min-w-full divide-y divide-gray-200 text-sm">
             <thead className="bg-gray-50">
               <tr>
-                {["#", "Date", "Member", "Term", "Amount", "Method", "Notes", "Actions"].map((header) => (
-                  <th key={header} className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">{header}</th>
+                <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">#</th>
+                {([
+                  ["date", "Date"],
+                  ["member", "Member"],
+                  ["term", "Term"],
+                  ["amount", "Amount"],
+                  ["method", "Method"],
+                ] as const).map(([field, label]) => (
+                  <th key={field} aria-sort={sortField === field ? (sortDirection === "asc" ? "ascending" : "descending") : "none"} className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">
+                    <button type="button" onClick={() => changeSort(field)} title={`Sort by ${label}`} className={`inline-flex items-center gap-1 transition hover:text-blue-600 ${sortField === field ? "text-blue-600" : "text-gray-500"}`}>
+                      {label}
+                      {sortField === field ? (sortDirection === "asc" ? <ArrowUp className="size-3.5" aria-hidden="true" /> : <ArrowDown className="size-3.5" aria-hidden="true" />) : <ArrowUpDown className="size-3.5 text-gray-400" aria-hidden="true" />}
+                    </button>
+                  </th>
                 ))}
+                <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Notes</th>
+                <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -2664,10 +2824,10 @@ function TotalContributionProgress({ paid, annualAmount, progress }: { paid: num
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center justify-between gap-2">
-        <span className="font-bold text-purple-600">{width.toFixed(1)}%</span>
+        <span className="font-bold text-purple-600">{progress.toFixed(1)}%</span>
         <span className="whitespace-nowrap text-xs text-gray-400">{formatCurrency(paid)} / {formatCurrency(annualAmount)}</span>
       </div>
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200" role="progressbar" aria-valuenow={width} aria-valuemin={0} aria-valuemax={100} aria-label={`${width.toFixed(1)}% overall progress`}>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200" role="progressbar" aria-valuenow={width} aria-valuemin={0} aria-valuemax={100} aria-label={`${progress.toFixed(1)}% overall progress`}>
         <div
           className={`h-1.5 rounded-full transition-all duration-300 ${progressColor(width, true)}`}
           style={{ width: `${width}%` }}

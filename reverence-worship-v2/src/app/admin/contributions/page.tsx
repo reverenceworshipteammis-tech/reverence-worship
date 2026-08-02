@@ -1,7 +1,7 @@
 import { MyContributionsClient } from "@/components/my-contributions-client";
 import { canMemberCommitAnnualContribution } from "@/lib/annual-contribution-rules";
 import { getUserPermissionSet, permissionSetHas, requirePageAccess } from "@/lib/auth";
-import { calculateContributionTermTarget } from "@/lib/finance-rules";
+import { calculateContributionRate, calculateContributionTermTarget } from "@/lib/finance-rules";
 import { prisma } from "@/lib/prisma";
 
 type ContributionsPageProps = {
@@ -66,16 +66,28 @@ export default async function MyContributionsPage({ searchParams }: Contribution
   const permissions = await getUserPermissionSet(user);
   const params = await searchParams;
   const currentYear = new Date().getFullYear();
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Kigali", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 
-  const [contributions, allPayments, termSettings] = await Promise.all([
+  const [contributions, allPayments, contributionEvents, activeMemberCount, termSettings] = await Promise.all([
     prisma.contribution.findMany({
       where: { userId: user.id },
       orderBy: { year: "desc" },
     }),
     prisma.payment.findMany({
-      where: { userId: user.id },
+      where: { userId: user.id, status: { not: "voided" } },
       orderBy: { paymentDate: "desc" },
     }),
+    prisma.contributionEvent.findMany({
+      where: { status: { in: ["active", "closed"] } },
+      include: {
+        payments: {
+          where: { status: { not: "voided" } },
+          orderBy: [{ paymentDate: "desc" }, { createdAt: "desc" }],
+        },
+      },
+      orderBy: [{ status: "asc" }, { startDate: "desc" }],
+    }),
+    prisma.user.count({ where: { status: "active" } }),
     prisma.financeTermSetting.findMany({ orderBy: { currentYear: "desc" } }),
   ]);
 
@@ -84,6 +96,7 @@ export default async function MyContributionsPage({ searchParams }: Contribution
       currentYear,
       ...contributions.map((item) => item.year),
       ...allPayments.map((item) => item.year),
+      ...contributionEvents.map((item) => item.year),
       ...termSettings.map((item) => item.currentYear).filter((year): year is number => Boolean(year)),
     ]),
   ).sort((a, b) => b - a);
@@ -115,7 +128,11 @@ export default async function MyContributionsPage({ searchParams }: Contribution
   const totalRequired = annualAmount;
   const totalPaid = payments.reduce((sum, payment) => sum + money(payment.amount), 0);
   const remainingAmount = Math.max(totalRequired - totalPaid, 0);
-  const progressPercent = totalRequired > 0 ? Math.min(100, Math.round((totalPaid / totalRequired) * 100)) : 0;
+  const progressPercent = calculateContributionRate(totalPaid, totalRequired);
+  const visibleContributionEvents = contributionEvents.filter((event) => {
+    if (event.year !== selectedYear) return false;
+    return event.status === "active" || event.payments.some((payment) => payment.userId === user.id);
+  });
 
   return (
     <MyContributionsClient
@@ -130,6 +147,29 @@ export default async function MyContributionsPage({ searchParams }: Contribution
       canCommit={permissionSetHas(permissions, "contributions", "create") && Boolean(setting)}
       commitmentEnabled={canMemberCommitAnnualContribution(setting)}
       terms={terms}
+      events={visibleContributionEvents.map((event) => {
+        const memberPayments = event.payments.filter((payment) => payment.userId === user.id);
+        const contributorCount = new Set(event.payments.map((payment) => payment.userId).filter((userId): userId is number => userId !== null)).size;
+        const expired = event.status === "active" && event.endDate ? event.endDate.toISOString().slice(0, 10) < today : false;
+        return {
+          id: event.id,
+          title: event.title,
+          description: event.description,
+          startDate: formatDate(event.startDate),
+          endDate: formatDate(event.endDate),
+          status: expired ? "expired" : event.status,
+          totalRaised: event.payments.reduce((sum, payment) => sum + money(payment.amount), 0),
+          contributorCount,
+          totalMembers: activeMemberCount,
+          memberPaid: memberPayments.reduce((sum, payment) => sum + money(payment.amount), 0),
+          payments: memberPayments.map((payment) => ({
+            id: payment.id,
+            amount: money(payment.amount),
+            paymentMethod: payment.paymentMethod ?? "cash",
+            paymentDate: formatDate(payment.paymentDate),
+          })),
+        };
+      })}
       payments={payments.map((payment) => ({
         id: payment.id,
         term: payment.term,

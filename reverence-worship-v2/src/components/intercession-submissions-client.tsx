@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, CalendarDays, CheckCircle2, Download, FileText, RotateCcw, Search, UserCheck, Users, X, XCircle } from "lucide-react";
 import { deleteFormSubmission, saveSubmissionManualReview, setAllSubmissionRelease, setSubmissionRelease } from "@/app/admin/intercession/actions";
 import { useAppDialog } from "@/components/app-dialog-provider";
+import { ActionNotice } from "@/components/action-notice";
 
 type SubmissionRow = {
   id: number;
@@ -116,9 +117,7 @@ export function IntercessionSubmissionsClient({
     <div className="mx-auto max-w-7xl px-2 py-4 sm:px-4 sm:py-6">
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         {notice ? (
-          <div className={`border-b px-4 py-3 text-sm font-medium ${notice.ok ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"}`}>
-            {notice.message}
-          </div>
+          <ActionNotice message={notice.message} tone={notice.ok ? "success" : "error"} onClose={() => setNotice(null)} className="m-4" />
         ) : null}
         <div className="border-b border-slate-200 bg-white px-4 py-5 sm:px-6">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">

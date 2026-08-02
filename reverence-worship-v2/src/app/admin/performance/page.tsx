@@ -1,4 +1,4 @@
-import { PerformanceClient } from "@/components/performance-client";
+import { PerformanceClient, type PerformanceType } from "@/components/performance-client";
 import { requirePageAccess } from "@/lib/auth";
 import { getPerformanceDateRange } from "@/lib/performance-date-range";
 import { getUserPerformanceData } from "@/lib/user-performance";
@@ -16,7 +16,12 @@ function formatDate(date: Date | null | undefined) {
   }).format(date);
 }
 
-export default async function PerformancePage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
+function performanceType(value: string | undefined): PerformanceType {
+  if (value === "attendance" || value === "communication" || value === "contribution") return value;
+  return "discipline";
+}
+
+export default async function PerformancePage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string; type?: string }> }) {
   const user = await requirePageAccess("performance");
   const params = await searchParams;
   const year = new Date().getFullYear();
@@ -30,6 +35,7 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
       fromDate={range.from}
       toDate={range.to}
       rangeLabel={range.label}
+      initialType={performanceType(params.type)}
       metrics={metrics}
       records={{
         discipline: disciplineRecords.map((record) => ({

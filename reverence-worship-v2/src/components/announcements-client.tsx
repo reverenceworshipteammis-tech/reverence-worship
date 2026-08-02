@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useAppDialog } from "@/components/app-dialog-provider";
+import { ActionNotice } from "@/components/action-notice";
 import { ADMIN_NOTIFICATIONS_CHANGED_EVENT } from "@/lib/admin-notification-events";
 import { BarChart3, CheckCircle2, ChevronLeft, ChevronRight, FileSearch2, MailCheck, Megaphone, Pencil, Plus, RefreshCw, Search, Send, Trash2, Upload, X } from "lucide-react";
 import {
@@ -206,17 +207,7 @@ export function AnnouncementsClient({
       </div>
 
       {result && (
-        <div className={`flex items-center justify-between gap-3 rounded-lg border px-4 py-3 text-sm ${result.ok ? "border-green-100 bg-green-50 text-green-700" : "border-red-100 bg-red-50 text-red-700"}`} role={result.ok ? "status" : "alert"}>
-          <span>{result.message}</span>
-          <button
-            type="button"
-            onClick={() => setResult(null)}
-            className="shrink-0 rounded p-1 transition hover:bg-black/5"
-            aria-label="Dismiss message"
-          >
-            <X className="size-4" aria-hidden="true" />
-          </button>
-        </div>
+        <ActionNotice message={result.message} tone={result.ok ? "success" : "error"} onClose={() => setResult(null)} />
       )}
 
       <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">

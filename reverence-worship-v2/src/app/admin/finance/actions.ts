@@ -6,7 +6,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Prisma } from "@/generated/prisma/client";
 import { requirePermission, requireUser } from "@/lib/auth";
-import { calculateAvailableBalance, canApproveExpense, validateExpenseRequest } from "@/lib/finance-rules";
+import { calculateAvailableBalance, canApproveExpense, validateContributionPaymentDate, validateExpenseRequest } from "@/lib/finance-rules";
 import { prisma } from "@/lib/prisma";
 import { notifyUsers } from "@/lib/notifications";
 
@@ -310,6 +310,158 @@ export async function deleteFinancePayment(id: number) {
   revalidatePath("/admin/finance");
   await logFinance(user.id, "finance.payment.voided", { paymentId: id });
   return { ok: true, message: "Payment voided successfully. Its audit history was preserved." };
+}
+
+export async function saveContributionEvent(formData: FormData) {
+  const user = await requirePermission("finance", "manage-contributions");
+  const id = Number(readString(formData, "id"));
+  const title = readString(formData, "title");
+  const description = readString(formData, "description") || null;
+  const startDateValue = readString(formData, "start_date");
+  const endDateValue = readString(formData, "end_date");
+  const eventDateValue = readString(formData, "event_date");
+  const goalAmount = Number(readString(formData, "goal_amount") || 0);
+  const contributionMode = readString(formData, "contribution_mode") || "open";
+  const suggestedAmountValue = readString(formData, "suggested_amount");
+  const suggestedAmount = suggestedAmountValue ? Number(suggestedAmountValue) : null;
+  const status = readString(formData, "status") || "active";
+
+  if (title.length < 3) return { ok: false, message: "Contribution title must contain at least 3 characters." };
+  if (!startDateValue) return { ok: false, message: "Contribution start date is required." };
+  if (endDateValue && endDateValue < startDateValue) return { ok: false, message: "End date must be on or after the start date." };
+  if (eventDateValue && eventDateValue < startDateValue) return { ok: false, message: "Event date must be on or after contributions open." };
+  if (!Number.isFinite(goalAmount) || goalAmount < 0) return { ok: false, message: "Goal amount must be zero or greater." };
+  if (!new Set(["open", "suggested", "fixed"]).has(contributionMode)) return { ok: false, message: "Select a valid contribution mode." };
+  if (!new Set(["draft", "active", "closed"]).has(status)) return { ok: false, message: "Select a valid event status." };
+  if (contributionMode !== "open" && (!suggestedAmount || !Number.isFinite(suggestedAmount) || suggestedAmount <= 0)) {
+    return { ok: false, message: `${contributionMode === "fixed" ? "Fixed" : "Suggested"} amount must be greater than zero.` };
+  }
+
+  const startDate = dateOnly(startDateValue);
+  const data = {
+    title,
+    description,
+    startDate,
+    endDate: endDateValue ? dateOnly(endDateValue) : null,
+    eventDate: eventDateValue ? dateOnly(eventDateValue) : null,
+    goalAmount,
+    contributionMode,
+    suggestedAmount: contributionMode === "open" ? null : suggestedAmount,
+    status,
+    year: startDate.getUTCFullYear(),
+  };
+
+  const event = Number.isInteger(id) && id > 0
+    ? await prisma.contributionEvent.update({ where: { id }, data })
+    : await prisma.contributionEvent.create({ data: { ...data, createdBy: user.id } });
+
+  revalidatePath("/admin/finance");
+  revalidatePath("/admin/contributions");
+  await logFinance(user.id, Number.isInteger(id) && id > 0 ? "finance.contribution-event.updated" : "finance.contribution-event.created", { eventId: event.id, title, status, goalAmount, contributionMode });
+  return { ok: true, message: Number.isInteger(id) && id > 0 ? "Contribution event updated successfully." : "Contribution event created successfully." };
+}
+
+export async function setContributionEventStatus(id: number, status: string) {
+  const user = await requirePermission("finance", "manage-contributions");
+  if (!Number.isInteger(id) || id <= 0) return { ok: false, message: "Contribution event not found." };
+  if (!new Set(["draft", "active", "closed"]).has(status)) return { ok: false, message: "Select a valid event status." };
+
+  const result = await prisma.contributionEvent.updateMany({ where: { id }, data: { status } });
+  if (result.count !== 1) return { ok: false, message: "Contribution event not found." };
+
+  revalidatePath("/admin/finance");
+  revalidatePath("/admin/contributions");
+  await logFinance(user.id, "finance.contribution-event.status-changed", { eventId: id, status });
+  return { ok: true, message: `Contribution event marked ${status}.` };
+}
+
+export async function recordEventContributionPayment(formData: FormData) {
+  const user = await requirePermission("finance", "manage-payments");
+  const eventId = Number(readString(formData, "event_id"));
+  const userId = Number(readString(formData, "user_id"));
+  const amount = Number(readString(formData, "amount"));
+  const paymentDateValue = readString(formData, "payment_date");
+  const paymentMethod = readString(formData, "payment_method") || "cash";
+  const referenceNumber = readString(formData, "reference_number") || null;
+  const notes = readString(formData, "notes") || null;
+
+  if (!Number.isInteger(eventId) || eventId <= 0) return { ok: false, message: "Select a contribution." };
+  if (!Number.isInteger(userId) || userId <= 0) return { ok: false, message: "Select a member." };
+  if (!Number.isFinite(amount) || amount <= 0) return { ok: false, message: "Payment amount must be greater than zero." };
+  if (!paymentDateValue) return { ok: false, message: "Payment date is required." };
+  const paymentDate = dateOnly(paymentDateValue);
+
+  const [event, member] = await Promise.all([
+    prisma.contributionEvent.findFirst({ where: { id: eventId, status: "active" }, select: { id: true, title: true, startDate: true, endDate: true } }),
+    prisma.user.findFirst({ where: { id: userId, status: "active" }, select: { id: true } }),
+  ]);
+  if (!event) return { ok: false, message: "This contribution is not active." };
+  if (!member) return { ok: false, message: "Select an active member." };
+  const paymentDateError = validateContributionPaymentDate({ paymentDate, startDate: event.startDate, endDate: event.endDate });
+  if (paymentDateError) return { ok: false, message: paymentDateError };
+
+  if (referenceNumber) {
+    const [annualDuplicate, eventDuplicate] = await Promise.all([
+      prisma.payment.findFirst({ where: { referenceNumber, status: { not: "voided" } }, select: { id: true } }),
+      prisma.eventContributionPayment.findFirst({ where: { referenceNumber, status: { not: "voided" } }, select: { id: true } }),
+    ]);
+    if (annualDuplicate || eventDuplicate) return { ok: false, message: "This payment reference has already been recorded." };
+  }
+
+  const payment = await prisma.eventContributionPayment.create({
+    data: {
+      eventId,
+      userId,
+      amount,
+      paymentDate,
+      paymentMethod,
+      referenceNumber,
+      notes,
+      createdBy: user.id,
+      status: "completed",
+    },
+  });
+
+  await notifyUsers({
+    userIds: [userId],
+    type: "contribution",
+    title: "Other contribution recorded",
+    message: `A payment of RWF ${amount.toLocaleString()} was recorded for ${event.title}.`,
+    link: "/admin/contributions",
+    sourceType: "event_contribution_payment",
+    sourceId: payment.id,
+    dedupeKey: `event-payment:${payment.id}:created`,
+  });
+
+  revalidatePath("/admin/finance");
+  revalidatePath("/admin/contributions");
+  await logFinance(user.id, "finance.event-contribution-payment.created", { paymentId: payment.id, eventId, userId, amount, referenceNumber });
+  return { ok: true, message: "Event contribution payment recorded successfully." };
+}
+
+export async function voidEventContributionPayment(id: number) {
+  const user = await requirePermission("finance", "delete-payments");
+  if (!Number.isInteger(id) || id <= 0) return { ok: false, message: "Event payment not found." };
+
+  const payment = await prisma.eventContributionPayment.findFirst({ where: { id, status: { not: "voided" } }, select: { id: true, userId: true, amount: true, event: { select: { title: true } } } });
+  if (!payment) return { ok: false, message: "Event payment was not found or is already voided." };
+  await prisma.eventContributionPayment.update({ where: { id }, data: { status: "voided" } });
+
+  if (payment.userId) await notifyUsers({
+    userIds: [payment.userId],
+    type: "contribution",
+    title: "Event contribution voided",
+    message: `Your RWF ${Number(payment.amount).toLocaleString()} payment for ${payment.event.title} was voided.`,
+    link: "/admin/contributions",
+    sourceType: "event_contribution_payment",
+    sourceId: payment.id,
+    dedupeKey: `event-payment:${payment.id}:voided`,
+  });
+
+  revalidatePath("/admin/finance");
+  revalidatePath("/admin/contributions");
+  await logFinance(user.id, "finance.event-contribution-payment.voided", { paymentId: id });
+  return { ok: true, message: "Event contribution payment voided successfully." };
 }
 
 export async function saveSponsor(formData: FormData) {
@@ -676,7 +828,7 @@ export async function deleteExpense(id: number) {
 
 export async function setTransactionReconciliation(sourceType: string, sourceId: number, reconciled: boolean, reference?: string) {
   const user = await requirePermission("finance", "reconcile");
-  const supported = new Set(["payment", "sponsor_payment", "gift", "expense"]);
+  const supported = new Set(["payment", "event_contribution_payment", "sponsor_payment", "gift", "expense"]);
   if (!supported.has(sourceType) || !Number.isInteger(sourceId) || sourceId <= 0) return { ok: false, message: "Transaction not found." };
   if (reconciled) {
     await prisma.financeReconciliation.upsert({

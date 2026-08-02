@@ -6,7 +6,7 @@ const globalForPrisma = globalThis as unknown as {
   prismaSchemaVersion?: string;
 };
 
-const PRISMA_SCHEMA_VERSION = "2026-07-31-member-contribution-commitment-toggle";
+const PRISMA_SCHEMA_VERSION = "2026-08-02-event-contributions";
 
 function databaseUrl() {
   const value = process.env.DATABASE_URL;
@@ -47,6 +47,8 @@ export const prisma =
   "financeTermSetting" in existingPrisma &&
   "contribution" in existingPrisma &&
   "payment" in existingPrisma &&
+  "contributionEvent" in existingPrisma &&
+  "eventContributionPayment" in existingPrisma &&
   "gift" in existingPrisma &&
   "expense" in existingPrisma &&
   "financeReconciliation" in existingPrisma &&

@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ActionNotice } from "@/components/action-notice";
 import { BookOpen, CalendarCheck, CheckCircle2, ClipboardList, Clock, Download, Edit, FileSearch2, FileText, FileUp, Filter, Gavel, Info, MailOpen, Play, Plus, Save, Search, Smile, Trash2, TriangleAlert, X, XCircle } from "lucide-react";
 import {
   approvePermissionRequest,
@@ -1219,7 +1220,7 @@ export function DisciplineClient({
         />
 
         <div className="p-3 sm:p-6">
-          {message && <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-700">{message}</div>}
+          {message && <ActionNotice message={message} tone="info" onClose={() => setMessage(null)} className="mb-4" />}
 
           {activeTab === "overview" ? (
             <div className="space-y-6">

@@ -1,8 +1,9 @@
 "use client";
 
 import { commitAnnualContribution } from "@/app/admin/contributions/actions";
+import { ActionNotice } from "@/components/action-notice";
 import { useRouter } from "next/navigation";
-import { Check, ChevronDown, HandCoins, Receipt, X } from "lucide-react";
+import { CalendarDays, Check, ChevronDown, HandCoins, Receipt, Users, X } from "lucide-react";
 import { useState, useTransition, type FormEvent } from "react";
 
 type TermRow = {
@@ -27,6 +28,27 @@ type PaymentRow = {
   paymentDate: string;
 };
 
+type EventContributionRow = {
+  id: number;
+  title: string;
+  description: string | null;
+  startDate: string;
+  endDate: string;
+  status: string;
+  totalRaised: number;
+  contributorCount: number;
+  totalMembers: number;
+  memberPaid: number;
+  payments: Array<{
+    id: number;
+    amount: number;
+    paymentMethod: string;
+    paymentDate: string;
+  }>;
+};
+
+const termAllocationColors = ["bg-blue-600", "bg-violet-500", "bg-sky-400", "bg-amber-400"];
+
 export function MyContributionsClient({
   currentYear,
   availableYears,
@@ -39,6 +61,7 @@ export function MyContributionsClient({
   canCommit,
   commitmentEnabled,
   terms,
+  events,
   payments,
 }: {
   currentYear: number;
@@ -52,6 +75,7 @@ export function MyContributionsClient({
   canCommit: boolean;
   commitmentEnabled: boolean;
   terms: TermRow[];
+  events: EventContributionRow[];
   payments: PaymentRow[];
 }) {
   const router = useRouter();
@@ -59,6 +83,7 @@ export function MyContributionsClient({
   const [draftAmount, setDraftAmount] = useState(annualAmount > 0 ? String(annualAmount) : "");
   const [notice, setNotice] = useState<{ ok: boolean; message: string } | null>(null);
   const [pending, startTransition] = useTransition();
+  const progressBarWidth = Math.max(0, Math.min(100, progressPercent));
 
   function changeYear(year: string) {
     router.push(`/admin/contributions?year=${year}`);
@@ -123,9 +148,7 @@ export function MyContributionsClient({
       </div>
 
       {notice ? (
-        <div className={`rounded-2xl border px-4 py-3 text-sm ${notice.ok ? "border-green-100 bg-green-50 text-green-800" : "border-red-100 bg-red-50 text-red-700"}`} role="status">
-          {notice.message}
-        </div>
+        <ActionNotice message={notice.message} tone={notice.ok ? "success" : "error"} onClose={() => setNotice(null)} />
       ) : null}
 
       {!hasContribution && (
@@ -138,60 +161,142 @@ export function MyContributionsClient({
         </div>
       )}
 
-      
-
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <section className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-6">
-          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-base font-bold text-gray-800 sm:text-lg">Your {currentYear} Annual Contribution</h2>
+      <section className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+        <div className="flex flex-col gap-3 border-b border-gray-100 bg-gradient-to-r from-blue-50/70 via-white to-white p-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-5">
+          <div>
+            <h2 className="text-base font-bold text-gray-900 sm:text-lg">{currentYear} Contribution Overview</h2>
+            <p className="mt-1 text-xs text-gray-500 sm:text-sm">Your annual plan and payment progress in one place.</p>
           </div>
+          <span className="inline-flex w-fit items-center rounded-full bg-blue-100 px-3 py-1.5 text-xs font-bold text-blue-700">{progressPercent}% complete</span>
+        </div>
 
-          <div className="rounded-2xl bg-gray-50 p-4">
-            <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <span className="text-sm text-gray-600">Annual Amount:</span>
-              <span className="text-xl font-bold text-blue-600 sm:text-2xl">{formatCurrency(totalRequired || annualAmount)}</span>
+        <div className="p-4 sm:p-6 lg:p-7">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(240px,0.32fr)_minmax(0,0.68fr)] lg:items-stretch lg:gap-8">
+            <div className="flex flex-col justify-center rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-slate-50 p-5 sm:p-6">
+              <h3 className="text-sm font-bold text-gray-900 sm:text-base">Contribution Plan</h3>
+              <div className="mt-6">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Annual Commitment</p>
+                <p className="mt-2 text-2xl font-bold tracking-tight text-blue-600 sm:text-3xl">{formatCurrency(totalRequired || annualAmount)}</p>
+              </div>
             </div>
 
-            <div className="mt-4 space-y-2">
-              <p className="text-xs font-medium text-gray-500">Term Breakdown:</p>
-              {terms.map((term) => (
-                <div key={term.term} className="flex items-start justify-between gap-3 text-sm">
-                  <span className="text-gray-600">Term {term.term} ({formatPercent(term.percentage)}%):</span>
-                  <span className="whitespace-nowrap text-right font-medium">{formatCurrency(term.target)}</span>
+            <div className="flex flex-col justify-center">
+              <div>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Allocation by Term</p>
+                  <span className="text-xs text-gray-400">100% total</span>
                 </div>
+                <div className="mt-3 flex h-3 overflow-hidden rounded-full bg-gray-100" aria-label="Annual contribution allocation by term">
+                  {terms.map((term) => (
+                    <span key={term.term} className={termAllocationColors[(term.term - 1) % termAllocationColors.length]} style={{ width: `${term.percentage}%` }} title={`Term ${term.term}: ${formatPercent(term.percentage)}%`} />
+                  ))}
+                </div>
+                <div className="mt-2 flex" aria-label="Term allocation percentages">
+                  {terms.map((term) => (
+                    <span key={term.term} className="text-center text-[11px] font-bold text-gray-600" style={{ width: `${term.percentage}%` }} aria-label={`Term ${term.term}: ${formatPercent(term.percentage)}%`}>
+                      {formatPercent(term.percentage)}%
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-6 border-t border-gray-100 pt-5">
+                <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                  <h3 className="text-sm font-bold text-gray-900 sm:text-base">My Progress</h3>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Total Paid</span>
+                    <span className="text-lg font-bold tracking-tight text-gray-900">{formatCurrency(totalPaid)}</span>
+                  </div>
+                </div>
+
+                <div className="mb-2 h-2.5 w-full overflow-hidden rounded-full bg-gray-200" role="progressbar" aria-label={`${progressPercent}% overall contribution progress`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressBarWidth}>
+                  <div className="h-full rounded-full bg-blue-600" style={{ width: `${progressBarWidth}%` }} />
+                </div>
+
+                <p className="text-xs text-gray-500">{formatCurrency(remainingAmount)} remaining on your annual commitment.</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-7 border-t border-gray-100 pt-6">
+            <div>
+              <h3 className="text-sm font-bold text-gray-900 sm:text-base">Term Progress</h3>
+              <p className="mt-1 text-xs text-gray-500">Payment status and balances for each contribution term.</p>
+            </div>
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              {terms.map((term) => (
+                <TermCard key={term.term} term={term} />
               ))}
             </div>
-
-            <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-4">
-              <h4 className="mb-2 text-sm font-bold text-blue-800">2 Abakorinto 9:7</h4>
-              <p className="text-xs italic leading-relaxed text-blue-700">
-                &quot;Umuntu wese atange nk&apos;uko abigambiriye mu mutima he, atinuba kandi adahatwa kuko Imana ikunda utanga anezerewe.&quot;
-              </p>
-            </div>
           </div>
-        </section>
+        </div>
+      </section>
 
-        <section className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-6">
-          <h2 className="mb-4 text-base font-bold text-gray-800 sm:text-lg">My Progress</h2>
+      <section className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+        <div className="border-b border-gray-100 bg-gradient-to-r from-violet-50/70 via-white to-white p-4 sm:p-6">
+          <h2 className="text-base font-bold text-gray-900 sm:text-lg">Other Contributions</h2>
+          <p className="mt-1 text-xs text-gray-500 sm:text-sm">Special giving opportunities managed separately from your annual commitment.</p>
+        </div>
 
-          <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:justify-between">
-            <span className="text-sm text-gray-600">Overall Progress</span>
-            <span className="text-sm font-medium text-gray-900">{formatCurrency(totalPaid)} / {formatCurrency(totalRequired)}</span>
+        {events.length ? (
+          <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-2 sm:p-6">
+            {events.map((event) => {
+              const participation = event.totalMembers > 0 ? Math.round((event.contributorCount / event.totalMembers) * 1000) / 10 : 0;
+
+              return (
+                <article key={event.id} className="flex flex-col rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-violet-200 hover:shadow-md sm:p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h3 className="font-bold text-gray-900">{event.title}</h3>
+                      {event.description ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-gray-500">{event.description}</p> : null}
+                    </div>
+                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold capitalize ${event.status === "active" ? "bg-emerald-100 text-emerald-700" : event.status === "expired" ? "bg-red-100 text-red-700" : "bg-gray-100 text-gray-600"}`}>{event.status}</span>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-xs text-gray-500">
+                    <span className="inline-flex items-center gap-1.5"><CalendarDays className="size-3.5 text-violet-500" />{event.startDate}{event.endDate !== "-" ? ` – ${event.endDate}` : ""}</span>
+                  </div>
+
+                  <div className="mt-5 grid grid-cols-2 gap-3">
+                    <div className="rounded-xl bg-emerald-50 p-3">
+                      <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-emerald-700"><HandCoins className="size-3.5" />Community Raised</p>
+                      <p className="mt-1 text-sm font-bold text-emerald-900">{formatCurrency(event.totalRaised)}</p>
+                    </div>
+                    <div className="rounded-xl bg-violet-50 p-3">
+                      <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-violet-700"><Users className="size-3.5" />Participation</p>
+                      <p className="mt-1 text-sm font-bold text-violet-900">{event.contributorCount} of {event.totalMembers} · {formatPercent(participation)}%</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 rounded-xl bg-blue-50/70 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-xs font-semibold text-blue-700">My Contribution</span>
+                      <span className="text-base font-bold text-blue-900">{formatCurrency(event.memberPaid)}</span>
+                    </div>
+                    {event.payments.length ? (
+                      <div className="mt-2 space-y-1.5 border-t border-blue-100 pt-2">
+                        {event.payments.slice(0, 3).map((payment) => (
+                          <div key={payment.id} className="flex items-center justify-between gap-3 text-[11px] text-blue-700">
+                            <span>{payment.paymentDate} · {formatLabel(payment.paymentMethod)}</span>
+                            <span className="font-semibold">{formatCurrency(payment.amount)}</span>
+                          </div>
+                        ))}
+                        {event.payments.length > 3 ? <p className="text-[11px] text-blue-500">+{event.payments.length - 3} more payments</p> : null}
+                      </div>
+                    ) : <p className="mt-1 text-[11px] text-blue-600">No payment recorded for this event yet.</p>}
+                  </div>
+                </article>
+              );
+            })}
           </div>
-
-          <div className="mb-2 h-2 w-full overflow-hidden rounded-full bg-gray-200">
-            <div className="h-full rounded-full bg-blue-600" style={{ width: `${progressPercent}%` }} />
+        ) : (
+          <div className="p-8 text-center">
+            <HandCoins className="mx-auto size-8 text-gray-300" />
+            <p className="mt-3 text-sm font-semibold text-gray-700">No other contributions for {currentYear}</p>
+            <p className="mt-1 text-xs text-gray-500">Active special giving opportunities will appear here.</p>
           </div>
-
-          <p className="mb-5 text-xs text-gray-500">{progressPercent}% complete. {formatCurrency(remainingAmount)} remaining.</p>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {terms.map((term) => (
-              <TermCard key={term.term} term={term} />
-            ))}
-          </div>
-        </section>
-      </div>
+        )}
+      </section>
 
       <section className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
         <div className="flex flex-col gap-2 border-b border-gray-100 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-6">
@@ -363,6 +468,7 @@ function AnnualCommitmentModal({
 function TermCard({ term }: { term: TermRow }) {
   const completed = term.status === "completed";
   const partial = term.status === "partial";
+  const amountAboveTarget = Math.max(0, term.paid - term.target);
   const surface = completed
     ? "border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-white shadow-emerald-100/70"
     : partial
@@ -405,8 +511,8 @@ function TermCard({ term }: { term: TermRow }) {
       </div>
 
       <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-200/70 pt-3 text-[11px]">
-        <span className="text-slate-500">Remaining</span>
-        <span className={`truncate text-right font-bold ${completed ? "text-emerald-700" : "text-slate-800"}`}>{completed ? "Fully paid" : formatCurrency(term.remaining)}</span>
+        <span className="text-slate-500">{amountAboveTarget > 0 ? "Above target" : "Remaining"}</span>
+        <span className={`truncate text-right font-bold ${completed ? "text-emerald-700" : "text-slate-800"}`}>{formatCurrency(amountAboveTarget > 0 ? amountAboveTarget : term.remaining)}</span>
       </div>
     </article>
   );
@@ -425,5 +531,5 @@ function formatLabel(value: string) {
 }
 
 function formatPercent(value: number) {
-  return value.toFixed(2);
+  return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
