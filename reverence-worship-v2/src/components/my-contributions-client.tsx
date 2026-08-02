@@ -3,7 +3,7 @@
 import { commitAnnualContribution } from "@/app/admin/contributions/actions";
 import { ActionNotice } from "@/components/action-notice";
 import { useRouter } from "next/navigation";
-import { CalendarDays, Check, ChevronDown, HandCoins, Receipt, Users, X } from "lucide-react";
+import { Check, ChevronDown, HandCoins, Receipt, X } from "lucide-react";
 import { useState, useTransition, type FormEvent } from "react";
 
 type TermRow = {
@@ -28,25 +28,6 @@ type PaymentRow = {
   paymentDate: string;
 };
 
-type EventContributionRow = {
-  id: number;
-  title: string;
-  description: string | null;
-  startDate: string;
-  endDate: string;
-  status: string;
-  totalRaised: number;
-  contributorCount: number;
-  totalMembers: number;
-  memberPaid: number;
-  payments: Array<{
-    id: number;
-    amount: number;
-    paymentMethod: string;
-    paymentDate: string;
-  }>;
-};
-
 const termAllocationColors = ["bg-blue-600", "bg-violet-500", "bg-sky-400", "bg-amber-400"];
 
 export function MyContributionsClient({
@@ -61,7 +42,6 @@ export function MyContributionsClient({
   canCommit,
   commitmentEnabled,
   terms,
-  events,
   payments,
 }: {
   currentYear: number;
@@ -75,7 +55,6 @@ export function MyContributionsClient({
   canCommit: boolean;
   commitmentEnabled: boolean;
   terms: TermRow[];
-  events: EventContributionRow[];
   payments: PaymentRow[];
 }) {
   const router = useRouter();
@@ -165,7 +144,7 @@ export function MyContributionsClient({
         <div className="flex flex-col gap-3 border-b border-gray-100 bg-gradient-to-r from-blue-50/70 via-white to-white p-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-5">
           <div>
             <h2 className="text-base font-bold text-gray-900 sm:text-lg">{currentYear} Contribution Overview</h2>
-            <p className="mt-1 text-xs text-gray-500 sm:text-sm">Your annual plan and payment progress in one place.</p>
+            
           </div>
           <span className="inline-flex w-fit items-center rounded-full bg-blue-100 px-3 py-1.5 text-xs font-bold text-blue-700">{progressPercent}% complete</span>
         </div>
@@ -221,7 +200,7 @@ export function MyContributionsClient({
           <div className="mt-7 border-t border-gray-100 pt-6">
             <div>
               <h3 className="text-sm font-bold text-gray-900 sm:text-base">Term Progress</h3>
-              <p className="mt-1 text-xs text-gray-500">Payment status and balances for each contribution term.</p>
+              
             </div>
             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
               {terms.map((term) => (
@@ -230,72 +209,6 @@ export function MyContributionsClient({
             </div>
           </div>
         </div>
-      </section>
-
-      <section className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
-        <div className="border-b border-gray-100 bg-gradient-to-r from-violet-50/70 via-white to-white p-4 sm:p-6">
-          <h2 className="text-base font-bold text-gray-900 sm:text-lg">Other Contributions</h2>
-          <p className="mt-1 text-xs text-gray-500 sm:text-sm">Special giving opportunities managed separately from your annual commitment.</p>
-        </div>
-
-        {events.length ? (
-          <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-2 sm:p-6">
-            {events.map((event) => {
-              const participation = event.totalMembers > 0 ? Math.round((event.contributorCount / event.totalMembers) * 1000) / 10 : 0;
-
-              return (
-                <article key={event.id} className="flex flex-col rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-violet-200 hover:shadow-md sm:p-5">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <h3 className="font-bold text-gray-900">{event.title}</h3>
-                      {event.description ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-gray-500">{event.description}</p> : null}
-                    </div>
-                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold capitalize ${event.status === "active" ? "bg-emerald-100 text-emerald-700" : event.status === "expired" ? "bg-red-100 text-red-700" : "bg-gray-100 text-gray-600"}`}>{event.status}</span>
-                  </div>
-
-                  <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-xs text-gray-500">
-                    <span className="inline-flex items-center gap-1.5"><CalendarDays className="size-3.5 text-violet-500" />{event.startDate}{event.endDate !== "-" ? ` – ${event.endDate}` : ""}</span>
-                  </div>
-
-                  <div className="mt-5 grid grid-cols-2 gap-3">
-                    <div className="rounded-xl bg-emerald-50 p-3">
-                      <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-emerald-700"><HandCoins className="size-3.5" />Community Raised</p>
-                      <p className="mt-1 text-sm font-bold text-emerald-900">{formatCurrency(event.totalRaised)}</p>
-                    </div>
-                    <div className="rounded-xl bg-violet-50 p-3">
-                      <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-violet-700"><Users className="size-3.5" />Participation</p>
-                      <p className="mt-1 text-sm font-bold text-violet-900">{event.contributorCount} of {event.totalMembers} · {formatPercent(participation)}%</p>
-                    </div>
-                  </div>
-
-                  <div className="mt-5 rounded-xl bg-blue-50/70 p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-xs font-semibold text-blue-700">My Contribution</span>
-                      <span className="text-base font-bold text-blue-900">{formatCurrency(event.memberPaid)}</span>
-                    </div>
-                    {event.payments.length ? (
-                      <div className="mt-2 space-y-1.5 border-t border-blue-100 pt-2">
-                        {event.payments.slice(0, 3).map((payment) => (
-                          <div key={payment.id} className="flex items-center justify-between gap-3 text-[11px] text-blue-700">
-                            <span>{payment.paymentDate} · {formatLabel(payment.paymentMethod)}</span>
-                            <span className="font-semibold">{formatCurrency(payment.amount)}</span>
-                          </div>
-                        ))}
-                        {event.payments.length > 3 ? <p className="text-[11px] text-blue-500">+{event.payments.length - 3} more payments</p> : null}
-                      </div>
-                    ) : <p className="mt-1 text-[11px] text-blue-600">No payment recorded for this event yet.</p>}
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="p-8 text-center">
-            <HandCoins className="mx-auto size-8 text-gray-300" />
-            <p className="mt-3 text-sm font-semibold text-gray-700">No other contributions for {currentYear}</p>
-            <p className="mt-1 text-xs text-gray-500">Active special giving opportunities will appear here.</p>
-          </div>
-        )}
       </section>
 
       <section className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">

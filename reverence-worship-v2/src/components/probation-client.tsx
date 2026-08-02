@@ -4,19 +4,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ActionNotice } from "@/components/action-notice";
 import {
-  CalendarClock,
   CheckCircle2,
-  Clock,
   Download,
-  FileSearch2,
   History,
-  Pencil,
-  RotateCcw,
   Search,
   ShieldCheck,
-  TriangleAlert,
   UserPlus,
-  UserRoundCheck,
   X,
   XCircle,
 } from "lucide-react";
@@ -233,13 +226,6 @@ export function ProbationClient({
     return matchesQuery && matchesStatus;
   }), [query, rows, status]);
 
-  const stats = {
-    active: rows.filter((row) => row.state === "active").length,
-    extended: rows.filter((row) => row.state === "extended").length,
-    dueSoon: rows.filter((row) => row.dueWithin14Days).length,
-    overdue: rows.filter((row) => row.isOverdue).length,
-    attention: rows.filter((row) => isOpen(row) && row.monitoring.needsAttention).length,
-  };
   const filteredEnrollmentMembers = useMemo(() => {
     const needle = enrollMemberSearch.trim().toLowerCase();
     if (!needle) return eligibleMembers.slice(0, 8);
@@ -345,14 +331,6 @@ export function ProbationClient({
         <ActionNotice message={result.message} tone={result.ok ? "success" : "error"} onClose={() => setResult(null)} />
       ) : null}
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <SummaryCard label="Active" value={stats.active} icon={UserRoundCheck} tone="blue" onClick={() => setStatus("active")} />
-        <SummaryCard label="Extended" value={stats.extended} icon={CalendarClock} tone="amber" onClick={() => setStatus("extended")} />
-        <SummaryCard label="Due in 14 days" value={stats.dueSoon} icon={Clock} tone="violet" onClick={() => setStatus("open")} />
-        <SummaryCard label="Review overdue" value={stats.overdue} icon={TriangleAlert} tone="rose" onClick={() => setStatus("overdue")} />
-        <SummaryCard label="Needs attention" value={stats.attention} icon={ShieldCheck} tone="orange" onClick={() => setStatus("open")} />
-      </div>
-
       <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
         <div className="grid gap-3 sm:grid-cols-[1fr_220px]">
           <label className="relative">
@@ -433,6 +411,12 @@ export function ProbationClient({
 
       {modal ? (
         <ModalFrame title={modalTitle(modal)} onClose={() => setModal(null)}>
+          {result && !result.ok ? (
+            <div className="mb-4">
+              <ActionNotice message={result.message} tone="error" onClose={() => setResult(null)} />
+            </div>
+          ) : null}
+
           {modal.type === "enroll" ? (
             <form onSubmit={(event) => submitForm(event, enrollProbation)} className="space-y-4">
               <Field label="Member">
@@ -544,12 +528,8 @@ export function ProbationClient({
                 <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-900">
                   Approval will disable the member’s account and revoke active sessions immediately. The account and historical records will not be deleted.
                 </div>
-              ) : (
-                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
-                  Approval will remove only the probation role, add the normal member role, preserve unrelated roles, and begin normal attendance and discipline performance from the approval date.
-                </div>
-              )}
-              <Field label="Administrator approver" note="Only this selected administrator can approve or reject the final decision.">
+              ) : null}
+              <Field label="Administrator approver" note="">
                 <select name="approverId" required className={inputClass} defaultValue="">
                   <option value="" disabled>Select an active administrator</option>
                   {decisionApprovers.map((approver) => (
@@ -582,22 +562,6 @@ export function ProbationClient({
   );
 }
 
-function SummaryCard({ label, value, icon: Icon, tone, onClick }: { label: string; value: number; icon: typeof Clock; tone: string; onClick: () => void }) {
-  const tones: Record<string, string> = {
-    blue: "bg-blue-50 text-blue-700 border-blue-100",
-    amber: "bg-amber-50 text-amber-700 border-amber-100",
-    violet: "bg-violet-50 text-violet-700 border-violet-100",
-    rose: "bg-rose-50 text-rose-700 border-rose-100",
-    orange: "bg-orange-50 text-orange-700 border-orange-100",
-  };
-  return (
-    <button type="button" onClick={onClick} className={`rounded-xl border p-3 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${tones[tone]}`}>
-      <div className="flex items-center justify-between"><span className="text-xs font-bold">{label}</span><Icon className="size-4" /></div>
-      <p className="mt-2 text-2xl font-black">{value}</p>
-    </button>
-  );
-}
-
 function RateCell({ rate }: { rate: number }) {
   const good = rate >= PROBATION_GOOD_THRESHOLD;
   return <td className={`px-4 py-4 text-sm font-black ${good ? "text-emerald-700" : "text-rose-700"}`}>{rate}%</td>;
@@ -605,16 +569,27 @@ function RateCell({ rate }: { rate: number }) {
 
 function RowActions({ row, permissions, open }: { row: ProbationRow; permissions: Props["permissions"]; open: (modal: Modal) => void }) {
   const decision = pendingDecision(row);
+  const actionClass = "text-xs font-semibold text-blue-600 transition hover:text-blue-800 hover:underline";
   return (
-    <div className="flex flex-wrap justify-end gap-1.5">
-      <button type="button" title="View probation details" onClick={() => open({ type: "details", row })} className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 px-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-        <FileSearch2 className="size-3.5" /> {decision ? row.canApprovePendingDecision ? "Review decision" : "View pending" : "Details"}
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 md:justify-end">
+      <button type="button" onClick={() => open({ type: "details", row })} className={actionClass}>
+        {decision ? row.canApprovePendingDecision ? "Review" : "Pending" : "Details"}
       </button>
-      {permissions.update && isOpen(row) ? <button type="button" title="Edit probation details" onClick={() => open({ type: "edit", row })} className="grid size-8 place-items-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"><Pencil className="size-3.5" /></button> : null}
-      {permissions.extend && isOpen(row) && !decision ? <button type="button" title="Extend probation" onClick={() => open({ type: "extend", row })} className="inline-flex h-8 items-center gap-1 rounded-lg border border-amber-200 px-2 text-xs font-semibold text-amber-700 hover:bg-amber-50"><CalendarClock className="size-3.5" /> Extend</button> : null}
-      {permissions.complete && isOpen(row) && !decision ? <button type="button" title="Request probation completion" onClick={() => open({ type: "decision", row, decision: "completed" })} className="inline-flex h-8 items-center gap-1 rounded-lg border border-emerald-200 px-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50"><CheckCircle2 className="size-3.5" /> Complete</button> : null}
-      {permissions.terminate && isOpen(row) && !decision ? <button type="button" title="Request probation termination" onClick={() => open({ type: "decision", row, decision: "terminated" })} className="inline-flex h-8 items-center gap-1 rounded-lg border border-rose-200 px-2 text-xs font-semibold text-rose-700 hover:bg-rose-50"><XCircle className="size-3.5" /> Terminate</button> : null}
-      {permissions.reopen && !isOpen(row) ? <button type="button" title="Reopen probation" onClick={() => open({ type: "reopen", row })} className="inline-flex h-8 items-center gap-1 rounded-lg border border-blue-200 px-2 text-xs font-semibold text-blue-700 hover:bg-blue-50"><RotateCcw className="size-3.5" /> Reopen</button> : null}
+      {permissions.update && isOpen(row) ? (
+        <button type="button" onClick={() => open({ type: "edit", row })} className={actionClass}>Edit</button>
+      ) : null}
+      {permissions.extend && isOpen(row) && !decision ? (
+        <button type="button" onClick={() => open({ type: "extend", row })} className={actionClass}>Extend</button>
+      ) : null}
+      {permissions.complete && isOpen(row) && !decision ? (
+        <button type="button" onClick={() => open({ type: "decision", row, decision: "completed" })} className={actionClass}>Complete</button>
+      ) : null}
+      {permissions.terminate && isOpen(row) && !decision ? (
+        <button type="button" onClick={() => open({ type: "decision", row, decision: "terminated" })} className={actionClass}>Terminate</button>
+      ) : null}
+      {permissions.reopen && !isOpen(row) ? (
+        <button type="button" onClick={() => open({ type: "reopen", row })} className={actionClass}>Reopen</button>
+      ) : null}
     </div>
   );
 }
