@@ -170,13 +170,16 @@ export function LandingPageClient({ dashboardHref, registrationEnabled, videos, 
       </div>
 
       <header className="fixed inset-x-0 top-0 z-50 border-y border-white/15 bg-blue-600/75 text-white shadow-lg backdrop-blur">
-        <div className="relative mx-auto flex min-h-[58px] w-[min(100%,calc(100%-18px))] items-center gap-2 overflow-visible md:min-h-16 md:w-[min(1080px,calc(100%-28px))] md:gap-5">
-          <a href="#home" className="inline-flex shrink-0 items-center gap-2 md:gap-3">
-            <Image src="/logo.png" alt="Reverence Worship logo" width={42} height={42} className="size-[34px] rounded-[10px] bg-slate-900 p-1 md:size-[42px] md:rounded-xl" priority />
-            <span className="leading-none">
-              <span className="block text-[13px] font-extrabold tracking-tight md:text-base">REVERENCE</span>
-              <span className="mt-1 block text-[8px] font-bold uppercase tracking-[0.16em] text-blue-100 md:text-[10px] md:tracking-[0.24em]">Worship Team</span>
-            </span>
+        <div className="relative flex w-full items-center gap-2 overflow-visible px-3 py-1 md:gap-5 md:px-5">
+          <a href="#home" className="inline-flex shrink-0 items-center">
+            <Image
+              src="/reverence-landingpage.png"
+              alt="Reverence Worship Team"
+              width={90}
+              height={10}
+              className="h-[36px] w-[144px] object-contain md:h-[44px] md:w-[176px]"
+              priority
+            />
           </a>
 
           <nav

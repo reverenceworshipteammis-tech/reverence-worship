@@ -12,9 +12,9 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#2563eb",
     icons: [
       {
-        src: "/Reverence%20mobile%20app%20icon.jpeg",
+        src: "/logo_title_icon.png",
         sizes: "512x512",
-        type: "image/jpeg",
+        type: "image/png",
         purpose: "maskable",
       },
       {
