@@ -1,6 +1,7 @@
 import { MyContributionsClient } from "@/components/my-contributions-client";
-import { requirePageAccess } from "@/lib/auth";
-import { calculateContributionTermTarget } from "@/lib/finance-rules";
+import { canMemberCommitAnnualContribution } from "@/lib/annual-contribution-rules";
+import { getUserPermissionSet, permissionSetHas, requirePageAccess } from "@/lib/auth";
+import { calculateContributionRate, calculateContributionTermTarget } from "@/lib/finance-rules";
 import { prisma } from "@/lib/prisma";
 
 type ContributionsPageProps = {
@@ -62,16 +63,16 @@ function defaultPercentages(termNumbers: number[]) {
 
 export default async function MyContributionsPage({ searchParams }: ContributionsPageProps) {
   const user = await requirePageAccess("contributions");
+  const permissions = await getUserPermissionSet(user);
   const params = await searchParams;
   const currentYear = new Date().getFullYear();
-
   const [contributions, allPayments, termSettings] = await Promise.all([
     prisma.contribution.findMany({
       where: { userId: user.id },
       orderBy: { year: "desc" },
     }),
     prisma.payment.findMany({
-      where: { userId: user.id },
+      where: { userId: user.id, status: { not: "voided" } },
       orderBy: { paymentDate: "desc" },
     }),
     prisma.financeTermSetting.findMany({ orderBy: { currentYear: "desc" } }),
@@ -113,8 +114,7 @@ export default async function MyContributionsPage({ searchParams }: Contribution
   const totalRequired = annualAmount;
   const totalPaid = payments.reduce((sum, payment) => sum + money(payment.amount), 0);
   const remainingAmount = Math.max(totalRequired - totalPaid, 0);
-  const progressPercent = totalRequired > 0 ? Math.min(100, Math.round((totalPaid / totalRequired) * 100)) : 0;
-
+  const progressPercent = calculateContributionRate(totalPaid, totalRequired);
   return (
     <MyContributionsClient
       currentYear={selectedYear}
@@ -125,6 +125,8 @@ export default async function MyContributionsPage({ searchParams }: Contribution
       remainingAmount={remainingAmount}
       progressPercent={progressPercent}
       hasContribution={Boolean(contribution)}
+      canCommit={permissionSetHas(permissions, "contributions", "create") && Boolean(setting)}
+      commitmentEnabled={canMemberCommitAnnualContribution(setting)}
       terms={terms}
       payments={payments.map((payment) => ({
         id: payment.id,

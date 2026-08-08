@@ -2,12 +2,13 @@
 
 import { FormEvent, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { ActionNotice } from "@/components/action-notice";
 import {
   AlertTriangle,
   Calendar,
   CheckCircle2,
   ClipboardList,
-  Eye,
+  FileSearch2,
   FileText,
   Filter,
   Plus,
@@ -634,7 +635,7 @@ export function SocialFellowshipClient({
                       </div>
                       <div className="flex gap-2 sm:ml-4">
                         <button type="button" onClick={() => { setViewingTask(task); setModal("viewTask"); }} className="rounded-lg border border-gray-200 px-3 py-2 text-gray-600 hover:text-gray-900" title="View">
-                          <Eye className="size-4" />
+                          <FileSearch2 className="size-4" />
                         </button>
                         <button type="button" onClick={() => openTaskModal(task)} className="rounded-lg border border-gray-200 px-3 py-2 text-gray-500 hover:text-blue-600" title="Edit">
                           <FileText className="size-4" />
@@ -785,7 +786,7 @@ export function SocialFellowshipClient({
                       </div>
                       <div className="flex gap-2">
                         <button type="button" onClick={() => { setViewingActionPlan(plan); setModal("viewActionPlan"); }} className="rounded-lg border border-gray-200 px-3 py-2 text-gray-600 hover:text-gray-900" title="View">
-                          <Eye className="size-4" />
+                          <FileSearch2 className="size-4" />
                         </button>
                         <button type="button" onClick={() => openActionPlanModal(plan)} className="rounded-lg border border-gray-200 px-3 py-2 text-gray-500 hover:text-blue-600" title="Edit">
                           <FileText className="size-4" />
@@ -1062,7 +1063,7 @@ export function SocialFellowshipClient({
                         }}
                         className="inline-flex h-8 items-center justify-center gap-1 rounded-lg bg-blue-50 px-2.5 text-xs font-medium text-blue-700 hover:bg-blue-100 sm:h-auto sm:px-3 sm:py-2 sm:text-sm"
                       >
-                        <Eye className="size-3.5 sm:size-4" aria-hidden="true" />
+                        <FileSearch2 className="size-3.5 sm:size-4" aria-hidden="true" />
                         Members
                       </button>
                       <button
@@ -2012,27 +2013,7 @@ export function SocialFellowshipClient({
 }
 
 function SocialNoticeBanner({ notice, onClose }: { notice: SocialNotice; onClose: () => void }) {
-  const Icon = notice.ok ? CheckCircle2 : AlertTriangle;
-
-  return (
-    <div
-      className={`flex items-start gap-3 rounded-xl border px-4 py-3 text-sm shadow-sm ${
-        notice.ok ? "border-green-200 bg-green-50 text-green-800" : "border-red-200 bg-red-50 text-red-800"
-      }`}
-      role="status"
-    >
-      <span className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full ${notice.ok ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"}`}>
-        <Icon className="size-4" aria-hidden="true" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="font-semibold">{notice.ok ? "Success" : "Notice"}</p>
-        <p className="mt-0.5 leading-5">{notice.message}</p>
-      </div>
-      <button type="button" onClick={onClose} className="rounded-lg p-1 text-current opacity-60 transition hover:bg-white/70 hover:opacity-100" aria-label="Close notice">
-        <X className="size-4" aria-hidden="true" />
-      </button>
-    </div>
-  );
+  return <ActionNotice message={notice.message} tone={notice.ok ? "success" : "error"} onClose={onClose} />;
 }
 
 function SocialConfirmModal({

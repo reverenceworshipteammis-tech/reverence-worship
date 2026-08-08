@@ -2,6 +2,7 @@
 
 import { FormEvent, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { ActionNotice } from "@/components/action-notice";
 import {
   AlertTriangle,
   Check,
@@ -9,7 +10,7 @@ import {
   ChevronDown,
   Download,
   Edit,
-  Eye,
+  FileSearch2,
   Layers,
   Lock,
   Plus,
@@ -474,27 +475,7 @@ export function PermissionManagerClient({
 }
 
 function PermissionNotice({ notice, onClose }: { notice: Result; onClose: () => void }) {
-  const Icon = notice.ok ? CheckCircle2 : AlertTriangle;
-
-  return (
-    <div
-      className={`mb-4 flex items-start gap-3 rounded-xl border px-4 py-3 text-sm shadow-sm ${
-        notice.ok ? "border-green-200 bg-green-50 text-green-800" : "border-red-200 bg-red-50 text-red-800"
-      }`}
-      role="status"
-    >
-      <span className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full ${notice.ok ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"}`}>
-        <Icon className="size-4" aria-hidden="true" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="font-semibold">{notice.ok ? "Success" : "Notice"}</p>
-        <p className="mt-0.5 leading-5">{notice.message}</p>
-      </div>
-      <button type="button" onClick={onClose} className="rounded-lg p-1 text-current opacity-60 transition hover:bg-white/70 hover:opacity-100" aria-label="Close notice">
-        <X className="size-4" aria-hidden="true" />
-      </button>
-    </div>
-  );
+  return <ActionNotice message={notice.message} tone={notice.ok ? "success" : "error"} onClose={onClose} className="mb-4" />;
 }
 
 function PermissionConfirmModal({
@@ -539,7 +520,7 @@ function PermissionConfirmModal({
 }
 
 function FeatureIcon({ name }: { name: string }) {
-  if (name.startsWith("view") || name.startsWith("read")) return <Eye className="size-3.5" aria-hidden="true" />;
+  if (name.startsWith("view") || name.startsWith("read")) return <FileSearch2 className="size-3.5" aria-hidden="true" />;
   if (name.startsWith("create") || name.startsWith("submit") || name.startsWith("record") || name.startsWith("mark") || name.startsWith("manage")) return <PlusCircle className="size-3.5" aria-hidden="true" />;
   if (name.startsWith("edit") || name.startsWith("change") || name.startsWith("complete") || name.startsWith("resolve") || name.startsWith("publish")) return <Edit className="size-3.5" aria-hidden="true" />;
   if (name.startsWith("delete")) return <Trash2 className="size-3.5" aria-hidden="true" />;
@@ -557,4 +538,3 @@ function featureTone(name: string) {
   if (name.startsWith("export") || name.startsWith("import")) return "bg-purple-50 text-purple-600";
   return "bg-gray-50 text-gray-600";
 }
-

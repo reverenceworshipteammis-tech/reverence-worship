@@ -344,8 +344,8 @@ export async function requestProbationDecision(formData: FormData): Promise<Prob
     return { ok: false, message: "Select completion or termination." };
   }
   const actor = await requirePermission("probation", requestedState === "completed" ? "complete" : "terminate", "/admin/probation");
-  if (!actor.roles.some(({ role }) => role.name === "discipline-dpt" || role.name === "super-admin")) {
-    return { ok: false, message: "A Discipline leader or Super Admin must submit completion and termination requests." };
+  if (!actor.roles.some(({ role }) => role.name === "discipline-dpt" || role.name === "admin" || role.name === "super-admin")) {
+    return { ok: false, message: "A Discipline leader, Admin, or Super Admin must submit completion and termination requests." };
   }
   const probationId = Number(text(formData, "probationId"));
   const approverId = Number(text(formData, "approverId"));
@@ -354,8 +354,8 @@ export async function requestProbationDecision(formData: FormData): Promise<Prob
   if (!Number.isInteger(probationId) || probationId <= 0) return { ok: false, message: "Probation record not found." };
   if (!Number.isInteger(approverId) || approverId <= 0) return { ok: false, message: "Select an administrator to approve this decision." };
   if (approverId === actor.id) return { ok: false, message: "The requester and approver must be different users." };
-  if (reason.length < 3) return { ok: false, message: "A decision reason is required." };
-  if (comments.length < 3) return { ok: false, message: "Final decision comments are required." };
+  if (!reason) return { ok: false, message: "A decision reason is required." };
+  if (!comments) return { ok: false, message: "Final decision comments are required." };
 
   try {
     const result = await prisma.$transaction(async (tx) => {

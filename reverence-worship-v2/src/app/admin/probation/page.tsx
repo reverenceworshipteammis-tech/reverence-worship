@@ -69,7 +69,7 @@ export default async function ProbationPage({
   const canViewDiscipline = permissionSetHas(permissions, "discipline", "view");
   const isAdministrator = user.roles.some(({ role }) => role.name === "admin" || role.name === "super-admin");
   const isDisciplineLeader = user.roles.some(({ role }) => role.name === "discipline-dpt");
-  const canRequestFinalDecision = isDisciplineLeader || user.roles.some(({ role }) => role.name === "super-admin");
+  const canRequestFinalDecision = isDisciplineLeader || isAdministrator;
   const rows: ProbationRow[] = await Promise.all(probations.map(async (probation) => {
     const monitoring = await getProbationMonitoring(probation);
     const dates = probationDateSummary(probation.currentExpectedEndDate);

@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { Check, Clock, Home, Mail, Phone, Users, ListTodo } from "lucide-react";
-import { updateFamilyTaskStatus } from "@/app/admin/family/actions";
 
 type FamilyMember = {
   id: number;
@@ -62,8 +61,6 @@ function statusLabel(status: string) {
 export function FamilyClient({ family, members, tasks, taskStats }: FamilyClientProps) {
   const [mobilePanel, setMobilePanel] = useState<"members" | "tasks">("members");
   const [filter, setFilter] = useState("all");
-  const [message, setMessage] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
 
   if (!family) {
     return (
@@ -80,13 +77,6 @@ export function FamilyClient({ family, members, tasks, taskStats }: FamilyClient
   }
 
   const filteredTasks = tasks.filter((task) => filter === "all" || task.status === filter);
-
-  function updateStatus(taskId: number, status: string) {
-    startTransition(async () => {
-      const result = await updateFamilyTaskStatus(taskId, status);
-      setMessage(result.message);
-    });
-  }
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
@@ -114,12 +104,6 @@ export function FamilyClient({ family, members, tasks, taskStats }: FamilyClient
           </div>
         </div>
       </div>
-
-      {message ? (
-        <div className="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-          {message}
-        </div>
-      ) : null}
 
       <div className="mb-4 sm:hidden">
         <div className="flex gap-1 rounded-lg bg-gray-100 p-1">

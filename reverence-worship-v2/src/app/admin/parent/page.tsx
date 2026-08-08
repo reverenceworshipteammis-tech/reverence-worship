@@ -58,7 +58,7 @@ export default async function ParentDashboardPage() {
   const [contributions, payments] = childIds.length > 0
     ? await Promise.all([
         prisma.contribution.findMany({ where: { userId: { in: childIds }, year: currentYear } }),
-        prisma.payment.findMany({ where: { userId: { in: childIds }, year: currentYear }, orderBy: { paymentDate: "desc" } }),
+        prisma.payment.findMany({ where: { userId: { in: childIds }, year: currentYear, status: { not: "voided" } }, orderBy: { paymentDate: "desc" } }),
       ])
     : [[], []];
 

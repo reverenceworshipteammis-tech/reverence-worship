@@ -2,7 +2,8 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BookOpen, CalendarCheck, CheckCircle2, ClipboardList, Clock, Download, Edit, Eye, FileText, FileUp, Filter, Gavel, Info, MailOpen, Play, Plus, Save, Search, Smile, Trash2, TriangleAlert, X, XCircle } from "lucide-react";
+import { ActionNotice } from "@/components/action-notice";
+import { BookOpen, CalendarCheck, CheckCircle2, ClipboardList, Clock, Download, Edit, FileSearch2, FileText, FileUp, Filter, Gavel, Info, MailOpen, Play, Plus, Save, Search, Smile, Trash2, TriangleAlert, X, XCircle } from "lucide-react";
 import {
   approvePermissionRequest,
   completeAttendanceSession,
@@ -1219,7 +1220,7 @@ export function DisciplineClient({
         />
 
         <div className="p-3 sm:p-6">
-          {message && <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-700">{message}</div>}
+          {message && <ActionNotice message={message} tone="info" onClose={() => setMessage(null)} className="mb-4" />}
 
           {activeTab === "overview" ? (
             <div className="space-y-6">
@@ -1285,7 +1286,7 @@ export function DisciplineClient({
                               className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100"
                               aria-label={`View ${session.sessionType} attendance session`}
                             >
-                              <Eye className="size-3.5" />
+                              <FileSearch2 className="size-3.5" />
                               View
                             </button>
                           </div>
@@ -1323,7 +1324,7 @@ export function DisciplineClient({
                               className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100"
                               aria-label={`View permission request for ${permission.userName}`}
                             >
-                              <Eye className="size-3.5" />
+                              <FileSearch2 className="size-3.5" />
                               View
                             </button>
                           </div>

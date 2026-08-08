@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import { ActionNotice } from "@/components/action-notice";
 import { Bell, BrushCleaning, CalendarClock, CheckCircle2, MailCheck, RefreshCw, ShieldCheck, TriangleAlert, UserPlus } from "lucide-react";
 import {
   clearSystemCache,
@@ -105,9 +106,7 @@ export function SettingsClient({ values }: { values: SettingsValues }) {
       </div>
 
       {result ? (
-        <div className={`rounded-lg border px-4 py-3 text-sm ${result.ok ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"}`}>
-          {result.message}
-        </div>
+        <ActionNotice message={result.message} tone={result.ok ? "success" : "error"} onClose={() => setResult(null)} />
       ) : null}
 
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">

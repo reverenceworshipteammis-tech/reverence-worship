@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ActionNotice } from "@/components/action-notice";
 import { FormEvent, useMemo, useState, useTransition } from "react";
 import { ArrowLeft, CheckCircle2, FileText, Info, Lock, Send } from "lucide-react";
 import { submitSpiritualForm } from "@/app/admin/intercession/actions";
@@ -118,7 +119,7 @@ export function IntercessionTakeForm({
           </div>
         )}
 
-        {message && <div className="mx-5 mt-4 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-700 sm:mx-8">{message}</div>}
+        {message && <ActionNotice message={message} tone="info" onClose={() => setMessage(null)} className="mx-5 mt-4 sm:mx-8" />}
 
         <form onSubmit={submit}>
           <div className="space-y-6 bg-slate-50 p-5 sm:p-8">

@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { AlertTriangle, CheckCircle2, ClipboardList, DollarSign, Eye, Plus, Search, Trash2, Users, X } from "lucide-react";
+import { ActionNotice } from "@/components/action-notice";
+import { AlertTriangle, ClipboardList, DollarSign, FileSearch2, Plus, Search, Trash2, Users, X } from "lucide-react";
 import {
   completeParentTask,
   createParentTask,
@@ -159,10 +160,7 @@ export function ParentDashboardClient({ accessDenied, parentName, familyName, ch
       </div>
 
       {message && (
-        <div className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${message.ok ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"}`}>
-          <span className="flex items-center gap-2">{message.ok ? <CheckCircle2 className="size-4" /> : <AlertTriangle className="size-4" />}{message.text}</span>
-          <button type="button" onClick={() => setMessage(null)}><X className="size-4" /></button>
-        </div>
+        <ActionNotice message={message.text} tone={message.ok ? "success" : "error"} onClose={() => setMessage(null)} />
       )}
 
       <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
@@ -247,7 +245,7 @@ function ChildrenTab({ childRows, onView }: { childRows: ChildRow[]; onView: (ch
                 </div>
               </div>
               <button type="button" onClick={() => onView(child)} className="rounded-lg bg-blue-600 p-2 text-white hover:bg-blue-700" aria-label="View child details">
-                <Eye className="size-4" />
+                <FileSearch2 className="size-4" />
               </button>
             </div>
             <div className="mt-4 grid gap-2 rounded-xl bg-gray-50 p-3 text-sm">

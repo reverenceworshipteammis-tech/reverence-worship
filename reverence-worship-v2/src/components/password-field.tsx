@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, EyeOff, Lock } from "lucide-react";
+import { Lock, LockKeyhole, LockKeyholeOpen } from "lucide-react";
 import { useState } from "react";
 
 type PasswordFieldProps = {
@@ -42,10 +42,10 @@ export function PasswordField({
         <button
           type="button"
           className="password-toggle"
-          aria-label="Toggle password visibility"
+          aria-label={visible ? "Hide password" : "Show password"}
           onClick={() => setVisible((current) => !current)}
         >
-          {visible ? <EyeOff className="size-4" aria-hidden="true" /> : <Eye className="size-4" aria-hidden="true" />}
+          {visible ? <LockKeyhole className="size-4" aria-hidden="true" /> : <LockKeyholeOpen className="size-4" aria-hidden="true" />}
         </button>
       </div>
     </div>

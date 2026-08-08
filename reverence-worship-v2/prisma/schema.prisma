@@ -111,6 +111,9 @@ model User {
   createdContributions        Contribution[]             @relation("ContributionCreator")
   payments                    Payment[]                  @relation("PaymentUser")
   createdPayments             Payment[]                  @relation("PaymentCreator")
+  eventContributionPayments   EventContributionPayment[] @relation("EventContributionPaymentUser")
+  createdContributionEvents   ContributionEvent[]        @relation("ContributionEventCreator")
+  createdEventPayments        EventContributionPayment[] @relation("EventContributionPaymentCreator")
   createdGifts                Gift[]                     @relation("GiftCreator")
   createdExpenses             Expense[]                  @relation("ExpenseCreator")
   approvedExpenses            Expense[]                  @relation("ExpenseApprover")
@@ -291,13 +294,14 @@ model ActionPlanTask {
 }
 
 model FinanceTermSetting {
-  id              Int      @id @default(autoincrement())
-  currentYear     Int?     @default(2026) @map("current_year")
-  numberOfTerms   Int?     @default(3) @map("number_of_terms")
-  termPercentages String?  @default("[40,30,30]") @map("term_percentages")
-  termNumbers     String?  @default("[1,2,3]") @map("term_numbers")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  id                    Int      @id @default(autoincrement())
+  currentYear           Int?     @default(2026) @map("current_year")
+  numberOfTerms         Int?     @default(3) @map("number_of_terms")
+  termPercentages       String?  @default("[40,30,30]") @map("term_percentages")
+  termNumbers           String?  @default("[1,2,3]") @map("term_numbers")
+  allowMemberCommitment Boolean  @default(false) @map("allow_member_commitment")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
 
   @@map("finance_term_settings")
 }
@@ -342,6 +346,56 @@ model Payment {
   @@index([userId])
   @@index([year])
   @@map("payments")
+}
+
+model ContributionEvent {
+  id               Int       @id @default(autoincrement())
+  title            String
+  description      String?
+  eventDate        DateTime? @map("event_date") @db.Date
+  startDate        DateTime  @map("start_date") @db.Date
+  endDate          DateTime? @map("end_date") @db.Date
+  goalAmount       Decimal   @default(0) @map("goal_amount") @db.Decimal(15, 2)
+  contributionMode String    @default("open") @map("contribution_mode")
+  suggestedAmount  Decimal?  @map("suggested_amount") @db.Decimal(15, 2)
+  status           String    @default("active")
+  year             Int
+  createdBy        Int?      @map("created_by")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  creator  User?                      @relation("ContributionEventCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  payments EventContributionPayment[]
+
+  @@index([year])
+  @@index([status])
+  @@index([startDate])
+  @@map("contribution_events")
+}
+
+model EventContributionPayment {
+  id              Int      @id @default(autoincrement())
+  eventId         Int      @map("event_id")
+  userId          Int?     @map("user_id")
+  amount          Decimal  @db.Decimal(15, 2)
+  paymentDate     DateTime @default(now()) @map("payment_date") @db.Date
+  paymentMethod   String?  @default("cash") @map("payment_method")
+  referenceNumber String?  @map("reference_number")
+  status          String   @default("completed")
+  notes           String?
+  createdBy       Int?     @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  event   ContributionEvent @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  user    User?             @relation("EventContributionPaymentUser", fields: [userId], references: [id], onDelete: SetNull)
+  creator User?             @relation("EventContributionPaymentCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([eventId])
+  @@index([userId])
+  @@index([paymentDate])
+  @@index([status])
+  @@map("event_contribution_payments")
 }
 
 model Gift {
