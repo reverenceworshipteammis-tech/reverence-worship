@@ -1,7 +1,6 @@
 import { AdminShell } from "@/components/admin-shell";
 import { AppDialogProvider } from "@/components/app-dialog-provider";
-import { getUserPermissionSet, needsGoogleProfileCompletion, requireUser } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { getUserPermissionSet, isUserParent, needsGoogleProfileCompletion, requireUser } from "@/lib/auth";
 import { normalizeSessionLifetimeMinutes } from "@/lib/session-policy";
 import { getSystemSetting } from "@/lib/system-settings";
 import { redirect } from "next/navigation";
@@ -19,15 +18,13 @@ export default async function AdminLayout({
     redirect("/complete-profile");
   }
   const roles = user.roles.map((userRole) => userRole.role.name);
-  const permissions = Array.from(await getUserPermissionSet(user));
-  const sessionLifetimeMinutes = normalizeSessionLifetimeMinutes(
-    await getSystemSetting("session_lifetime"),
-  );
-
-  // determine whether the current user is associated as a parent
-  const parentMember = await prisma.familyMember.findFirst({ where: { userId: user.id, role: { equals: "parent", mode: "insensitive" } }, select: { id: true } });
-  const parentByFamily = await prisma.family.findFirst({ where: { parentId: user.id }, select: { id: true } });
-  const isParent = Boolean(parentMember || parentByFamily);
+  const [permissionSet, sessionLifetimeSetting, isParent] = await Promise.all([
+    getUserPermissionSet(user),
+    getSystemSetting("session_lifetime"),
+    isUserParent(user.id),
+  ]);
+  const permissions = Array.from(permissionSet);
+  const sessionLifetimeMinutes = normalizeSessionLifetimeMinutes(sessionLifetimeSetting);
 
   return (
     <AppDialogProvider>

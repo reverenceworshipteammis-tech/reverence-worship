@@ -1,6 +1,7 @@
 import { SocialFellowshipClient } from "@/components/social-fellowship-client";
 import { requirePageAccess } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
 
 function formatDate(date: Date) {
   return new Intl.DateTimeFormat("en", {
@@ -41,17 +42,20 @@ export default async function SocialFellowshipPage({
       where: {
         status: "active",
         familyMembership: null,
+        ...excludeSuperAdminUserWhere(),
       },
       orderBy: { name: "asc" },
       select: { id: true, name: true, email: true },
     }),
     prisma.user.findMany({
-      where: { status: "active" },
+      where: { status: "active", ...excludeSuperAdminUserWhere() },
       orderBy: { name: "asc" },
       include: {
         familyMembership: {
-          include: {
-            family: true,
+          select: {
+            familyId: true,
+            role: true,
+            family: { select: { name: true, year: true } },
           },
         },
       },
@@ -64,7 +68,7 @@ export default async function SocialFellowshipPage({
       },
       orderBy: { createdAt: "desc" },
       include: {
-        family: true,
+        family: { select: { name: true } },
         subtasks: {
           orderBy: { id: "asc" },
         },
@@ -77,7 +81,7 @@ export default async function SocialFellowshipPage({
       },
       orderBy: { createdAt: "desc" },
       include: {
-        family: true,
+        family: { select: { name: true } },
         tasks: {
           orderBy: { createdAt: "asc" },
           include: {

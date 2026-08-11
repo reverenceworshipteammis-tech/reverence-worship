@@ -116,7 +116,7 @@ export async function loginAction(
 
   const user = await prisma.user.findUnique({
     where: { email: parsed.data.email },
-    include: { roles: { include: { role: true } } },
+    select: { id: true, passwordHash: true, status: true, mustChangePassword: true, sessionVersion: true },
   });
 
   if (!user?.passwordHash) {
@@ -133,7 +133,7 @@ export async function loginAction(
     return { error: "Invalid email or password." };
   }
 
-  await createSession(user.id);
+  await createSession(user.id, { sessionVersion: user.sessionVersion });
 
   if (user.mustChangePassword) {
     redirect("/change-password");
@@ -324,6 +324,6 @@ export async function registerAction(
     };
   }
 
-  await createSession(user.id);
+  await createSession(user.id, { sessionVersion: user.sessionVersion });
   redirect("/admin/dashboard");
 }

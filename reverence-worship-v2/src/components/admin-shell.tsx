@@ -43,6 +43,7 @@ import {
   type ProfileModalData,
 } from "@/components/profile-modal";
 import { ADMIN_NOTIFICATIONS_CHANGED_EVENT } from "@/lib/admin-notification-events";
+import { hasSuperAdminRole } from "@/lib/system-account-rules";
 
 type AdminUser = {
   name: string;
@@ -61,6 +62,7 @@ type NavItem = {
   feature?: string;
   icon: LucideIcon;
   active?: boolean;
+  memberOnly?: boolean;
 };
 
 const navGroups: Array<{ label: string; items: NavItem[] }> = [
@@ -68,9 +70,9 @@ const navGroups: Array<{ label: string; items: NavItem[] }> = [
     label: "",
     items: [
       { label: "Dashboard", href: "/admin/dashboard", page: "dashboard", icon: Gauge },
-      { label: "My Performance", href: "/admin/performance", page: "performance", icon: BarChart3 },
-      { label: "My Contribution", href: "/admin/contributions", page: "contributions", icon: HandCoins },
-      { label: "My Family", href: "/admin/family", page: "family", icon: Home },
+      { label: "My Performance", href: "/admin/performance", page: "performance", icon: BarChart3, memberOnly: true },
+      { label: "My Contribution", href: "/admin/contributions", page: "contributions", icon: HandCoins, memberOnly: true },
+      { label: "My Family", href: "/admin/family", page: "family", icon: Home, memberOnly: true },
       { label: "Read Bible", href: "/admin/intercession?tab=bible", page: "intercession", feature: "read-bible", icon: BookOpen },
       { label: "Forms", href: "/admin/intercession?tab=forms", page: "intercession", feature: "submit-forms", icon: FileText },
       { label: "Playlist", href: "/admin/music?tab=playlist", page: "music-ministry", feature: "view-playlists", icon: ListMusic },
@@ -111,12 +113,15 @@ function hasNavPermission(permissions: string[], item: NavItem) {
 }
 
 function navGroupsForPermissions(permissions: string[], roles: string[], isParent: boolean) {
+  const superAdmin = hasSuperAdminRole(roles);
   return navGroups
     .map((group) => ({
       ...group,
       items: group.items.filter((item) => {
+        if (superAdmin && item.memberOnly) return false;
         if (item.page === "parent") {
-          const privilegedRole = roles.some((role) => ["super-admin", "admin"].includes(role.toLowerCase()));
+          if (superAdmin) return false;
+          const privilegedRole = roles.some((role) => role.toLowerCase() === "admin");
           return hasNavPermission(permissions, item) && (isParent || privilegedRole || roles.some((r) => r.toLowerCase() === "parent"));
         }
 

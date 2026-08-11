@@ -10,10 +10,6 @@ import {
   MAX_SESSION_LIFETIME_MINUTES,
   MIN_SESSION_LIFETIME_MINUTES,
 } from "@/lib/session-policy";
-import {
-  MAX_NOTIFICATION_RETENTION_DAYS,
-  MIN_NOTIFICATION_RETENTION_DAYS,
-} from "@/lib/notification-retention-policy";
 
 type ActionResult = {
   ok: boolean;
@@ -146,8 +142,6 @@ export async function updateProbationSettings(formData: FormData) {
 
 export async function updateNotificationSettings(formData: FormData) {
   try {
-    const retentionDays = readNumber(formData, "notification_retention_days", 90);
-    assertRange(retentionDays, MIN_NOTIFICATION_RETENTION_DAYS, MAX_NOTIFICATION_RETENTION_DAYS, "Notification retention");
     return saveSettings(
       "notifications",
       {
@@ -161,7 +155,6 @@ export async function updateNotificationSettings(formData: FormData) {
         notification_task_enabled: readBoolean(formData, "notification_task_enabled"),
         notification_finance_enabled: readBoolean(formData, "notification_finance_enabled"),
         notification_system_enabled: readBoolean(formData, "notification_system_enabled"),
-        notification_retention_days: Math.round(retentionDays),
       },
       "Notification settings updated successfully.",
     );

@@ -1,7 +1,9 @@
 import { PerformanceClient, type PerformanceType } from "@/components/performance-client";
 import { requirePageAccess } from "@/lib/auth";
+import { hasSuperAdminRole } from "@/lib/system-account-rules";
 import { getPerformanceDateRange } from "@/lib/performance-date-range";
 import { getUserPerformanceData } from "@/lib/user-performance";
+import { redirect } from "next/navigation";
 
 function money(value: unknown) {
   return Number(value ?? 0);
@@ -23,6 +25,7 @@ function performanceType(value: string | undefined): PerformanceType {
 
 export default async function PerformancePage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string; type?: string }> }) {
   const user = await requirePageAccess("performance");
+  if (hasSuperAdminRole(user.roles.map(({ role }) => role.name))) redirect("/admin/dashboard");
   const params = await searchParams;
   const year = new Date().getFullYear();
   const range = getPerformanceDateRange(year, params.from, params.to);

@@ -1,7 +1,7 @@
 import { AnnouncementsClient } from "@/components/announcements-client";
 import { getUserPermissionSet, permissionSetHas, requirePageAccess } from "@/lib/auth";
-import { maintainNotificationArchive } from "@/lib/notification-maintenance";
 import { prisma } from "@/lib/prisma";
+import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
 
 function formatDate(date: Date | null) {
   if (!date) return "-";
@@ -35,12 +35,11 @@ function parseIdList(value: string | null) {
 
 export default async function AnnouncementsPage() {
   const user = await requirePageAccess("announcements");
-  await maintainNotificationArchive();
   const permissions = await getUserPermissionSet(user);
   const canManage = ["create", "edit", "delete", "publish"].some((feature) => permissionSetHas(permissions, "announcements", feature));
   const roleIds = user.roles.map((userRole) => userRole.roleId);
 
-  const [allAnnouncements, roles, users] = await Promise.all([
+  const [allAnnouncements, roles, users, deliveryRows] = await Promise.all([
     prisma.announcement.findMany({
       where: canManage ? undefined : { status: "active", OR: [{ expiryDate: null }, { expiryDate: { gte: new Date() } }] },
       orderBy: { createdAt: "desc" },
@@ -62,7 +61,7 @@ export default async function AnnouncementsPage() {
       select: { id: true, name: true, displayName: true },
     }) : Promise.resolve([]),
     canManage ? prisma.user.findMany({
-      where: { status: "active" },
+      where: { status: "active", ...excludeSuperAdminUserWhere() },
       orderBy: { name: "asc" },
       select: {
         id: true,
@@ -70,6 +69,11 @@ export default async function AnnouncementsPage() {
         email: true,
         roles: { select: { roleId: true } },
       },
+    }) : Promise.resolve([]),
+    canManage ? prisma.notification.findMany({
+      where: { sourceType: "announcement" },
+      select: { sourceId: true, userId: true },
+      distinct: ["sourceId", "userId"],
     }) : Promise.resolve([]),
   ]);
 
@@ -84,16 +88,6 @@ export default async function AnnouncementsPage() {
 
   const roleNameById = new Map(roles.map((role) => [role.id, role.displayName]));
   const userById = new Map(users.map((user) => [user.id, user]));
-  const deliveryRows = canManage && announcements.length > 0
-    ? await prisma.notification.findMany({
-        where: {
-          sourceType: "announcement",
-          sourceId: { in: announcements.map((announcement) => announcement.id) },
-        },
-        select: { sourceId: true, userId: true },
-        distinct: ["sourceId", "userId"],
-      })
-    : [];
   const deliveredUserIdsByAnnouncement = new Map<number, number[]>();
   for (const delivery of deliveryRows) {
     if (delivery.sourceId === null) continue;

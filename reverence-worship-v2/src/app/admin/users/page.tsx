@@ -2,6 +2,7 @@ import { UserManagementClient } from "@/components/user-management-client";
 import { requirePageAccess } from "@/lib/auth";
 import { withDatabaseRetry } from "@/lib/database-retry";
 import { prisma } from "@/lib/prisma";
+import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
 
 type UsersPageProps = {
   searchParams: Promise<{
@@ -19,12 +20,23 @@ function formatDate(date: Date) {
   }).format(date);
 }
 
+type UserStatsRow = {
+  total: number;
+  active: number;
+  inactive: number;
+  pending: number;
+  permanent: number;
+  male: number;
+  female: number;
+};
+
 export default async function UsersPage({ searchParams }: UsersPageProps) {
   await requirePageAccess("users");
 
   const params = await searchParams;
   const search = params.search?.trim();
-  const roleId = params.role ? Number(params.role) : undefined;
+  const inProbation = params.role === "in-probation";
+  const roleId = params.role && !inProbation ? Number(params.role) : undefined;
   const status = params.status;
 
   const where = {
@@ -37,36 +49,36 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
         }
       : {}),
     ...(status ? { status } : {}),
-    ...(Number.isFinite(roleId)
-      ? {
-          roles: {
-            some: {
-              roleId,
-            },
-          },
-        }
+    roles: {
+      ...excludeSuperAdminUserWhere().roles,
+      ...(Number.isFinite(roleId) ? { some: { roleId } } : {}),
+    },
+    ...(inProbation
+      ? { probations: { some: { state: { in: ["active" as const, "extended" as const] } } } }
       : {}),
   };
 
-  const users = await withDatabaseRetry(() =>
-    prisma.user.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      take: 500,
-      include: {
-        roles: {
-          include: {
-            role: true,
+  const [users, roles, statsRows] = await withDatabaseRetry(() =>
+    Promise.all([
+      prisma.user.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        take: 500,
+        include: {
+          roles: {
+            include: {
+              role: true,
+            },
+          },
+          probations: {
+            where: { state: { in: ["active", "extended"] } },
+            select: { id: true },
+            take: 1,
           },
         },
-      },
-    }),
-  );
-
-  const [roles, total, statusCounts, membershipCounts, genderCounts] = await withDatabaseRetry(() =>
-    Promise.all([
+      }),
       prisma.role.findMany({
-        where: { name: { notIn: ["super-admin", "probation-member"] } },
+        where: { name: { notIn: ["super-admin", "probation-member", "probation"] } },
         orderBy: { displayName: "asc" },
         select: {
           id: true,
@@ -74,27 +86,31 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
           displayName: true,
         },
       }),
-      prisma.user.count(),
-      prisma.user.groupBy({ by: ["status"], _count: { _all: true } }),
-      prisma.user.groupBy({ by: ["membershipType"], _count: { _all: true } }),
-      prisma.user.groupBy({ by: ["gender"], _count: { _all: true } }),
+      prisma.$queryRaw<UserStatsRow[]>`
+        SELECT
+          COUNT(*)::int AS "total",
+          COUNT(*) FILTER (WHERE "status" = 'active')::int AS "active",
+          COUNT(*) FILTER (WHERE "status" = 'inactive')::int AS "inactive",
+          COUNT(*) FILTER (WHERE "status" = 'pending')::int AS "pending",
+          COUNT(*) FILTER (WHERE "membership_type" = 'permanent')::int AS "permanent",
+          COUNT(*) FILTER (WHERE "gender" = 'male')::int AS "male",
+          COUNT(*) FILTER (WHERE "gender" = 'female')::int AS "female"
+        FROM "users"
+        WHERE NOT EXISTS (
+          SELECT 1
+          FROM "role_user" system_role
+          INNER JOIN "roles" role ON role."id" = system_role."role_id"
+          WHERE system_role."user_id" = "users"."id" AND role."name" = 'super-admin'
+        )
+      `,
     ]),
   );
-
-  const statusMap = new Map(statusCounts.map((item) => [item.status, item._count._all]));
-  const membershipMap = new Map(membershipCounts.map((item) => [item.membershipType, item._count._all]));
-  const genderMap = new Map(genderCounts.map((item) => [item.gender, item._count._all]));
-  const active = statusMap.get("active") ?? 0;
-  const inactive = statusMap.get("inactive") ?? 0;
-  const pending = statusMap.get("pending") ?? 0;
-  const permanent = membershipMap.get("permanent") ?? 0;
-  const male = genderMap.get("male") ?? 0;
-  const female = genderMap.get("female") ?? 0;
+  const stats = statsRows[0] ?? { total: 0, active: 0, inactive: 0, pending: 0, permanent: 0, male: 0, female: 0 };
 
   return (
     <UserManagementClient
       roles={roles}
-      stats={{ total, active, inactive, pending, permanent, male, female }}
+      stats={stats}
       users={users.map((user) => ({
         id: user.id,
         name: user.name,
@@ -114,6 +130,7 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
         status: user.status,
         createdAt: formatDate(user.createdAt),
         createdAtValue: user.createdAt.toISOString(),
+        inProbation: user.probations.length > 0,
         roles: user.roles.map(({ role }) => ({
           id: role.id,
           name: role.name,

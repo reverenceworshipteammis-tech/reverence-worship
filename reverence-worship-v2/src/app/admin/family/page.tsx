@@ -1,6 +1,8 @@
 import { FamilyClient } from "@/components/family-client";
 import { requirePageAccess } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { hasSuperAdminRole } from "@/lib/system-account-rules";
+import { redirect } from "next/navigation";
 
 function formatDueDate(date: Date | null) {
   if (!date) return "No due date";
@@ -33,6 +35,7 @@ function normalizeTaskStatus(task: {
 
 export default async function FamilyPage() {
   const user = await requirePageAccess("family");
+  if (hasSuperAdminRole(user.roles.map(({ role }) => role.name))) redirect("/admin/dashboard");
 
   const membership = await prisma.familyMember.findUnique({
     where: { userId: user.id },

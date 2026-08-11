@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { maintainNotificationArchive } from "@/lib/notification-maintenance";
+import { notificationLifetimeCutoff } from "@/lib/notification-retention-policy";
+import { filterCurrentNotifications } from "@/lib/notification-source-validity";
 import { normalizePermissionRequestNotificationMessage } from "@/lib/permission-notification-copy";
 
 export type AdminNotification = {
@@ -71,9 +72,6 @@ async function safeRead<T>(promise: Promise<T>, fallback: T) {
 
 export async function getAdminNotifications() {
   const user = await requireUser();
-  await maintainNotificationArchive().catch((error) => {
-    console.error("Unable to maintain notification archive", error);
-  });
   const roleNames = user.roles.map((userRole) => userRole.role.name);
   const roleIds = user.roles.map((userRole) => userRole.role.id);
   const workspaceUser = hasWorkspaceRole(roleNames);
@@ -81,22 +79,27 @@ export async function getAdminNotifications() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const [storedNotifications, announcements] = await Promise.all([
+  const [storedNotificationRows, announcements] = await Promise.all([
     safeRead(prisma.notification.findMany({
-      where: { userId: user.id, readAt: null },
+      where: { userId: user.id, readAt: null, createdAt: { gte: notificationLifetimeCutoff() } },
       orderBy: { createdAt: "desc" },
-      take: 30,
+      take: 50,
     }), []),
     safeRead(prisma.announcement.findMany({
       where: {
         status: "active",
-        OR: [{ expiryDate: null }, { expiryDate: { gte: today } }],
+        OR: [
+          { publishedAt: { gte: notificationLifetimeCutoff() } },
+          { publishedAt: null, createdAt: { gte: notificationLifetimeCutoff() } },
+        ],
+        AND: [{ OR: [{ expiryDate: null }, { expiryDate: { gte: today } }] }],
       },
       include: { reads: { where: { userId: user.id }, take: 1 } },
       orderBy: { createdAt: "desc" },
       take: 30,
     }), []),
   ]);
+  const storedNotifications = await filterCurrentNotifications(storedNotificationRows);
 
   for (const notification of storedNotifications) {
     // Announcement visibility is governed by AnnouncementUserRead below.

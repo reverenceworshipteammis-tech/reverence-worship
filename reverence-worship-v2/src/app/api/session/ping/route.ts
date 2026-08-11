@@ -8,6 +8,6 @@ export async function POST() {
     return NextResponse.json({ ok: false }, { status: 401 });
   }
 
-  await createSession(user.id);
+  await createSession(user.id, { sessionVersion: user.sessionVersion });
   return NextResponse.json({ ok: true });
 }

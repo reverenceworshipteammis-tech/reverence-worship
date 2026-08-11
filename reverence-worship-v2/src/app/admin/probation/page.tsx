@@ -1,6 +1,6 @@
 import { ProbationClient, type ProbationRow } from "@/components/probation-client";
 import { getUserPermissionSet, permissionSetHas, requirePageAccess } from "@/lib/auth";
-import { getProbationMonitoring, probationDateSummary } from "@/lib/probation-data";
+import { getProbationMonitoringBatch, probationDateSummary } from "@/lib/probation-data";
 import { DEFAULT_PROBATION_DURATION_MONTHS } from "@/lib/probation-rules";
 import { prisma } from "@/lib/prisma";
 import { getSystemSetting, settingToNumber } from "@/lib/system-settings";
@@ -70,8 +70,9 @@ export default async function ProbationPage({
   const isAdministrator = user.roles.some(({ role }) => role.name === "admin" || role.name === "super-admin");
   const isDisciplineLeader = user.roles.some(({ role }) => role.name === "discipline-dpt");
   const canRequestFinalDecision = isDisciplineLeader || isAdministrator;
-  const rows: ProbationRow[] = await Promise.all(probations.map(async (probation) => {
-    const monitoring = await getProbationMonitoring(probation);
+  const monitoringByProbation = await getProbationMonitoringBatch(probations);
+  const rows: ProbationRow[] = probations.map((probation) => {
+    const monitoring = monitoringByProbation.get(probation.id)!;
     const dates = probationDateSummary(probation.currentExpectedEndDate);
     return {
       id: probation.id,
@@ -119,7 +120,7 @@ export default async function ProbationPage({
         reviewComments: decision.reviewComments,
       })),
     };
-  }));
+  });
 
   const defaultDurationMonths = Math.max(
     1,

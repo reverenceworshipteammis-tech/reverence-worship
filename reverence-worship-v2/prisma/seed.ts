@@ -65,7 +65,7 @@ const roles = [
   },
   {
     name: "probation-member",
-    displayName: "Probation Member",
+    displayName: "In Probation",
     description: "Normal member dashboard access while membership probation is being evaluated.",
     isSystem: true,
   },

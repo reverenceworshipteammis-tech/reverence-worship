@@ -1,6 +1,7 @@
 import { DisciplineClient } from "@/components/discipline-client";
 import { getUserPermissionSet, permissionSetHas, requirePageAccess } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
 
 function formatDate(date: Date) {
   return new Intl.DateTimeFormat("en", {
@@ -46,6 +47,14 @@ async function safeRead<T>(promise: Promise<T>, fallback: T) {
     return fallback;
   }
 }
+
+type DisciplineStatsRow = {
+  permissionRequests: number;
+  attendanceSessions: number;
+  attendanceRecords: number;
+  goodAttendance: number;
+  disciplineSessions: number;
+};
 
 export default async function DisciplinePage({
   searchParams,
@@ -121,11 +130,7 @@ export default async function DisciplinePage({
   }
 
   const [
-    permissionRequests,
-    attendanceSessionCount,
-    attendanceRecordCount,
-    goodAttendanceCount,
-    disciplineSessionCount,
+    statsRows,
     recentAttendanceSessions,
     recentPermissions,
     attendanceRecords,
@@ -137,47 +142,35 @@ export default async function DisciplinePage({
     actionPlans,
   ] = await Promise.all([
     safeRead(
-      prisma.permissionRequest.count({
-        where: {
-          createdAt: { gte: startDate, lte: endDate },
-        },
-      }),
-      0,
-    ),
-    safeRead(
-      prisma.attendanceSession.count({
-        where: {
-          sessionDate: { gte: startDate, lte: endDate },
-        },
-      }),
-      0,
-    ),
-    safeRead(
-      prisma.attendanceRecord.count({
-        where: {
-          sessionDate: { gte: startDate, lte: endDate },
-          user: { is: { OR: [{ membershipType: null }, { membershipType: { not: "temporary" } }] } },
-        },
-      }),
-      0,
-    ),
-    safeRead(
-      prisma.attendanceRecord.count({
-        where: {
-          sessionDate: { gte: startDate, lte: endDate },
-          status: "present",
-          user: { is: { OR: [{ membershipType: null }, { membershipType: { not: "temporary" } }] } },
-        },
-      }),
-      0,
-    ),
-    safeRead(
-      prisma.disciplineSession.count({
-        where: {
-          sessionDate: { gte: startDate, lte: endDate },
-        },
-      }),
-      0,
+      prisma.$queryRaw<DisciplineStatsRow[]>`
+        SELECT
+          (SELECT COUNT(*)::int FROM "permission_requests"
+            WHERE "created_at" BETWEEN ${startDate} AND ${endDate}) AS "permissionRequests",
+          (SELECT COUNT(*)::int FROM "attendance_sessions"
+            WHERE "session_date" BETWEEN ${startDate} AND ${endDate}) AS "attendanceSessions",
+          (SELECT COUNT(*)::int FROM "attendance_records" records
+            INNER JOIN "users" users ON users."id" = records."user_id"
+            WHERE records."session_date" BETWEEN ${startDate} AND ${endDate}
+              AND (users."membership_type" IS NULL OR users."membership_type" <> 'temporary')
+              AND NOT EXISTS (
+                SELECT 1 FROM "role_user" system_role
+                INNER JOIN "roles" role ON role."id" = system_role."role_id"
+                WHERE system_role."user_id" = users."id" AND role."name" = 'super-admin'
+              )) AS "attendanceRecords",
+          (SELECT COUNT(*)::int FROM "attendance_records" records
+            INNER JOIN "users" users ON users."id" = records."user_id"
+            WHERE records."session_date" BETWEEN ${startDate} AND ${endDate}
+              AND records."status" = 'present'
+              AND (users."membership_type" IS NULL OR users."membership_type" <> 'temporary')
+              AND NOT EXISTS (
+                SELECT 1 FROM "role_user" system_role
+                INNER JOIN "roles" role ON role."id" = system_role."role_id"
+                WHERE system_role."user_id" = users."id" AND role."name" = 'super-admin'
+              )) AS "goodAttendance",
+          (SELECT COUNT(*)::int FROM "discipline_sessions"
+            WHERE "session_date" BETWEEN ${startDate} AND ${endDate}) AS "disciplineSessions"
+      `,
+      [],
     ),
     safeRead(
       prisma.attendanceSession.findMany({
@@ -202,6 +195,7 @@ export default async function DisciplinePage({
     safeRead(
       prisma.attendanceRecord.findMany({
         where: {
+          sessionDate: { gte: attendanceStartDate, lte: attendanceEndDate },
           user: { is: { OR: [{ membershipType: null }, { membershipType: { not: "temporary" } }] } },
         },
         orderBy: [{ sessionDate: "desc" }, { sessionType: "asc" }, { user: { name: "asc" } }],
@@ -216,6 +210,7 @@ export default async function DisciplinePage({
         where: {
           status: "active",
           OR: [{ membershipType: null }, { membershipType: { not: "temporary" } }],
+          ...excludeSuperAdminUserWhere(),
         },
         orderBy: { name: "asc" },
         select: { id: true, name: true, email: true, phone: true, createdAt: true },
@@ -234,6 +229,7 @@ export default async function DisciplinePage({
     ),
     safeRead(
       prisma.disciplineRecord.findMany({
+        where: { createdAt: { gte: startDate, lte: endDate } },
         orderBy: { createdAt: "desc" },
         include: {
           user: { select: { id: true, name: true, email: true } },
@@ -245,12 +241,14 @@ export default async function DisciplinePage({
     ),
     safeRead(
       prisma.attendanceSession.findMany({
+        where: { sessionDate: { gte: attendanceStartDate, lte: attendanceEndDate } },
         orderBy: [{ sessionDate: "desc" }, { sessionType: "asc" }],
       }),
       [],
     ),
     safeRead(
       prisma.disciplineSession.findMany({
+        where: { sessionDate: { gte: startDate, lte: endDate } },
         orderBy: [{ sessionDate: "desc" }, { title: "asc" }],
       }),
       [],
@@ -270,7 +268,14 @@ export default async function DisciplinePage({
     ),
   ]);
 
-  const avgGoodBehavior = attendanceRecordCount ? Math.round((goodAttendanceCount / attendanceRecordCount) * 100) : 0;
+  const stats = statsRows[0] ?? {
+    permissionRequests: 0,
+    attendanceSessions: 0,
+    attendanceRecords: 0,
+    goodAttendance: 0,
+    disciplineSessions: 0,
+  };
+  const avgGoodBehavior = stats.attendanceRecords ? Math.round((stats.goodAttendance / stats.attendanceRecords) * 100) : 0;
 
   return (
     <DisciplineClient
@@ -283,9 +288,9 @@ export default async function DisciplinePage({
       attendanceStartDate={dateValue(attendanceStartDate)}
       attendanceEndDate={dateValue(attendanceEndDate)}
       stats={{
-        permissionRequests,
-        attendanceSessions: attendanceSessionCount,
-        disciplineSessions: disciplineSessionCount,
+        permissionRequests: stats.permissionRequests,
+        attendanceSessions: stats.attendanceSessions,
+        disciplineSessions: stats.disciplineSessions,
         avgGoodBehavior,
       }}
       recentAttendanceSessions={recentAttendanceSessions.map((session) => ({

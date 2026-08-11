@@ -42,32 +42,30 @@ type ProbationWindow = {
   decisionDate?: Date | null;
 };
 
-export async function getProbationMonitoring(probation: ProbationWindow): Promise<ProbationMonitoring> {
-  const endDate = probation.decisionDate ?? new Date();
-  const [attendanceRecords, disciplineRecords, permissionRequests] = await Promise.all([
-    prisma.attendanceRecord.findMany({
-      where: {
-        userId: probation.userId,
-        sessionDate: { gte: probation.originalStartDate, lte: endDate },
-      },
-      select: { sessionDate: true, status: true, communicated: true, onTime: true, lateMinutes: true },
-    }),
-    prisma.disciplineRecord.findMany({
-      where: {
-        userId: probation.userId,
-        createdAt: { gte: probation.originalStartDate, lte: endDate },
-      },
-      select: { type: true, status: true },
-    }),
-    prisma.permissionRequest.findMany({
-      where: {
-        userId: probation.userId,
-        createdAt: { gte: probation.originalStartDate, lte: endDate },
-      },
-      select: { status: true, startDate: true, endDate: true },
-    }),
-  ]);
+type AttendanceMonitoringRecord = {
+  sessionDate: Date;
+  status: string;
+  communicated: boolean;
+  onTime: boolean;
+  lateMinutes: number;
+};
 
+type DisciplineMonitoringRecord = {
+  type: string | null;
+  status: string;
+};
+
+type PermissionMonitoringRecord = {
+  status: string;
+  startDate: Date;
+  endDate: Date;
+};
+
+function summarizeProbationMonitoring(
+  attendanceRecords: AttendanceMonitoringRecord[],
+  disciplineRecords: DisciplineMonitoringRecord[],
+  permissionRequests: PermissionMonitoringRecord[],
+): ProbationMonitoring {
   const approvedPermissions = permissionRequests.filter((request) => request.status === "approved");
   const evaluatedAttendance = attendanceRecords.filter((record) => {
     if (record.status.toLowerCase() === "excused") return false;
@@ -125,6 +123,85 @@ export async function getProbationMonitoring(probation: ProbationWindow): Promis
     needsAttention: attentionReasons.length > 0,
     attentionReasons,
   };
+}
+
+export async function getProbationMonitoring(probation: ProbationWindow): Promise<ProbationMonitoring> {
+  const endDate = probation.decisionDate ?? new Date();
+  const [attendanceRecords, disciplineRecords, permissionRequests] = await Promise.all([
+    prisma.attendanceRecord.findMany({
+      where: {
+        userId: probation.userId,
+        sessionDate: { gte: probation.originalStartDate, lte: endDate },
+      },
+      select: { sessionDate: true, status: true, communicated: true, onTime: true, lateMinutes: true },
+    }),
+    prisma.disciplineRecord.findMany({
+      where: {
+        userId: probation.userId,
+        createdAt: { gte: probation.originalStartDate, lte: endDate },
+      },
+      select: { type: true, status: true },
+    }),
+    prisma.permissionRequest.findMany({
+      where: {
+        userId: probation.userId,
+        createdAt: { gte: probation.originalStartDate, lte: endDate },
+      },
+      select: { status: true, startDate: true, endDate: true },
+    }),
+  ]);
+
+  return summarizeProbationMonitoring(attendanceRecords, disciplineRecords, permissionRequests);
+}
+
+export async function getProbationMonitoringBatch(
+  probations: Array<ProbationWindow & { id: number }>,
+): Promise<Map<number, ProbationMonitoring>> {
+  if (probations.length === 0) return new Map();
+
+  const now = new Date();
+  const [attendanceRecords, disciplineRecords, permissionRequests] = await Promise.all([
+    prisma.attendanceRecord.findMany({
+      where: {
+        OR: probations.map((probation) => ({
+          userId: probation.userId,
+          sessionDate: { gte: probation.originalStartDate, lte: probation.decisionDate ?? now },
+        })),
+      },
+      select: { userId: true, sessionDate: true, status: true, communicated: true, onTime: true, lateMinutes: true },
+    }),
+    prisma.disciplineRecord.findMany({
+      where: {
+        OR: probations.map((probation) => ({
+          userId: probation.userId,
+          createdAt: { gte: probation.originalStartDate, lte: probation.decisionDate ?? now },
+        })),
+      },
+      select: { userId: true, createdAt: true, type: true, status: true },
+    }),
+    prisma.permissionRequest.findMany({
+      where: {
+        OR: probations.map((probation) => ({
+          userId: probation.userId,
+          createdAt: { gte: probation.originalStartDate, lte: probation.decisionDate ?? now },
+        })),
+      },
+      select: { userId: true, createdAt: true, status: true, startDate: true, endDate: true },
+    }),
+  ]);
+
+  return new Map(probations.map((probation) => {
+    const endDate = probation.decisionDate ?? now;
+    const inWindow = (date: Date) => date >= probation.originalStartDate && date <= endDate;
+    return [
+      probation.id,
+      summarizeProbationMonitoring(
+        attendanceRecords.filter((record) => record.userId === probation.userId && inWindow(record.sessionDate)),
+        disciplineRecords.filter((record) => record.userId === probation.userId && inWindow(record.createdAt)),
+        permissionRequests.filter((request) => request.userId === probation.userId && inWindow(request.createdAt)),
+      ),
+    ];
+  }));
 }
 
 export function probationDateSummary(currentExpectedEndDate: Date, now = new Date()) {

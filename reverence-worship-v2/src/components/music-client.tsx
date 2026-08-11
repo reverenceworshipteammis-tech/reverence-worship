@@ -1,11 +1,22 @@
 "use client";
 
-import { FormEvent, useMemo, useState, useTransition } from "react";
+import { FormEvent, useMemo, useRef, useState, useTransition } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ActionNotice } from "@/components/action-notice";
 import {
+  compactPlaylistSessions,
+  groupPlaylistSessionsByService,
+  MAX_PLAYLIST_SERVICES,
+  MAX_PLAYLIST_SESSIONS_PER_SERVICE,
+  MIN_PLAYLIST_SERVICES,
+  movePlaylistSession,
+  playlistServiceLabel,
+} from "@/lib/playlist-rules";
+import {
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
   CalendarDays,
   CheckCircle2,
   ChevronLeft,
@@ -69,19 +80,40 @@ type Song = {
   id: number;
   title: string;
   artist: string | null;
-  keySignature: string | null;
   tempo: number | null;
   lyrics: string | null;
   youtubeLink: string | null;
+};
+
+type PlaylistSessionSong = Song & {
+  displayOrder: number;
+  keySignature: string | null;
   assignedSinger: string | null;
+};
+
+type PlaylistSession = {
+  id: number;
+  serviceNumber: number;
+  name: string;
+  displayOrder: number;
+  songs: PlaylistSessionSong[];
 };
 
 type Playlist = {
   id: number;
   title: string;
   description: string | null;
+  serviceCount: number;
   createdAt: string;
-  songs: Song[];
+  sessions: PlaylistSession[];
+};
+
+type EditablePlaylistSession = {
+  clientId: string;
+  serviceNumber: number;
+  name: string;
+  songIds: number[];
+  songSettings: Record<string, { keySignature: string; assignedSinger: string }>;
 };
 
 type GalleryPhoto = {
@@ -284,25 +316,39 @@ function InlineDropdown({
   placeholder,
   options,
   tone = "blue",
+  value,
+  onValueChange,
+  disabled = false,
 }: {
   name: string;
   placeholder: string;
   options: { value: string; label: string }[];
   tone?: "blue" | "green";
+  value?: string;
+  onValueChange?: (value: string) => void;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const [value, setValue] = useState("");
-  const selected = options.find((option) => option.value === value);
+  const [internalValue, setInternalValue] = useState("");
+  const selectedValue = value ?? internalValue;
+  const selected = options.find((option) => option.value === selectedValue);
   const focusClass = tone === "green" ? "focus:ring-green-500" : "focus:ring-blue-500";
   const activeClass = tone === "green" ? "hover:bg-green-50" : "hover:bg-blue-50";
 
+  function selectValue(nextValue: string) {
+    if (value === undefined) setInternalValue(nextValue);
+    onValueChange?.(nextValue);
+    setOpen(false);
+  }
+
   return (
     <div className="relative min-w-0 flex-1">
-      <input type="hidden" name={name} value={value} />
+      <input type="hidden" name={name} value={selectedValue} />
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className={`flex h-10 w-full items-center justify-between gap-2 rounded-lg border border-gray-300 bg-white px-3 text-left text-sm text-gray-700 outline-none transition ${focusClass} sm:rounded-xl`}
+        disabled={disabled}
+        className={`flex h-10 w-full items-center justify-between gap-2 rounded-lg border border-gray-300 bg-white px-3 text-left text-sm text-gray-700 outline-none transition disabled:cursor-not-allowed disabled:bg-gray-100 ${focusClass} sm:rounded-xl`}
       >
         <span className={`truncate ${selected ? "text-gray-800" : "text-gray-400"}`}>{selected?.label ?? placeholder}</span>
         <ChevronRight className={`size-4 shrink-0 text-gray-400 transition ${open ? "rotate-90" : ""}`} aria-hidden />
@@ -311,10 +357,7 @@ function InlineDropdown({
         <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white py-1 shadow-xl">
           <button
             type="button"
-            onClick={() => {
-              setValue("");
-              setOpen(false);
-            }}
+            onClick={() => selectValue("")}
             className={`block w-full px-3 py-2 text-left text-sm text-gray-400 ${activeClass}`}
           >
             {placeholder}
@@ -323,11 +366,8 @@ function InlineDropdown({
             <button
               key={option.value}
               type="button"
-              onClick={() => {
-                setValue(option.value);
-                setOpen(false);
-              }}
-              className={`block w-full px-3 py-2 text-left text-sm text-gray-700 ${activeClass} ${option.value === value ? "font-semibold" : ""}`}
+              onClick={() => selectValue(option.value)}
+              className={`block w-full px-3 py-2 text-left text-sm text-gray-700 ${activeClass} ${option.value === selectedValue ? "font-semibold" : ""}`}
             >
               {option.label}
             </button>
@@ -400,22 +440,6 @@ function SongFields({ song }: { song?: Song }) {
         <span className="mb-1 block text-sm font-medium text-gray-700">Song Title *</span>
         <input name="title" defaultValue={song?.title ?? ""} required className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500" />
       </label>
-      <label>
-        <span className="mb-1 block text-sm font-medium text-gray-700">Artist</span>
-        <input name="artist" defaultValue={song?.artist ?? ""} className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500" />
-      </label>
-      <label>
-        <span className="mb-1 block text-sm font-medium text-gray-700">Assigned Singer</span>
-        <input name="assignedSinger" defaultValue={song?.assignedSinger ?? ""} className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500" />
-      </label>
-      <label>
-        <span className="mb-1 block text-sm font-medium text-gray-700">Key Signature</span>
-        <input name="keySignature" defaultValue={song?.keySignature ?? ""} placeholder="C, G, D" className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500" />
-      </label>
-      <label>
-        <span className="mb-1 block text-sm font-medium text-gray-700">Tempo (BPM)</span>
-        <input name="tempo" type="number" defaultValue={song?.tempo ?? ""} className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500" />
-      </label>
       <label className="sm:col-span-2">
         <span className="mb-1 block text-sm font-medium text-gray-700">YouTube Link</span>
         <input name="youtubeLink" type="url" defaultValue={song?.youtubeLink ?? ""} className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500" />
@@ -428,34 +452,503 @@ function SongFields({ song }: { song?: Song }) {
   );
 }
 
-function PlaylistFields({ songs, playlist }: { songs: Song[]; playlist?: Playlist }) {
-  const selected = new Set(playlist?.songs.map((song) => song.id) ?? []);
+function newSessionClientId(serviceNumber: number) {
+  const suffix = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
+  return `service-${serviceNumber}-${suffix}`;
+}
+
+function synchronizePlaylistSessionStructure(
+  sessions: EditablePlaylistSession[],
+  sourceServiceNumber: number,
+  serviceCount: number,
+) {
+  const template = sessions.filter((session) => session.serviceNumber === sourceServiceNumber);
+  const synchronized: EditablePlaylistSession[] = [];
+
+  for (let serviceNumber = 1; serviceNumber <= serviceCount; serviceNumber += 1) {
+    if (serviceNumber === sourceServiceNumber) {
+      synchronized.push(...template);
+      continue;
+    }
+    const existing = sessions.filter((session) => session.serviceNumber === serviceNumber);
+    synchronized.push(...template.map((session, index) => ({
+      clientId: existing[index]?.clientId ?? newSessionClientId(serviceNumber),
+      serviceNumber,
+      name: session.name,
+      songIds: existing[index]?.songIds ?? [],
+      songSettings: existing[index]?.songSettings ?? {},
+    })));
+  }
+
+  return synchronized;
+}
+
+function songSearchScore(song: Song, query: string) {
+  const title = song.title.toLowerCase();
+  const artist = song.artist?.toLowerCase() ?? "";
+
+  if (title === query) return 0;
+  if (title.startsWith(query)) return 1;
+  if (artist === query) return 2;
+  if (title.split(/\s+/).some((word) => word.startsWith(query))) return 3;
+  if (artist.startsWith(query)) return 4;
+  if (title.includes(query)) return 5;
+  if (artist.includes(query)) return 6;
+  return null;
+}
+
+function PlaylistFields({
+  songs,
+  playlist,
+  onCancel,
+  pending,
+  submitLabel,
+}: {
+  songs: Song[];
+  playlist?: Playlist;
+  onCancel: () => void;
+  pending: boolean;
+  submitLabel: string;
+}) {
+  const initialSessions = playlist?.sessions.length
+    ? playlist.sessions.map((session) => ({
+        clientId: `session-${session.id}`,
+        serviceNumber: session.serviceNumber,
+        name: session.name,
+        songIds: session.songs.map((song) => song.id),
+        songSettings: Object.fromEntries(session.songs.map((song) => [String(song.id), {
+          keySignature: song.keySignature ?? "",
+          assignedSinger: song.assignedSinger ?? "",
+        }])),
+      }))
+    : [{ clientId: "service-1-default", serviceNumber: 1, name: "", songIds: [], songSettings: {} }];
+  const [serviceCount, setServiceCount] = useState(playlist?.serviceCount ?? 1);
+  const [editableSessions, setEditableSessions] = useState<EditablePlaylistSession[]>(initialSessions);
+  const [activeServiceNumber, setActiveServiceNumber] = useState(initialSessions[0]?.serviceNumber ?? 1);
+  const [activeSessionId, setActiveSessionId] = useState(initialSessions[0]?.clientId ?? "service-1-default");
+  const [songPickerSearch, setSongPickerSearch] = useState("");
+  const [visibleSongCount, setVisibleSongCount] = useState(20);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [title, setTitle] = useState(playlist?.title ?? "");
+  const [sameSessionsForAllServices, setSameSessionsForAllServices] = useState(false);
+  const stepThreeEnteredAt = useRef(0);
+
+  const validEditableSessions = compactPlaylistSessions(editableSessions);
+  const serviceSessions = validEditableSessions.filter((session) => session.serviceNumber === activeServiceNumber);
+  const activeSession = validEditableSessions.find((session) => session.clientId === activeSessionId) ?? serviceSessions[0] ?? null;
+  const selectedSongIds = activeSession?.songIds ?? [];
+  const selectedSongIdSet = new Set(selectedSongIds);
+  const songById = new Map(songs.map((song) => [song.id, song]));
+  const selectedSongs = selectedSongIds
+    .map((songId) => songById.get(songId))
+    .filter((song): song is Song => Boolean(song));
+  const normalizedSearch = songPickerSearch.trim().toLowerCase();
+  const searchedSongs = normalizedSearch
+    ? songs
+        .map((song) => ({ song, score: songSearchScore(song, normalizedSearch) }))
+        .filter((match) => match.score !== null)
+        .sort((left, right) => left.score! - right.score! || left.song.title.localeCompare(right.song.title))
+        .map((match) => match.song)
+    : [];
+  const matchingUnselectedSongs = searchedSongs.filter((song) => !selectedSongIdSet.has(song.id));
+  const visibleSongs = matchingUnselectedSongs.slice(0, visibleSongCount);
+  const currentStepDetails = [
+    { title: "Playlist Details", description: "Name and services" },
+    { title: "Create Sessions", description: "Service headings" },
+    { title: "Assign Songs", description: "Search and arrange" },
+  ][step - 1];
+  const serializedSessions = JSON.stringify(validEditableSessions.map((session) => ({
+    serviceNumber: session.serviceNumber,
+    name: session.name,
+    songAssignments: session.songIds.map((songId) => ({
+      songId,
+      keySignature: session.songSettings[String(songId)]?.keySignature ?? "",
+      assignedSinger: session.songSettings[String(songId)]?.assignedSinger ?? "",
+    })),
+  })));
+
+  function activateService(serviceNumber: number, sessions = validEditableSessions) {
+    const firstSession = sessions.find((session) => session.serviceNumber === serviceNumber);
+    setActiveServiceNumber(serviceNumber);
+    if (firstSession) setActiveSessionId(firstSession.clientId);
+    setSongPickerSearch("");
+    setVisibleSongCount(20);
+  }
+
+  function changeServiceCount(nextServiceCount: number) {
+    const safeServiceCount = Number.isFinite(nextServiceCount)
+      ? Math.min(MAX_PLAYLIST_SERVICES, Math.max(MIN_PLAYLIST_SERVICES, Math.trunc(nextServiceCount)))
+      : MIN_PLAYLIST_SERVICES;
+    const nextSessions = validEditableSessions.filter((session) => session.serviceNumber <= safeServiceCount);
+    for (let serviceNumber = 1; serviceNumber <= safeServiceCount; serviceNumber += 1) {
+      if (!nextSessions.some((session) => session.serviceNumber === serviceNumber)) {
+        nextSessions.push({ clientId: newSessionClientId(serviceNumber), serviceNumber, name: "", songIds: [], songSettings: {} });
+      }
+    }
+    const sourceServiceNumber = activeServiceNumber > safeServiceCount ? 1 : activeServiceNumber;
+    const updatedSessions = sameSessionsForAllServices
+      ? synchronizePlaylistSessionStructure(nextSessions, sourceServiceNumber, safeServiceCount)
+      : nextSessions;
+    setServiceCount(safeServiceCount);
+    setEditableSessions(updatedSessions);
+    if (activeServiceNumber > safeServiceCount) activateService(1, updatedSessions);
+  }
+
+  function updateActiveSession(update: (session: EditablePlaylistSession) => EditablePlaylistSession) {
+    if (!activeSession) return;
+    setEditableSessions((current) => compactPlaylistSessions(current).map((session) => session.clientId === activeSession.clientId ? update(session) : session));
+  }
+
+  function addSession() {
+    if (serviceSessions.length >= MAX_PLAYLIST_SESSIONS_PER_SERVICE) return;
+    const session: EditablePlaylistSession = {
+      clientId: newSessionClientId(activeServiceNumber),
+      serviceNumber: activeServiceNumber,
+      name: "",
+      songIds: [],
+      songSettings: {},
+    };
+    setEditableSessions((current) => {
+      const next = [...compactPlaylistSessions(current), session];
+      return sameSessionsForAllServices
+        ? synchronizePlaylistSessionStructure(next, activeServiceNumber, serviceCount)
+        : next;
+    });
+    setActiveSessionId(session.clientId);
+  }
+
+  function removeSession(sessionId: string) {
+    if (serviceSessions.length <= 1) return;
+    const sessionIndex = serviceSessions.findIndex((session) => session.clientId === sessionId);
+    const nextSessions = sameSessionsForAllServices
+      ? validEditableSessions.filter((session) => {
+          const sessionsInService = validEditableSessions.filter((item) => item.serviceNumber === session.serviceNumber);
+          return sessionsInService[sessionIndex]?.clientId !== session.clientId;
+        })
+      : validEditableSessions.filter((session) => session.clientId !== sessionId);
+    setEditableSessions(nextSessions);
+    if (activeSessionId === sessionId) {
+      const nextActive = nextSessions.find((session) => session.serviceNumber === activeServiceNumber);
+      if (nextActive) setActiveSessionId(nextActive.clientId);
+    }
+  }
+
+  function moveSession(sessionId: string, direction: -1 | 1) {
+    if (!sameSessionsForAllServices) {
+      setEditableSessions((current) => movePlaylistSession(current, activeServiceNumber, sessionId, direction));
+      return;
+    }
+    const sessionIndex = serviceSessions.findIndex((session) => session.clientId === sessionId);
+    setEditableSessions((current) => {
+      let next = compactPlaylistSessions(current);
+      for (let serviceNumber = 1; serviceNumber <= serviceCount; serviceNumber += 1) {
+        const target = next.filter((session) => session.serviceNumber === serviceNumber)[sessionIndex];
+        if (target) next = movePlaylistSession(next, serviceNumber, target.clientId, direction);
+      }
+      return next;
+    });
+  }
+
+  function renameSession(sessionId: string, name: string) {
+    const sessionIndex = serviceSessions.findIndex((session) => session.clientId === sessionId);
+    setEditableSessions((current) => compactPlaylistSessions(current).map((session) => {
+      if (!sameSessionsForAllServices) {
+        return session.clientId === sessionId ? { ...session, name } : session;
+      }
+      const sessionsInService = compactPlaylistSessions(current).filter((item) => item.serviceNumber === session.serviceNumber);
+      return sessionsInService[sessionIndex]?.clientId === session.clientId ? { ...session, name } : session;
+    }));
+  }
+
+  function toggleSharedSessionStructure(checked: boolean) {
+    setSameSessionsForAllServices(checked);
+    if (!checked || serviceCount === 1) return;
+    const sourceServiceNumber = activeServiceNumber;
+    const synchronized = synchronizePlaylistSessionStructure(validEditableSessions, sourceServiceNumber, serviceCount);
+    setEditableSessions(synchronized);
+    activateService(sourceServiceNumber, synchronized);
+  }
+
+  function addSong(songId: number) {
+    updateActiveSession((session) => ({
+      ...session,
+      songIds: session.songIds.includes(songId) ? session.songIds : [...session.songIds, songId],
+      songSettings: {
+        ...session.songSettings,
+        [String(songId)]: session.songSettings[String(songId)] ?? { keySignature: "", assignedSinger: "" },
+      },
+    }));
+  }
+
+  function removeSong(songId: number) {
+    updateActiveSession((session) => {
+      const songSettings = { ...session.songSettings };
+      delete songSettings[String(songId)];
+      return { ...session, songIds: session.songIds.filter((selectedSongId) => selectedSongId !== songId), songSettings };
+    });
+  }
+
+  function moveSong(songId: number, direction: -1 | 1) {
+    updateActiveSession((session) => {
+      const songIds = [...session.songIds];
+      const currentIndex = songIds.indexOf(songId);
+      const targetIndex = currentIndex + direction;
+      if (currentIndex < 0 || targetIndex < 0 || targetIndex >= songIds.length) return session;
+      [songIds[currentIndex], songIds[targetIndex]] = [songIds[targetIndex], songIds[currentIndex]];
+      return { ...session, songIds };
+    });
+  }
+
+  function selectAllMatches() {
+    const matchingIds = matchingUnselectedSongs.map((song) => song.id);
+    updateActiveSession((session) => ({
+      ...session,
+      songIds: [...session.songIds, ...matchingIds],
+      songSettings: {
+        ...session.songSettings,
+        ...Object.fromEntries(matchingIds.map((songId) => [String(songId), { keySignature: "", assignedSinger: "" }])),
+      },
+    }));
+  }
+
+  function updateSongPerformance(songId: number, update: Partial<{ keySignature: string; assignedSinger: string }>) {
+    updateActiveSession((session) => ({
+      ...session,
+      songSettings: {
+        ...session.songSettings,
+        [String(songId)]: {
+          keySignature: session.songSettings[String(songId)]?.keySignature ?? "",
+          assignedSinger: session.songSettings[String(songId)]?.assignedSinger ?? "",
+          ...update,
+        },
+      },
+    }));
+  }
+
+  function openSongAssignment() {
+    stepThreeEnteredAt.current = Date.now();
+    setStep(3);
+  }
 
   return (
-    <div className="space-y-4">
-      <label>
-        <span className="mb-1 block text-sm font-medium text-gray-700">Playlist Title *</span>
-        <input name="title" defaultValue={playlist?.title ?? ""} required className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-      </label>
-      <label>
-        <span className="mb-1 block text-sm font-medium text-gray-700">Description</span>
-        <textarea name="description" defaultValue={playlist?.description ?? ""} rows={2} className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-      </label>
-      <div>
-        <span className="mb-2 block text-sm font-medium text-gray-700">Songs</span>
-        <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-3">
-          {songs.length > 0 ? (
-            songs.map((song) => (
-              <label key={song.id} className="flex cursor-pointer items-center gap-2 rounded-lg p-2 hover:bg-white">
-                <input name="songs" type="checkbox" value={song.id} defaultChecked={selected.has(song.id)} className="rounded border-gray-300 text-blue-600" />
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-medium text-gray-700">{song.title}</span>
-                  <span className="text-xs text-gray-400">{song.keySignature ? `Key: ${song.keySignature}` : "No key"}{song.tempo ? ` - ${song.tempo} BPM` : ""}</span>
-                </span>
-              </label>
-            ))
+    <div className="space-y-5">
+      <input type="hidden" name="sessions" value={serializedSessions} />
+      <div className="flex items-center justify-between gap-3 rounded-xl bg-blue-600 px-4 py-3 text-white">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-white text-sm font-bold text-blue-600">{step}</span>
+          <span className="min-w-0"><span className="block truncate text-sm font-semibold">{currentStepDetails.title}</span><span className="block truncate text-xs text-blue-100">{currentStepDetails.description}</span></span>
+        </div>
+        <span className="shrink-0 rounded-full bg-blue-500 px-3 py-1 text-xs font-semibold">Step {step} of 3</span>
+      </div>
+
+      <section className={step === 1 ? "space-y-5" : "hidden"} aria-label="Playlist details">
+        <label className="block">
+          <span className="mb-1.5 block text-sm font-medium text-gray-700">Playlist Title *</span>
+          <input name="title" value={title} onChange={(event) => setTitle(event.target.value)} required autoFocus placeholder="Example: Sunday Worship Playlist" className="h-11 w-full rounded-lg border border-gray-300 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </label>
+        <label className="block">
+          <span className="mb-1.5 block text-sm font-medium text-gray-700">Number of Services *</span>
+          <input name="serviceCount" type="number" required min={MIN_PLAYLIST_SERVICES} max={MAX_PLAYLIST_SERVICES} value={serviceCount} onChange={(event) => changeServiceCount(Number(event.target.value))} className="h-11 w-full rounded-lg border border-gray-300 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <span className="mt-1.5 block text-xs text-gray-400">Between {MIN_PLAYLIST_SERVICES} and {MAX_PLAYLIST_SERVICES}</span>
+        </label>
+      </section>
+
+      <section className={step === 2 ? "space-y-4" : "hidden"} aria-label="Create playlist sessions">
+        {serviceCount > 1 ? (
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 bg-white p-3 hover:border-blue-200">
+            <input type="checkbox" checked={sameSessionsForAllServices} onChange={(event) => toggleSharedSessionStructure(event.target.checked)} className="mt-0.5 size-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+            <span><span className="block text-sm font-semibold text-gray-700">Use the same sessions for every service</span><span className="block text-xs text-gray-500"></span></span>
+          </label>
+        ) : null}
+
+      <div className={sameSessionsForAllServices ? "hidden" : ""}>
+        <span className="mb-2 block text-sm font-medium text-gray-700">Choose Service</span>
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {Array.from({ length: serviceCount }, (_, index) => {
+            const serviceNumber = index + 1;
+            const count = validEditableSessions.filter((session) => session.serviceNumber === serviceNumber).length;
+            return (
+              <button key={serviceNumber} type="button" onClick={() => activateService(serviceNumber)} className={`shrink-0 rounded-lg px-3 py-2 text-sm font-semibold ${activeServiceNumber === serviceNumber ? "bg-blue-600 text-white" : "border border-gray-200 bg-white text-gray-600 hover:bg-blue-50"}`}>
+                {playlistServiceLabel(serviceNumber)} <span className="opacity-70">({count})</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-3">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div>
+            <h4 className="text-sm font-bold text-gray-800">{sameSessionsForAllServices ? "Shared Sessions" : `Sessions in ${playlistServiceLabel(activeServiceNumber)}`}</h4>
+          </div>
+          <button type="button" onClick={addSession} disabled={serviceSessions.length >= MAX_PLAYLIST_SESSIONS_PER_SERVICE} className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
+            <Plus className="size-3.5" aria-hidden /> Add Session
+          </button>
+        </div>
+        <div className="space-y-1.5">
+          {serviceSessions.map((session, index) => (
+            <div key={session.clientId} className={`group flex items-center gap-2 rounded-lg border p-2 ${activeSession?.clientId === session.clientId ? "border-blue-300 bg-white" : "border-transparent bg-white/70"}`}>
+              <span className="shrink-0 text-sm font-semibold text-gray-700">{index + 1}.</span>
+              <input
+                value={session.name}
+                maxLength={80}
+                onFocus={() => setActiveSessionId(session.clientId)}
+                onClick={() => setActiveSessionId(session.clientId)}
+                onChange={(event) => {
+                  renameSession(session.clientId, event.target.value);
+                }}
+                placeholder="Session heading (optional)"
+                aria-label={`Heading for session ${index + 1}`}
+                className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 py-1 text-sm font-semibold text-gray-700 outline-none placeholder:font-normal placeholder:text-gray-400 hover:border-gray-200 focus:border-blue-300 focus:bg-white focus:ring-2 focus:ring-blue-100"
+              />
+              <div className="flex shrink-0 transition sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100">
+                <button type="button" onClick={() => moveSession(session.clientId, -1)} disabled={index === 0} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-blue-600 disabled:opacity-30" aria-label="Move session up"><ArrowUp className="size-4" /></button>
+                <button type="button" onClick={() => moveSession(session.clientId, 1)} disabled={index === serviceSessions.length - 1} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-blue-600 disabled:opacity-30" aria-label="Move session down"><ArrowDown className="size-4" /></button>
+                <button type="button" onClick={() => removeSession(session.clientId)} disabled={serviceSessions.length <= 1} className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30" aria-label="Remove session"><Trash2 className="size-4" /></button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      </section>
+
+      <section className={step === 3 ? "space-y-4" : "hidden"} aria-label="Assign songs to playlist sessions">
+        <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3">
+          <span className="block truncate text-sm font-bold text-gray-800">{title}</span>
+        </div>
+
+        <div>
+          <span className="mb-2 block text-sm font-medium text-gray-700">Choose Service</span>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {Array.from({ length: serviceCount }, (_, index) => {
+              const serviceNumber = index + 1;
+              const songCount = validEditableSessions
+                .filter((session) => session.serviceNumber === serviceNumber)
+                .reduce((total, session) => total + session.songIds.length, 0);
+              return (
+                <button key={serviceNumber} type="button" onClick={() => activateService(serviceNumber)} className={`shrink-0 rounded-lg px-3 py-2 text-sm font-semibold ${activeServiceNumber === serviceNumber ? "bg-blue-600 text-white" : "border border-gray-200 bg-white text-gray-600 hover:bg-blue-50"}`}>
+                  {playlistServiceLabel(serviceNumber)} <span className="opacity-70">({songCount} songs)</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div>
+          <span className="mb-2 block text-sm font-medium text-gray-700">Choose Session</span>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {serviceSessions.map((session, index) => (
+              <button key={session.clientId} type="button" onClick={() => { setActiveSessionId(session.clientId); setSongPickerSearch(""); setVisibleSongCount(20); }} className={`shrink-0 rounded-lg px-3 py-2 text-sm font-semibold ${activeSession?.clientId === session.clientId ? "bg-slate-800 text-white" : "border border-gray-200 bg-white text-gray-600 hover:bg-gray-50"}`}>
+                {session.name.trim() || `Session ${index + 1}`} <span className="opacity-70">· {session.songIds.length}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+      {activeSession ? (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="text-sm font-semibold text-gray-700">Song Library</span>
+              <span className="text-xs text-gray-500">{selectedSongIds.length} selected</span>
+            </div>
+            <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" aria-hidden />
+                <input type="search" value={songPickerSearch} onChange={(event) => { setSongPickerSearch(event.target.value); setVisibleSongCount(20); }} placeholder="Search by song title..." className="h-10 w-full rounded-lg border border-gray-300 bg-white pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              {normalizedSearch ? (
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
+                  <span>{matchingUnselectedSongs.length} matching {matchingUnselectedSongs.length === 1 ? "song" : "songs"}</span>
+                  <button type="button" onClick={selectAllMatches} disabled={matchingUnselectedSongs.length === 0} className="font-semibold text-blue-600 hover:text-blue-700 disabled:text-gray-400">Add all matches</button>
+                </div>
+              ) : null}
+              <div className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
+                {visibleSongs.length > 0 ? visibleSongs.map((song) => (
+                  <div key={song.id} className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2.5 ring-1 ring-gray-100 hover:ring-blue-200">
+                    <div className="min-w-0">
+                      <span className="block truncate text-sm font-medium text-gray-700">{song.title}</span>
+                      <span className="text-xs text-gray-400">{song.artist || "Song library"}</span>
+                    </div>
+                    <button type="button" onClick={() => addSong(song.id)} className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-600 hover:bg-blue-100"><Plus className="size-3.5" /> Add</button>
+                  </div>
+                )) : <div className="py-8 text-center text-sm text-gray-400">{songs.length === 0 ? "No songs available" : !normalizedSearch ? "Start typing to find a song." : searchedSongs.length === 0 ? "No songs match your search." : "All matching songs are already selected."}</div>}
+              </div>
+              {visibleSongs.length < matchingUnselectedSongs.length ? <button type="button" onClick={() => setVisibleSongCount((current) => current + 20)} className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-blue-600 hover:bg-blue-50">Show 20 more</button> : null}
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="text-sm font-semibold text-gray-700">Selected Songs <span className="font-normal text-gray-400">({selectedSongIds.length})</span></span>
+              {selectedSongIds.length > 0 ? <button type="button" onClick={() => updateActiveSession((session) => ({ ...session, songIds: [], songSettings: {} }))} className="text-xs font-semibold text-red-600 hover:text-red-700">Clear songs</button> : null}
+            </div>
+            <div className="max-h-[25rem] min-h-40 space-y-2 overflow-y-auto rounded-xl border border-gray-200 bg-gray-50 p-3">
+              {selectedSongs.length > 0 ? selectedSongs.map((song, index) => (
+                <div key={song.id} className="grid gap-2 rounded-lg bg-white p-2.5 ring-1 ring-gray-100 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                  <div className="min-w-0">
+                    <span className="block truncate text-sm font-medium text-gray-700">{index + 1}. {song.title}</span>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <label>
+                        <span className="mb-1 block text-[11px] font-medium text-gray-500">Performance Key</span>
+                        <input value={activeSession.songSettings[String(song.id)]?.keySignature ?? ""} onChange={(event) => updateSongPerformance(song.id, { keySignature: event.target.value })} maxLength={30} placeholder="C, G, D..." className="h-9 w-full rounded-md border border-gray-200 px-2 text-xs outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100" />
+                      </label>
+                      <label>
+                        <span className="mb-1 block text-[11px] font-medium text-gray-500">Lead Singer</span>
+                        <input
+                          type="text"
+                          value={activeSession.songSettings[String(song.id)]?.assignedSinger ?? ""}
+                          onChange={(event) => updateSongPerformance(song.id, { assignedSinger: event.target.value })}
+                          maxLength={120}
+                          autoComplete="off"
+                          placeholder="Type singer's name"
+                          className="h-9 w-full rounded-md border border-gray-200 bg-white px-2 text-xs outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-end gap-1">
+                    <button type="button" onClick={() => moveSong(song.id, -1)} disabled={index === 0} className="rounded p-1.5 text-gray-400 hover:bg-blue-50 hover:text-blue-600 disabled:opacity-30" aria-label={`Move ${song.title} up`}><ArrowUp className="size-4" /></button>
+                    <button type="button" onClick={() => moveSong(song.id, 1)} disabled={index === selectedSongs.length - 1} className="rounded p-1.5 text-gray-400 hover:bg-blue-50 hover:text-blue-600 disabled:opacity-30" aria-label={`Move ${song.title} down`}><ArrowDown className="size-4" /></button>
+                    <button type="button" onClick={() => removeSong(song.id)} className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600" aria-label={`Remove ${song.title}`}><X className="size-4" /></button>
+                  </div>
+                </div>
+              )) : <div className="flex min-h-32 items-center justify-center px-4 text-center text-sm text-gray-400">Add songs from the library. Their order here is the performance order.</div>}
+            </div>
+          </div>
+        </div>
+      ) : null}
+      </section>
+
+      <div className="flex items-center justify-between gap-3 border-t border-gray-200 pt-4">
+        <button type="button" onClick={onCancel} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">Cancel</button>
+        <div className="flex items-center gap-2">
+          {step > 1 ? (
+            <button type="button" onClick={() => setStep(step === 3 ? 2 : 1)} className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+              <ChevronLeft className="size-4" aria-hidden /> Back
+            </button>
+          ) : null}
+          {step === 1 ? (
+            <button type="button" onClick={() => setStep(2)} disabled={!title.trim()} className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
+              Continue <ChevronRight className="size-4" aria-hidden />
+            </button>
+          ) : step === 2 ? (
+            <button type="button" onClick={openSongAssignment} className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+              Continue <ChevronRight className="size-4" aria-hidden />
+            </button>
           ) : (
-            <div className="py-8 text-center text-sm text-gray-400">No songs available</div>
+            <button
+              disabled={pending}
+              type="button"
+              onClick={(event) => {
+                if (Date.now() - stepThreeEnteredAt.current < 600) return;
+                event.currentTarget.form?.requestSubmit();
+              }}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+            >
+              {pending ? "Saving..." : submitLabel}
+            </button>
           )}
         </div>
       </div>
@@ -526,6 +1019,230 @@ function downloadGenerationCsv(generation: ServiceTeam) {
   URL.revokeObjectURL(url);
 }
 
+function drawRoundedRectangle(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number,
+) {
+  const cornerRadius = Math.min(radius, width / 2, height / 2);
+  context.beginPath();
+  context.moveTo(x + cornerRadius, y);
+  context.lineTo(x + width - cornerRadius, y);
+  context.quadraticCurveTo(x + width, y, x + width, y + cornerRadius);
+  context.lineTo(x + width, y + height - cornerRadius);
+  context.quadraticCurveTo(x + width, y + height, x + width - cornerRadius, y + height);
+  context.lineTo(x + cornerRadius, y + height);
+  context.quadraticCurveTo(x, y + height, x, y + height - cornerRadius);
+  context.lineTo(x, y + cornerRadius);
+  context.quadraticCurveTo(x, y, x + cornerRadius, y);
+  context.closePath();
+}
+
+function fitCanvasText(context: CanvasRenderingContext2D, value: string, maxWidth: number) {
+  if (context.measureText(value).width <= maxWidth) return value;
+
+  let shortened = value;
+  while (shortened.length > 1 && context.measureText(`${shortened}…`).width > maxWidth) {
+    shortened = shortened.slice(0, -1);
+  }
+  return `${shortened.trimEnd()}…`;
+}
+
+function loadCanvasImage(source: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new window.Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error(`Unable to load image: ${source}`));
+    image.src = source;
+  });
+}
+
+function playlistSongs(playlist: Playlist) {
+  return playlist.sessions.flatMap((session) => session.songs);
+}
+
+function playlistUniqueSongCount(playlist: Playlist) {
+  return new Set(playlistSongs(playlist).map((song) => song.id)).size;
+}
+
+async function downloadPlaylistImage(playlist: Playlist) {
+  const width = 1080;
+  const serviceGroups = groupPlaylistSessionsByService(playlist.serviceCount, playlist.sessions).map((service) => ({
+    ...service,
+    sessions: service.sessions.filter((session) => session.name.trim() || session.songs.length > 0),
+  }));
+  const bodyHeight = serviceGroups.reduce(
+    (total, service) => total + 114 + service.sessions.reduce(
+      (sessionTotal, session) => sessionTotal + (session.name.trim() ? 94 : 18) + Math.max(session.songs.length, 1) * 70,
+      0,
+    ),
+    0,
+  );
+  const height = Math.max(1080, 550 + bodyHeight);
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Image generation is not supported in this browser.");
+
+  const background = context.createLinearGradient(0, 0, width, height);
+  background.addColorStop(0, "#fffdf8");
+  background.addColorStop(0.58, "#ffffff");
+  background.addColorStop(1, "#fff8e8");
+  context.fillStyle = background;
+  context.fillRect(0, 0, width, height);
+
+  context.fillStyle = "#08264d";
+  context.beginPath();
+  context.moveTo(760, 0);
+  context.lineTo(width, 0);
+  context.lineTo(width, 330);
+  context.quadraticCurveTo(920, 245, 760, 0);
+  context.fill();
+
+  try {
+    const logo = await loadCanvasImage("/reverence-logo-transparent.png");
+    const logoWidth = 330;
+    const logoHeight = logoWidth * (logo.height / logo.width);
+    context.drawImage(logo, 72, 48, logoWidth, logoHeight);
+  } catch {
+    context.fillStyle = "#08264d";
+    context.font = "700 32px Arial, sans-serif";
+    context.fillText("REVERENCE WORSHIP TEAM", 72, 90);
+  }
+
+  context.fillStyle = "#e0a41d";
+  context.font = "700 54px Georgia, serif";
+  context.fillText("♫", 868, 92);
+  context.font = "700 34px Georgia, serif";
+  context.fillText("♪", 952, 158);
+
+  const heading = playlist.title.replace(/\bplaylist\b/gi, "").trim() || "WORSHIP";
+  context.textAlign = "center";
+  context.fillStyle = "#08264d";
+  context.font = "800 70px Arial, sans-serif";
+  context.fillText(fitCanvasText(context, heading.toUpperCase(), 850), width / 2, 240);
+  context.fillStyle = "#d89b13";
+  context.font = "800 76px Arial, sans-serif";
+  context.fillText("PLAYLIST", width / 2, 318);
+
+  let currentY = 366;
+  for (const service of serviceGroups) {
+    const serviceTitle = service.label.toUpperCase();
+    context.font = "800 30px Arial, sans-serif";
+    const badgeWidth = Math.min(520, Math.max(390, context.measureText(serviceTitle).width + 100));
+    const badgeX = (width - badgeWidth) / 2;
+
+    context.strokeStyle = "#d89b13";
+    context.lineWidth = 3;
+    context.beginPath();
+    context.moveTo(82, currentY + 31);
+    context.lineTo(badgeX - 18, currentY + 31);
+    context.moveTo(badgeX + badgeWidth + 18, currentY + 31);
+    context.lineTo(width - 82, currentY + 31);
+    context.stroke();
+
+    drawRoundedRectangle(context, badgeX, currentY, badgeWidth, 62, 31);
+    context.fillStyle = "#08264d";
+    context.fill();
+    context.fillStyle = "#ffffff";
+    context.textAlign = "center";
+    context.fillText(serviceTitle, width / 2, currentY + 41);
+    currentY += 94;
+
+    for (const session of service.sessions) {
+      const sessionTitle = session.name.trim().toUpperCase();
+      if (sessionTitle) {
+        context.font = "800 25px Arial, sans-serif";
+        const sessionBadgeWidth = Math.min(680, Math.max(360, context.measureText(sessionTitle).width + 90));
+        const sessionBadgeX = (width - sessionBadgeWidth) / 2;
+        drawRoundedRectangle(context, sessionBadgeX, currentY, sessionBadgeWidth, 50, 25);
+        context.fillStyle = "#f8edc8";
+        context.fill();
+        context.strokeStyle = "#e7c66d";
+        context.lineWidth = 2;
+        context.stroke();
+        context.fillStyle = "#08264d";
+        context.textAlign = "center";
+        context.fillText(fitCanvasText(context, sessionTitle, sessionBadgeWidth - 60), width / 2, currentY + 34);
+        currentY += 76;
+      }
+
+      if (session.songs.length === 0) {
+        context.fillStyle = "#8994a5";
+        context.font = "500 23px Arial, sans-serif";
+        context.fillText("No songs assigned", width / 2, currentY + 16);
+        currentY += 70;
+      } else {
+        session.songs.forEach((song, index) => {
+          if (index % 2 === 0) {
+            drawRoundedRectangle(context, 58, currentY - 29, width - 116, 60, 15);
+            context.fillStyle = "rgba(8, 38, 77, 0.045)";
+            context.fill();
+          }
+
+          context.fillStyle = "#d89b13";
+          context.font = "800 30px Arial, sans-serif";
+          context.textAlign = "right";
+          context.fillText(`${index + 1}.`, 112, currentY + 9);
+
+          context.fillStyle = "#08264d";
+          context.font = "700 27px Arial, sans-serif";
+          context.textAlign = "left";
+          context.fillText(fitCanvasText(context, song.title, 540), 132, currentY + 9);
+
+          const details = [song.keySignature ? `Key: ${song.keySignature}` : null, song.assignedSinger]
+            .filter(Boolean)
+            .join("  |  ");
+          if (details) {
+            context.fillStyle = "#5f6f84";
+            context.font = "600 22px Arial, sans-serif";
+            context.textAlign = "right";
+            context.fillText(fitCanvasText(context, details, 330), width - 72, currentY + 7);
+          }
+          currentY += 70;
+        });
+      }
+      currentY += 18;
+    }
+    currentY += 20;
+  }
+
+  const footerY = height - 82;
+  context.strokeStyle = "#e0a41d";
+  context.lineWidth = 3;
+  context.beginPath();
+  context.moveTo(72, footerY - 26);
+  context.lineTo(width - 72, footerY - 26);
+  context.stroke();
+  context.fillStyle = "#08264d";
+  context.font = "700 22px Arial, sans-serif";
+  context.textAlign = "left";
+  context.fillText("REVERENCE WORSHIP TEAM", 72, footerY + 14);
+  context.fillStyle = "#728096";
+  context.font = "500 20px Arial, sans-serif";
+  context.textAlign = "right";
+  context.fillText(new Intl.DateTimeFormat("en", { dateStyle: "long" }).format(new Date()), width - 72, footerY + 14);
+
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((generatedBlob) => {
+      if (generatedBlob) resolve(generatedBlob);
+      else reject(new Error("The playlist image could not be generated."));
+    }, "image/png");
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  const safeTitle = playlist.title.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "playlist";
+  anchor.href = url;
+  anchor.download = `${safeTitle}-playlist.png`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 export function MusicClient({
   canManage,
   playlists,
@@ -543,12 +1260,15 @@ export function MusicClient({
   const [boardTab, setBoardTab] = useState<"youtube" | "featured" | "events">("youtube");
   const [playlistSearch, setPlaylistSearch] = useState("");
   const [songSearch, setSongSearch] = useState("");
+  const [quickAddPlaylistId, setQuickAddPlaylistId] = useState("");
+  const [quickAddSessionId, setQuickAddSessionId] = useState("");
   const [gallerySearch, setGallerySearch] = useState("");
   const [gallerySort, setGallerySort] = useState("newest");
   const [singerSearch, setSingerSearch] = useState("");
   const [actionPlanSearch, setActionPlanSearch] = useState("");
   const [actionPlanStatus, setActionPlanStatus] = useState("all");
   const [notice, setNotice] = useState<MusicNotice | null>(null);
+  const [playlistNotice, setPlaylistNotice] = useState<MusicNotice | null>(null);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [modal, setModal] = useState<null | "song" | "playlist" | "galleryUpload" | "groupsGenerate" | "groupsSettings" | "groupsPrevious" | "youtube" | "featured" | "boardItem">(null);
   const [editingSong, setEditingSong] = useState<Song | null>(null);
@@ -561,11 +1281,13 @@ export function MusicClient({
   const [taskModal, setTaskModal] = useState<{ plan: MusicActionPlan; task?: MusicActionPlanTask } | null>(null);
   const [viewPlan, setViewPlan] = useState<MusicActionPlan | null>(null);
   const [viewingPlaylist, setViewingPlaylist] = useState<Playlist | null>(null);
+  const [downloadingPlaylistId, setDownloadingPlaylistId] = useState<number | null>(null);
   const [viewingGeneration, setViewingGeneration] = useState<ServiceTeam | null>(null);
   const [lyricsSong, setLyricsSong] = useState<Song | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [isPending, startTransition] = useTransition();
   const visibleTabs = canManage ? tabs : tabs.filter((tab) => tab.id === "playlist");
+  const quickAddPlaylist = playlists.find((playlist) => String(playlist.id) === quickAddPlaylistId) ?? null;
 
   const filteredPlaylists = useMemo(() => {
     const query = playlistSearch.trim().toLowerCase();
@@ -575,7 +1297,8 @@ export function MusicClient({
       [
         playlist.title,
         playlist.description,
-        ...playlist.songs.flatMap((song) => [song.title, song.artist, song.keySignature]),
+        ...playlist.sessions.map((session) => session.name),
+        ...playlistSongs(playlist).flatMap((song) => [song.title, song.artist, song.keySignature]),
       ]
         .filter(Boolean)
         .some((value) => value!.toLowerCase().includes(query)),
@@ -587,7 +1310,7 @@ export function MusicClient({
     if (!query) return songs;
 
     return songs.filter((song) =>
-      [song.title, song.artist, song.keySignature, song.assignedSinger]
+      [song.title, song.artist]
         .filter(Boolean)
         .some((value) => value!.toLowerCase().includes(query)),
     );
@@ -656,10 +1379,21 @@ export function MusicClient({
     };
   }, [actionPlans]);
 
-  function runAction(action: () => Promise<{ ok: boolean; message: string }>, close?: () => void) {
+  function runAction(
+    action: () => Promise<{ ok: boolean; message: string }>,
+    close?: () => void,
+    onResult?: (result: MusicNotice) => void,
+  ) {
     startTransition(async () => {
-      const result = await action();
+      let result: MusicNotice;
+      try {
+        result = await action();
+      } catch (error) {
+        console.error(error);
+        result = { ok: false, message: "Unable to save your changes. Please try again." };
+      }
       setNotice(result);
+      onResult?.(result);
       if (result.ok) {
         close?.();
         router.refresh();
@@ -674,6 +1408,18 @@ export function MusicClient({
   function executeConfirm() {
     if (!confirmAction) return;
     runAction(confirmAction.action, () => setConfirmAction(null));
+  }
+
+  async function handleDownloadPlaylist(playlist: Playlist) {
+    setDownloadingPlaylistId(playlist.id);
+    try {
+      await downloadPlaylistImage(playlist);
+      setNotice({ ok: true, message: `"${playlist.title}" downloaded as a PNG image.` });
+    } catch (error) {
+      setNotice({ ok: false, message: error instanceof Error ? error.message : "Unable to download the playlist image." });
+    } finally {
+      setDownloadingPlaylistId(null);
+    }
   }
 
   function submitCreateSong(event: FormEvent<HTMLFormElement>) {
@@ -692,14 +1438,30 @@ export function MusicClient({
   function submitCreatePlaylist(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
-    runAction(() => createPlaylist(formData), () => setModal(null));
+    setPlaylistNotice(null);
+    runAction(
+      () => createPlaylist(formData),
+      () => {
+        setPlaylistNotice(null);
+        setModal(null);
+      },
+      setPlaylistNotice,
+    );
   }
 
   function submitUpdatePlaylist(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!editingPlaylist) return;
     const formData = new FormData(event.currentTarget);
-    runAction(() => updatePlaylist(editingPlaylist.id, formData), () => setEditingPlaylist(null));
+    setPlaylistNotice(null);
+    runAction(
+      () => updatePlaylist(editingPlaylist.id, formData),
+      () => {
+        setPlaylistNotice(null);
+        setEditingPlaylist(null);
+      },
+      setPlaylistNotice,
+    );
   }
 
   function submitAddToPlaylist(event: FormEvent<HTMLFormElement>) {
@@ -1252,18 +2014,34 @@ export function MusicClient({
           {canManage && <form onSubmit={submitAddToPlaylist} className="mb-4 rounded-xl border border-blue-100 bg-blue-50 p-3 sm:mb-6 sm:rounded-2xl sm:p-4">
             <h4 className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700 sm:mb-3 sm:text-base">
               <Plus className="size-4 text-blue-600" aria-hidden />
-              Add Song to Playlist
+              Add Song to Playlist Session
             </h4>
             <div className="grid grid-cols-1 gap-2 sm:flex sm:gap-3">
               <InlineDropdown
                 name="playlistId"
                 placeholder="Select Playlist"
-                options={playlists.map((playlist) => ({ value: String(playlist.id), label: `${playlist.title} (${playlist.songs.length} songs)` }))}
+                value={quickAddPlaylistId}
+                onValueChange={(value) => {
+                  setQuickAddPlaylistId(value);
+                  setQuickAddSessionId("");
+                }}
+                options={playlists.map((playlist) => ({ value: String(playlist.id), label: `${playlist.title} (${playlist.serviceCount} ${playlist.serviceCount === 1 ? "service" : "services"})` }))}
               />
               <InlineDropdown
                 name="songId"
                 placeholder="Select Song"
                 options={songs.map((song) => ({ value: String(song.id), label: song.title }))}
+              />
+              <InlineDropdown
+                name="sessionId"
+                placeholder="Assign to Session"
+                value={quickAddSessionId}
+                onValueChange={setQuickAddSessionId}
+                disabled={!quickAddPlaylist}
+                options={quickAddPlaylist?.sessions.map((session) => ({
+                  value: String(session.id),
+                  label: `${playlistServiceLabel(session.serviceNumber)} — ${session.name.trim() || "No heading"}`,
+                })) ?? []}
               />
               <button disabled={isPending} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60 sm:rounded-xl" type="submit">
                 <Plus className="size-4" aria-hidden />
@@ -1279,7 +2057,7 @@ export function MusicClient({
                   <List className="mr-2 inline size-4 text-blue-600" aria-hidden />
                   <span>Playlists</span> <span className="ml-1 text-xs text-gray-400">({filteredPlaylists.length}/{playlists.length})</span>
                 </h4>
-                {canManage && <button type="button" onClick={() => setModal("playlist")} className="inline-flex h-9 shrink-0 items-center justify-center gap-1 rounded-lg bg-blue-600 px-2.5 text-xs font-semibold text-white hover:bg-blue-700 sm:rounded-xl sm:px-3">
+                {canManage && <button type="button" onClick={() => { setPlaylistNotice(null); setModal("playlist"); }} className="inline-flex h-9 shrink-0 items-center justify-center gap-1 rounded-lg bg-blue-600 px-2.5 text-xs font-semibold text-white hover:bg-blue-700 sm:rounded-xl sm:px-3">
                   <Plus className="size-4" aria-hidden />
                   <span>New</span>
                 </button>}
@@ -1294,12 +2072,24 @@ export function MusicClient({
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <h5 className="truncate text-sm font-medium text-gray-800 sm:text-base">{playlist.title}</h5>
-                        <p className="text-xs text-gray-500">{playlist.songs.length} songs</p>
+                        <p className="text-xs text-gray-500">
+                          {playlist.serviceCount} {playlist.serviceCount === 1 ? "service" : "services"} · {playlist.sessions.length} sessions · {playlistUniqueSongCount(playlist)} songs
+                        </p>
                         {playlist.description ? <p className="mt-1 line-clamp-2 text-xs text-gray-400">{playlist.description}</p> : null}
                       </div>
                       <div className="flex shrink-0 gap-2">
                         <button type="button" onClick={() => setViewingPlaylist(playlist)} className="inline-flex size-9 items-center justify-center rounded-lg bg-green-50 text-green-600 hover:bg-green-100 hover:text-green-800 sm:size-auto sm:bg-transparent" title="View Songs"><FileText className="size-4" aria-hidden /></button>
-                        {canManage && <><button type="button" onClick={() => setEditingPlaylist(playlist)} className="inline-flex size-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-800 sm:size-auto sm:bg-transparent" title="Edit Playlist"><Pencil className="size-4" aria-hidden /></button>
+                        <button
+                          type="button"
+                          onClick={() => void handleDownloadPlaylist(playlist)}
+                          disabled={downloadingPlaylistId === playlist.id}
+                          className="inline-flex size-9 items-center justify-center rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100 hover:text-amber-800 disabled:cursor-wait disabled:opacity-50 sm:size-auto sm:bg-transparent"
+                          title="Download Playlist as Image"
+                          aria-label={`Download ${playlist.title} as an image`}
+                        >
+                          <Download className="size-4" aria-hidden />
+                        </button>
+                        {canManage && <><button type="button" onClick={() => { setPlaylistNotice(null); setEditingPlaylist(playlist); }} className="inline-flex size-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-800 sm:size-auto sm:bg-transparent" title="Edit Playlist"><Pencil className="size-4" aria-hidden /></button>
                         <button type="button" onClick={() => askConfirm({ title: "Delete Playlist", message: `Delete "${playlist.title}"? Songs will remain available, but this playlist will be removed.`, confirmLabel: "Delete Playlist", action: () => deletePlaylist(playlist.id) })} className="inline-flex size-9 items-center justify-center rounded-lg bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-800 sm:size-auto sm:bg-transparent" title="Delete Playlist"><Trash2 className="size-4" aria-hidden /></button></>}
                       </div>
                     </div>
@@ -1334,11 +2124,7 @@ export function MusicClient({
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <h5 className="truncate text-sm font-medium text-gray-800 sm:text-base">{song.title}</h5>
-                        <div className="mt-1 flex flex-wrap gap-2 text-xs text-gray-500">
-                          {song.artist ? <span>{song.artist}</span> : null}
-                          {song.keySignature ? <span>Key: {song.keySignature}</span> : null}
-                          {song.tempo ? <span>{song.tempo} BPM</span> : null}
-                        </div>
+                        {song.artist ? <div className="mt-1 text-xs text-gray-500">{song.artist}</div> : null}
                       </div>
                       <div className="flex shrink-0 gap-2">
                         <button type="button" onClick={() => setLyricsSong(song)} className="inline-flex size-9 items-center justify-center rounded-lg bg-green-50 text-green-600 hover:bg-green-100 hover:text-green-800 sm:size-auto sm:bg-transparent" title="View Lyrics"><FileText className="size-4" aria-hidden /></button>
@@ -1621,13 +2407,10 @@ export function MusicClient({
       ) : null}
 
       {modal === "playlist" ? (
-        <Modal title="Create New Playlist" onClose={() => setModal(null)}>
-          <form onSubmit={submitCreatePlaylist} className="space-y-5 p-5">
-            <PlaylistFields songs={songs} />
-            <div className="flex justify-end gap-2 border-t pt-4">
-              <button type="button" onClick={() => setModal(null)} className="rounded-lg border px-4 py-2 text-gray-700 hover:bg-gray-50">Cancel</button>
-              <button disabled={isPending} type="submit" className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700 disabled:opacity-60">Create Playlist</button>
-            </div>
+        <Modal title="Create New Playlist" onClose={() => setModal(null)} width="max-w-5xl">
+          <form onSubmit={submitCreatePlaylist} onKeyDown={(event) => { if (event.key === "Enter" && event.target instanceof HTMLInputElement) event.preventDefault(); }} className="p-5">
+            {playlistNotice && !playlistNotice.ok ? <MusicNoticeBanner notice={playlistNotice} onClose={() => setPlaylistNotice(null)} /> : null}
+            <PlaylistFields songs={songs} onCancel={() => setModal(null)} pending={isPending} submitLabel="Create Playlist" />
           </form>
         </Modal>
       ) : null}
@@ -1645,13 +2428,10 @@ export function MusicClient({
       ) : null}
 
       {canManage && editingPlaylist ? (
-        <Modal title="Edit Playlist" onClose={() => setEditingPlaylist(null)}>
-          <form onSubmit={submitUpdatePlaylist} className="space-y-5 p-5">
-            <PlaylistFields songs={songs} playlist={editingPlaylist} />
-            <div className="flex justify-end gap-2 border-t pt-4">
-              <button type="button" onClick={() => setEditingPlaylist(null)} className="rounded-lg border px-4 py-2 text-gray-700 hover:bg-gray-50">Cancel</button>
-              <button disabled={isPending} type="submit" className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700 disabled:opacity-60">Update Playlist</button>
-            </div>
+        <Modal title="Edit Playlist" onClose={() => setEditingPlaylist(null)} width="max-w-5xl">
+          <form onSubmit={submitUpdatePlaylist} onKeyDown={(event) => { if (event.key === "Enter" && event.target instanceof HTMLInputElement) event.preventDefault(); }} className="p-5">
+            {playlistNotice && !playlistNotice.ok ? <MusicNoticeBanner notice={playlistNotice} onClose={() => setPlaylistNotice(null)} /> : null}
+            <PlaylistFields songs={songs} playlist={editingPlaylist} onCancel={() => setEditingPlaylist(null)} pending={isPending} submitLabel="Update Playlist" />
           </form>
         </Modal>
       ) : null}
@@ -1829,22 +2609,53 @@ export function MusicClient({
       {viewingPlaylist ? (
         <Modal title={viewingPlaylist.title} onClose={() => setViewingPlaylist(null)}>
           <div className="max-h-[70vh] overflow-y-auto p-5">
-            {viewingPlaylist.songs.length > 0 ? (
-              <div className="space-y-2">
-                {viewingPlaylist.songs.map((song, index) => (
-                  <div key={song.id} className="rounded-xl border border-gray-200 p-3">
-                    <div className="text-sm font-semibold text-gray-800">{index + 1}. {song.title}</div>
-                    <div className="mt-1 flex flex-wrap gap-2 text-xs text-gray-500">
-                      {song.artist ? <span>{song.artist}</span> : null}
-                      {song.keySignature ? <span>Key: {song.keySignature}</span> : null}
-                      {song.tempo ? <span>{song.tempo} BPM</span> : null}
+            {viewingPlaylist.sessions.length > 0 ? (
+              <div className="space-y-5">
+                {groupPlaylistSessionsByService(viewingPlaylist.serviceCount, viewingPlaylist.sessions).map((service) => (
+                  <section key={service.serviceNumber}>
+                    <h3 className="mb-2 rounded-full bg-blue-950 px-4 py-2 text-center text-sm font-bold uppercase tracking-wide text-white">
+                      {service.label}
+                    </h3>
+                    <div className="space-y-4">
+                      {service.sessions.filter((session) => session.name.trim() || session.songs.length > 0).map((session) => (
+                        <div key={session.id}>
+                          {session.name.trim() ? <h4 className="mb-2 rounded-full bg-amber-100 px-4 py-1.5 text-center text-xs font-bold uppercase tracking-wide text-amber-950 ring-1 ring-amber-200">{session.name}</h4> : null}
+                          {session.songs.length > 0 ? (
+                            <div className="space-y-2">
+                              {session.songs.map((song, index) => (
+                                <div key={`${session.id}-${song.id}`} className="rounded-xl border border-gray-200 p-3">
+                                  <div className="text-sm font-semibold text-gray-800">{index + 1}. {song.title}</div>
+                                  <div className="mt-1 flex flex-wrap gap-2 text-xs text-gray-500">
+                                    {song.keySignature ? <span>Key: {song.keySignature}</span> : null}
+                                    {song.assignedSinger ? <span>Singer: {song.assignedSinger}</span> : null}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : <div className="rounded-xl border border-dashed border-gray-200 px-4 py-5 text-center text-sm text-gray-400">No songs assigned</div>}
+                        </div>
+                      ))}
                     </div>
-                  </div>
+                  </section>
                 ))}
               </div>
             ) : (
               <div className="py-10 text-center text-sm text-gray-400">No songs in this playlist</div>
             )}
+          </div>
+          <div className="flex justify-end gap-2 border-t bg-gray-50 px-5 py-4">
+            <button type="button" onClick={() => setViewingPlaylist(null)} className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100">
+              Close
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleDownloadPlaylist(viewingPlaylist)}
+              disabled={downloadingPlaylistId === viewingPlaylist.id}
+              className="inline-flex items-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:cursor-wait disabled:opacity-60"
+            >
+              <Download className="size-4" aria-hidden />
+              {downloadingPlaylistId === viewingPlaylist.id ? "Preparing Image..." : "Download Image"}
+            </button>
           </div>
         </Modal>
       ) : null}
@@ -1873,24 +2684,16 @@ export function MusicClient({
 
       {lyricsSong ? (
         <Modal title={lyricsSong.title} onClose={() => setLyricsSong(null)}>
-          <div className="space-y-4 p-5">
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-xl bg-slate-50 p-3">
-                <p className="text-xs font-semibold uppercase text-slate-500">Key</p>
-                <p className="text-sm font-medium text-slate-900">{lyricsSong.keySignature ?? "-"}</p>
+          <div className="p-5">
+            <div className="max-h-[60vh] overflow-y-auto rounded-2xl border border-amber-100 bg-gradient-to-b from-amber-50/70 to-white p-5 shadow-sm">
+              <div className="mb-4 flex items-center gap-2 border-b border-amber-100 pb-3 text-amber-700">
+                <Music className="size-4" aria-hidden />
+                <h3 className="text-xs font-bold uppercase tracking-wider">Lyrics</h3>
               </div>
-              <div className="rounded-xl bg-slate-50 p-3">
-                <p className="text-xs font-semibold uppercase text-slate-500">Tempo</p>
-                <p className="text-sm font-medium text-slate-900">{lyricsSong.tempo ? `${lyricsSong.tempo} BPM` : "-"}</p>
-              </div>
-              <div className="rounded-xl bg-slate-50 p-3">
-                <p className="text-xs font-semibold uppercase text-slate-500">Singer</p>
-                <p className="text-sm font-medium text-slate-900">{lyricsSong.assignedSinger ?? "-"}</p>
-              </div>
+              <p className="whitespace-pre-wrap text-[15px] leading-7 text-slate-800">
+                {lyricsSong.lyrics || "No lyrics available."}
+              </p>
             </div>
-            <pre className="max-h-[50vh] whitespace-pre-wrap overflow-y-auto rounded-2xl bg-slate-950 p-5 text-sm leading-6 text-slate-100">
-              {lyricsSong.lyrics || "No lyrics available."}
-            </pre>
           </div>
         </Modal>
       ) : null}

@@ -370,7 +370,13 @@ export async function updateSpiritualFormFromBuilder(formId: number, formData: F
     },
   });
 
-  if (Boolean((updated.settings as Record<string, unknown> | null)?.is_published)) await notifyFormPublished(updated, String(updated.updatedAt.getTime()));
+  const wasPublished = Boolean((current.settings as Record<string, unknown> | null)?.is_published);
+  const isPublished = Boolean((updated.settings as Record<string, unknown> | null)?.is_published);
+  if (!wasPublished && isPublished) {
+    await notifyFormPublished(updated, String(updated.updatedAt.getTime()));
+  } else if (wasPublished && !isPublished) {
+    await prisma.notification.deleteMany({ where: { sourceType: "spiritual_form", sourceId: formId } });
+  }
 
   revalidatePath("/admin/intercession");
   revalidatePath(`/admin/intercession/forms/${formId}/edit`);
@@ -396,6 +402,7 @@ export async function updateSpiritualForm(formId: number, formData: FormData) {
     is_published: readBoolean(formData, "isPublished"),
     limit_one_response: readBoolean(formData, "limitOneResponse"),
   };
+  const wasPublished = Boolean((current?.settings as Record<string, unknown> | null)?.is_published);
 
   const updated = await prisma.spiritualForm.update({
     where: { id: formId },
@@ -408,7 +415,12 @@ export async function updateSpiritualForm(formId: number, formData: FormData) {
     },
   });
 
-  if (Boolean((updated.settings as Record<string, unknown> | null)?.is_published)) await notifyFormPublished(updated, String(updated.updatedAt.getTime()));
+  const isPublished = Boolean((updated.settings as Record<string, unknown> | null)?.is_published);
+  if (!wasPublished && isPublished) {
+    await notifyFormPublished(updated, String(updated.updatedAt.getTime()));
+  } else if (wasPublished && !isPublished) {
+    await prisma.notification.deleteMany({ where: { sourceType: "spiritual_form", sourceId: formId } });
+  }
 
   revalidatePath("/admin/intercession");
 
@@ -441,6 +453,7 @@ export async function toggleSpiritualFormPublish(formId: number) {
   });
 
   if (nextPublished) await notifyFormPublished(updated, String(updated.updatedAt.getTime()));
+  else await prisma.notification.deleteMany({ where: { sourceType: "spiritual_form", sourceId: formId } });
 
   revalidatePath("/admin/intercession");
 
@@ -450,9 +463,10 @@ export async function toggleSpiritualFormPublish(formId: number) {
 export async function deleteSpiritualForm(formId: number) {
   await requirePermission("intercession", "delete-forms", "/admin/intercession");
 
-  await prisma.spiritualForm.delete({
-    where: { id: formId },
-  });
+  await prisma.$transaction([
+    prisma.notification.deleteMany({ where: { sourceType: "spiritual_form", sourceId: formId } }),
+    prisma.spiritualForm.delete({ where: { id: formId } }),
+  ]);
 
   revalidatePath("/admin/intercession");
 
@@ -507,14 +521,17 @@ export async function submitSpiritualForm(formId: number, formData: FormData) {
     return carry;
   }, {});
 
-  await prisma.formSubmission.create({
-    data: {
-      formId,
-      userId: user.id,
-      answers,
-      score: null,
-    },
-  });
+  await prisma.$transaction([
+    prisma.formSubmission.create({
+      data: {
+        formId,
+        userId: user.id,
+        answers,
+        score: null,
+      },
+    }),
+    prisma.notification.deleteMany({ where: { userId: user.id, sourceType: "spiritual_form", sourceId: formId } }),
+  ]);
 
   revalidatePath("/admin/intercession");
 

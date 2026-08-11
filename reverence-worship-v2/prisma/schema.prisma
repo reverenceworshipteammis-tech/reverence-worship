@@ -709,32 +709,48 @@ model ProbationDecisionRequest {
 }
 
 model Playlist {
-  id          Int      @id @default(autoincrement())
-  title       String
-  description String?
-  createdBy   Int?     @map("created_by")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id           Int      @id @default(autoincrement())
+  title        String
+  description  String?
+  serviceCount Int      @default(1) @map("service_count")
+  createdBy    Int?     @map("created_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
-  creator User?          @relation("CreatedPlaylists", fields: [createdBy], references: [id], onDelete: SetNull)
-  songs   PlaylistSong[]
+  creator  User?             @relation("CreatedPlaylists", fields: [createdBy], references: [id], onDelete: SetNull)
+  sessions PlaylistSession[]
 
   @@index([createdBy])
   @@map("playlists")
 }
 
+model PlaylistSession {
+  id            Int      @id @default(autoincrement())
+  playlistId    Int      @map("playlist_id")
+  serviceNumber Int      @map("service_number")
+  name          String
+  displayOrder  Int      @default(0) @map("display_order")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  playlist Playlist       @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  songs    PlaylistSong[]
+
+  @@unique([playlistId, serviceNumber, displayOrder])
+  @@index([playlistId, serviceNumber])
+  @@map("playlist_sessions")
+}
+
 model Song {
-  id             Int      @id @default(autoincrement())
-  title          String
-  artist         String?
-  keySignature   String?  @map("key_signature")
-  tempo          Int?
-  lyrics         String?
-  youtubeLink    String?  @map("youtube_link")
-  assignedSinger String?  @map("assigned_singer")
-  createdBy      Int?     @map("created_by")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  id          Int      @id @default(autoincrement())
+  title       String
+  artist      String?
+  tempo       Int?
+  lyrics      String?
+  youtubeLink String?  @map("youtube_link")
+  createdBy   Int?     @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   creator   User?          @relation("CreatedSongs", fields: [createdBy], references: [id], onDelete: SetNull)
   playlists PlaylistSong[]
@@ -745,16 +761,19 @@ model Song {
 }
 
 model PlaylistSong {
-  id           Int      @id @default(autoincrement())
-  playlistId   Int      @map("playlist_id")
-  songId       Int      @map("song_id")
-  displayOrder Int      @default(0) @map("display_order")
-  createdAt    DateTime @default(now()) @map("created_at")
+  id             Int      @id @default(autoincrement())
+  sessionId      Int      @map("session_id")
+  songId         Int      @map("song_id")
+  displayOrder   Int      @default(0) @map("display_order")
+  keySignature   String?  @map("key_signature")
+  assignedSinger String?  @map("assigned_singer")
+  createdAt      DateTime @default(now()) @map("created_at")
 
-  playlist Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
-  song     Song     @relation(fields: [songId], references: [id], onDelete: Cascade)
+  session PlaylistSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  song    Song            @relation(fields: [songId], references: [id], onDelete: Cascade)
 
-  @@unique([playlistId, songId])
+  @@unique([sessionId, songId])
+  @@index([sessionId])
   @@index([songId])
   @@map("playlist_songs")
 }

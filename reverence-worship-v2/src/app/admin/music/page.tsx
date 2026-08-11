@@ -1,6 +1,7 @@
 import { MusicClient } from "@/components/music-client";
 import { getUserPermissionSet, permissionSetHas, requirePageAccess } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
 
 function formatDate(date: Date) {
   return new Intl.DateTimeFormat("en", {
@@ -33,14 +34,38 @@ export default async function MusicPage() {
     prisma.playlist.findMany({
       orderBy: { createdAt: "desc" },
       include: {
-        songs: {
-          orderBy: { displayOrder: "asc" },
-          include: { song: true },
+        sessions: {
+          orderBy: [{ serviceNumber: "asc" }, { displayOrder: "asc" }],
+          include: {
+            songs: {
+              orderBy: { displayOrder: "asc" },
+              include: {
+                song: {
+                  select: {
+                    id: true,
+                    title: true,
+                    artist: true,
+                    tempo: true,
+                    lyrics: true,
+                    youtubeLink: true,
+                  },
+                },
+              },
+            },
+          },
         },
       },
     }),
     prisma.song.findMany({
       orderBy: { title: "asc" },
+      select: {
+        id: true,
+        title: true,
+        artist: true,
+        tempo: true,
+        lyrics: true,
+        youtubeLink: true,
+      },
     }),
     canManage ? prisma.photoGallery.findMany({
       orderBy: { createdAt: "desc" },
@@ -49,6 +74,7 @@ export default async function MusicPage() {
       where: {
         membershipType: "permanent",
         status: "active",
+        ...excludeSuperAdminUserWhere(),
       },
       orderBy: { name: "asc" },
       select: {
@@ -65,7 +91,7 @@ export default async function MusicPage() {
       include: {
         members: {
           orderBy: [{ teamNumber: "asc" }, { id: "asc" }],
-          include: { user: true },
+          include: { user: { select: { id: true, name: true, email: true } } },
         },
       },
     }) : Promise.resolve([]),
@@ -95,27 +121,33 @@ export default async function MusicPage() {
         id: playlist.id,
         title: playlist.title,
         description: playlist.description,
+        serviceCount: playlist.serviceCount,
         createdAt: formatDate(playlist.createdAt),
-        songs: playlist.songs.map(({ song }) => ({
-          id: song.id,
-          title: song.title,
-          artist: song.artist,
-          keySignature: song.keySignature,
-          tempo: song.tempo,
-          lyrics: song.lyrics,
-          youtubeLink: song.youtubeLink,
-          assignedSinger: song.assignedSinger,
+        sessions: playlist.sessions.map((session) => ({
+          id: session.id,
+          serviceNumber: session.serviceNumber,
+          name: session.name,
+          displayOrder: session.displayOrder,
+          songs: session.songs.map(({ song, displayOrder, keySignature, assignedSinger }) => ({
+            id: song.id,
+            title: song.title,
+            artist: song.artist,
+            keySignature,
+            tempo: song.tempo,
+            lyrics: song.lyrics,
+            youtubeLink: song.youtubeLink,
+            assignedSinger,
+            displayOrder,
+          })),
         })),
       }))}
       songs={songs.map((song) => ({
         id: song.id,
         title: song.title,
         artist: song.artist,
-        keySignature: song.keySignature,
         tempo: song.tempo,
         lyrics: song.lyrics,
         youtubeLink: song.youtubeLink,
-        assignedSinger: song.assignedSinger,
       }))}
       gallery={gallery.map((photo) => ({
         id: photo.id,

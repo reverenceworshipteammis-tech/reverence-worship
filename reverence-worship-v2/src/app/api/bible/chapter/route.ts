@@ -179,16 +179,25 @@ export async function GET(request: Request) {
   const compare = url.searchParams.get("compare");
 
   try {
-    const primary = await fetchChapter(version, book, chapter, request.url);
-    const compareResult = compare ? await fetchChapter(compare, book, chapter, request.url) : null;
+    const [primary, compareResult] = await Promise.all([
+      fetchChapter(version, book, chapter, request.url),
+      compare ? fetchChapter(compare, book, chapter, request.url) : Promise.resolve(null),
+    ]);
 
-    return NextResponse.json({
-      ok: true,
-      book,
-      chapter,
-      primary,
-      compare: compareResult,
-    });
+    return NextResponse.json(
+      {
+        ok: true,
+        book,
+        chapter,
+        primary,
+        compare: compareResult,
+      },
+      {
+        headers: {
+          "Cache-Control": "public, max-age=86400, s-maxage=2592000, stale-while-revalidate=86400",
+        },
+      },
+    );
   } catch (error) {
     return NextResponse.json(
       {

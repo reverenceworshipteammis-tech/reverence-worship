@@ -10,7 +10,13 @@ import {
   DEFAULT_NOTIFICATION_RETENTION_DAYS,
   MAX_NOTIFICATION_RETENTION_DAYS,
   MIN_NOTIFICATION_RETENTION_DAYS,
+  NOTIFICATION_LIFETIME_DAYS,
+  READ_NOTIFICATION_RETENTION_DAYS,
+  notificationLifetimeCutoff,
+  notificationActionGroup,
+  notificationSourceIsCurrent,
   normalizeNotificationRetentionDays,
+  readNotificationCutoff,
 } from "../src/lib/notification-retention-policy";
 
 test("SMTP host and sender are required", () => {
@@ -98,9 +104,62 @@ test("finance-related notification types use the finance category", () => {
   }
 });
 
-test("notification retention stays within the supported range", () => {
+test("notification retention uses a fixed seven-day lifetime and five-day read cleanup", () => {
+  assert.equal(NOTIFICATION_LIFETIME_DAYS, 7);
+  assert.equal(READ_NOTIFICATION_RETENTION_DAYS, 5);
   assert.equal(normalizeNotificationRetentionDays(undefined), DEFAULT_NOTIFICATION_RETENTION_DAYS);
   assert.equal(normalizeNotificationRetentionDays(1), MIN_NOTIFICATION_RETENTION_DAYS);
-  assert.equal(normalizeNotificationRetentionDays(120), 120);
+  assert.equal(normalizeNotificationRetentionDays(120), READ_NOTIFICATION_RETENTION_DAYS);
   assert.equal(normalizeNotificationRetentionDays(99999), MAX_NOTIFICATION_RETENTION_DAYS);
+
+  const now = new Date("2026-08-11T12:00:00.000Z");
+  assert.equal(notificationLifetimeCutoff(now).toISOString(), "2026-08-04T12:00:00.000Z");
+  assert.equal(readNotificationCutoff(now).toISOString(), "2026-08-06T12:00:00.000Z");
+});
+
+test("notifications for missing, unavailable, or completed resources are stale", () => {
+  const base = { title: "New form published", dedupeKey: "form:42:published:1" };
+  assert.equal(notificationSourceIsCurrent({ ...base, sourceType: "spiritual_form" }, { exists: false }), false);
+  assert.equal(notificationSourceIsCurrent({ ...base, sourceType: "spiritual_form" }, { exists: true, available: false }), false);
+  assert.equal(notificationSourceIsCurrent({ ...base, sourceType: "spiritual_form" }, { exists: true, available: true, submitted: true }), false);
+  assert.equal(notificationSourceIsCurrent({ ...base, sourceType: "spiritual_form" }, { exists: true, available: true, submitted: false }), true);
+  assert.equal(notificationSourceIsCurrent(
+    { sourceType: "action_plan_task", title: "Task due soon", dedupeKey: "action-task:8:due-soon" },
+    { exists: true, status: "completed", progress: 100 },
+  ), false);
+});
+
+test("resolved approval alerts are cleared while outcome notifications remain", () => {
+  const pendingAlert = {
+    sourceType: "permission_request",
+    title: "Permission request submitted",
+    dedupeKey: "permission:9:submitted:user:2",
+  };
+  const outcome = {
+    sourceType: "permission_request",
+    title: "Permission request approved",
+    dedupeKey: "permission:9:approved:user:4",
+  };
+
+  assert.equal(notificationSourceIsCurrent(pendingAlert, { exists: true, status: "pending" }), true);
+  assert.equal(notificationSourceIsCurrent(pendingAlert, { exists: true, status: "approved" }), false);
+  assert.equal(notificationSourceIsCurrent(outcome, { exists: true, status: "approved" }), true);
+});
+
+test("repeated actionable reminders share a deduplication group", () => {
+  assert.equal(notificationActionGroup({
+    sourceType: "action_plan_task",
+    title: "Task overdue",
+    dedupeKey: "action-task:4:overdue:2026-08-11",
+  }), "action_plan_task");
+  assert.equal(notificationActionGroup({
+    sourceType: "permission_request",
+    title: "Permission request submitted",
+    dedupeKey: "permission:3:submitted:user:1",
+  }), "permission_request:pending");
+  assert.equal(notificationActionGroup({
+    sourceType: "permission_request",
+    title: "Permission request approved",
+    dedupeKey: "permission:3:approved:user:2",
+  }), null);
 });

@@ -502,7 +502,7 @@ export function ProbationClient({
               <input type="hidden" name="probationId" value={modal.row.id} />
               <Field label="Member-visible summary"><textarea name="memberVisibleSummary" defaultValue={modal.row.memberVisibleSummary ?? ""} className={textareaClass} /></Field>
               {permissions.viewConfidential ? <Field label="Confidential comments"><textarea name="confidentialComments" defaultValue={modal.row.confidentialComments ?? ""} className={textareaClass} /></Field> : null}
-              <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">Original dates cannot be overwritten. Use Extend Probation to change the current expected end date and preserve history.</p>
+
               <SubmitButtons pending={pending} label="Save details" onCancel={() => setModal({ type: "details", row: modal.row })} />
             </form>
           ) : null}

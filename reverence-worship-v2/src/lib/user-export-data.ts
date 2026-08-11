@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
 
 type UserExportFilters = {
   search?: string | null;
@@ -78,7 +79,8 @@ function profileComplete(user: {
 
 export async function getUserExportRows(filters: UserExportFilters) {
   const search = filters.search?.trim();
-  const roleId = filters.role ? Number(filters.role) : undefined;
+  const inProbation = filters.role === "in-probation";
+  const roleId = filters.role && !inProbation ? Number(filters.role) : undefined;
   const status = filters.status;
 
   const users = await prisma.user.findMany({
@@ -94,12 +96,12 @@ export async function getUserExportRows(filters: UserExportFilters) {
       ...(status === "active" || status === "pending" || status === "inactive"
         ? { status }
         : {}),
-      ...(Number.isFinite(roleId)
-        ? {
-            roles: {
-              some: { roleId },
-            },
-          }
+      roles: {
+        ...excludeSuperAdminUserWhere().roles,
+        ...(Number.isFinite(roleId) ? { some: { roleId } } : {}),
+      },
+      ...(inProbation
+        ? { probations: { some: { state: { in: ["active" as const, "extended" as const] } } } }
         : {}),
     },
     orderBy: { createdAt: "desc" },

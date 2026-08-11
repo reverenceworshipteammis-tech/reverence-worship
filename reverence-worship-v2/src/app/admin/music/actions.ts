@@ -5,7 +5,13 @@ import { mkdir, unlink, writeFile } from "fs/promises";
 import path from "path";
 import { del as deleteBlob, put } from "@vercel/blob";
 import { requirePermission } from "@/lib/auth";
+import {
+  parsePlaylistServiceCount,
+  parsePlaylistSessions,
+  playlistServiceLabel,
+} from "@/lib/playlist-rules";
 import { prisma } from "@/lib/prisma";
+import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
 
 function readString(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -23,6 +29,12 @@ function readNumber(formData: FormData, key: string) {
 function readBoolean(formData: FormData, key: string) {
   const value = formData.get(key);
   return value === "on" || value === "1" || value === "true";
+}
+
+async function playlistSongsExist(songIds: number[]) {
+  if (songIds.length === 0) return true;
+  const count = await prisma.song.count({ where: { id: { in: songIds } } });
+  return count === songIds.length;
 }
 
 function dateOnly(value: string) {
@@ -108,12 +120,8 @@ export async function createSong(formData: FormData) {
   await prisma.song.create({
     data: {
       title,
-      artist: readString(formData, "artist"),
-      keySignature: readString(formData, "keySignature"),
-      tempo: readNumber(formData, "tempo"),
       lyrics: readString(formData, "lyrics"),
       youtubeLink: readString(formData, "youtubeLink"),
-      assignedSinger: readString(formData, "assignedSinger"),
       createdBy: user.id,
     },
   });
@@ -296,12 +304,10 @@ export async function updateSong(songId: number, formData: FormData) {
     where: { id: songId },
     data: {
       title,
-      artist: readString(formData, "artist"),
-      keySignature: readString(formData, "keySignature"),
-      tempo: readNumber(formData, "tempo"),
+      artist: null,
+      tempo: null,
       lyrics: readString(formData, "lyrics"),
       youtubeLink: readString(formData, "youtubeLink"),
-      assignedSinger: readString(formData, "assignedSinger"),
     },
   });
 
@@ -313,25 +319,41 @@ export async function updateSong(songId: number, formData: FormData) {
 export async function createPlaylist(formData: FormData) {
   const user = await requirePermission("music-ministry", "manage-playlists");
   const title = readString(formData, "title");
+  const serviceCount = parsePlaylistServiceCount(formData.get("serviceCount"));
 
   if (!title) {
     return { ok: false, message: "Playlist title is required." };
   }
+  if (!serviceCount) {
+    return { ok: false, message: "Number of services must be between 1 and 10." };
+  }
 
-  const songIds = formData
-    .getAll("songs")
-    .map((value) => Number(value))
-    .filter((value) => Number.isFinite(value));
+  const { sessions, message } = parsePlaylistSessions(formData.get("sessions"), serviceCount);
+  if (!sessions) return { ok: false, message: message ?? "Invalid playlist sessions." };
+  const songIds = [...new Set(sessions.flatMap((session) => session.songs.map((song) => song.songId)))];
+  if (!(await playlistSongsExist(songIds))) {
+    return { ok: false, message: "One or more selected songs no longer exist." };
+  }
 
   await prisma.playlist.create({
     data: {
       title,
       description: readString(formData, "description"),
+      serviceCount,
       createdBy: user.id,
-      songs: {
-        create: songIds.map((songId, index) => ({
-          songId,
-          displayOrder: index + 1,
+      sessions: {
+        create: sessions.map((session) => ({
+          serviceNumber: session.serviceNumber,
+          name: session.name,
+          displayOrder: session.displayOrder,
+          songs: {
+            create: session.songs.map((song, index) => ({
+              songId: song.songId,
+              displayOrder: index + 1,
+              keySignature: song.keySignature || null,
+              assignedSinger: song.assignedSinger || null,
+            })),
+          },
         })),
       },
     },
@@ -339,7 +361,7 @@ export async function createPlaylist(formData: FormData) {
 
   revalidatePath("/admin/music");
 
-  return { ok: true, message: `Playlist created with ${songIds.length} songs.` };
+  return { ok: true, message: `Playlist created with ${serviceCount} ${serviceCount === 1 ? "service" : "services"} and ${sessions.length} sessions.` };
 }
 
 export async function deletePlaylist(playlistId: number) {
@@ -357,37 +379,46 @@ export async function deletePlaylist(playlistId: number) {
 export async function updatePlaylist(playlistId: number, formData: FormData) {
   await requirePermission("music-ministry", "manage-playlists");
   const title = readString(formData, "title");
+  const serviceCount = parsePlaylistServiceCount(formData.get("serviceCount"));
 
   if (!title) {
     return { ok: false, message: "Playlist title is required." };
   }
+  if (!serviceCount) {
+    return { ok: false, message: "Number of services must be between 1 and 10." };
+  }
 
-  const songIds = formData
-    .getAll("songs")
-    .map((value) => Number(value))
-    .filter((value) => Number.isFinite(value));
+  const { sessions, message } = parsePlaylistSessions(formData.get("sessions"), serviceCount);
+  if (!sessions) return { ok: false, message: message ?? "Invalid playlist sessions." };
+  const songIds = [...new Set(sessions.flatMap((session) => session.songs.map((song) => song.songId)))];
+  if (!(await playlistSongsExist(songIds))) {
+    return { ok: false, message: "One or more selected songs no longer exist." };
+  }
 
-  await prisma.$transaction([
-    prisma.playlist.update({
-      where: { id: playlistId },
-      data: {
-        title,
-        description: readString(formData, "description"),
+  await prisma.playlist.update({
+    where: { id: playlistId },
+    data: {
+      title,
+      description: readString(formData, "description"),
+      serviceCount,
+      sessions: {
+        deleteMany: {},
+        create: sessions.map((session) => ({
+          serviceNumber: session.serviceNumber,
+          name: session.name,
+          displayOrder: session.displayOrder,
+          songs: {
+            create: session.songs.map((song, index) => ({
+              songId: song.songId,
+              displayOrder: index + 1,
+              keySignature: song.keySignature || null,
+              assignedSinger: song.assignedSinger || null,
+            })),
+          },
+        })),
       },
-    }),
-    prisma.playlistSong.deleteMany({
-      where: { playlistId },
-    }),
-    ...songIds.map((songId, index) =>
-      prisma.playlistSong.create({
-        data: {
-          playlistId,
-          songId,
-          displayOrder: index + 1,
-        },
-      }),
-    ),
-  ]);
+    },
+  });
 
   revalidatePath("/admin/music");
 
@@ -399,25 +430,35 @@ export async function addSongToPlaylist(formData: FormData) {
 
   const playlistId = readNumber(formData, "playlistId");
   const songId = readNumber(formData, "songId");
+  const sessionId = readNumber(formData, "sessionId");
 
-  if (!playlistId || !songId) {
-    return { ok: false, message: "Choose a playlist and song first." };
+  if (!Number.isInteger(playlistId) || !Number.isInteger(songId) || !Number.isInteger(sessionId) || !playlistId || !songId || !sessionId) {
+    return { ok: false, message: "Choose a playlist, session, and song first." };
+  }
+
+  const session = await prisma.playlistSession.findFirst({
+    where: { id: sessionId, playlistId },
+    select: { id: true, name: true, serviceNumber: true },
+  });
+  if (!session) return { ok: false, message: "The selected playlist session no longer exists." };
+  if (!(await playlistSongsExist([songId]))) {
+    return { ok: false, message: "The selected song no longer exists." };
   }
 
   const maxOrder = await prisma.playlistSong.aggregate({
-    where: { playlistId },
+    where: { sessionId },
     _max: { displayOrder: true },
   });
 
   await prisma.playlistSong.upsert({
     where: {
-      playlistId_songId: {
-        playlistId,
+      sessionId_songId: {
+        sessionId,
         songId,
       },
     },
     create: {
-      playlistId,
+      sessionId,
       songId,
       displayOrder: (maxOrder._max.displayOrder ?? 0) + 1,
     },
@@ -426,7 +467,7 @@ export async function addSongToPlaylist(formData: FormData) {
 
   revalidatePath("/admin/music");
 
-  return { ok: true, message: "Song added to playlist." };
+  return { ok: true, message: `Song assigned to ${playlistServiceLabel(session.serviceNumber)} — ${session.name}.` };
 }
 
 export async function uploadGalleryPhotos(formData: FormData) {
@@ -636,6 +677,7 @@ export async function generateServiceTeams(formData: FormData) {
       status: "active",
       voicePart: { not: null },
       singerLevel: { not: null },
+      ...excludeSuperAdminUserWhere(),
     },
     orderBy: { name: "asc" },
     select: {

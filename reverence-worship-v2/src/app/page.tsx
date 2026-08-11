@@ -37,9 +37,8 @@ async function safePublicRead<T>(label: string, operation: () => Promise<T>, fal
 }
 
 export default async function HomePage() {
-  const user = await safePublicRead("session", () => getCurrentUser(), null);
-
-  const [registrationEnabled, videos, pictures, events] = await Promise.all([
+  const [user, registrationEnabled, videos, pictures, events] = await Promise.all([
+    safePublicRead("session", () => getCurrentUser(), null),
     safePublicRead("registration setting", () => isRegistrationEnabled(), true),
     safePublicRead("videos", () =>
       prisma.landingYoutubeVideo.findMany({

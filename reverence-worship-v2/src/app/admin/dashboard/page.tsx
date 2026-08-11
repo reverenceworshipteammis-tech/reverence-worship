@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { cache, Suspense } from "react";
 import {
   BookOpen,
   CalendarClock,
@@ -19,6 +20,8 @@ import { requirePageAccess } from "@/lib/auth";
 import { withDatabaseRetry } from "@/lib/database-retry";
 import { prisma } from "@/lib/prisma";
 import { normalizePermissionRequestNotificationMessage } from "@/lib/permission-notification-copy";
+import { notificationLifetimeCutoff } from "@/lib/notification-retention-policy";
+import { filterCurrentNotifications } from "@/lib/notification-source-validity";
 import { PerformanceSummaryCards } from "@/components/performance-client";
 import { getPerformanceDateRange } from "@/lib/performance-date-range";
 import { getUserPerformanceData, type PerformanceMetrics } from "@/lib/user-performance";
@@ -127,7 +130,11 @@ async function getDashboardBulletins(userId: number, roleIds: number[], roleName
     prisma.announcement.findMany({
       where: {
         status: "active",
-        OR: [{ expiryDate: null }, { expiryDate: { gte: today } }],
+        OR: [
+          { publishedAt: { gte: notificationLifetimeCutoff() } },
+          { publishedAt: null, createdAt: { gte: notificationLifetimeCutoff() } },
+        ],
+        AND: [{ OR: [{ expiryDate: null }, { expiryDate: { gte: today } }] }],
       },
       orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
       select: {
@@ -148,20 +155,24 @@ async function getDashboardBulletins(userId: number, roleIds: number[], roleName
       },
     }),
     prisma.notification.findMany({
-      where: { userId, readAt: null },
+      where: { userId, readAt: null, createdAt: { gte: notificationLifetimeCutoff() } },
       orderBy: { createdAt: "desc" },
       take: 20,
       select: {
         id: true,
+        userId: true,
         title: true,
         message: true,
         link: true,
         type: true,
         sourceType: true,
+        sourceId: true,
+        dedupeKey: true,
         createdAt: true,
       },
     }),
   ]));
+  const currentNotifications = await filterCurrentNotifications(notifications);
 
   const announcementItems: Array<DashboardBulletin & { sortDate: Date }> = announcements
     .filter((announcement) =>
@@ -183,7 +194,7 @@ async function getDashboardBulletins(userId: number, roleIds: number[], roleName
       };
     });
 
-  const notificationItems: Array<DashboardBulletin & { sortDate: Date }> = notifications
+  const notificationItems: Array<DashboardBulletin & { sortDate: Date }> = currentNotifications
     .filter((notification) => notification.sourceType !== "announcement" && notification.type !== "announcement")
     .map((notification) => ({
       id: `notification-${notification.id}`,
@@ -223,17 +234,14 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
   const roleIds = user.roles.map((userRole) => userRole.roleId);
   const year = new Date().getFullYear();
   const range = getPerformanceDateRange(year, params.from, params.to);
-  const [{ metrics }, bulletins] = await Promise.all([
-    getUserPerformanceData(user.id, year, { from: range.fromDate, to: range.toDate, label: range.label }),
-    getDashboardBulletins(user.id, roleIds, roles),
-  ]);
+  const sharedProps = { userId: user.id, userName: user.name, roles, roleIds, year, range };
 
   if (hasRole(roles, "super-admin")) {
-    return <SuperAdminDashboard userId={user.id} userName={user.name} metrics={metrics} fromDate={range.from} toDate={range.to} bulletins={bulletins} />;
+    return <SuperAdminDashboard {...sharedProps} />;
   }
 
   if (hasRole(roles, "admin")) {
-    return <AdminOperationsDashboard userId={user.id} userName={user.name} metrics={metrics} fromDate={range.from} toDate={range.to} bulletins={bulletins} />;
+    return <RoleDashboard {...sharedProps} showProbationTodo />;
   }
 
   const departmentRole = roles.find((role) =>
@@ -241,46 +249,86 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
   ) as DepartmentRole | undefined;
 
   if (departmentRole) {
-    return <DepartmentDashboard userId={user.id} userName={user.name} metrics={metrics} fromDate={range.from} toDate={range.to} canManageProbation={departmentRole === "discipline-dpt"} bulletins={bulletins} />;
+    return <RoleDashboard {...sharedProps} showProbationTodo={departmentRole === "discipline-dpt"} />;
   }
 
-  return <MemberDashboard userId={user.id} userName={user.name} metrics={metrics} fromDate={range.from} toDate={range.to} bulletins={bulletins} />;
+  return <RoleDashboard {...sharedProps} />;
 }
 
-async function SuperAdminDashboard({ userId, userName, metrics, fromDate, toDate, bulletins }: { userId: number; userName: string; metrics: PerformanceMetrics; fromDate: string; toDate: string; bulletins: DashboardBulletin[] }) {
-  const [
-    pendingUsers,
-    inactiveUsers,
-    totalRoles,
-    totalFeatures,
-    forms,
-    songs,
-    playlists,
-    sponsors,
-    announcements,
-    payments,
-    expenses,
-    discipline,
-  ] = await withDatabaseRetry(() => Promise.all([
-    prisma.user.count({ where: { status: "pending" } }),
-    prisma.user.count({ where: { status: "inactive" } }),
-    prisma.role.count({ where: { name: { not: "super-admin" } } }),
-    prisma.feature.count(),
-    prisma.spiritualForm.count(),
-    prisma.song.count(),
-    prisma.playlist.count(),
-    prisma.sponsor.count(),
-    prisma.announcement.count(),
-    prisma.payment.count(),
-    prisma.expense.count(),
-    prisma.disciplineRecord.count(),
-  ]));
+type DashboardRange = ReturnType<typeof getPerformanceDateRange>;
+
+type DashboardSectionsProps = {
+  userId: number;
+  userName: string;
+  roles: string[];
+  roleIds: number[];
+  year: number;
+  range: DashboardRange;
+};
+
+type SystemDashboardCounts = {
+  pendingUsers: number;
+  inactiveUsers: number;
+  totalRoles: number;
+  pendingPermissions: number;
+  forms: number;
+  songs: number;
+  playlists: number;
+  sponsors: number;
+  announcements: number;
+  payments: number;
+  expenses: number;
+  discipline: number;
+};
+
+const getSystemDashboardCounts = cache(async () => {
+  const rows = await withDatabaseRetry(() => prisma.$queryRaw<SystemDashboardCounts[]>`
+    SELECT
+      (SELECT COUNT(*)::int FROM "users" WHERE "status" = 'pending') AS "pendingUsers",
+      (SELECT COUNT(*)::int FROM "users" WHERE "status" = 'inactive') AS "inactiveUsers",
+      (SELECT COUNT(*)::int FROM "roles" WHERE "name" <> 'super-admin') AS "totalRoles",
+      (SELECT COUNT(*)::int FROM "permission_requests" WHERE "status" = 'pending') AS "pendingPermissions",
+      (SELECT COUNT(*)::int FROM "forms") AS "forms",
+      (SELECT COUNT(*)::int FROM "songs") AS "songs",
+      (SELECT COUNT(*)::int FROM "playlists") AS "playlists",
+      (SELECT COUNT(*)::int FROM "sponsors") AS "sponsors",
+      (SELECT COUNT(*)::int FROM "announcements") AS "announcements",
+      (SELECT COUNT(*)::int FROM "payments") AS "payments",
+      (SELECT COUNT(*)::int FROM "expenses") AS "expenses",
+      (SELECT COUNT(*)::int FROM "discipline_records") AS "discipline"
+  `);
+  return rows[0];
+});
+
+function SuperAdminDashboard(props: DashboardSectionsProps) {
+  const { userId, userName } = props;
+  return (
+    <div className="super-admin-dashboard mx-auto max-w-7xl px-3 py-3 sm:px-4 sm:py-4 lg:px-5">
+      <Suspense fallback={<DashboardHeroFallback message={`Welcome back, ${userName}!`} />}>
+        <DashboardHeroSection {...props} superAdmin />
+      </Suspense>
+      <Suspense fallback={null}>
+        <DashboardTodoPanel userId={userId} includeProbation />
+      </Suspense>
+      <Suspense fallback={<DashboardPanelFallback />}>
+        <SuperAdminAttentionPanel />
+      </Suspense>
+      <Suspense fallback={<DashboardPanelFallback className="mt-4" />}>
+        <SystemCountsPanel />
+      </Suspense>
+    </div>
+  );
+}
+
+async function SuperAdminAttentionPanel() {
+  const counts = await getSystemDashboardCounts();
+  if (!counts) return null;
 
   const attentionItems: DashboardCard[] = [
-    ...(pendingUsers > 0
+    ...(counts.pendingUsers > 0
       ? [{
           label: "Pending Users",
-          value: pendingUsers,
+          value: counts.pendingUsers,
           note: "Accounts waiting for approval",
           href: "/admin/users?status=pending",
           icon: UserCog,
@@ -289,7 +337,7 @@ async function SuperAdminDashboard({ userId, userName, metrics, fromDate, toDate
       : []),
     {
       label: "Inactive Users",
-      value: inactiveUsers,
+      value: counts.inactiveUsers,
       note: "Disabled accounts to review",
       href: "/admin/users?status=inactive",
       icon: UserX,
@@ -297,7 +345,7 @@ async function SuperAdminDashboard({ userId, userName, metrics, fromDate, toDate
     },
     {
       label: "Permission Requests",
-      value: 0,
+      value: counts.pendingPermissions,
       note: "Discipline requests pending",
       href: "/admin/discipline",
       icon: FileText,
@@ -305,7 +353,7 @@ async function SuperAdminDashboard({ userId, userName, metrics, fromDate, toDate
     },
     {
       label: "Roles Configured",
-      value: totalRoles,
+      value: counts.totalRoles,
       note: "Assignable system roles",
       href: "/admin/permissions",
       icon: Shield,
@@ -313,93 +361,41 @@ async function SuperAdminDashboard({ userId, userName, metrics, fromDate, toDate
     },
   ];
 
+  return (
+    <Panel className="mb-4">
+      <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2 2xl:grid-cols-4">
+        {attentionItems.map((item) => <AttentionItem key={item.label} item={item} />)}
+      </div>
+    </Panel>
+  );
+}
+
+async function SystemCountsPanel() {
+  const counts = await getSystemDashboardCounts();
+  if (!counts) return null;
   const systemCounts = {
-    Forms: forms,
-    Songs: songs,
-    Playlists: playlists,
-    Sponsors: sponsors,
-    Announcements: announcements,
-    Payments: payments,
-    Expenses: expenses,
-    Discipline: discipline,
-    Requests: totalFeatures,
+    Forms: counts.forms,
+    Songs: counts.songs,
+    Playlists: counts.playlists,
+    Sponsors: counts.sponsors,
+    Announcements: counts.announcements,
+    Payments: counts.payments,
+    Expenses: counts.expenses,
+    Discipline: counts.discipline,
   };
 
   return (
-    <div className="super-admin-dashboard mx-auto max-w-7xl px-3 py-3 sm:px-4 sm:py-4 lg:px-5">
-      <DashboardHero
-        message={`Welcome back, ${userName}!`}
-        bulletins={bulletins}
-        actions={[
-          { label: "Activity Logs", href: "/admin/logs", icon: Clock, variant: "secondary" },
-          { label: "Manage Users", href: "/admin/users", icon: UserPlus, variant: "primary" },
-        ]}
-      />
-
-      <DashboardPerformance metrics={metrics} fromDate={fromDate} toDate={toDate} />
-      <ProbationMemberDashboardCard userId={userId} />
-      <DashboardTodoPanel userId={userId} includeProbation />
-
-      <Panel className="mb-4">
-        <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2 2xl:grid-cols-4">
-          {attentionItems.map((item) => <AttentionItem key={item.label} item={item} />)}
-        </div>
-      </Panel>
-      <QuickActions actions={personalQuickActions} />
-
-      <Panel className="mt-4">
-        <PanelHeader title="System Counts" />
-        <div className="grid grid-cols-2 gap-2.5 p-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-10">
-          {systemCountLabels.map((label) => (
-            <div key={label} className="system-count">
-              <span>{systemCounts[label].toLocaleString()}</span>
-              <p>{label}</p>
-            </div>
-          ))}
-        </div>
-      </Panel>
-    </div>
-  );
-}
-
-function AdminOperationsDashboard({ userId, userName, metrics, fromDate, toDate, bulletins }: { userId: number; userName: string; metrics: PerformanceMetrics; fromDate: string; toDate: string; bulletins: DashboardBulletin[] }) {
-  return (
-    <RoleDashboard
-      userId={userId}
-      message={`Welcome back, ${userName}!`}
-      performanceMetrics={metrics}
-      fromDate={fromDate}
-      toDate={toDate}
-      bulletins={bulletins}
-      showProbationTodo
-    />
-  );
-}
-
-function DepartmentDashboard({ userId, userName, metrics, fromDate, toDate, canManageProbation, bulletins }: { userId: number; userName: string; metrics: PerformanceMetrics; fromDate: string; toDate: string; canManageProbation: boolean; bulletins: DashboardBulletin[] }) {
-  return (
-    <RoleDashboard
-      userId={userId}
-      message={`Welcome back, ${userName}!`}
-      performanceMetrics={metrics}
-      fromDate={fromDate}
-      toDate={toDate}
-      bulletins={bulletins}
-      showProbationTodo={canManageProbation}
-    />
-  );
-}
-
-function MemberDashboard({ userId, userName, metrics, fromDate, toDate, bulletins }: { userId: number; userName: string; metrics: PerformanceMetrics; fromDate: string; toDate: string; bulletins: DashboardBulletin[] }) {
-  return (
-    <RoleDashboard
-      userId={userId}
-      message={`Welcome back, ${userName}!`}
-      performanceMetrics={metrics}
-      fromDate={fromDate}
-      toDate={toDate}
-      bulletins={bulletins}
-    />
+    <Panel className="mt-4">
+      <PanelHeader title="System Counts" />
+      <div className="grid grid-cols-2 gap-2.5 p-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-10">
+        {systemCountLabels.map((label) => (
+          <div key={label} className="system-count">
+            <span>{systemCounts[label].toLocaleString()}</span>
+            <p>{label}</p>
+          </div>
+        ))}
+      </div>
+    </Panel>
   );
 }
 
@@ -446,40 +442,85 @@ function DashboardHero({
   );
 }
 
+async function DashboardHeroSection({
+  userId,
+  userName,
+  roles,
+  roleIds,
+  superAdmin = false,
+}: DashboardSectionsProps & { superAdmin?: boolean }) {
+  const bulletins = await getDashboardBulletins(userId, roleIds, roles);
+  const actions = superAdmin
+    ? [
+        { label: "Activity Logs", href: "/admin/logs", icon: Clock, variant: "secondary" as const },
+        { label: "Manage Users", href: "/admin/users", icon: UserPlus, variant: "primary" as const },
+      ]
+    : bulletins.length > 0
+      ? []
+      : [{ label: "My Profile", href: "/admin/profile", icon: UserCheck, variant: "secondary" as const, opensProfile: true }];
+  return <DashboardHero message={`Welcome back, ${userName}!`} bulletins={bulletins} actions={actions} />;
+}
+
+async function DashboardPerformanceSection({ userId, year, range }: DashboardSectionsProps) {
+  const { metrics } = await getUserPerformanceData(userId, year, {
+    from: range.fromDate,
+    to: range.toDate,
+    label: range.label,
+  });
+  return <DashboardPerformance metrics={metrics} fromDate={range.from} toDate={range.to} />;
+}
+
 function RoleDashboard({
   userId,
-  message,
-  performanceMetrics,
-  fromDate,
-  toDate,
-  bulletins,
+  userName,
   showProbationTodo = false,
-}: {
-  userId: number;
-  message: string;
-  performanceMetrics: PerformanceMetrics;
-  fromDate: string;
-  toDate: string;
-  bulletins: DashboardBulletin[];
-  showProbationTodo?: boolean;
-}) {
+  ...props
+}: DashboardSectionsProps & { showProbationTodo?: boolean }) {
+  const sectionProps = { userId, userName, ...props };
   return (
     <div className="super-admin-dashboard mx-auto max-w-7xl px-3 py-3 sm:px-4 sm:py-4 lg:px-5">
-      <DashboardHero
-        message={message}
-        bulletins={bulletins}
-        actions={bulletins.length > 0
-          ? []
-          : [{ label: "My Profile", href: "/admin/profile", icon: UserCheck, variant: "secondary", opensProfile: true }]}
-      />
-
-      <DashboardPerformance metrics={performanceMetrics} fromDate={fromDate} toDate={toDate} />
-      <ProbationMemberDashboardCard userId={userId} />
-      <DashboardTodoPanel userId={userId} includeProbation={showProbationTodo} />
-
+      <Suspense fallback={<DashboardHeroFallback message={`Welcome back, ${userName}!`} />}>
+        <DashboardHeroSection {...sectionProps} />
+      </Suspense>
+      <Suspense fallback={<DashboardPerformanceFallback />}>
+        <DashboardPerformanceSection {...sectionProps} />
+      </Suspense>
+      <Suspense fallback={null}>
+        <ProbationMemberDashboardCard userId={userId} />
+      </Suspense>
+      <Suspense fallback={null}>
+        <DashboardTodoPanel userId={userId} includeProbation={showProbationTodo} />
+      </Suspense>
       <QuickActions actions={personalQuickActions} />
     </div>
   );
+}
+
+function DashboardHeroFallback({ message }: { message: string }) {
+  return (
+    <div className="dashboard-hero mb-4 flex min-h-36 items-center px-5 py-4">
+      <div>
+        <p className="text-sm font-medium text-slate-600">{message}</p>
+        <div className="mt-3 h-5 w-56 animate-pulse rounded bg-slate-200" />
+        <div className="mt-2 h-4 w-72 max-w-full animate-pulse rounded bg-slate-100" />
+      </div>
+    </div>
+  );
+}
+
+function DashboardPerformanceFallback() {
+  return (
+    <section className="mb-4 animate-pulse">
+      <div className="mb-3 h-6 w-40 rounded bg-slate-200" />
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }, (_, index) => <div key={index} className="h-36 rounded-xl border border-slate-200 bg-white" />)}
+      </div>
+    </section>
+  );
+}
+
+function DashboardPanelFallback({ className = "mb-4" }: { className?: string }) {
+  return <div className={`${className} h-24 animate-pulse rounded-xl border border-slate-200 bg-white`} />;
 }
 
 async function ProbationMemberDashboardCard({ userId }: { userId: number }) {
@@ -542,7 +583,7 @@ async function DashboardTodoPanel({ userId, includeProbation = false }: { userId
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
   const todayValue = today.toISOString().slice(0, 10);
-  const [forms, submissions, assignedTasks, expenseApprovals, permissionApprovals, overdueProbations, assignedDecisions] = await withDatabaseRetry(() => Promise.all([
+  const [forms, submissions, countRows] = await withDatabaseRetry(() => Promise.all([
     prisma.spiritualForm.findMany({
       where: { isActive: true },
       select: { id: true, settings: true },
@@ -551,23 +592,28 @@ async function DashboardTodoPanel({ userId, includeProbation = false }: { userId
       where: { userId },
       select: { formId: true },
     }),
-    prisma.actionPlanTask.count({
-      where: { assignedTo: userId, NOT: { status: "completed" }, progress: { lt: 100 } },
-    }),
-    prisma.expense.count({
-      where: {
-        status: { in: ["pending", "void_pending"] },
-        OR: [{ approverId1: userId }, { approverId2: userId }],
-      },
-    }),
-    includeProbation ? prisma.permissionRequest.count({ where: { status: "pending" } }) : Promise.resolve(0),
-    includeProbation ? prisma.probation.count({
-      where: { state: { in: ["active", "extended"] }, currentExpectedEndDate: { lt: today } },
-    }) : Promise.resolve(0),
-    includeProbation ? prisma.probationDecisionRequest.count({
-      where: { status: "pending", probation: { assignedAdminId: userId } },
-    }) : Promise.resolve(0),
+    prisma.$queryRaw<Array<{
+      assignedTasks: number;
+      expenseApprovals: number;
+      permissionApprovals: number;
+      overdueProbations: number;
+      assignedDecisions: number;
+    }>>`
+      SELECT
+        (SELECT COUNT(*)::int FROM "action_plan_tasks" WHERE "assigned_to" = ${userId} AND "status" <> 'completed' AND "progress" < 100) AS "assignedTasks",
+        (SELECT COUNT(*)::int FROM "expenses" WHERE "status" IN ('pending', 'void_pending') AND ("approver_id_1" = ${userId} OR "approver_id_2" = ${userId})) AS "expenseApprovals",
+        CASE WHEN ${includeProbation} THEN (SELECT COUNT(*)::int FROM "permission_requests" WHERE "status" = 'pending') ELSE 0 END AS "permissionApprovals",
+        CASE WHEN ${includeProbation} THEN (SELECT COUNT(*)::int FROM "probations" WHERE "state" IN ('active', 'extended') AND "current_expected_end_date" < ${today}) ELSE 0 END AS "overdueProbations",
+        CASE WHEN ${includeProbation} THEN (SELECT COUNT(*)::int FROM "probation_decision_requests" request JOIN "probations" probation ON probation."id" = request."probation_id" WHERE request."status" = 'pending' AND probation."assigned_admin_id" = ${userId}) ELSE 0 END AS "assignedDecisions"
+    `,
   ]));
+  const {
+    assignedTasks = 0,
+    expenseApprovals = 0,
+    permissionApprovals = 0,
+    overdueProbations = 0,
+    assignedDecisions = 0,
+  } = countRows[0] ?? {};
 
   const submittedFormIds = new Set(submissions.map((submission) => submission.formId));
   const incompleteForms = forms.filter((form) =>

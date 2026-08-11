@@ -58,6 +58,7 @@ type UserRow = {
   status: "active" | "pending" | "inactive";
   createdAt: string;
   createdAtValue: string;
+  inProbation: boolean;
   roles: Role[];
 };
 
@@ -497,6 +498,7 @@ export function UserManagementClient({
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 sm:w-32"
               >
                 <option value="">All Roles</option>
+                <option value="in-probation">In Probation</option>
                 {roles.map((role) => (
                   <option key={role.id} value={role.id}>
                     {role.displayName}
@@ -649,19 +651,30 @@ export function UserManagementClient({
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-500">{user.phone || "-"}</td>
                   <td className="px-4 py-3">
-                    <select
-                      defaultValue={visibleRoles[0]?.id ?? ""}
-                      onChange={(event) => handleRoleChange(user.id, event.target.value)}
-                      disabled={isPending || fullSystemAccess}
-                      className="rounded-full border border-blue-200 bg-blue-100 px-2 py-1 text-xs text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">{fullSystemAccess ? "Full System Access" : "No Role"}</option>
-                      {roles.map((role) => (
-                        <option key={role.id} value={role.id}>
-                          {role.displayName}
-                        </option>
-                      ))}
-                    </select>
+                    {user.inProbation ? (
+                      <select
+                        value="in-probation"
+                        disabled
+                        aria-label={`${user.name} role: In Probation`}
+                        className="w-full rounded-full border border-blue-200 bg-blue-100 px-2 py-1 text-xs text-blue-700 opacity-100 focus:outline-none disabled:cursor-default disabled:opacity-100"
+                      >
+                        <option value="in-probation">In Probation</option>
+                      </select>
+                    ) : (
+                      <select
+                        defaultValue={visibleRoles[0]?.id ?? ""}
+                        onChange={(event) => handleRoleChange(user.id, event.target.value)}
+                        disabled={isPending || fullSystemAccess}
+                        className="w-full rounded-full border border-blue-200 bg-blue-100 px-2 py-1 text-xs text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">{fullSystemAccess ? "Full System Access" : "No Role"}</option>
+                        {roles.map((role) => (
+                          <option key={role.id} value={role.id}>
+                            {role.displayName}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <span className={`rounded-full px-2 py-1 text-xs capitalize ${statusBadge(user.status)}`}>
@@ -683,10 +696,10 @@ export function UserManagementClient({
                       <option value="edit">Edit User</option>
                   {user.status === "pending" && <option value="approve">Approve User</option>}
                   {user.status === "pending" && <option value="reject">Reject User</option>}
-                      {user.status === "active" && <option value="deactivate">Deactivate User</option>}
+                      {user.status === "active" && !user.inProbation && <option value="deactivate">Deactivate User</option>}
                       {user.status === "inactive" && <option value="activate">Activate User</option>}
                       {!fullSystemAccess && <option value="roles">Manage Roles</option>}
-                      <option value="delete">Delete User</option>
+                      {!user.inProbation && <option value="delete">Delete User</option>}
                     </select>
                   </td>
                 </tr>
@@ -733,10 +746,10 @@ export function UserManagementClient({
                   <option value="edit">Edit</option>
                   {user.status === "pending" && <option value="approve">Approve</option>}
                   {user.status === "pending" && <option value="reject">Reject</option>}
-                  {user.status === "active" && <option value="deactivate">Deactivate</option>}
+                  {user.status === "active" && !user.inProbation && <option value="deactivate">Deactivate</option>}
                   {user.status === "inactive" && <option value="activate">Activate</option>}
                   {!fullSystemAccess && <option value="roles">Roles</option>}
-                  <option value="delete">Delete</option>
+                  {!user.inProbation && <option value="delete">Delete</option>}
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-2 text-xs">
@@ -746,7 +759,7 @@ export function UserManagementClient({
                 </div>
                 <div>
                   <span className="text-gray-500">Role:</span>{" "}
-                  <span className="text-gray-700">{fullSystemAccess ? "Full System Access" : visibleRoles[0]?.displayName || "-"}</span>
+                  <span className="text-gray-700">{user.inProbation ? "In Probation" : fullSystemAccess ? "Full System Access" : visibleRoles[0]?.displayName || "-"}</span>
                 </div>
                 <div>
                   <span className="text-gray-500">Status:</span>{" "}
@@ -792,7 +805,12 @@ export function UserManagementClient({
                         Full System Access
                       </span>
                     ) : null}
-                    {displayRoles(viewUser).map((role) => (
+                    {viewUser.inProbation ? (
+                      <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
+                        In Probation
+                      </span>
+                    ) : null}
+                    {displayRoles(viewUser).filter((role) => role.name !== "probation-member").map((role) => (
                       <span key={role.id} className="rounded-full bg-blue-100 px-2.5 py-1 text-xs text-blue-700">
                         {role.displayName}
                       </span>
@@ -989,6 +1007,11 @@ export function UserManagementClient({
             <form action={rolesAction} className="p-5">
               <input type="hidden" name="userId" value={rolesUser.id} />
               <p className="mb-3 text-sm text-gray-600">{rolesUser.name}</p>
+              {rolesUser.inProbation ? (
+                <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  In Probation is assigned automatically and can only be removed by completing or terminating the probation workflow.
+                </p>
+              ) : null}
               <div className="grid max-h-64 grid-cols-1 gap-2 overflow-y-auto rounded-lg border border-gray-200 p-2">
                 {roles.map((role) => (
                   <label key={role.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 hover:bg-gray-50">

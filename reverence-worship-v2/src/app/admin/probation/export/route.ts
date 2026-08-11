@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser, getUserPermissionSet, permissionSetHas } from "@/lib/auth";
-import { getProbationMonitoring, probationDateSummary } from "@/lib/probation-data";
+import { getProbationMonitoringBatch, probationDateSummary } from "@/lib/probation-data";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
@@ -56,8 +56,9 @@ export async function GET() {
   ];
 
   const lines = [header.map(csvCell).join(",")];
+  const monitoringByProbation = await getProbationMonitoringBatch(probations);
   for (const probation of probations) {
-    const monitoring = await getProbationMonitoring(probation);
+    const monitoring = monitoringByProbation.get(probation.id)!;
     const dates = probationDateSummary(probation.currentExpectedEndDate);
     lines.push([
       probation.member.name,

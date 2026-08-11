@@ -6,7 +6,7 @@ const globalForPrisma = globalThis as unknown as {
   prismaSchemaVersion?: string;
 };
 
-const PRISMA_SCHEMA_VERSION = "2026-08-02-event-contributions";
+const PRISMA_SCHEMA_VERSION = "2026-08-11-playlist-performance-details";
 
 function databaseUrl() {
   const value = process.env.DATABASE_URL;
@@ -23,9 +23,17 @@ function databaseUrl() {
   }
 }
 
+function databasePoolMax() {
+  const configured = Number(process.env.DATABASE_POOL_MAX ?? 2);
+  if (!Number.isInteger(configured)) return 2;
+  return Math.min(10, Math.max(1, configured));
+}
+
 const adapter = new PrismaPg({
   connectionString: databaseUrl(),
-  max: 5,
+  // A small pool avoids opening several expensive remote connections during
+  // the first authenticated request. The Neon endpoint already provides pooling.
+  max: databasePoolMax(),
   connectionTimeoutMillis: 30_000,
   idleTimeoutMillis: 60_000,
   keepAlive: true,

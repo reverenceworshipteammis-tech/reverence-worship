@@ -2,6 +2,7 @@ import { IntercessionClient } from "@/components/intercession-client";
 import { getUserPermissionSet, permissionSetHas, requireUser } from "@/lib/auth";
 import { memberCanViewScore, memberResultLabel, memberResultState } from "@/lib/intercession-result-rules";
 import { prisma } from "@/lib/prisma";
+import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
 
 function formatDate(date: Date) {
   return new Intl.DateTimeFormat("en", {
@@ -60,7 +61,7 @@ export default async function IntercessionPage({ searchParams }: { searchParams:
       orderBy: { createdAt: "desc" },
       include: {
         creator: { select: { name: true, email: true } },
-        submissions: { select: { id: true } },
+        _count: { select: { submissions: true } },
       },
     }) : Promise.resolve([]),
     canLoadForms ? prisma.formSubmission.findMany({
@@ -72,7 +73,7 @@ export default async function IntercessionPage({ searchParams }: { searchParams:
     }) : Promise.resolve([]),
     canLoadReports
       ? prisma.user.findMany({
-          where: { status: "active" },
+          where: { status: "active", ...excludeSuperAdminUserWhere() },
           orderBy: { name: "asc" },
           select: { id: true, name: true, email: true },
         })
@@ -100,6 +101,7 @@ export default async function IntercessionPage({ searchParams }: { searchParams:
       : Promise.resolve([]),
   ]);
 
+  const mySubmittedFormIds = new Set(mySubmissions.map((submission) => submission.formId));
   const serializedForms = forms.map((form) => {
     const settings = asObject(form.settings);
     const questions = asQuestions(form.questions);
@@ -115,10 +117,26 @@ export default async function IntercessionPage({ searchParams }: { searchParams:
       isActive: form.isActive,
       createdAt: formatDate(form.createdAt),
       createdBy: form.creator?.name ?? "Unknown",
-      submissionsCount: form.submissions.length,
-      hasSubmitted: mySubmissions.some((submission) => submission.formId === form.id),
+      submissionsCount: form._count.submissions,
+      hasSubmitted: mySubmittedFormIds.has(form.id),
     };
   });
+  const activePublishedFormIds = new Set(
+    serializedForms.filter((form) => form.isPublished && form.isActive).map((form) => form.id),
+  );
+  const submissionsByUser = new Map<number, Array<{
+    id: number;
+    formId: number;
+    userId: number | null;
+    score: number | null;
+    submittedAt: Date;
+  }>>();
+  for (const submission of allSubmissions) {
+    if (submission.userId === null) continue;
+    const existing = submissionsByUser.get(submission.userId);
+    if (existing) existing.push(submission);
+    else submissionsByUser.set(submission.userId, [submission]);
+  }
 
   return (
     <IntercessionClient
@@ -149,11 +167,11 @@ export default async function IntercessionPage({ searchParams }: { searchParams:
         };
       })}
       reportRows={users.map((reportUser) => {
-        const totalForms = serializedForms.filter((form) => form.isPublished && form.isActive).length;
-        const submitted = allSubmissions.filter((submission) => submission.userId === reportUser.id);
+        const totalForms = activePublishedFormIds.size;
+        const submitted = submissionsByUser.get(reportUser.id) ?? [];
         const submittedPublishedCount = new Set(
           submitted
-            .filter((submission) => serializedForms.some((form) => form.id === submission.formId && form.isPublished && form.isActive))
+            .filter((submission) => activePublishedFormIds.has(submission.formId))
             .map((submission) => submission.formId),
         ).size;
         const participation = totalForms ? Math.round((submittedPublishedCount / totalForms) * 1000) / 10 : 0;

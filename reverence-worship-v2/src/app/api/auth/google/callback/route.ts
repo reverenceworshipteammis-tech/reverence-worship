@@ -116,7 +116,7 @@ export async function GET(request: NextRequest) {
     if (!user) return loginRedirect(request, "Google sign-in failed.");
     if (user.status !== "active") return loginRedirect(request, "Your account is not active yet.");
 
-    await createSession(user.id);
+    await createSession(user.id, { sessionVersion: user.sessionVersion });
     const response = NextResponse.redirect(new URL(needsGoogleProfileCompletion(user) ? "/complete-profile" : "/admin/dashboard", request.nextUrl.origin));
     response.cookies.delete(GOOGLE_OAUTH_STATE_COOKIE);
     return response;

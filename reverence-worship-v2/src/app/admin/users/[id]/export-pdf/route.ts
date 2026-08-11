@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { requirePermission } from "@/lib/auth";
 import { createSimplePdf, type PdfTextLine } from "@/lib/simple-pdf";
 import { prisma } from "@/lib/prisma";
+import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -11,8 +12,8 @@ export async function GET(_request: NextRequest, context: RouteContext) {
   await requirePermission("users", "export", "/admin/users");
 
   const { id } = await context.params;
-  const user = await prisma.user.findUnique({
-    where: { id: Number(id) },
+  const user = await prisma.user.findFirst({
+    where: { id: Number(id), ...excludeSuperAdminUserWhere() },
     include: { roles: { include: { role: true } } },
   });
 

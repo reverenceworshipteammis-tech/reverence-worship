@@ -2,6 +2,7 @@ import "server-only";
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { cache } from "react";
 import jwt from "jsonwebtoken";
 import { prisma } from "@/lib/prisma";
 import { normalizeSessionLifetimeMinutes } from "@/lib/session-policy";
@@ -28,10 +29,12 @@ function authSecret() {
   return secret;
 }
 
-export async function createSession(userId: number) {
+export async function createSession(userId: number, knownActiveUser?: { sessionVersion: number }) {
   const [sessionLifetimeSetting, user] = await Promise.all([
     getSystemSetting("session_lifetime"),
-    prisma.user.findUnique({ where: { id: userId }, select: { status: true, sessionVersion: true } }),
+    knownActiveUser
+      ? Promise.resolve({ status: "active", sessionVersion: knownActiveUser.sessionVersion })
+      : prisma.user.findUnique({ where: { id: userId }, select: { status: true, sessionVersion: true } }),
   ]);
   if (!user || user.status !== "active") {
     throw new Error("Only an active account can start a session.");
@@ -67,7 +70,7 @@ export function verifySessionToken(token: string) {
   }
 }
 
-export async function getCurrentUser() {
+export const getCurrentUser = cache(async () => {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
 
@@ -95,7 +98,7 @@ export async function getCurrentUser() {
       },
     },
   });
-}
+});
 
 export async function requireUser() {
   const user = await getCurrentUser();
@@ -155,38 +158,52 @@ export async function requireAdminUser() {
   return user;
 }
 
-export async function getUserPermissionSet(user: Awaited<ReturnType<typeof requireUser>>) {
-  const roleNames = user.roles.map((userRole) => userRole.role.name);
+const getParentAssociation = cache(async (userId: number) => {
+  const rows = await prisma.$queryRaw<Array<{ isParent: boolean }>>`
+    SELECT (
+      EXISTS(
+        SELECT 1 FROM "family_members"
+        WHERE "user_id" = ${userId} AND LOWER("role") = 'parent'
+      ) OR EXISTS(
+        SELECT 1 FROM "families" WHERE "parent_id" = ${userId}
+      )
+    ) AS "isParent"
+  `;
+  return rows[0]?.isParent ?? false;
+});
 
-  if (roleNames.includes("super-admin")) {
-    return new Set<PermissionKey>(["*"]);
-  }
+const getPermissionKeys = cache(async (userId: number, roleIdsKey: string, isSuperAdmin: boolean) => {
+  if (isSuperAdmin) return ["*"] satisfies PermissionKey[];
 
-  const roleIds = user.roles.map((userRole) => userRole.roleId);
-  if (roleIds.length === 0) return new Set<PermissionKey>();
-
-  const permissions = await prisma.rolePageFeature.findMany({
-    where: { roleId: { in: roleIds } },
-    include: {
-      page: { select: { name: true } },
-      feature: { select: { name: true } },
-    },
-  });
+  const roleIds = roleIdsKey.split(",").map(Number).filter((roleId) => Number.isInteger(roleId) && roleId > 0);
+  const permissions = roleIds.length > 0
+    ? await prisma.rolePageFeature.findMany({
+        where: { roleId: { in: roleIds } },
+        include: {
+          page: { select: { name: true } },
+          feature: { select: { name: true } },
+        },
+      })
+    : [];
 
   const permissionSet = new Set<PermissionKey>(
     permissions.map((permission) => `${permission.page.name}.${permission.feature.name}` as PermissionKey),
   );
 
-  const [parentMembership, parentFamily] = await Promise.all([
-    prisma.familyMember.findFirst({
-      where: { userId: user.id, role: { equals: "parent", mode: "insensitive" } },
-      select: { id: true },
-    }),
-    prisma.family.findFirst({ where: { parentId: user.id }, select: { id: true } }),
-  ]);
-  if (parentMembership || parentFamily) permissionSet.add("parent.view");
+  if (await getParentAssociation(userId)) permissionSet.add("parent.view");
 
-  return permissionSet;
+  return Array.from(permissionSet);
+});
+
+export async function getUserPermissionSet(user: Awaited<ReturnType<typeof requireUser>>) {
+  const roleNames = user.roles.map((userRole) => userRole.role.name);
+  const roleIdsKey = user.roles.map((userRole) => userRole.roleId).sort((a, b) => a - b).join(",");
+  const keys = await getPermissionKeys(user.id, roleIdsKey, roleNames.includes("super-admin"));
+  return new Set<PermissionKey>(keys);
+}
+
+export async function isUserParent(userId: number) {
+  return getParentAssociation(userId);
 }
 
 export function permissionSetHas(permissions: Set<PermissionKey>, page: string, feature: string) {

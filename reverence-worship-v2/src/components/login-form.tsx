@@ -8,7 +8,7 @@ import { loginAction } from "@/app/auth-actions";
 import { AuthFormButton } from "@/components/auth-form-button";
 import { PasswordField } from "@/components/password-field";
 
-export function LoginForm({ registrationEnabled = true, externalError }: { registrationEnabled?: boolean; externalError?: string }) {
+export function LoginForm({ externalError }: { externalError?: string }) {
   const [state, formAction] = useActionState(loginAction, {});
 
   return (
@@ -117,14 +117,6 @@ export function LoginForm({ registrationEnabled = true, externalError }: { regis
         Continue with Google
       </Link>
 
-      {registrationEnabled ? (
-        <p className="mt-4 text-center text-[0.82rem] text-gray-500">
-          Need an account?{" "}
-          <Link href="/register" className="auth-link font-semibold">
-            Create one
-          </Link>
-        </p>
-      ) : null}
     </form>
   );
 }

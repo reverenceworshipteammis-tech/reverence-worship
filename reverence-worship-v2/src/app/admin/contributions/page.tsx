@@ -3,6 +3,8 @@ import { canMemberCommitAnnualContribution } from "@/lib/annual-contribution-rul
 import { getUserPermissionSet, permissionSetHas, requirePageAccess } from "@/lib/auth";
 import { calculateContributionRate, calculateContributionTermTarget } from "@/lib/finance-rules";
 import { prisma } from "@/lib/prisma";
+import { hasSuperAdminRole } from "@/lib/system-account-rules";
+import { redirect } from "next/navigation";
 
 type ContributionsPageProps = {
   searchParams: Promise<{ year?: string }>;
@@ -63,6 +65,7 @@ function defaultPercentages(termNumbers: number[]) {
 
 export default async function MyContributionsPage({ searchParams }: ContributionsPageProps) {
   const user = await requirePageAccess("contributions");
+  if (hasSuperAdminRole(user.roles.map(({ role }) => role.name))) redirect("/admin/dashboard");
   const permissions = await getUserPermissionSet(user);
   const params = await searchParams;
   const currentYear = new Date().getFullYear();

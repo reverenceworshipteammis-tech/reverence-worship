@@ -17,10 +17,7 @@ import {
   MAX_SESSION_LIFETIME_MINUTES,
   MIN_SESSION_LIFETIME_MINUTES,
 } from "@/lib/session-policy";
-import {
-  MAX_NOTIFICATION_RETENTION_DAYS,
-  MIN_NOTIFICATION_RETENTION_DAYS,
-} from "@/lib/notification-retention-policy";
+import { NOTIFICATION_LIFETIME_DAYS, READ_NOTIFICATION_RETENTION_DAYS } from "@/lib/notification-retention-policy";
 
 export type SettingsValues = {
   registrationEnabled: boolean;
@@ -38,7 +35,6 @@ export type SettingsValues = {
     taskEnabled: boolean;
     financeEnabled: boolean;
     systemEnabled: boolean;
-    retentionDays: number;
   };
   emailInfrastructure: {
     configured: boolean;
@@ -255,17 +251,10 @@ export function SettingsClient({ values }: { values: SettingsValues }) {
                   </div>
                 </div>
                 <div className="rounded-xl border border-gray-200 bg-white p-4">
-                  <Field label="Read notification retention (days)" note="Read notifications older than this are deleted automatically. Expired announcements are archived separately.">
-                    <input
-                      name="notification_retention_days"
-                      type="number"
-                      min={MIN_NOTIFICATION_RETENTION_DAYS}
-                      max={MAX_NOTIFICATION_RETENTION_DAYS}
-                      required
-                      defaultValue={values.notifications.retentionDays}
-                      className={inputClass}
-                    />
-                  </Field>
+                  <p className="text-sm font-semibold text-gray-800">Automatic notification cleanup</p>
+                  <p className="mt-1 text-sm leading-6 text-gray-500">
+                    Notifications are available for up to {NOTIFICATION_LIFETIME_DAYS} days. Read notifications are deleted after {READ_NOTIFICATION_RETENTION_DAYS} days, and alerts tied to completed or deleted items are cleared automatically.
+                  </p>
                 </div>
               </div>
               <ImpactCard

@@ -537,6 +537,10 @@ export async function importUsersCsvAction(
       email: true,
       googleId: true,
       passwordHash: true,
+      roles: {
+        where: { role: { name: "super-admin" } },
+        select: { roleId: true },
+      },
       probations: { select: { id: true }, take: 1 },
     },
   });
@@ -546,6 +550,11 @@ export async function importUsersCsvAction(
   for (const row of uniqueRows) {
     const existing = existingByEmail.get(row.email);
     if (!existing) continue;
+    if (existing.roles.length) {
+      skipped += 1;
+      failures.push(`${row.email}: Super Admin is a protected system account and cannot be imported as a normal user`);
+      continue;
+    }
     if (existing.probations.length) {
       skipped += 1;
       failures.push(`${row.email}: this account has probation history and must be updated through the probation workflow`);
@@ -629,6 +638,10 @@ export async function runUserTableAction(formData: FormData) {
 
   if (!Number.isFinite(userId)) {
     return { ok: false, message: "Invalid user." };
+  }
+
+  if (await isSuperAdminUser(userId)) {
+    return { ok: false, message: "Super Admin is a protected system account and cannot be managed as a normal user." };
   }
 
   const affectedUser = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, email: true, status: true } });
@@ -743,6 +756,10 @@ export async function updateUserAction(
 
   if (!parsed.success) {
     return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid user details." };
+  }
+
+  if (await isSuperAdminUser(parsed.data.userId)) {
+    return { ok: false, message: "Super Admin is a protected system account and cannot be edited from User Management." };
   }
 
   const currentUser = await prisma.user.findUnique({ where: { id: parsed.data.userId }, select: { email: true, status: true } });
@@ -860,11 +877,12 @@ export async function updateUserRolesAction(
   if (!Number.isFinite(userId)) {
     return { ok: false, message: "Invalid user." };
   }
-  const roleIds = await roleIdsPreservingProbation(userId, selectedRoleIds);
 
   if (await isSuperAdminUser(userId)) {
     return { ok: false, message: "Super Admin is internal and cannot be changed from roles." };
   }
+
+  const roleIds = await roleIdsPreservingProbation(userId, selectedRoleIds);
 
   await prisma.userRole.deleteMany({ where: { userId } });
 

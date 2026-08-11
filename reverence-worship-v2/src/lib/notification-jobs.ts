@@ -3,6 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { notifySuperAdmins, notifyUsers, processPendingEmailDeliveries, reconcilePendingPermissionNotifications, userIdsForAnnouncement, userIdsWithPermission } from "@/lib/notifications";
 import { maintainNotificationArchive } from "@/lib/notification-maintenance";
+import { reconcileNotificationSources } from "@/lib/notification-source-validity";
 
 function dayBounds(offsetDays = 0) {
   const start = new Date();
@@ -29,8 +30,10 @@ export async function runScheduledNotificationJobs() {
     familyReminders: 0,
     systemAlerts: 0,
     announcementsArchived: maintenance.archivedAnnouncements,
-    readNotificationsDeleted: maintenance.deletedNotifications,
+    notificationsDeleted: maintenance.deletedNotifications,
+    staleNotificationsDeleted: 0,
   };
+  results.staleNotificationsDeleted = (await reconcileNotificationSources()).deleted;
   results.emailsProcessed = await processPendingEmailDeliveries();
   results.permissionRequestsChecked = (await reconcilePendingPermissionNotifications()).requests;
 

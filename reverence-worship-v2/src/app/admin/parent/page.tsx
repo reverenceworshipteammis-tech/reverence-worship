@@ -19,14 +19,15 @@ export default async function ParentDashboardPage() {
   const user = await requirePageAccess("parent");
   const currentYear = new Date().getFullYear();
 
-  const parentMembership = await prisma.familyMember.findFirst({
-    where: { userId: user.id, role: { equals: "parent", mode: "insensitive" } },
-    include: { family: true },
-  });
+  const [parentMembership, directlyManagedFamily] = await Promise.all([
+    prisma.familyMember.findFirst({
+      where: { userId: user.id, role: { equals: "parent", mode: "insensitive" } },
+      include: { family: true },
+    }),
+    prisma.family.findFirst({ where: { parentId: user.id } }),
+  ]);
 
-  const parentFamily =
-    parentMembership?.family ??
-    (await prisma.family.findFirst({ where: { parentId: user.id } }));
+  const parentFamily = parentMembership?.family ?? directlyManagedFamily;
 
   if (!parentFamily) {
     return (

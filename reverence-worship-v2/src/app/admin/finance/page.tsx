@@ -1,6 +1,7 @@
 import { getUserPermissionSet, permissionSetHas, requirePageAccess } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { FinanceClient } from "@/components/finance-client";
+import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
 
 function money(value: unknown) {
   return Number(value ?? 0);
@@ -68,7 +69,7 @@ export default async function FinancePage() {
   const [users, families, contributions, payments, contributionEvents, gifts, expenses, sponsors, actionPlans, termSettings] = await Promise.all([
     safeRead(
       prisma.user.findMany({
-        where: { status: "active" },
+        where: { status: "active", ...excludeSuperAdminUserWhere() },
         orderBy: { name: "asc" },
         select: {
           id: true,

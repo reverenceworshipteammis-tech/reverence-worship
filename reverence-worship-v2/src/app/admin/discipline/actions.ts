@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getUserPermissionSet, permissionSetHas, requirePermission } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
 import { notifyUsers, userIdsWithPermission } from "@/lib/notifications";
 import {
   PERMISSION_REQUEST_APPROVED_MESSAGE,
@@ -226,10 +227,14 @@ async function writeAttendanceSession(formData: FormData, complete: boolean) {
   }
 
   const sessionDate = dateOnly(sessionDateValue);
+  const requestedAttendanceUserIds = [...new Set(records.map((record) => Number(record.userId)))];
   const attendanceUsers = await prisma.user.findMany({
-    where: { id: { in: records.map((record) => Number(record.userId)) } },
+    where: { id: { in: requestedAttendanceUserIds }, ...excludeSuperAdminUserWhere() },
     select: { id: true, createdAt: true, membershipType: true },
   });
+  if (attendanceUsers.length !== requestedAttendanceUserIds.length) {
+    return { ok: false, message: "Attendance can include normal member accounts only. Super Admin is a protected system account." };
+  }
   const ineligibleUserIds = attendanceUsers
     .filter((attendanceUser) => attendanceUser.createdAt.toISOString().slice(0, 10) > sessionDateValue)
     .map((attendanceUser) => attendanceUser.id);
@@ -420,7 +425,10 @@ export async function importAttendanceCsv(formData: FormData) {
   }
   let users: Array<{ id: number; email: string; createdAt: Date; membershipType: string | null }>;
   try {
-    users = await prisma.user.findMany({ select: { id: true, email: true, createdAt: true, membershipType: true } });
+    users = await prisma.user.findMany({
+      where: excludeSuperAdminUserWhere(),
+      select: { id: true, email: true, createdAt: true, membershipType: true },
+    });
   } catch (error) {
     return { ok: false, message: attendanceImportDatabaseFailure(error) };
   }
@@ -649,7 +657,10 @@ export async function importPermissionRequestsCsv(formData: FormData) {
   }
   if (sourceRows.length > 10_000) return { ok: false, message: "Import no more than 10,000 permission rows at once." };
 
-  const users = await prisma.user.findMany({ select: { id: true, email: true } });
+  const users = await prisma.user.findMany({
+    where: excludeSuperAdminUserWhere(),
+    select: { id: true, email: true },
+  });
   const usersByEmail = new Map(users.map((user) => [user.email.trim().toLowerCase(), user]));
   const failures: string[] = [];
   const parsed = new Map<string, ImportedPermissionRequest>();
@@ -836,15 +847,24 @@ export async function savePermissionRequest(formData: FormData) {
 export async function approvePermissionRequest(id: number) {
   const user = await requirePermission("discipline", "approve-permission-requests");
 
-  const request = await prisma.permissionRequest.update({
-    where: { id },
-    data: {
-      status: "approved",
-      approvedBy: user.id,
-      approvedAt: new Date(),
-      rejectionReason: null,
-    },
+  const request = await prisma.$transaction(async (tx) => {
+    const updated = await tx.permissionRequest.updateMany({
+      where: { id, status: "pending" },
+      data: {
+        status: "approved",
+        approvedBy: user.id,
+        approvedAt: new Date(),
+        rejectionReason: null,
+      },
+    });
+    if (updated.count !== 1) return null;
+    await tx.notification.deleteMany({
+      where: { sourceType: "permission_request", sourceId: id, dedupeKey: { startsWith: `permission:${id}:submitted:` } },
+    });
+    return tx.permissionRequest.findUnique({ where: { id } });
   });
+
+  if (!request) return { ok: false, message: "This permission request is no longer pending." };
 
   await notifyUsers({ userIds: [request.userId], type: "permission", title: "Permission request approved", message: PERMISSION_REQUEST_APPROVED_MESSAGE, link: "/admin/discipline", sourceType: "permission_request", sourceId: request.id, dedupeKey: `permission:${request.id}:approved` });
   await prisma.activityLog.create({
@@ -883,6 +903,9 @@ export async function rejectPermissionRequest(id: number, reason: string) {
     return { ok: false, message: "This permission request is no longer pending." };
   }
 
+  await prisma.notification.deleteMany({
+    where: { sourceType: "permission_request", sourceId: id, dedupeKey: { startsWith: `permission:${id}:submitted:` } },
+  });
   const request = await prisma.permissionRequest.findUnique({ where: { id }, select: { userId: true } });
   if (request) await notifyUsers({ userIds: [request.userId], type: "permission", title: "Permission request rejected", message: permissionRequestRejectedMessage(rejectionReason), link: "/admin/discipline", sourceType: "permission_request", sourceId: id, dedupeKey: `permission:${id}:rejected` });
   await prisma.activityLog.create({
@@ -902,9 +925,10 @@ export async function rejectPermissionRequest(id: number, reason: string) {
 export async function deletePermissionRequest(id: number) {
   const user = await requirePermission("discipline", "delete-permission-requests");
 
-  await prisma.permissionRequest.delete({
-    where: { id },
-  });
+  await prisma.$transaction([
+    prisma.notification.deleteMany({ where: { sourceType: "permission_request", sourceId: id } }),
+    prisma.permissionRequest.delete({ where: { id } }),
+  ]);
   await prisma.activityLog.create({
     data: {
       userId: user.id,
