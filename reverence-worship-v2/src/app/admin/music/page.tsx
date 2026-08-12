@@ -56,7 +56,7 @@ export default async function MusicPage() {
         },
       },
     }),
-    prisma.song.findMany({
+    canManage ? prisma.song.findMany({
       orderBy: { title: "asc" },
       select: {
         id: true,
@@ -66,7 +66,7 @@ export default async function MusicPage() {
         lyrics: true,
         youtubeLink: true,
       },
-    }),
+    }) : Promise.resolve([]),
     canManage ? prisma.photoGallery.findMany({
       orderBy: { createdAt: "desc" },
     }) : Promise.resolve([]),

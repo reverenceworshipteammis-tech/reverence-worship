@@ -24,6 +24,7 @@ import {
   CircleOff,
   ClipboardList,
   Download,
+  ExternalLink,
   FileText,
   FileUp,
   GalleryHorizontal,
@@ -44,7 +45,6 @@ import {
   X,
 } from "lucide-react";
 import {
-  addSongToPlaylist,
   createPlaylist,
   createSong,
   deleteBoardItem,
@@ -255,6 +255,9 @@ const tabs = [
   { id: "actionPlan", label: "Action Plans", mobileLabel: "Plans", icon: FileText },
 ];
 
+const PLAYLISTS_PER_PAGE = 5;
+const SONGS_PER_PAGE = 5;
+
 const boardTabs = [
   { id: "youtube", label: "Video", mobileLabel: "Video", icon: Music },
   { id: "featured", label: "Image", mobileLabel: "Image", icon: ImageIcon },
@@ -311,73 +314,6 @@ function PlanDetail({ label, value }: { label: string; value: number | string })
   );
 }
 
-function InlineDropdown({
-  name,
-  placeholder,
-  options,
-  tone = "blue",
-  value,
-  onValueChange,
-  disabled = false,
-}: {
-  name: string;
-  placeholder: string;
-  options: { value: string; label: string }[];
-  tone?: "blue" | "green";
-  value?: string;
-  onValueChange?: (value: string) => void;
-  disabled?: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const [internalValue, setInternalValue] = useState("");
-  const selectedValue = value ?? internalValue;
-  const selected = options.find((option) => option.value === selectedValue);
-  const focusClass = tone === "green" ? "focus:ring-green-500" : "focus:ring-blue-500";
-  const activeClass = tone === "green" ? "hover:bg-green-50" : "hover:bg-blue-50";
-
-  function selectValue(nextValue: string) {
-    if (value === undefined) setInternalValue(nextValue);
-    onValueChange?.(nextValue);
-    setOpen(false);
-  }
-
-  return (
-    <div className="relative min-w-0 flex-1">
-      <input type="hidden" name={name} value={selectedValue} />
-      <button
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        disabled={disabled}
-        className={`flex h-10 w-full items-center justify-between gap-2 rounded-lg border border-gray-300 bg-white px-3 text-left text-sm text-gray-700 outline-none transition disabled:cursor-not-allowed disabled:bg-gray-100 ${focusClass} sm:rounded-xl`}
-      >
-        <span className={`truncate ${selected ? "text-gray-800" : "text-gray-400"}`}>{selected?.label ?? placeholder}</span>
-        <ChevronRight className={`size-4 shrink-0 text-gray-400 transition ${open ? "rotate-90" : ""}`} aria-hidden />
-      </button>
-      {open ? (
-        <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white py-1 shadow-xl">
-          <button
-            type="button"
-            onClick={() => selectValue("")}
-            className={`block w-full px-3 py-2 text-left text-sm text-gray-400 ${activeClass}`}
-          >
-            {placeholder}
-          </button>
-          {options.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => selectValue(option.value)}
-              className={`block w-full px-3 py-2 text-left text-sm text-gray-700 ${activeClass} ${option.value === selectedValue ? "font-semibold" : ""}`}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 function actionPlanStatusBadge(status: string) {
   if (status === "completed") return "bg-green-100 text-green-700";
   if (status === "in_progress") return "bg-blue-100 text-blue-700";
@@ -386,6 +322,17 @@ function actionPlanStatusBadge(status: string) {
 
 function formatCurrency(value: number) {
   return `RWF ${value.toLocaleString()}`;
+}
+
+function safeExternalUrl(value: string | null | undefined) {
+  if (!value) return null;
+
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
 function MusicNoticeBanner({ notice, onClose }: { notice: MusicNotice; onClose: () => void }) {
@@ -1064,10 +1011,6 @@ function playlistSongs(playlist: Playlist) {
   return playlist.sessions.flatMap((session) => session.songs);
 }
 
-function playlistUniqueSongCount(playlist: Playlist) {
-  return new Set(playlistSongs(playlist).map((song) => song.id)).size;
-}
-
 async function downloadPlaylistImage(playlist: Playlist) {
   const width = 1080;
   const serviceGroups = groupPlaylistSessionsByService(playlist.serviceCount, playlist.sessions).map((service) => ({
@@ -1257,11 +1200,12 @@ export function MusicClient({
 }: MusicClientProps) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("playlist");
+  const [libraryTab, setLibraryTab] = useState<"playlists" | "songs">("playlists");
   const [boardTab, setBoardTab] = useState<"youtube" | "featured" | "events">("youtube");
   const [playlistSearch, setPlaylistSearch] = useState("");
+  const [playlistPage, setPlaylistPage] = useState(1);
   const [songSearch, setSongSearch] = useState("");
-  const [quickAddPlaylistId, setQuickAddPlaylistId] = useState("");
-  const [quickAddSessionId, setQuickAddSessionId] = useState("");
+  const [songPage, setSongPage] = useState(1);
   const [gallerySearch, setGallerySearch] = useState("");
   const [gallerySort, setGallerySort] = useState("newest");
   const [singerSearch, setSingerSearch] = useState("");
@@ -1287,7 +1231,6 @@ export function MusicClient({
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [isPending, startTransition] = useTransition();
   const visibleTabs = canManage ? tabs : tabs.filter((tab) => tab.id === "playlist");
-  const quickAddPlaylist = playlists.find((playlist) => String(playlist.id) === quickAddPlaylistId) ?? null;
 
   const filteredPlaylists = useMemo(() => {
     const query = playlistSearch.trim().toLowerCase();
@@ -1304,6 +1247,10 @@ export function MusicClient({
         .some((value) => value!.toLowerCase().includes(query)),
     );
   }, [playlistSearch, playlists]);
+  const playlistPageCount = Math.max(1, Math.ceil(filteredPlaylists.length / PLAYLISTS_PER_PAGE));
+  const currentPlaylistPage = Math.min(playlistPage, playlistPageCount);
+  const playlistPageStart = (currentPlaylistPage - 1) * PLAYLISTS_PER_PAGE;
+  const visiblePlaylists = filteredPlaylists.slice(playlistPageStart, playlistPageStart + PLAYLISTS_PER_PAGE);
 
   const filteredSongs = useMemo(() => {
     const query = songSearch.trim().toLowerCase();
@@ -1315,6 +1262,10 @@ export function MusicClient({
         .some((value) => value!.toLowerCase().includes(query)),
     );
   }, [songSearch, songs]);
+  const songPageCount = Math.max(1, Math.ceil(filteredSongs.length / SONGS_PER_PAGE));
+  const currentSongPage = Math.min(songPage, songPageCount);
+  const songPageStart = (currentSongPage - 1) * SONGS_PER_PAGE;
+  const visibleSongs = filteredSongs.slice(songPageStart, songPageStart + SONGS_PER_PAGE);
 
   const filteredGallery = useMemo(() => {
     const query = gallerySearch.trim().toLowerCase();
@@ -1464,12 +1415,6 @@ export function MusicClient({
     );
   }
 
-  function submitAddToPlaylist(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    runAction(() => addSongToPlaylist(formData));
-  }
-
   function submitUploadGallery(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
@@ -1576,6 +1521,7 @@ export function MusicClient({
   }
 
   const lightboxPhoto = lightboxIndex === null ? null : filteredGallery[lightboxIndex];
+  const lyricsYoutubeUrl = safeExternalUrl(lyricsSong?.youtubeLink);
 
   return (
     <div className="mx-auto max-w-7xl px-2 sm:px-4">
@@ -2011,86 +1957,82 @@ export function MusicClient({
         </div>
       ) : (
         <div className="rounded-xl border border-gray-100 bg-white p-2 shadow-sm sm:rounded-2xl sm:p-6">
-          {canManage && <form onSubmit={submitAddToPlaylist} className="mb-4 rounded-xl border border-blue-100 bg-blue-50 p-3 sm:mb-6 sm:rounded-2xl sm:p-4">
-            <h4 className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700 sm:mb-3 sm:text-base">
-              <Plus className="size-4 text-blue-600" aria-hidden />
-              Add Song to Playlist Session
-            </h4>
-            <div className="grid grid-cols-1 gap-2 sm:flex sm:gap-3">
-              <InlineDropdown
-                name="playlistId"
-                placeholder="Select Playlist"
-                value={quickAddPlaylistId}
-                onValueChange={(value) => {
-                  setQuickAddPlaylistId(value);
-                  setQuickAddSessionId("");
-                }}
-                options={playlists.map((playlist) => ({ value: String(playlist.id), label: `${playlist.title} (${playlist.serviceCount} ${playlist.serviceCount === 1 ? "service" : "services"})` }))}
-              />
-              <InlineDropdown
-                name="songId"
-                placeholder="Select Song"
-                options={songs.map((song) => ({ value: String(song.id), label: song.title }))}
-              />
-              <InlineDropdown
-                name="sessionId"
-                placeholder="Assign to Session"
-                value={quickAddSessionId}
-                onValueChange={setQuickAddSessionId}
-                disabled={!quickAddPlaylist}
-                options={quickAddPlaylist?.sessions.map((session) => ({
-                  value: String(session.id),
-                  label: `${playlistServiceLabel(session.serviceNumber)} — ${session.name.trim() || "No heading"}`,
-                })) ?? []}
-              />
-              <button disabled={isPending} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60 sm:rounded-xl" type="submit">
-                <Plus className="size-4" aria-hidden />
-                Add
-              </button>
-            </div>
-          </form>}
-
-          <div className="flex flex-col gap-4 lg:flex-row lg:gap-5">
-            <section className="lg:w-1/2">
-              <div className="mb-2 flex items-center justify-between gap-2 border-b pb-2 sm:mb-3">
-                <h4 className="min-w-0 text-sm font-semibold text-gray-700 sm:text-base">
-                  <List className="mr-2 inline size-4 text-blue-600" aria-hidden />
-                  <span>Playlists</span> <span className="ml-1 text-xs text-gray-400">({filteredPlaylists.length}/{playlists.length})</span>
-                </h4>
-                {canManage && <button type="button" onClick={() => { setPlaylistNotice(null); setModal("playlist"); }} className="inline-flex h-9 shrink-0 items-center justify-center gap-1 rounded-lg bg-blue-600 px-2.5 text-xs font-semibold text-white hover:bg-blue-700 sm:rounded-xl sm:px-3">
+          {canManage ? (
+            <div className="mb-4 flex flex-col gap-3 border-b border-gray-200 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex" role="tablist" aria-label="Playlist library sections">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={libraryTab === "playlists"}
+                  onClick={() => setLibraryTab("playlists")}
+                  className={`inline-flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition sm:text-base ${libraryTab === "playlists" ? "border-blue-600 text-blue-700" : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-800"}`}
+                >
+                  <List className="size-4" aria-hidden />
+                  Playlists
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={libraryTab === "songs"}
+                  onClick={() => setLibraryTab("songs")}
+                  className={`inline-flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition sm:text-base ${libraryTab === "songs" ? "border-blue-600 text-blue-700" : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-800"}`}
+                >
+                  <Music className="size-4" aria-hidden />
+                  Songs
+                </button>
+              </div>
+              {libraryTab === "playlists" ? (
+                <button type="button" onClick={() => { setPlaylistNotice(null); setModal("playlist"); }} className="mb-3 inline-flex h-9 w-fit shrink-0 items-center justify-center gap-1 self-end rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white hover:bg-blue-700 sm:self-auto sm:rounded-xl">
                   <Plus className="size-4" aria-hidden />
                   <span>New</span>
-                </button>}
-              </div>
+                </button>
+              ) : (
+                <button type="button" onClick={() => setModal("song")} className="mb-3 inline-flex h-9 w-fit shrink-0 items-center justify-center gap-1 self-end rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white hover:bg-blue-700 sm:self-auto sm:rounded-xl">
+                  <Plus className="size-4" aria-hidden />
+                  <span>Add</span>
+                </button>
+              )}
+            </div>
+          ) : null}
+          <div className="flex flex-col gap-4 lg:flex-row lg:gap-5">
+            {!canManage || libraryTab === "playlists" ? <section className="w-full">
+              {!canManage ? <div className="mb-2 flex items-center justify-between gap-2 border-b pb-2 sm:mb-3">
+                <h4 className="min-w-0 text-sm font-semibold text-gray-700 sm:text-base">
+                  <List className="mr-2 inline size-4 text-blue-600" aria-hidden />
+                  <span>Playlists</span>
+                </h4>
+              </div> : null}
               <div className="relative mb-2 sm:mb-3">
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" aria-hidden />
-                <input value={playlistSearch} onChange={(event) => setPlaylistSearch(event.target.value)} placeholder="Search playlists..." className="h-10 w-full rounded-lg border border-gray-300 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 sm:rounded-xl" />
+                <input value={playlistSearch} onChange={(event) => { setPlaylistSearch(event.target.value); setPlaylistPage(1); }} placeholder="Search playlists..." className="h-10 w-full rounded-lg border border-gray-300 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 sm:rounded-xl" />
               </div>
               <div className="space-y-2 sm:max-h-[500px] sm:overflow-y-auto sm:pr-1">
-                {filteredPlaylists.length > 0 ? filteredPlaylists.map((playlist) => (
-                  <div key={playlist.id} className="rounded-xl border border-gray-200 p-2.5 transition hover:bg-gray-50 sm:rounded-2xl sm:p-3">
-                    <div className="flex items-start justify-between gap-3">
+                {filteredPlaylists.length > 0 ? visiblePlaylists.map((playlist) => (
+                  <div key={playlist.id} className="group relative rounded-xl border border-gray-200 p-2.5 transition hover:border-blue-300 hover:bg-blue-50/40 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-200 sm:rounded-2xl sm:p-3">
+                    <button
+                      type="button"
+                      onClick={() => setViewingPlaylist(playlist)}
+                      className="absolute inset-0 rounded-xl focus:outline-none sm:rounded-2xl"
+                      aria-label={`Open ${playlist.title} playlist`}
+                    />
+                    <div className="pointer-events-none relative z-10 flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <h5 className="truncate text-sm font-medium text-gray-800 sm:text-base">{playlist.title}</h5>
-                        <p className="text-xs text-gray-500">
-                          {playlist.serviceCount} {playlist.serviceCount === 1 ? "service" : "services"} · {playlist.sessions.length} sessions · {playlistUniqueSongCount(playlist)} songs
-                        </p>
                         {playlist.description ? <p className="mt-1 line-clamp-2 text-xs text-gray-400">{playlist.description}</p> : null}
                       </div>
-                      <div className="flex shrink-0 gap-2">
-                        <button type="button" onClick={() => setViewingPlaylist(playlist)} className="inline-flex size-9 items-center justify-center rounded-lg bg-green-50 text-green-600 hover:bg-green-100 hover:text-green-800 sm:size-auto sm:bg-transparent" title="View Songs"><FileText className="size-4" aria-hidden /></button>
+                      <div className="pointer-events-auto flex shrink-0 gap-2">
                         <button
                           type="button"
                           onClick={() => void handleDownloadPlaylist(playlist)}
                           disabled={downloadingPlaylistId === playlist.id}
-                          className="inline-flex size-9 items-center justify-center rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100 hover:text-amber-800 disabled:cursor-wait disabled:opacity-50 sm:size-auto sm:bg-transparent"
+                          className="inline-flex size-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-800 disabled:cursor-wait disabled:opacity-50 sm:size-auto sm:bg-transparent"
                           title="Download Playlist as Image"
                           aria-label={`Download ${playlist.title} as an image`}
                         >
                           <Download className="size-4" aria-hidden />
                         </button>
                         {canManage && <><button type="button" onClick={() => { setPlaylistNotice(null); setEditingPlaylist(playlist); }} className="inline-flex size-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-800 sm:size-auto sm:bg-transparent" title="Edit Playlist"><Pencil className="size-4" aria-hidden /></button>
-                        <button type="button" onClick={() => askConfirm({ title: "Delete Playlist", message: `Delete "${playlist.title}"? Songs will remain available, but this playlist will be removed.`, confirmLabel: "Delete Playlist", action: () => deletePlaylist(playlist.id) })} className="inline-flex size-9 items-center justify-center rounded-lg bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-800 sm:size-auto sm:bg-transparent" title="Delete Playlist"><Trash2 className="size-4" aria-hidden /></button></>}
+                        <button type="button" onClick={() => askConfirm({ title: "Delete Playlist", message: `Delete "${playlist.title}"? Songs will remain available, but this playlist will be removed.`, confirmLabel: "Delete Playlist", action: () => deletePlaylist(playlist.id) })} className="inline-flex size-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-800 sm:size-auto sm:bg-transparent" title="Delete Playlist"><Trash2 className="size-4" aria-hidden /></button></>}
                       </div>
                     </div>
                   </div>
@@ -2101,35 +2043,60 @@ export function MusicClient({
                   </div>
                 )}
               </div>
-            </section>
+              {filteredPlaylists.length > PLAYLISTS_PER_PAGE ? (
+                <div className="mt-3 flex flex-col gap-3 border-t border-gray-100 pt-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-gray-500">
+                    Showing {playlistPageStart + 1}–{Math.min(playlistPageStart + PLAYLISTS_PER_PAGE, filteredPlaylists.length)} of {filteredPlaylists.length}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPlaylistPage(Math.max(1, currentPlaylistPage - 1))}
+                      disabled={currentPlaylistPage === 1}
+                      className="inline-flex size-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:border-blue-200 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+                      aria-label="Previous playlists page"
+                    >
+                      <ChevronLeft className="size-4" aria-hidden="true" />
+                    </button>
+                    <span className="min-w-20 text-center font-medium text-gray-700">
+                      Page {currentPlaylistPage} of {playlistPageCount}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setPlaylistPage(Math.min(playlistPageCount, currentPlaylistPage + 1))}
+                      disabled={currentPlaylistPage === playlistPageCount}
+                      className="inline-flex size-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:border-blue-200 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+                      aria-label="Next playlists page"
+                    >
+                      <ChevronRight className="size-4" aria-hidden="true" />
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </section> : null}
 
-            <section className="lg:w-1/2">
-              <div className="mb-2 flex items-center justify-between gap-2 border-b pb-2 sm:mb-3">
-                <h4 className="min-w-0 text-sm font-semibold text-gray-700 sm:text-base">
-                  <Music className="mr-2 inline size-4 text-green-600" aria-hidden />
-                  <span>Songs</span> <span className="ml-1 text-xs text-gray-400">({filteredSongs.length}/{songs.length})</span>
-                </h4>
-                {canManage && <button type="button" onClick={() => setModal("song")} className="inline-flex h-9 shrink-0 items-center justify-center gap-1 rounded-lg bg-green-600 px-2.5 text-xs font-semibold text-white hover:bg-green-700 sm:rounded-xl sm:px-3">
-                  <Plus className="size-4" aria-hidden />
-                  <span>Add</span>
-                </button>}
-              </div>
+            {canManage && libraryTab === "songs" ? <section className="w-full">
               <div className="relative mb-2 sm:mb-3">
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" aria-hidden />
-                <input value={songSearch} onChange={(event) => setSongSearch(event.target.value)} placeholder="Search songs..." className="h-10 w-full rounded-lg border border-gray-300 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 sm:rounded-xl" />
+                <input value={songSearch} onChange={(event) => { setSongSearch(event.target.value); setSongPage(1); }} placeholder="Search songs..." className="h-10 w-full rounded-lg border border-gray-300 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 sm:rounded-xl" />
               </div>
               <div className="space-y-2 sm:max-h-[450px] sm:overflow-y-auto sm:pr-1">
-                {filteredSongs.length > 0 ? filteredSongs.map((song) => (
-                  <div key={song.id} className="rounded-xl border border-gray-200 p-2.5 transition hover:bg-gray-50 sm:rounded-2xl sm:p-3">
-                    <div className="flex items-start justify-between gap-3">
+                {filteredSongs.length > 0 ? visibleSongs.map((song) => (
+                  <div key={song.id} className="group relative rounded-xl border border-gray-200 p-2.5 transition hover:border-blue-300 hover:bg-blue-50/40 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-200 sm:rounded-2xl sm:p-3">
+                    <button
+                      type="button"
+                      onClick={() => setLyricsSong(song)}
+                      className="absolute inset-0 rounded-xl focus:outline-none sm:rounded-2xl"
+                      aria-label={`Open ${song.title} details`}
+                    />
+                    <div className="pointer-events-none relative z-10 flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <h5 className="truncate text-sm font-medium text-gray-800 sm:text-base">{song.title}</h5>
                         {song.artist ? <div className="mt-1 text-xs text-gray-500">{song.artist}</div> : null}
                       </div>
-                      <div className="flex shrink-0 gap-2">
-                        <button type="button" onClick={() => setLyricsSong(song)} className="inline-flex size-9 items-center justify-center rounded-lg bg-green-50 text-green-600 hover:bg-green-100 hover:text-green-800 sm:size-auto sm:bg-transparent" title="View Lyrics"><FileText className="size-4" aria-hidden /></button>
+                      <div className="pointer-events-auto flex shrink-0 gap-2">
                         {canManage && <><button type="button" onClick={() => setEditingSong(song)} className="inline-flex size-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-800 sm:size-auto sm:bg-transparent" title="Edit Song"><Pencil className="size-4" aria-hidden /></button>
-                        <button type="button" onClick={() => askConfirm({ title: "Delete Song", message: `Delete "${song.title}" from the music library?`, confirmLabel: "Delete Song", action: () => deleteSong(song.id) })} className="inline-flex size-9 items-center justify-center rounded-lg bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-800 sm:size-auto sm:bg-transparent" title="Delete Song"><Trash2 className="size-4" aria-hidden /></button></>}
+                        <button type="button" onClick={() => askConfirm({ title: "Delete Song", message: `Delete "${song.title}" from the music library?`, confirmLabel: "Delete Song", action: () => deleteSong(song.id) })} className="inline-flex size-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-800 sm:size-auto sm:bg-transparent" title="Delete Song"><Trash2 className="size-4" aria-hidden /></button></>}
                       </div>
                     </div>
                   </div>
@@ -2140,7 +2107,37 @@ export function MusicClient({
                   </div>
                 )}
               </div>
-            </section>
+              {filteredSongs.length > SONGS_PER_PAGE ? (
+                <div className="mt-3 flex flex-col gap-3 border-t border-gray-100 pt-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-gray-500">
+                    Showing {songPageStart + 1}–{Math.min(songPageStart + SONGS_PER_PAGE, filteredSongs.length)} of {filteredSongs.length}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSongPage(Math.max(1, currentSongPage - 1))}
+                      disabled={currentSongPage === 1}
+                      className="inline-flex size-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:border-blue-200 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+                      aria-label="Previous songs page"
+                    >
+                      <ChevronLeft className="size-4" aria-hidden="true" />
+                    </button>
+                    <span className="min-w-20 text-center font-medium text-gray-700">
+                      Page {currentSongPage} of {songPageCount}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setSongPage(Math.min(songPageCount, currentSongPage + 1))}
+                      disabled={currentSongPage === songPageCount}
+                      className="inline-flex size-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:border-blue-200 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+                      aria-label="Next songs page"
+                    >
+                      <ChevronRight className="size-4" aria-hidden="true" />
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </section> : null}
           </div>
         </div>
       )}
@@ -2623,13 +2620,19 @@ export function MusicClient({
                           {session.songs.length > 0 ? (
                             <div className="space-y-2">
                               {session.songs.map((song, index) => (
-                                <div key={`${session.id}-${song.id}`} className="rounded-xl border border-gray-200 p-3">
+                                <button
+                                  key={`${session.id}-${song.id}`}
+                                  type="button"
+                                  onClick={() => setLyricsSong(song)}
+                                  className="w-full rounded-xl border border-gray-200 p-3 text-left transition hover:border-blue-300 hover:bg-blue-50/60 focus-visible:border-blue-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+                                  aria-label={`View lyrics for ${song.title}`}
+                                >
                                   <div className="text-sm font-semibold text-gray-800">{index + 1}. {song.title}</div>
                                   <div className="mt-1 flex flex-wrap gap-2 text-xs text-gray-500">
                                     {song.keySignature ? <span>Key: {song.keySignature}</span> : null}
                                     {song.assignedSinger ? <span>Singer: {song.assignedSinger}</span> : null}
                                   </div>
-                                </div>
+                                </button>
                               ))}
                             </div>
                           ) : <div className="rounded-xl border border-dashed border-gray-200 px-4 py-5 text-center text-sm text-gray-400">No songs assigned</div>}
@@ -2686,9 +2689,22 @@ export function MusicClient({
         <Modal title={lyricsSong.title} onClose={() => setLyricsSong(null)}>
           <div className="p-5">
             <div className="max-h-[60vh] overflow-y-auto rounded-2xl border border-amber-100 bg-gradient-to-b from-amber-50/70 to-white p-5 shadow-sm">
-              <div className="mb-4 flex items-center gap-2 border-b border-amber-100 pb-3 text-amber-700">
-                <Music className="size-4" aria-hidden />
-                <h3 className="text-xs font-bold uppercase tracking-wider">Lyrics</h3>
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-amber-100 pb-3">
+                <div className="flex items-center gap-2 text-amber-700">
+                  <Music className="size-4" aria-hidden />
+                  <h3 className="text-xs font-bold uppercase tracking-wider">Lyrics</h3>
+                </div>
+                {lyricsYoutubeUrl ? (
+                  <a
+                    href={lyricsYoutubeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-700"
+                  >
+                    <ExternalLink className="size-3.5" aria-hidden />
+                    Watch on YouTube
+                  </a>
+                ) : null}
               </div>
               <p className="whitespace-pre-wrap text-[15px] leading-7 text-slate-800">
                 {lyricsSong.lyrics || "No lyrics available."}

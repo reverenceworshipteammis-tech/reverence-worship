@@ -3,7 +3,6 @@ import { cache, Suspense } from "react";
 import {
   BookOpen,
   CalendarClock,
-  Clock,
   FileText,
   HandCoins,
   Megaphone,
@@ -11,7 +10,6 @@ import {
   Shield,
   UserCheck,
   UserCog,
-  UserPlus,
   UserX,
   Users,
   TriangleAlert,
@@ -32,17 +30,6 @@ import {
   DashboardBulletinCarousel,
   type DashboardBulletin,
 } from "@/components/dashboard-bulletin-carousel";
-
-const systemCountLabels = [
-  "Forms",
-  "Songs",
-  "Playlists",
-  "Sponsors",
-  "Announcements",
-  "Payments",
-  "Expenses",
-  "Discipline",
-] as const;
 
 const personalQuickActions = [
   { label: "Read Bible", href: "/admin/intercession?tab=bible", icon: BookOpen, color: "text-blue-700 bg-blue-50" },
@@ -271,14 +258,6 @@ type SystemDashboardCounts = {
   inactiveUsers: number;
   totalRoles: number;
   pendingPermissions: number;
-  forms: number;
-  songs: number;
-  playlists: number;
-  sponsors: number;
-  announcements: number;
-  payments: number;
-  expenses: number;
-  discipline: number;
 };
 
 const getSystemDashboardCounts = cache(async () => {
@@ -287,15 +266,7 @@ const getSystemDashboardCounts = cache(async () => {
       (SELECT COUNT(*)::int FROM "users" WHERE "status" = 'pending') AS "pendingUsers",
       (SELECT COUNT(*)::int FROM "users" WHERE "status" = 'inactive') AS "inactiveUsers",
       (SELECT COUNT(*)::int FROM "roles" WHERE "name" <> 'super-admin') AS "totalRoles",
-      (SELECT COUNT(*)::int FROM "permission_requests" WHERE "status" = 'pending') AS "pendingPermissions",
-      (SELECT COUNT(*)::int FROM "forms") AS "forms",
-      (SELECT COUNT(*)::int FROM "songs") AS "songs",
-      (SELECT COUNT(*)::int FROM "playlists") AS "playlists",
-      (SELECT COUNT(*)::int FROM "sponsors") AS "sponsors",
-      (SELECT COUNT(*)::int FROM "announcements") AS "announcements",
-      (SELECT COUNT(*)::int FROM "payments") AS "payments",
-      (SELECT COUNT(*)::int FROM "expenses") AS "expenses",
-      (SELECT COUNT(*)::int FROM "discipline_records") AS "discipline"
+      (SELECT COUNT(*)::int FROM "permission_requests" WHERE "status" = 'pending') AS "pendingPermissions"
   `);
   return rows[0];
 });
@@ -312,9 +283,6 @@ function SuperAdminDashboard(props: DashboardSectionsProps) {
       </Suspense>
       <Suspense fallback={<DashboardPanelFallback />}>
         <SuperAdminAttentionPanel />
-      </Suspense>
-      <Suspense fallback={<DashboardPanelFallback className="mt-4" />}>
-        <SystemCountsPanel />
       </Suspense>
     </div>
   );
@@ -370,35 +338,6 @@ async function SuperAdminAttentionPanel() {
   );
 }
 
-async function SystemCountsPanel() {
-  const counts = await getSystemDashboardCounts();
-  if (!counts) return null;
-  const systemCounts = {
-    Forms: counts.forms,
-    Songs: counts.songs,
-    Playlists: counts.playlists,
-    Sponsors: counts.sponsors,
-    Announcements: counts.announcements,
-    Payments: counts.payments,
-    Expenses: counts.expenses,
-    Discipline: counts.discipline,
-  };
-
-  return (
-    <Panel className="mt-4">
-      <PanelHeader title="System Counts" />
-      <div className="grid grid-cols-2 gap-2.5 p-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-10">
-        {systemCountLabels.map((label) => (
-          <div key={label} className="system-count">
-            <span>{systemCounts[label].toLocaleString()}</span>
-            <p>{label}</p>
-          </div>
-        ))}
-      </div>
-    </Panel>
-  );
-}
-
 function DashboardHero({
   message,
   actions,
@@ -417,7 +356,7 @@ function DashboardHero({
   return (
     <div className="dashboard-hero mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
       <DashboardBulletinCarousel items={bulletins} welcomeMessage={message} />
-      <div className="flex flex-col gap-2 sm:flex-row">
+      {actions.length > 0 ? <div className="flex flex-col gap-2 sm:flex-row">
         {actions.map((action) => {
           const className = action.variant === "primary" ? "dashboard-hero-primary" : "dashboard-hero-secondary";
           const content = (
@@ -437,7 +376,7 @@ function DashboardHero({
             </Link>
           );
         })}
-      </div>
+      </div> : null}
     </div>
   );
 }
@@ -451,10 +390,7 @@ async function DashboardHeroSection({
 }: DashboardSectionsProps & { superAdmin?: boolean }) {
   const bulletins = await getDashboardBulletins(userId, roleIds, roles);
   const actions = superAdmin
-    ? [
-        { label: "Activity Logs", href: "/admin/logs", icon: Clock, variant: "secondary" as const },
-        { label: "Manage Users", href: "/admin/users", icon: UserPlus, variant: "primary" as const },
-      ]
+    ? []
     : bulletins.length > 0
       ? []
       : [{ label: "My Profile", href: "/admin/profile", icon: UserCheck, variant: "secondary" as const, opensProfile: true }];
