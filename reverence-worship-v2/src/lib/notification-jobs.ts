@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
+import { intercessionRichTextToPlainText } from "@/lib/intercession-rich-text";
 import { notifySuperAdmins, notifyUsers, processPendingEmailDeliveries, reconcilePendingPermissionNotifications, userIdsForAnnouncement, userIdsWithPermission } from "@/lib/notifications";
 import { maintainNotificationArchive } from "@/lib/notification-maintenance";
 import { reconcileNotificationSources } from "@/lib/notification-source-validity";
@@ -116,7 +117,7 @@ export async function runScheduledNotificationJobs() {
     const recipients = submitterIds.filter((id) => !submitted.has(id));
     await notifyUsers({
       userIds: recipients, type: "form", title: "Form deadline approaching",
-      message: `${form.title} is due ${dateLabel(deadline)}. Please submit it before the deadline.`,
+      message: `${intercessionRichTextToPlainText(form.title)} is due ${dateLabel(deadline)}. Please submit it before the deadline.`,
       link: `/admin/intercession/forms/${form.id}/take`, sourceType: "spiritual_form", sourceId: form.id,
       dedupeKey: `form:${form.id}:deadline:${settings.submission_deadline}:${daysRemaining}`,
     });

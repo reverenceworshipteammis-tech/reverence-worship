@@ -4,6 +4,8 @@ import { FormEvent, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ActionNotice } from "@/components/action-notice";
+import { IntercessionRichText } from "@/components/intercession-rich-text";
+import { intercessionRichTextToPlainText } from "@/lib/intercession-rich-text";
 import {
   AlertTriangle,
   BarChart3,
@@ -220,7 +222,8 @@ export function IntercessionClient({
     const normalized = query.trim().toLowerCase();
     if (!normalized) return forms;
     return forms.filter((form) =>
-      [form.title, form.description, form.createdBy].filter(Boolean).some((value) => value!.toLowerCase().includes(normalized)),
+      [intercessionRichTextToPlainText(form.title), intercessionRichTextToPlainText(form.description ?? ""), form.createdBy]
+        .some((value) => value.toLowerCase().includes(normalized)),
     );
   }, [forms, query]);
 
@@ -304,13 +307,15 @@ export function IntercessionClient({
 
   function formShareData(form: ShareTarget) {
     const url = `${window.location.origin}/admin/intercession/forms/${form.id}/take`;
-    const text = [form.title, form.description].filter(Boolean).join("\n\n");
+    const plainTitle = intercessionRichTextToPlainText(form.title);
+    const plainDescription = intercessionRichTextToPlainText(form.description ?? "");
+    const text = [plainTitle, plainDescription].filter(Boolean).join("\n\n");
 
     return {
       url,
-      title: form.title,
-      text: text || form.title,
-      message: `${text || form.title}\n\n${url}`,
+      title: plainTitle,
+      text: text || plainTitle,
+      message: `${text || plainTitle}\n\n${url}`,
     };
   }
 
@@ -708,7 +713,7 @@ export function IntercessionClient({
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
-                              <h3 className="text-base font-semibold text-slate-800 sm:text-lg">{form.title}</h3>
+                              <h3 className="text-base font-semibold text-slate-800 sm:text-lg"><IntercessionRichText value={form.title} /></h3>
                               {form.hasSubmitted && (
                                 <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
                                   <CheckCircle2 className="size-3" aria-hidden="true" />
@@ -726,7 +731,7 @@ export function IntercessionClient({
                               )}
                             </div>
                             {form.description && (
-                              <p className="mt-1 text-sm text-gray-500 line-clamp-2">{form.description}</p>
+                              <p className="mt-1 text-sm text-gray-500 line-clamp-2"><IntercessionRichText value={form.description} /></p>
                             )}
                             <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
                               <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5">
@@ -765,8 +770,8 @@ export function IntercessionClient({
                       >
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                           <div>
-                            <h3 className="font-semibold text-gray-900">{submission.formTitle}</h3>
-                            {submission.formDescription && <p className="mt-1 text-sm text-gray-500 line-clamp-2">{submission.formDescription}</p>}
+                            <h3 className="font-semibold text-gray-900"><IntercessionRichText value={submission.formTitle} /></h3>
+                            {submission.formDescription && <p className="mt-1 text-sm text-gray-500 line-clamp-2"><IntercessionRichText value={submission.formDescription} /></p>}
                             <p className="mt-2 text-xs font-medium text-gray-400">
                               <svg className="inline-block size-3 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
@@ -812,7 +817,7 @@ export function IntercessionClient({
                   <article key={form.id} className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <h3 className="line-clamp-2 text-sm font-semibold text-gray-900">{form.title}</h3>
+                        <h3 className="line-clamp-2 text-sm font-semibold text-gray-900"><IntercessionRichText value={form.title} /></h3>
                         <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-gray-500">
                           <span>{form.createdAt}</span>
                           <span className="size-1 rounded-full bg-gray-300" />
@@ -826,7 +831,7 @@ export function IntercessionClient({
                       </span>
                     </div>
 
-                    {form.description ? <p className="mt-2 line-clamp-2 text-xs text-gray-600">{form.description}</p> : null}
+                    {form.description ? <p className="mt-2 line-clamp-2 text-xs text-gray-600"><IntercessionRichText value={form.description} /></p> : null}
 
                     <div className="mt-3 grid grid-cols-2 gap-2">
                       <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
@@ -873,7 +878,7 @@ export function IntercessionClient({
                           onClick={() => {
                             setConfirmAction({
                               title: "Delete Form",
-                              message: `Delete "${form.title}" and all of its submissions? This action cannot be undone.`,
+                              message: `Delete "${intercessionRichTextToPlainText(form.title)}" and all of its submissions? This action cannot be undone.`,
                               confirmLabel: "Delete Form",
                               tone: "danger",
                               action: () => deleteSpiritualForm(form.id),
@@ -910,7 +915,7 @@ export function IntercessionClient({
                         onClick={() => window.location.href = `/admin/intercession/forms/${form.id}/edit`}
                       >
                         <td className="px-4 py-3">
-                          <div className="font-semibold text-gray-900">{form.title}</div>
+                          <div className="font-semibold text-gray-900"><IntercessionRichText value={form.title} /></div>
                           <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
                             <span className="flex items-center gap-1">
                               <svg className="size-3 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -985,7 +990,7 @@ export function IntercessionClient({
                                   e.stopPropagation();
                                   setConfirmAction({
                                     title: "Delete Form",
-                                    message: `Delete "${form.title}" and all of its submissions? This action cannot be undone.`,
+                                    message: `Delete "${intercessionRichTextToPlainText(form.title)}" and all of its submissions? This action cannot be undone.`,
                                     confirmLabel: "Delete Form",
                                     tone: "danger",
                                     action: () => deleteSpiritualForm(form.id),
@@ -1374,7 +1379,7 @@ function ReportDetailModal({
               return (
                 <div key={form.id} className="flex flex-col gap-2 rounded-lg border border-slate-200 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <p className="text-sm font-semibold text-slate-900">{form.title}</p>
+                    <p className="text-sm font-semibold text-slate-900"><IntercessionRichText value={form.title} /></p>
                     <p className="text-xs text-slate-400">{submission?.submittedAt ? `Submitted ${submission.submittedAt}` : "No submission"}</p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -1915,8 +1920,8 @@ function ShareFormModal({
         <div className="flex items-start justify-between gap-4 border-b border-gray-200 px-5 py-4">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Share form</p>
-            <h2 className="mt-1 truncate text-lg font-bold text-gray-900">{form.title}</h2>
-            {form.description ? <p className="mt-1 line-clamp-2 text-sm text-gray-500">{form.description}</p> : null}
+            <h2 className="mt-1 truncate text-lg font-bold text-gray-900"><IntercessionRichText value={form.title} /></h2>
+            {form.description ? <p className="mt-1 line-clamp-2 text-sm text-gray-500"><IntercessionRichText value={form.description} /></p> : null}
           </div>
           <button type="button" onClick={onClose} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600" aria-label="Close">
             <X className="size-5" aria-hidden="true" />

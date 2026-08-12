@@ -5,11 +5,12 @@ import type { Prisma } from "@/generated/prisma/client";
 import { requireAnyPermission, requirePermission } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { notifyUsers, userIdsWithPermission } from "@/lib/notifications";
+import { intercessionRichTextToPlainText } from "@/lib/intercession-rich-text";
 
 async function notifyFormPublished(form: { id: number; title: string }, event: string) {
   await notifyUsers({
     userIds: await userIdsWithPermission("intercession", "submit-forms"),
-    type: "form", title: "New form published", message: `${form.title} is now available for submission.`,
+    type: "form", title: "New form published", message: `${intercessionRichTextToPlainText(form.title)} is now available for submission.`,
     link: `/admin/intercession/forms/${form.id}/take`, sourceType: "spiritual_form", sourceId: form.id,
     dedupeKey: `form:${form.id}:published:${event}`,
   });
@@ -274,7 +275,7 @@ export async function createSpiritualFormFromBuilder(formData: FormData) {
   const user = await requirePermission("intercession", "create-forms", "/admin/intercession");
   const title = readString(formData, "title");
 
-  if (!title) {
+  if (!title || !intercessionRichTextToPlainText(title).trim()) {
     return { ok: false, message: "Form title is required." };
   }
 
@@ -343,7 +344,7 @@ export async function updateSpiritualFormFromBuilder(formId: number, formData: F
   await requirePermission("intercession", "edit-forms", "/admin/intercession");
   const title = readString(formData, "title");
 
-  if (!title) {
+  if (!title || !intercessionRichTextToPlainText(title).trim()) {
     return { ok: false, message: "Form title is required." };
   }
 

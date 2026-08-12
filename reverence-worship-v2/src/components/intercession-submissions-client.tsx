@@ -6,6 +6,7 @@ import { ArrowLeft, CalendarDays, CheckCircle2, Download, FileText, RotateCcw, S
 import { deleteFormSubmission, saveSubmissionManualReview, setAllSubmissionRelease, setSubmissionRelease } from "@/app/admin/intercession/actions";
 import { useAppDialog } from "@/components/app-dialog-provider";
 import { ActionNotice } from "@/components/action-notice";
+import { IntercessionRichText } from "@/components/intercession-rich-text";
 
 type SubmissionRow = {
   id: number;
@@ -126,7 +127,7 @@ export function IntercessionSubmissionsClient({
                 <ArrowLeft className="size-4" aria-hidden="true" />
                 Back to Manage Forms
               </Link>
-              <h1 className="text-xl font-bold text-slate-900 sm:text-2xl">{form.title}</h1>
+              <h1 className="text-xl font-bold text-slate-900 sm:text-2xl"><IntercessionRichText value={form.title} /></h1>
             </div>
             <span className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700">
               <Users className="size-4" aria-hidden="true" />
@@ -418,7 +419,7 @@ function ReviewSubmissionModal({
         <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Review Submission</p>
-            <h2 className="mt-1 truncate text-lg font-bold text-slate-900">{form.title}</h2>
+            <h2 className="mt-1 truncate text-lg font-bold text-slate-900"><IntercessionRichText value={form.title} /></h2>
             <p className="mt-1 text-sm text-slate-500">
               {submission.memberName} · {submission.submittedDate} {submission.submittedTime}
             </p>
@@ -435,7 +436,7 @@ function ReviewSubmissionModal({
                 <article key={`${answer.question}-${index}`} className="rounded-xl border border-slate-200 bg-white p-4">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                      <h3 className="font-semibold text-slate-900">{answer.question}</h3>
+                      <h3 className="font-semibold text-slate-900"><IntercessionRichText value={answer.question} /></h3>
                     </div>
                     {form.isQuiz ? (
                       <span className="w-fit rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">

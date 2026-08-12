@@ -6,6 +6,7 @@ import { ActionNotice } from "@/components/action-notice";
 import { FormEvent, useMemo, useState, useTransition } from "react";
 import { ArrowLeft, CheckCircle2, FileText, Info, Lock, Send } from "lucide-react";
 import { submitSpiritualForm } from "@/app/admin/intercession/actions";
+import { IntercessionRichText } from "@/components/intercession-rich-text";
 
 type TakeQuestion = {
   type: string;
@@ -102,8 +103,8 @@ export function IntercessionTakeForm({
             </div>
           </div>
           <div className="mt-4">
-            <h1 className="mb-2 text-3xl font-bold text-slate-900">{form.title}</h1>
-            {form.description && <p className="whitespace-pre-line text-slate-600">{form.description}</p>}
+            <h1 className="mb-2 text-3xl font-bold text-slate-900"><IntercessionRichText value={form.title} /></h1>
+            {form.description && <p className="text-slate-600"><IntercessionRichText value={form.description} /></p>}
           </div>
         </div>
 
@@ -186,10 +187,10 @@ function QuestionField({
       <div className="mb-4">
         <h3 className="text-lg font-semibold text-slate-900">
           {displayNumber !== null && <span className="mr-2 text-blue-600">{displayNumber}.</span>}
-          {question.label}
+          <IntercessionRichText value={question.label} />
           {question.required && <span className="ml-1 text-red-500">*</span>}
         </h3>
-        {question.description && <p className="mt-1 whitespace-pre-line text-sm text-gray-500">{question.description}</p>}
+        {question.description && <p className="mt-1 text-sm text-gray-500"><IntercessionRichText value={question.description} /></p>}
       </div>
 
       {question.type === "short_answer" && (

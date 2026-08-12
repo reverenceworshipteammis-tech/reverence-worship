@@ -8,6 +8,7 @@ import {
   memberResultState,
 } from "@/lib/intercession-result-rules";
 import { prisma } from "@/lib/prisma";
+import { IntercessionRichText } from "@/components/intercession-rich-text";
 
 type Question = {
   index: number;
@@ -132,9 +133,9 @@ export default async function MemberSubmissionResultPage({
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-sky-700">Your submission</p>
-              <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">{submission.form.title}</h1>
+              <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl"><IntercessionRichText value={submission.form.title} /></h1>
               {submission.form.description ? (
-                <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-600">{submission.form.description}</p>
+                <p className="mt-2 text-sm leading-6 text-slate-600"><IntercessionRichText value={submission.form.description} /></p>
               ) : null}
               <p className="mt-3 inline-flex items-center gap-2 text-sm text-slate-500">
                 <CalendarDays className="size-4" aria-hidden="true" />
@@ -175,7 +176,7 @@ export default async function MemberSubmissionResultPage({
                       <div className="flex items-start justify-between gap-3">
                         <h3 className="font-semibold text-slate-900">
                           <span className="mr-2 text-blue-600">{displayIndex + 1}.</span>
-                          {question.label}
+                          <IntercessionRichText value={question.label} />
                         </h3>
                         {grade !== null ? (
                           <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${

@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { createSpiritualFormFromBuilder, updateSpiritualFormFromBuilder } from "@/app/admin/intercession/actions";
 import { MobileTabScroller } from "@/components/mobile-tab-scroller";
+import { IntercessionRichTextEditor } from "@/components/intercession-rich-text-editor";
 
 type QuestionType =
   | "short_answer"
@@ -283,7 +284,7 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
                 Manage Forms
               </Link>
               <h1 className="mt-1 text-xl font-bold text-gray-900">{isEditing ? "Edit form" : "Create a new form"}</h1>
-              <p className="mt-1 text-xs text-gray-500">Build questions, configure responses, then save your form.</p>
+
             </div>
             <button
               disabled={isPending}
@@ -324,22 +325,23 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
             <div className="mx-auto mb-4 max-w-5xl overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
               <div className="h-1 bg-blue-600" />
               <div className="p-5">
-                <input
+                <IntercessionRichTextEditor
                   value={title}
-                  onChange={(event) => setTitle(event.target.value)}
-                  required
+                  onChange={setTitle}
                   maxLength={150}
                   placeholder="Untitled form"
-                  className="mb-2 w-full border-none text-2xl font-semibold text-gray-900 outline-none focus:ring-0"
+                  ariaLabel="Form title"
+                  className="mb-2 block min-h-8 w-full border-none text-2xl font-semibold leading-tight text-gray-900 outline-none focus:ring-0"
                 />
-                <textarea
+                <IntercessionRichTextEditor
                   value={description}
-                  onChange={(event) => setDescription(event.target.value)}
+                  onChange={setDescription}
                   maxLength={500}
-                  rows={2}
                   placeholder="Add a short description (optional)"
-                  className="w-full resize-none border-none text-lg text-gray-900 outline-none focus:ring-0 sm:text-xl"
+                  ariaLabel="Form description"
+                  className="block min-h-7 w-full border-none text-lg leading-relaxed text-gray-900 outline-none focus:ring-0 sm:text-xl"
                 />
+                <p className="mt-2 text-xs text-gray-400">Press Ctrl+B for bold or Ctrl+I for italic.</p>
               </div>
             </div>
 
@@ -468,15 +470,20 @@ function QuestionCard({
           <GripVertical className="size-5" aria-hidden="true" />
         </div>
         <div>
-          <input
+          <IntercessionRichTextEditor
             value={question.label}
-            onChange={(event) => onChange({ label: event.target.value })}
+            onChange={(value) => onChange({ label: value })}
+            placeholder="Untitled question"
+            ariaLabel="Question title"
+            multiline={false}
             className="w-full border-0 border-b border-gray-300 bg-gray-50 px-3 py-2 text-lg font-medium text-gray-900 outline-none focus:border-gray-500 focus:ring-0 sm:text-xl"
           />
-          <input
+          <IntercessionRichTextEditor
             value={question.description}
-            onChange={(event) => onChange({ description: event.target.value })}
+            onChange={(value) => onChange({ description: value })}
             placeholder="Description (optional)"
+            ariaLabel="Question description"
+            multiline={false}
             className="mt-2 w-full border-0 border-b border-gray-100 px-3 py-2 text-sm text-gray-500 outline-none focus:border-gray-300 focus:ring-0"
           />
         </div>
