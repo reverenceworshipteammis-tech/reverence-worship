@@ -10,6 +10,7 @@ import {
   MAX_SESSION_LIFETIME_MINUTES,
   MIN_SESSION_LIFETIME_MINUTES,
 } from "@/lib/session-policy";
+import { unsupportedBirthdayPlaceholders } from "@/lib/birthday-rules";
 
 type ActionResult = {
   ok: boolean;
@@ -142,6 +143,18 @@ export async function updateProbationSettings(formData: FormData) {
 
 export async function updateNotificationSettings(formData: FormData) {
   try {
+    const birthdayTitleTemplate = readString(formData, "notification_birthday_title_template");
+    const birthdayMessageTemplate = readString(formData, "notification_birthday_message_template");
+    if (!birthdayTitleTemplate || !birthdayMessageTemplate) {
+      throw new Error("Birthday notification title and message are required.");
+    }
+    if (birthdayTitleTemplate.length > 120) throw new Error("Birthday notification title must not exceed 120 characters.");
+    if (birthdayMessageTemplate.length > 1_000) throw new Error("Birthday notification message must not exceed 1,000 characters.");
+    const unsupported = unsupportedBirthdayPlaceholders(`${birthdayTitleTemplate}\n${birthdayMessageTemplate}`);
+    if (unsupported.length) {
+      throw new Error(`Unsupported birthday placeholder${unsupported.length === 1 ? "" : "s"}: ${unsupported.join(", ")}.`);
+    }
+
     return saveSettings(
       "notifications",
       {
@@ -155,6 +168,9 @@ export async function updateNotificationSettings(formData: FormData) {
         notification_task_enabled: readBoolean(formData, "notification_task_enabled"),
         notification_finance_enabled: readBoolean(formData, "notification_finance_enabled"),
         notification_system_enabled: readBoolean(formData, "notification_system_enabled"),
+        notification_birthday_enabled: readBoolean(formData, "notification_birthday_enabled"),
+        notification_birthday_title_template: birthdayTitleTemplate,
+        notification_birthday_message_template: birthdayMessageTemplate,
       },
       "Notification settings updated successfully.",
     );

@@ -17,7 +17,7 @@ import {
   MAX_SESSION_LIFETIME_MINUTES,
   MIN_SESSION_LIFETIME_MINUTES,
 } from "@/lib/session-policy";
-import { NOTIFICATION_LIFETIME_DAYS, READ_NOTIFICATION_RETENTION_DAYS } from "@/lib/notification-retention-policy";
+import { renderBirthdayTemplate } from "@/lib/birthday-rules";
 
 export type SettingsValues = {
   registrationEnabled: boolean;
@@ -35,6 +35,9 @@ export type SettingsValues = {
     taskEnabled: boolean;
     financeEnabled: boolean;
     systemEnabled: boolean;
+    birthdayEnabled: boolean;
+    birthdayTitleTemplate: string;
+    birthdayMessageTemplate: string;
   };
   emailInfrastructure: {
     configured: boolean;
@@ -64,6 +67,8 @@ const tabs = [
 export function SettingsClient({ values }: { values: SettingsValues }) {
   const [activeTab, setActiveTab] = useState<TabId>("access");
   const [result, setResult] = useState<Result | null>(null);
+  const [birthdayTitleTemplate, setBirthdayTitleTemplate] = useState(values.notifications.birthdayTitleTemplate);
+  const [birthdayMessageTemplate, setBirthdayMessageTemplate] = useState(values.notifications.birthdayMessageTemplate);
   const [pending, startTransition] = useTransition();
   const accessRef = useRef<HTMLFormElement>(null);
   const securityRef = useRef<HTMLFormElement>(null);
@@ -98,7 +103,7 @@ export function SettingsClient({ values }: { values: SettingsValues }) {
     <div className="mx-auto max-w-5xl space-y-6 px-2 py-4 sm:px-4 sm:py-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-800">System Settings</h1>
-        <p className="mt-1 text-sm text-gray-500">Only settings that currently change system behavior are shown here.</p>
+       
       </div>
 
       {result ? (
@@ -133,7 +138,7 @@ export function SettingsClient({ values }: { values: SettingsValues }) {
 
         <div className={activeTab === "access" ? "block" : "hidden"}>
           <form ref={accessRef} onChange={() => autoSave("access", updateAccessSettings, accessRef.current)} className="p-4 sm:p-6">
-            <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.15fr_0.85fr]">
+            <div>
               <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                 <div className="flex items-start gap-3">
                   <span className={`mt-0.5 inline-flex size-10 items-center justify-center rounded-full ${values.registrationEnabled ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
@@ -141,9 +146,7 @@ export function SettingsClient({ values }: { values: SettingsValues }) {
                   </span>
                   <div className="min-w-0 flex-1">
                     <h3 className="font-semibold text-gray-900">Public Registration</h3>
-                    <p className="mt-1 text-sm leading-6 text-gray-600">
-                      Controls whether visitors can create their own account.
-                    </p>
+
                     <div className="mt-4">
                       <CheckField
                         name="registration_enabled"
@@ -155,15 +158,6 @@ export function SettingsClient({ values }: { values: SettingsValues }) {
                   </div>
                 </div>
               </div>
-              <ImpactCard
-                title="Current impact"
-                items={[
-                  "Login page register link",
-                  "Landing page Join button",
-                  "Register route access",
-                  "Registration server action",
-                ]}
-              />
             </div>
             <AutoSaveNote pending={pending} />
           </form>
@@ -228,13 +222,12 @@ export function SettingsClient({ values }: { values: SettingsValues }) {
                 </div>
               </div>
             </div>
-            <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.15fr_0.85fr]">
-              <div className="space-y-4">
+            <div className="space-y-4">
                 <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                   <h3 className="font-semibold text-gray-900">Delivery Channels</h3>
-                  <div className="mt-4 space-y-3">
-                    <CheckField name="notification_in_app_enabled" label="Enable in-app notifications" note="Controls notifications shown in the bell menu and notification lists." defaultChecked={values.notifications.inAppEnabled} />
-                    <CheckField name="notification_email_enabled" label="Enable email notifications" note="Checked: users receive emails. Unchecked: email sending is paused while you test." defaultChecked={values.notifications.emailEnabled} />
+                  <div className="mt-4 grid grid-cols-2 gap-4">
+                    <CheckField name="notification_in_app_enabled" label="Enable in-app notifications" note="" defaultChecked={values.notifications.inAppEnabled} />
+                    <CheckField name="notification_email_enabled" label="Enable email notifications" note="" defaultChecked={values.notifications.emailEnabled} />
                   </div>
                 </div>
                 <div className="rounded-xl border border-gray-200 bg-white p-4">
@@ -250,22 +243,47 @@ export function SettingsClient({ values }: { values: SettingsValues }) {
                     <CheckField name="notification_system_enabled" label="System alerts" note="System health and delivery failure alerts." defaultChecked={values.notifications.systemEnabled} />
                   </div>
                 </div>
-                <div className="rounded-xl border border-gray-200 bg-white p-4">
-                  <p className="text-sm font-semibold text-gray-800">Automatic notification cleanup</p>
-                  <p className="mt-1 text-sm leading-6 text-gray-500">
-                    Notifications are available for up to {NOTIFICATION_LIFETIME_DAYS} days. Read notifications are deleted after {READ_NOTIFICATION_RETENTION_DAYS} days, and alerts tied to completed or deleted items are cleared automatically.
-                  </p>
+                <div className="rounded-xl border border-pink-200 bg-pink-50/40 p-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <h3 className="font-semibold text-gray-900">Birthday Message</h3>
+
+                    </div>
+                    <CheckField
+                      name="notification_birthday_enabled"
+                      label="Enable birthday wishes"
+                      defaultChecked={values.notifications.birthdayEnabled}
+                    />
+                  </div>
+                  <div className="mt-4 space-y-4">
+                    <Field label="Notification title" note="Use {firstName} or {fullName} to personalize it.">
+                      <input
+                        name="notification_birthday_title_template"
+                        value={birthdayTitleTemplate}
+                        onChange={(event) => setBirthdayTitleTemplate(event.target.value)}
+                        maxLength={120}
+                        required
+                        className={inputClass}
+                      />
+                    </Field>
+                    <Field label="Birthday message" note="">
+                      <textarea
+                        name="notification_birthday_message_template"
+                        value={birthdayMessageTemplate}
+                        onChange={(event) => setBirthdayMessageTemplate(event.target.value)}
+                        maxLength={1000}
+                        rows={4}
+                        required
+                        className="w-full resize-y rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm leading-6 text-gray-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </Field>
+                    <div className="rounded-lg border border-pink-100 bg-white p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-pink-700">Preview for Alice Uwimana</p>
+                      <p className="mt-2 text-sm font-semibold text-gray-900">{renderBirthdayTemplate(birthdayTitleTemplate, "Alice Uwimana")}</p>
+                      <p className="mt-1 whitespace-pre-line text-sm leading-6 text-gray-600">{renderBirthdayTemplate(birthdayMessageTemplate, "Alice Uwimana")}</p>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <ImpactCard
-                title="Testing mode"
-                items={[
-                  "Turn off email notifications to stop real emails.",
-                  "Keep in-app notifications on to verify app behavior.",
-                  "Disable categories you are not testing now.",
-                  "SMTP settings still control whether emails can be delivered.",
-                ]}
-              />
             </div>
             <AutoSaveNote pending={pending} />
           </form>
@@ -273,20 +291,12 @@ export function SettingsClient({ values }: { values: SettingsValues }) {
 
         <div className={activeTab === "probation" ? "block" : "hidden"}>
           <form ref={probationRef} onChange={() => autoSave("probation", updateProbationSettings, probationRef.current)} className="p-4 sm:p-6">
-            <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.15fr_0.85fr]">
+            <div>
               <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                 <Field label="Default Probation Duration (months)" note="Used to suggest the expected end date in full calendar months. The leader can still choose a different date.">
                   <input name="probation_default_duration_months" type="number" min={1} max={24} required defaultValue={values.probationDefaultDurationMonths} className={inputClass} />
                 </Field>
               </div>
-              <ImpactCard
-                title="How this setting works"
-                items={[
-                  "It affects newly opened enrollment forms.",
-                  "It does not change existing probation dates.",
-                  "Extensions always create a separate history record.",
-                ]}
-              />
             </div>
             <AutoSaveNote pending={pending} />
           </form>
@@ -337,19 +347,6 @@ function CheckField({ name, label, note, defaultChecked }: { name: string; label
         <span className="text-sm text-gray-700">{label}</span>
       </label>
       {note ? <p className="ml-7 mt-1 text-xs text-gray-500">{note}</p> : null}
-    </div>
-  );
-}
-
-function ImpactCard({ title, items }: { title: string; items: string[] }) {
-  return (
-    <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
-      <h3 className="font-semibold">{title}</h3>
-      <ul className="mt-3 space-y-2">
-        {items.map((item) => (
-          <li key={item}>{item}</li>
-        ))}
-      </ul>
     </div>
   );
 }

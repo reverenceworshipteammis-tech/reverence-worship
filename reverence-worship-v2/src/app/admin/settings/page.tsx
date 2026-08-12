@@ -3,6 +3,7 @@ import { requirePageAccess } from "@/lib/auth";
 import { getEmailConfiguration } from "@/lib/email-config";
 import { prisma } from "@/lib/prisma";
 import { normalizeSessionLifetimeMinutes } from "@/lib/session-policy";
+import { DEFAULT_BIRTHDAY_MESSAGE_TEMPLATE, DEFAULT_BIRTHDAY_TITLE_TEMPLATE } from "@/lib/birthday-rules";
 
 function boolValue(value: unknown, fallback = false) {
   if (typeof value === "boolean") return value;
@@ -14,6 +15,10 @@ function boolValue(value: unknown, fallback = false) {
 function numberValue(value: unknown, fallback: number) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function stringValue(value: unknown, fallback: string) {
+  return typeof value === "string" && value.trim() ? value : fallback;
 }
 
 export default async function SettingsPage() {
@@ -45,6 +50,9 @@ export default async function SettingsPage() {
       taskEnabled: boolValue(settings.get("notification_task_enabled"), true),
       financeEnabled: boolValue(settings.get("notification_finance_enabled"), true),
       systemEnabled: boolValue(settings.get("notification_system_enabled"), true),
+      birthdayEnabled: boolValue(settings.get("notification_birthday_enabled"), true),
+      birthdayTitleTemplate: stringValue(settings.get("notification_birthday_title_template"), DEFAULT_BIRTHDAY_TITLE_TEMPLATE),
+      birthdayMessageTemplate: stringValue(settings.get("notification_birthday_message_template"), DEFAULT_BIRTHDAY_MESSAGE_TEMPLATE),
     },
     emailInfrastructure: {
       configured: emailConfiguration.configured,

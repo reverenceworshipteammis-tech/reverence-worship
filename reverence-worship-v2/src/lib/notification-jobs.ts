@@ -5,6 +5,15 @@ import { intercessionRichTextToPlainText } from "@/lib/intercession-rich-text";
 import { notifySuperAdmins, notifyUsers, processPendingEmailDeliveries, reconcilePendingPermissionNotifications, userIdsForAnnouncement, userIdsWithPermission } from "@/lib/notifications";
 import { maintainNotificationArchive } from "@/lib/notification-maintenance";
 import { reconcileNotificationSources } from "@/lib/notification-source-validity";
+import {
+  birthdayNotificationKey,
+  calendarDateInTimeZone,
+  DEFAULT_BIRTHDAY_MESSAGE_TEMPLATE,
+  DEFAULT_BIRTHDAY_TITLE_TEMPLATE,
+  isBirthdayOn,
+  renderBirthdayTemplate,
+} from "@/lib/birthday-rules";
+import { settingToBoolean } from "@/lib/system-settings";
 
 function dayBounds(offsetDays = 0) {
   const start = new Date();
@@ -24,6 +33,7 @@ export async function runScheduledNotificationJobs() {
   const results = {
     emailsProcessed: 0,
     permissionRequestsChecked: 0,
+    birthdayWishes: 0,
     probationReminders: 0,
     announcements: 0,
     formReminders: 0,
@@ -37,6 +47,41 @@ export async function runScheduledNotificationJobs() {
   results.staleNotificationsDeleted = (await reconcileNotificationSources()).deleted;
   results.emailsProcessed = await processPendingEmailDeliveries();
   results.permissionRequestsChecked = (await reconcilePendingPermissionNotifications()).requests;
+
+  const birthdaySettingRows = await prisma.systemSetting.findMany({
+    where: { key: { in: [
+      "notification_birthday_enabled",
+      "notification_birthday_title_template",
+      "notification_birthday_message_template",
+    ] } },
+    select: { key: true, value: true },
+  });
+  const birthdaySettings = new Map(birthdaySettingRows.map((setting) => [setting.key, setting.value]));
+  if (settingToBoolean(birthdaySettings.get("notification_birthday_enabled"), true)) {
+    const birthdayDate = calendarDateInTimeZone(new Date());
+    const titleSetting = birthdaySettings.get("notification_birthday_title_template");
+    const messageSetting = birthdaySettings.get("notification_birthday_message_template");
+    const titleTemplate = typeof titleSetting === "string" && titleSetting.trim() ? titleSetting : DEFAULT_BIRTHDAY_TITLE_TEMPLATE;
+    const messageTemplate = typeof messageSetting === "string" && messageSetting.trim() ? messageSetting : DEFAULT_BIRTHDAY_MESSAGE_TEMPLATE;
+    const birthdayMembers = await prisma.user.findMany({
+      where: { status: "active", dateOfBirth: { not: null } },
+      select: { id: true, name: true, dateOfBirth: true },
+    });
+    for (const member of birthdayMembers) {
+      if (!member.dateOfBirth || !isBirthdayOn(member.dateOfBirth, birthdayDate)) continue;
+      await notifyUsers({
+        userIds: [member.id],
+        type: "birthday",
+        title: renderBirthdayTemplate(titleTemplate, member.name),
+        message: renderBirthdayTemplate(messageTemplate, member.name),
+        link: "/admin/dashboard",
+        sourceType: "user",
+        sourceId: member.id,
+        dedupeKey: birthdayNotificationKey(member.id, birthdayDate.year),
+      });
+      results.birthdayWishes += 1;
+    }
+  }
 
   const today = dayBounds();
   const probationLeaders = await userIdsWithPermission("probation", "view");
