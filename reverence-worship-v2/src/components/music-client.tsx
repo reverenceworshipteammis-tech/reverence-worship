@@ -481,6 +481,7 @@ function PlaylistFields({
   pending: boolean;
   submitLabel: string;
 }) {
+  const initialServiceCount = playlist?.serviceCount ?? MIN_PLAYLIST_SERVICES;
   const initialSessions = playlist?.sessions.length
     ? playlist.sessions.map((session) => ({
         clientId: `session-${session.id}`,
@@ -493,7 +494,8 @@ function PlaylistFields({
         }])),
       }))
     : [{ clientId: "service-1-default", serviceNumber: 1, name: "", songIds: [], songSettings: {} }];
-  const [serviceCount, setServiceCount] = useState(playlist?.serviceCount ?? 1);
+  const [serviceCount, setServiceCount] = useState(initialServiceCount);
+  const [serviceCountInput, setServiceCountInput] = useState(String(initialServiceCount));
   const [editableSessions, setEditableSessions] = useState<EditablePlaylistSession[]>(initialSessions);
   const [activeServiceNumber, setActiveServiceNumber] = useState(initialSessions[0]?.serviceNumber ?? 1);
   const [activeSessionId, setActiveSessionId] = useState(initialSessions[0]?.clientId ?? "service-1-default");
@@ -503,6 +505,10 @@ function PlaylistFields({
   const [title, setTitle] = useState(playlist?.title ?? "");
   const [sameSessionsForAllServices, setSameSessionsForAllServices] = useState(false);
   const stepThreeEnteredAt = useRef(0);
+  const parsedServiceCount = Number(serviceCountInput);
+  const serviceCountIsValid = Number.isInteger(parsedServiceCount)
+    && parsedServiceCount >= MIN_PLAYLIST_SERVICES
+    && parsedServiceCount <= MAX_PLAYLIST_SERVICES;
 
   const validEditableSessions = compactPlaylistSessions(editableSessions);
   const serviceSessions = validEditableSessions.filter((session) => session.serviceNumber === activeServiceNumber);
@@ -525,7 +531,7 @@ function PlaylistFields({
   const matchingUnselectedSongs = searchedSongs.filter((song) => !selectedSongIdSet.has(song.id));
   const visibleSongs = matchingUnselectedSongs.slice(0, visibleSongCount);
   const currentStepDetails = [
-    { title: "Playlist Details", description: "Name and services" },
+    { title: "Playlist Details", description: "" },
     { title: "Create Sessions", description: "Service headings" },
     { title: "Assign Songs", description: "Search and arrange" },
   ][step - 1];
@@ -720,8 +726,27 @@ function PlaylistFields({
         </label>
         <label className="block">
           <span className="mb-1.5 block text-sm font-medium text-gray-700">Number of Services *</span>
-          <input name="serviceCount" type="number" required min={MIN_PLAYLIST_SERVICES} max={MAX_PLAYLIST_SERVICES} value={serviceCount} onChange={(event) => changeServiceCount(Number(event.target.value))} className="h-11 w-full rounded-lg border border-gray-300 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          <span className="mt-1.5 block text-xs text-gray-400">Between {MIN_PLAYLIST_SERVICES} and {MAX_PLAYLIST_SERVICES}</span>
+          <input
+            name="serviceCount"
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            required
+            value={serviceCountInput}
+            onChange={(event) => {
+              const nextValue = event.target.value.replace(/\D/g, "");
+              setServiceCountInput(nextValue);
+              const nextServiceCount = Number(nextValue);
+              if (nextValue && Number.isInteger(nextServiceCount) && nextServiceCount >= MIN_PLAYLIST_SERVICES && nextServiceCount <= MAX_PLAYLIST_SERVICES) {
+                changeServiceCount(nextServiceCount);
+              }
+            }}
+            aria-invalid={!serviceCountIsValid}
+            className="h-11 w-full rounded-lg border border-gray-300 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <span className={`mt-1.5 block text-xs ${serviceCountIsValid ? "text-gray-400" : "text-red-600"}`}>
+            {serviceCountIsValid ? `Between ${MIN_PLAYLIST_SERVICES} and ${MAX_PLAYLIST_SERVICES}` : `Enter a whole number between ${MIN_PLAYLIST_SERVICES} and ${MAX_PLAYLIST_SERVICES}`}
+          </span>
         </label>
       </section>
 
@@ -902,7 +927,7 @@ function PlaylistFields({
             </button>
           ) : null}
           {step === 1 ? (
-            <button type="button" onClick={() => setStep(2)} disabled={!title.trim()} className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
+            <button type="button" onClick={() => setStep(2)} disabled={!title.trim() || !serviceCountIsValid} className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
               Continue <ChevronRight className="size-4" aria-hidden />
             </button>
           ) : step === 2 ? (
