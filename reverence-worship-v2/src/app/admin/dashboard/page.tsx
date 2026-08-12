@@ -35,7 +35,7 @@ const personalQuickActions = [
   { label: "Read Bible", href: "/admin/intercession?tab=bible", icon: BookOpen, color: "text-blue-700 bg-blue-50" },
   { label: "My Contribution", href: "/admin/contributions", icon: HandCoins, color: "text-emerald-700 bg-emerald-50" },
   { label: "Forms", href: "/admin/intercession?tab=forms", icon: FileText, color: "text-violet-700 bg-violet-50" },
-  { label: "Playlist", href: "/admin/music", icon: Music, color: "text-orange-700 bg-orange-50" },
+  { label: "Playlists & Songs", href: "/admin/music", icon: Music, color: "text-orange-700 bg-orange-50" },
   { label: "Announcements", href: "/admin/announcements", icon: Megaphone, color: "text-sky-700 bg-sky-50" },
 ];
 

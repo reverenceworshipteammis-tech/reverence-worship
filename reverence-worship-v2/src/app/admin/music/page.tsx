@@ -48,6 +48,7 @@ export default async function MusicPage() {
                     tempo: true,
                     lyrics: true,
                     youtubeLink: true,
+                    isArchived: true,
                   },
                 },
               },
@@ -56,7 +57,8 @@ export default async function MusicPage() {
         },
       },
     }),
-    canManage ? prisma.song.findMany({
+    prisma.song.findMany({
+      where: canManage ? undefined : { isArchived: false },
       orderBy: { title: "asc" },
       select: {
         id: true,
@@ -65,8 +67,9 @@ export default async function MusicPage() {
         tempo: true,
         lyrics: true,
         youtubeLink: true,
+        isArchived: true,
       },
-    }) : Promise.resolve([]),
+    }),
     canManage ? prisma.photoGallery.findMany({
       orderBy: { createdAt: "desc" },
     }) : Promise.resolve([]),
@@ -136,6 +139,7 @@ export default async function MusicPage() {
             tempo: song.tempo,
             lyrics: song.lyrics,
             youtubeLink: song.youtubeLink,
+            isArchived: song.isArchived,
             assignedSinger,
             displayOrder,
           })),
@@ -148,6 +152,7 @@ export default async function MusicPage() {
         tempo: song.tempo,
         lyrics: song.lyrics,
         youtubeLink: song.youtubeLink,
+        isArchived: song.isArchived,
       }))}
       gallery={gallery.map((photo) => ({
         id: photo.id,

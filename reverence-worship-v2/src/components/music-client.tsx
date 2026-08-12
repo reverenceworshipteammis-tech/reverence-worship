@@ -13,8 +13,11 @@ import {
   movePlaylistSession,
   playlistServiceLabel,
 } from "@/lib/playlist-rules";
+import { identifyImportedSong, parseFreeShowSong, parseTextSong, type ImportedSong } from "@/lib/freeshow-import";
 import {
   AlertTriangle,
+  Archive,
+  ArchiveRestore,
   ArrowDown,
   ArrowUp,
   CalendarDays,
@@ -27,6 +30,7 @@ import {
   ExternalLink,
   FileText,
   FileUp,
+  FolderPlus,
   GalleryHorizontal,
   ImageIcon,
   List,
@@ -45,6 +49,9 @@ import {
   X,
 } from "lucide-react";
 import {
+  bulkAddSongsToPlaylistSession,
+  bulkArchiveSongs,
+  bulkDeleteSongs,
   createPlaylist,
   createSong,
   deleteBoardItem,
@@ -57,6 +64,7 @@ import {
   deleteServiceTeam,
   deleteYoutubeVideo,
   generateServiceTeams,
+  importFreeShowSongBatch,
   restoreServiceTeam,
   saveBoardItem,
   saveFeaturedImage,
@@ -83,6 +91,7 @@ type Song = {
   tempo: number | null;
   lyrics: string | null;
   youtubeLink: string | null;
+  isArchived: boolean;
 };
 
 type PlaylistSessionSong = Song & {
@@ -239,6 +248,19 @@ type MusicNotice = {
   message: string;
 };
 
+type ImportFailure = {
+  filename: string;
+  reason: string;
+};
+
+type ImportResult = {
+  total: number;
+  imported: number;
+  duplicates: number;
+  failureCount: number;
+  failures: ImportFailure[];
+};
+
 type ConfirmAction = {
   title: string;
   message: string;
@@ -256,7 +278,9 @@ const tabs = [
 ];
 
 const PLAYLISTS_PER_PAGE = 5;
-const SONGS_PER_PAGE = 5;
+const SONG_PAGE_SIZE_OPTIONS = [5, 10, 25, 50, 100] as const;
+const MAX_FREESHOW_BATCH_SONGS = 100;
+const MAX_FREESHOW_BATCH_TEXT = 3_000_000;
 
 const boardTabs = [
   { id: "youtube", label: "Video", mobileLabel: "Video", icon: Music },
@@ -492,6 +516,7 @@ function PlaylistFields({
   const normalizedSearch = songPickerSearch.trim().toLowerCase();
   const searchedSongs = normalizedSearch
     ? songs
+        .filter((song) => !song.isArchived || selectedSongIdSet.has(song.id))
         .map((song) => ({ song, score: songSearchScore(song, normalizedSearch) }))
         .filter((match) => match.score !== null)
         .sort((left, right) => left.score! - right.score! || left.song.title.localeCompare(right.song.title))
@@ -1206,6 +1231,10 @@ export function MusicClient({
   const [playlistPage, setPlaylistPage] = useState(1);
   const [songSearch, setSongSearch] = useState("");
   const [songPage, setSongPage] = useState(1);
+  const [songPageSize, setSongPageSize] = useState<number>(SONG_PAGE_SIZE_OPTIONS[0]);
+  const [songStatusFilter, setSongStatusFilter] = useState<"active" | "archived">("active");
+  const [selectedSongIds, setSelectedSongIds] = useState<number[]>([]);
+  const [bulkPlaylistId, setBulkPlaylistId] = useState("");
   const [gallerySearch, setGallerySearch] = useState("");
   const [gallerySort, setGallerySort] = useState("newest");
   const [singerSearch, setSingerSearch] = useState("");
@@ -1214,7 +1243,7 @@ export function MusicClient({
   const [notice, setNotice] = useState<MusicNotice | null>(null);
   const [playlistNotice, setPlaylistNotice] = useState<MusicNotice | null>(null);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
-  const [modal, setModal] = useState<null | "song" | "playlist" | "galleryUpload" | "groupsGenerate" | "groupsSettings" | "groupsPrevious" | "youtube" | "featured" | "boardItem">(null);
+  const [modal, setModal] = useState<null | "song" | "freeShowImport" | "bulkPlaylist" | "playlist" | "galleryUpload" | "groupsGenerate" | "groupsSettings" | "groupsPrevious" | "youtube" | "featured" | "boardItem">(null);
   const [editingSong, setEditingSong] = useState<Song | null>(null);
   const [editingPlaylist, setEditingPlaylist] = useState<Playlist | null>(null);
   const [editingPhoto, setEditingPhoto] = useState<GalleryPhoto | null>(null);
@@ -1229,6 +1258,8 @@ export function MusicClient({
   const [viewingGeneration, setViewingGeneration] = useState<ServiceTeam | null>(null);
   const [lyricsSong, setLyricsSong] = useState<Song | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [freeShowImportProgress, setFreeShowImportProgress] = useState<{ processed: number; total: number } | null>(null);
+  const [freeShowImportResult, setFreeShowImportResult] = useState<ImportResult | null>(null);
   const [isPending, startTransition] = useTransition();
   const visibleTabs = canManage ? tabs : tabs.filter((tab) => tab.id === "playlist");
 
@@ -1254,18 +1285,22 @@ export function MusicClient({
 
   const filteredSongs = useMemo(() => {
     const query = songSearch.trim().toLowerCase();
-    if (!query) return songs;
-
-    return songs.filter((song) =>
-      [song.title, song.artist]
+    return songs.filter((song) => {
+      if (song.isArchived !== (songStatusFilter === "archived")) return false;
+      if (!query) return true;
+      return [song.title, song.artist]
         .filter(Boolean)
-        .some((value) => value!.toLowerCase().includes(query)),
-    );
-  }, [songSearch, songs]);
-  const songPageCount = Math.max(1, Math.ceil(filteredSongs.length / SONGS_PER_PAGE));
+        .some((value) => value!.toLowerCase().includes(query));
+    });
+  }, [songSearch, songs, songStatusFilter]);
+  const songPageCount = Math.max(1, Math.ceil(filteredSongs.length / songPageSize));
   const currentSongPage = Math.min(songPage, songPageCount);
-  const songPageStart = (currentSongPage - 1) * SONGS_PER_PAGE;
-  const visibleSongs = filteredSongs.slice(songPageStart, songPageStart + SONGS_PER_PAGE);
+  const songPageStart = (currentSongPage - 1) * songPageSize;
+  const visibleSongs = filteredSongs.slice(songPageStart, songPageStart + songPageSize);
+  const visibleSongIds = visibleSongs.map((song) => song.id);
+  const allVisibleSongsSelected = visibleSongIds.length > 0 && visibleSongIds.every((id) => selectedSongIds.includes(id));
+  const selectedSongs = songs.filter((song) => selectedSongIds.includes(song.id));
+  const selectedBulkPlaylist = playlists.find((playlist) => String(playlist.id) === bulkPlaylistId) ?? null;
 
   const filteredGallery = useMemo(() => {
     const query = gallerySearch.trim().toLowerCase();
@@ -1377,6 +1412,170 @@ export function MusicClient({
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     runAction(() => createSong(formData), () => setModal(null));
+  }
+
+  function toggleSongSelection(songId: number) {
+    setSelectedSongIds((current) => current.includes(songId)
+      ? current.filter((id) => id !== songId)
+      : [...current, songId]);
+  }
+
+  function toggleVisibleSongSelection() {
+    setSelectedSongIds((current) => {
+      if (allVisibleSongsSelected) return current.filter((id) => !visibleSongIds.includes(id));
+      return [...new Set([...current, ...visibleSongIds])];
+    });
+  }
+
+  function clearSelectedSongsOnSuccess(result: MusicNotice) {
+    if (result.ok) setSelectedSongIds([]);
+  }
+
+  function submitBulkAddToPlaylist(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const sessionId = Number(new FormData(event.currentTarget).get("sessionId"));
+    runAction(
+      () => bulkAddSongsToPlaylistSession(sessionId, selectedSongIds),
+      () => {
+        setModal(null);
+        setBulkPlaylistId("");
+        setSelectedSongIds([]);
+      },
+    );
+  }
+
+  function downloadImportFailures() {
+    if (!freeShowImportResult?.failures.length) return;
+    const report = [
+      "Song import failure report",
+      `Generated: ${new Date().toLocaleString()}`,
+      `Selected: ${freeShowImportResult.total}`,
+      `Imported: ${freeShowImportResult.imported}`,
+      `Repeated filenames: ${freeShowImportResult.duplicates}`,
+      `Failed: ${freeShowImportResult.failureCount}`,
+      "",
+      ...freeShowImportResult.failures.map((failure) => `${failure.filename}\t${failure.reason}`),
+    ].join("\n");
+    const url = URL.createObjectURL(new Blob([report], { type: "text/plain;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `song-import-failures-${new Date().toISOString().slice(0, 10)}.txt`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function submitFreeShowImport(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const fileInput = event.currentTarget.elements.namedItem("shows");
+    const files = fileInput instanceof HTMLInputElement ? Array.from(fileInput.files ?? []) : [];
+
+    if (files.length === 0) {
+      setNotice({ ok: false, message: "Select at least one .show or .txt song file." });
+      return;
+    }
+
+    setNotice(null);
+    setFreeShowImportResult(null);
+    startTransition(async () => {
+      let imported = 0;
+      let duplicates = 0;
+      let failures = 0;
+      const failureDetails: ImportFailure[] = [];
+      let batch: ImportedSong[] = [];
+      let batchTextLength = 0;
+
+      setFreeShowImportProgress({ processed: 0, total: files.length });
+
+      const flushBatch = async () => {
+        if (batch.length === 0) return;
+
+        const songsToSave = batch;
+        batch = [];
+        batchTextLength = 0;
+
+        try {
+          const result = await importFreeShowSongBatch(songsToSave);
+          imported += result.imported;
+          duplicates += result.duplicates;
+          failures += result.failures;
+          if (result.failures > 0) {
+            failureDetails.push(...songsToSave.slice(0, result.failures).map((song) => ({
+              filename: song.sourceFilename,
+              reason: result.message,
+            })));
+          }
+        } catch (error) {
+          console.error(error);
+          failures += songsToSave.length;
+          failureDetails.push(...songsToSave.map((song) => ({
+            filename: song.sourceFilename,
+            reason: "The song batch could not be saved.",
+          })));
+        }
+      };
+
+      try {
+        for (let index = 0; index < files.length; index++) {
+          const file = files[index];
+
+          const lowerName = file.name.toLowerCase();
+          const isFreeShowFile = lowerName.endsWith(".show");
+          const isTextFile = lowerName.endsWith(".txt");
+
+          if (!isFreeShowFile && !isTextFile) {
+            failures++;
+            failureDetails.push({ filename: file.name, reason: "Not a .show or .txt file." });
+          } else {
+            try {
+              const fallbackTitle = file.name.replace(/\.(show|txt)$/i, "").trim();
+              const content = await file.text();
+              const parsedSong = isTextFile
+                ? parseTextSong(content, fallbackTitle)
+                : parseFreeShowSong(content, fallbackTitle);
+              const song = identifyImportedSong(parsedSong, file.name);
+              const songTextLength = song.title.length + (song.artist?.length ?? 0) + song.lyrics.length;
+
+              if (songTextLength > MAX_FREESHOW_BATCH_TEXT) {
+                failures++;
+                failureDetails.push({ filename: file.name, reason: "Song text is too large." });
+              } else {
+                if (
+                  batch.length >= MAX_FREESHOW_BATCH_SONGS ||
+                  (batch.length > 0 && batchTextLength + songTextLength > MAX_FREESHOW_BATCH_TEXT)
+                ) {
+                  await flushBatch();
+                }
+                batch.push(song);
+                batchTextLength += songTextLength;
+              }
+            } catch (error) {
+              failures++;
+              failureDetails.push({
+                filename: file.name,
+                reason: error instanceof Error ? error.message : "The file could not be read.",
+              });
+            }
+          }
+
+          if ((index + 1) % 10 === 0 || index === files.length - 1) {
+            setFreeShowImportProgress({ processed: index + 1, total: files.length });
+          }
+        }
+
+        await flushBatch();
+
+        setFreeShowImportResult({
+          total: files.length,
+          imported,
+          duplicates,
+          failureCount: failures,
+          failures: failureDetails,
+        });
+        if (imported > 0) router.refresh();
+      } finally {
+        setFreeShowImportProgress(null);
+      }
+    });
   }
 
   function submitUpdateSong(event: FormEvent<HTMLFormElement>) {
@@ -1957,9 +2156,8 @@ export function MusicClient({
         </div>
       ) : (
         <div className="rounded-xl border border-gray-100 bg-white p-2 shadow-sm sm:rounded-2xl sm:p-6">
-          {canManage ? (
-            <div className="mb-4 flex flex-col gap-3 border-b border-gray-200 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex" role="tablist" aria-label="Playlist library sections">
+          <div className="mb-4 flex flex-col gap-3 border-b border-gray-200 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex" role="tablist" aria-label="Music library sections">
                 <button
                   type="button"
                   role="tab"
@@ -1981,27 +2179,26 @@ export function MusicClient({
                   Songs
                 </button>
               </div>
-              {libraryTab === "playlists" ? (
+              {canManage && libraryTab === "playlists" ? (
                 <button type="button" onClick={() => { setPlaylistNotice(null); setModal("playlist"); }} className="mb-3 inline-flex h-9 w-fit shrink-0 items-center justify-center gap-1 self-end rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white hover:bg-blue-700 sm:self-auto sm:rounded-xl">
                   <Plus className="size-4" aria-hidden />
                   <span>New</span>
                 </button>
-              ) : (
-                <button type="button" onClick={() => setModal("song")} className="mb-3 inline-flex h-9 w-fit shrink-0 items-center justify-center gap-1 self-end rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white hover:bg-blue-700 sm:self-auto sm:rounded-xl">
-                  <Plus className="size-4" aria-hidden />
-                  <span>Add</span>
-                </button>
-              )}
+              ) : canManage && libraryTab === "songs" ? (
+                <div className="mb-3 flex w-fit shrink-0 items-center gap-2 self-end sm:self-auto">
+                  <button type="button" onClick={() => { setFreeShowImportResult(null); setModal("freeShowImport"); }} className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-semibold text-blue-700 hover:bg-blue-100 sm:rounded-xl">
+                    <Upload className="size-4" aria-hidden />
+                    <span>Import Files</span>
+                  </button>
+                  <button type="button" onClick={() => setModal("song")} className="inline-flex h-9 items-center justify-center gap-1 rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white hover:bg-blue-700 sm:rounded-xl">
+                    <Plus className="size-4" aria-hidden />
+                    <span>Add</span>
+                  </button>
+                </div>
+              ) : null}
             </div>
-          ) : null}
           <div className="flex flex-col gap-4 lg:flex-row lg:gap-5">
-            {!canManage || libraryTab === "playlists" ? <section className="w-full">
-              {!canManage ? <div className="mb-2 flex items-center justify-between gap-2 border-b pb-2 sm:mb-3">
-                <h4 className="min-w-0 text-sm font-semibold text-gray-700 sm:text-base">
-                  <List className="mr-2 inline size-4 text-blue-600" aria-hidden />
-                  <span>Playlists</span>
-                </h4>
-              </div> : null}
+            {libraryTab === "playlists" ? <section className="w-full">
               <div className="relative mb-2 sm:mb-3">
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" aria-hidden />
                 <input value={playlistSearch} onChange={(event) => { setPlaylistSearch(event.target.value); setPlaylistPage(1); }} placeholder="Search playlists..." className="h-10 w-full rounded-lg border border-gray-300 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 sm:rounded-xl" />
@@ -2075,11 +2272,70 @@ export function MusicClient({
               ) : null}
             </section> : null}
 
-            {canManage && libraryTab === "songs" ? <section className="w-full">
+            {libraryTab === "songs" ? <section className="w-full">
+              {canManage ? <div className="mb-3 flex items-center gap-2 border-b border-gray-100">
+                {(["active", "archived"] as const).map((status) => (
+                  <button
+                    key={status}
+                    type="button"
+                    onClick={() => {
+                      setSongStatusFilter(status);
+                      setSongPage(1);
+                      setSelectedSongIds([]);
+                    }}
+                    className={`border-b-2 px-3 py-2 text-sm font-medium capitalize ${songStatusFilter === status ? "border-blue-600 text-blue-700" : "border-transparent text-gray-500 hover:text-gray-800"}`}
+                  >
+                    {status}{status === "archived" ? ` (${songs.filter((song) => song.isArchived).length})` : ""}
+                  </button>
+                ))}
+              </div> : null}
               <div className="relative mb-2 sm:mb-3">
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" aria-hidden />
                 <input value={songSearch} onChange={(event) => { setSongSearch(event.target.value); setSongPage(1); }} placeholder="Search songs..." className="h-10 w-full rounded-lg border border-gray-300 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 sm:rounded-xl" />
               </div>
+              {canManage ? <div className="mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
+                <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-700">
+                  <input type="checkbox" checked={allVisibleSongsSelected} onChange={toggleVisibleSongSelection} className="size-4 rounded border-gray-300 text-blue-600" />
+                  Select this page
+                </label>
+                {selectedSongs.length > 0 ? (
+                  <>
+                    <span className="mx-1 text-xs font-semibold text-blue-700">{selectedSongs.length} selected</span>
+                    {songStatusFilter === "active" ? (
+                      <>
+                        <button type="button" onClick={() => { setBulkPlaylistId(playlists[0] ? String(playlists[0].id) : ""); setModal("bulkPlaylist"); }} disabled={playlists.length === 0 || isPending} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
+                          <FolderPlus className="size-3.5" aria-hidden /> Add to playlist
+                        </button>
+                        <button type="button" onClick={() => runAction(() => bulkArchiveSongs(selectedSongIds, true), undefined, clearSelectedSongsOnSuccess)} disabled={isPending} className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-50">
+                          <Archive className="size-3.5" aria-hidden /> Archive
+                        </button>
+                      </>
+                    ) : (
+                      <button type="button" onClick={() => runAction(() => bulkArchiveSongs(selectedSongIds, false), undefined, clearSelectedSongsOnSuccess)} disabled={isPending} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
+                        <ArchiveRestore className="size-3.5" aria-hidden /> Restore
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => askConfirm({
+                        title: "Permanently Delete Songs",
+                        message: `Permanently delete ${selectedSongIds.length} selected song${selectedSongIds.length === 1 ? "" : "s"}? Their playlist assignments will also be removed. This cannot be undone.`,
+                        confirmLabel: "Delete Permanently",
+                        action: async () => {
+                          const result = await bulkDeleteSongs(selectedSongIds);
+                          if (result.ok) setSelectedSongIds([]);
+                          return result;
+                        },
+                      })}
+                      disabled={isPending}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      <Trash2 className="size-3.5" aria-hidden /> Delete
+                    </button>
+                    <button type="button" onClick={() => setSelectedSongIds([])} className="ml-auto text-xs font-medium text-gray-500 hover:text-gray-800">Clear</button>
+                  </>
+                ) : null}
+              </div> : null}
               <div className="space-y-2 sm:max-h-[450px] sm:overflow-y-auto sm:pr-1">
                 {filteredSongs.length > 0 ? visibleSongs.map((song) => (
                   <div key={song.id} className="group relative rounded-xl border border-gray-200 p-2.5 transition hover:border-blue-300 hover:bg-blue-50/40 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-200 sm:rounded-2xl sm:p-3">
@@ -2090,6 +2346,9 @@ export function MusicClient({
                       aria-label={`Open ${song.title} details`}
                     />
                     <div className="pointer-events-none relative z-10 flex items-start justify-between gap-3">
+                      {canManage ? <label className="pointer-events-auto mt-0.5 inline-flex cursor-pointer items-center" title={`Select ${song.title}`}>
+                        <input type="checkbox" checked={selectedSongIds.includes(song.id)} onChange={() => toggleSongSelection(song.id)} className="size-4 rounded border-gray-300 text-blue-600" aria-label={`Select ${song.title}`} />
+                      </label> : null}
                       <div className="min-w-0 flex-1">
                         <h5 className="truncate text-sm font-medium text-gray-800 sm:text-base">{song.title}</h5>
                         {song.artist ? <div className="mt-1 text-xs text-gray-500">{song.artist}</div> : null}
@@ -2103,16 +2362,29 @@ export function MusicClient({
                 )) : (
                   <div className="py-10 text-center text-gray-500">
                     <Search className="mx-auto mb-2 size-9 text-gray-300" aria-hidden />
-                    <p>No songs match your search</p>
+                    <p>{songStatusFilter === "archived" ? "No archived songs found" : "No songs match your search"}</p>
                   </div>
                 )}
               </div>
-              {filteredSongs.length > SONGS_PER_PAGE ? (
-                <div className="mt-3 flex flex-col gap-3 border-t border-gray-100 pt-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+              <div className="mt-3 flex flex-col gap-3 border-t border-gray-100 pt-3 text-sm sm:grid sm:grid-cols-[1fr_auto_1fr] sm:items-center">
                   <p className="text-gray-500">
-                    Showing {songPageStart + 1}–{Math.min(songPageStart + SONGS_PER_PAGE, filteredSongs.length)} of {filteredSongs.length}
+                    Showing {filteredSongs.length === 0 ? 0 : songPageStart + 1}–{Math.min(songPageStart + songPageSize, filteredSongs.length)} of {filteredSongs.length}
                   </p>
-                  <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-2 text-gray-600">
+                    <span>Rows per page</span>
+                    <select
+                      value={songPageSize}
+                      onChange={(event) => {
+                        setSongPageSize(Number(event.target.value));
+                        setSongPage(1);
+                      }}
+                      aria-label="Rows per page"
+                      className="h-9 rounded-lg border border-gray-200 bg-white px-3 font-medium text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                    >
+                      {SONG_PAGE_SIZE_OPTIONS.map((pageSize) => <option key={pageSize} value={pageSize}>{pageSize}</option>)}
+                    </select>
+                  </label>
+                  <div className="flex items-center gap-2 sm:justify-self-end">
                     <button
                       type="button"
                       onClick={() => setSongPage(Math.max(1, currentSongPage - 1))}
@@ -2136,7 +2408,6 @@ export function MusicClient({
                     </button>
                   </div>
                 </div>
-              ) : null}
             </section> : null}
           </div>
         </div>
@@ -2149,6 +2420,123 @@ export function MusicClient({
             <div className="flex justify-end gap-2 border-t pt-4">
               <button type="button" onClick={() => setModal(null)} className="rounded-lg border px-4 py-2 text-gray-700 hover:bg-gray-50">Cancel</button>
               <button disabled={isPending} type="submit" className="rounded-lg bg-green-600 px-4 py-2 font-semibold text-white hover:bg-green-700 disabled:opacity-60">Save Song</button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
+
+      {canManage && modal === "freeShowImport" ? (
+        <Modal title="Import Songs" onClose={() => setModal(null)}>
+          {freeShowImportResult ? (
+            <div className="space-y-5 p-5">
+              <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
+                <h4 className="font-semibold text-blue-950">Import complete</h4>
+                <p className="mt-1 text-sm text-blue-800">Processed {freeShowImportResult.total} selected file{freeShowImportResult.total === 1 ? "" : "s"}.</p>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="rounded-xl border border-green-200 bg-green-50 p-4">
+                  <div className="flex items-center gap-2 text-sm font-medium text-green-700"><CheckCircle2 className="size-4" /> Imported</div>
+                  <p className="mt-2 text-2xl font-bold text-green-900">{freeShowImportResult.imported}</p>
+                </div>
+                <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+                  <div className="flex items-center gap-2 text-sm font-medium text-blue-700"><FileText className="size-4" /> Repeated filenames</div>
+                  <p className="mt-2 text-2xl font-bold text-blue-900">{freeShowImportResult.duplicates}</p>
+                </div>
+                <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+                  <div className="flex items-center gap-2 text-sm font-medium text-red-700"><AlertTriangle className="size-4" /> Failed</div>
+                  <p className="mt-2 text-2xl font-bold text-red-900">{freeShowImportResult.failureCount}</p>
+                </div>
+              </div>
+              {freeShowImportResult.failures.length > 0 ? (
+                <div className="rounded-xl border border-red-100">
+                  <div className="border-b border-red-100 px-4 py-3 text-sm font-semibold text-red-800">Files needing attention</div>
+                  <div className="max-h-52 divide-y divide-red-50 overflow-y-auto">
+                    {freeShowImportResult.failures.map((failure, index) => (
+                      <div key={`${failure.filename}-${index}`} className="px-4 py-2.5 text-sm">
+                        <p className="break-all font-medium text-gray-800">{failure.filename}</p>
+                        <p className="mt-0.5 text-xs text-red-600">{failure.reason}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              <div className="flex flex-wrap justify-end gap-2 border-t pt-4">
+                {freeShowImportResult.failures.length > 0 ? (
+                  <button type="button" onClick={downloadImportFailures} className="inline-flex items-center gap-2 rounded-lg border border-blue-200 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50">
+                    <Download className="size-4" /> Download failure report
+                  </button>
+                ) : null}
+                <button type="button" onClick={() => setFreeShowImportResult(null)} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Import more</button>
+                <button type="button" onClick={() => setModal(null)} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Done</button>
+              </div>
+            </div>
+          ) : <form onSubmit={submitFreeShowImport} className="space-y-5 p-5">
+            <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm leading-6 text-blue-900">
+              Select <strong>.show</strong> or <strong>.txt</strong> files. Every filename becomes its song title. Files that were already imported are skipped.
+            </div>
+            <label>
+              <span className="mb-2 block text-sm font-medium text-gray-700">Song files *</span>
+              <div className="rounded-xl border-2 border-dashed border-gray-300 p-6 text-center transition hover:border-blue-500">
+                <Upload className="mx-auto mb-2 size-10 text-blue-500" aria-hidden />
+                <p className="text-sm font-medium text-gray-700">Choose your .show or .txt files</p>
+                <p className="mt-1 text-xs text-gray-500">Select files as needed.</p>
+                <input name="shows" type="file" accept=".show,.txt,application/json,text/plain" multiple required className="mt-4 w-full cursor-pointer rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm" />
+                {freeShowImportProgress ? (
+                  <div className="mt-4" aria-live="polite">
+                    <div className="mb-1 flex justify-between text-xs font-medium text-blue-700">
+                      <span>Processing files</span>
+                      <span>{freeShowImportProgress.processed} / {freeShowImportProgress.total}</span>
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full bg-blue-100">
+                      <div
+                        className="h-full rounded-full bg-blue-600 transition-[width]"
+                        style={{ width: `${Math.round((freeShowImportProgress.processed / freeShowImportProgress.total) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </label>
+            <div className="flex justify-end gap-2 border-t pt-4">
+              <button disabled={isPending} type="button" onClick={() => setModal(null)} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60">Cancel</button>
+              <button disabled={isPending} type="submit" className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60">
+                <Upload className="size-4" aria-hidden />
+                {freeShowImportProgress ? `Importing ${freeShowImportProgress.processed}/${freeShowImportProgress.total}` : "Import Songs"}
+              </button>
+            </div>
+          </form>}
+        </Modal>
+      ) : null}
+
+      {canManage && modal === "bulkPlaylist" ? (
+        <Modal title="Add Songs to Playlist" onClose={() => { setModal(null); setBulkPlaylistId(""); }}>
+          <form onSubmit={submitBulkAddToPlaylist} className="space-y-5 p-5">
+            <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
+              Add {selectedSongIds.length} selected song{selectedSongIds.length === 1 ? "" : "s"} to a playlist session. Songs already in that session will be skipped.
+            </div>
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-gray-700">Playlist *</span>
+              <select value={bulkPlaylistId} onChange={(event) => setBulkPlaylistId(event.target.value)} required className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">Select playlist</option>
+                {playlists.map((playlist) => <option key={playlist.id} value={playlist.id}>{playlist.title}</option>)}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-gray-700">Session *</span>
+              <select key={bulkPlaylistId} name="sessionId" required disabled={!selectedBulkPlaylist} className="w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">Select session</option>
+                {selectedBulkPlaylist?.sessions.map((session) => (
+                  <option key={session.id} value={session.id}>
+                    {playlistServiceLabel(session.serviceNumber)} · {session.name || "Default session"}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="flex justify-end gap-2 border-t pt-4">
+              <button type="button" onClick={() => { setModal(null); setBulkPlaylistId(""); }} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Cancel</button>
+              <button type="submit" disabled={isPending || !selectedBulkPlaylist} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
+                <FolderPlus className="size-4" /> {isPending ? "Adding..." : "Add Songs"}
+              </button>
             </div>
           </form>
         </Modal>

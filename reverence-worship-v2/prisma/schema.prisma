@@ -742,21 +742,25 @@ model PlaylistSession {
 }
 
 model Song {
-  id          Int      @id @default(autoincrement())
-  title       String
-  artist      String?
-  tempo       Int?
-  lyrics      String?
-  youtubeLink String?  @map("youtube_link")
-  createdBy   Int?     @map("created_by")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id               Int       @id @default(autoincrement())
+  title            String
+  artist           String?
+  tempo            Int?
+  lyrics           String?
+  youtubeLink      String?   @map("youtube_link")
+  importedFilename String?   @unique @map("imported_filename")
+  isArchived       Boolean   @default(false) @map("is_archived")
+  archivedAt       DateTime? @map("archived_at")
+  createdBy        Int?      @map("created_by")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
 
   creator   User?          @relation("CreatedSongs", fields: [createdBy], references: [id], onDelete: SetNull)
   playlists PlaylistSong[]
 
   @@index([createdBy])
   @@index([title])
+  @@index([isArchived, title])
   @@map("songs")
 }
 

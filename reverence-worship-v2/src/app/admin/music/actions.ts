@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { mkdir, unlink, writeFile } from "fs/promises";
 import path from "path";
 import { del as deleteBlob, put } from "@vercel/blob";
+import { Prisma } from "@/generated/prisma/client";
 import { requirePermission } from "@/lib/auth";
 import {
   parsePlaylistServiceCount,
@@ -12,6 +13,13 @@ import {
 } from "@/lib/playlist-rules";
 import { prisma } from "@/lib/prisma";
 import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
+import type { ImportedSong } from "@/lib/freeshow-import";
+
+const MAX_FREESHOW_IMPORT_BATCH = 100;
+const MAX_FREESHOW_IMPORT_TEXT = 3_250_000;
+const MAX_FREESHOW_TITLE_LENGTH = 500;
+const MAX_FREESHOW_FILENAME_LENGTH = 500;
+const MAX_FREESHOW_LYRICS_LENGTH = 3_000_000;
 
 function readString(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -29,6 +37,11 @@ function readNumber(formData: FormData, key: string) {
 function readBoolean(formData: FormData, key: string) {
   const value = formData.get(key);
   return value === "on" || value === "1" || value === "true";
+}
+
+function normalizedSongIds(input: unknown) {
+  if (!Array.isArray(input)) return [];
+  return [...new Set(input.filter((id): id is number => Number.isInteger(id) && id > 0))];
 }
 
 async function playlistSongsExist(songIds: number[]) {
@@ -129,6 +142,136 @@ export async function createSong(formData: FormData) {
   revalidatePath("/admin/music");
 
   return { ok: true, message: "Song added successfully." };
+}
+
+function normalizeFreeShowSong(value: unknown): ImportedSong | null {
+  if (!value || typeof value !== "object") return null;
+
+  const song = value as Record<string, unknown>;
+  const title = typeof song.title === "string" ? song.title.trim() : "";
+  const lyrics = typeof song.lyrics === "string" ? song.lyrics.trim() : "";
+  const artist = typeof song.artist === "string" && song.artist.trim() ? song.artist.trim() : null;
+  const sourceFilename = typeof song.sourceFilename === "string" ? song.sourceFilename.trim().toLocaleLowerCase() : "";
+
+  if (
+    !title ||
+    !lyrics ||
+    !sourceFilename ||
+    title.length > MAX_FREESHOW_TITLE_LENGTH ||
+    lyrics.length > MAX_FREESHOW_LYRICS_LENGTH ||
+    sourceFilename.length > MAX_FREESHOW_FILENAME_LENGTH
+  ) {
+    return null;
+  }
+
+  return { title, artist, lyrics, sourceFilename };
+}
+
+export async function importFreeShowSongBatch(input: unknown) {
+  const user = await requirePermission("music-ministry", "manage-songs");
+
+  if (!Array.isArray(input) || input.length === 0 || input.length > MAX_FREESHOW_IMPORT_BATCH) {
+    return {
+      ok: false,
+      message: `Each internal import batch must contain 1 to ${MAX_FREESHOW_IMPORT_BATCH} songs.`,
+      imported: 0,
+      duplicates: 0,
+      failures: Array.isArray(input) ? input.length : 0,
+    };
+  }
+
+  const parsedSongs = input.map(normalizeFreeShowSong).filter((song): song is ImportedSong => song !== null);
+  const invalidSongs = input.length - parsedSongs.length;
+  const textLength = parsedSongs.reduce(
+    (total, song) => total + song.title.length + (song.artist?.length ?? 0) + song.lyrics.length,
+    0,
+  );
+
+  if (textLength > MAX_FREESHOW_IMPORT_TEXT) {
+    return {
+      ok: false,
+      message: "An internal FreeShow import batch is too large.",
+      imported: 0,
+      duplicates: 0,
+      failures: input.length,
+    };
+  }
+
+  const existingSongs = await prisma.song.findMany({
+    select: { id: true, artist: true, lyrics: true, importedFilename: true },
+  });
+  const knownFilenames = new Set(existingSongs.flatMap((song) => song.importedFilename ? [song.importedFilename] : []));
+  const legacySongsByContent = new Map<string, number[]>();
+  for (const song of existingSongs) {
+    if (song.importedFilename || !song.lyrics) continue;
+    const contentKey = `${song.artist?.trim().toLocaleLowerCase() ?? ""}\u0000${song.lyrics.trim()}`;
+    legacySongsByContent.set(contentKey, [...(legacySongsByContent.get(contentKey) ?? []), song.id]);
+  }
+
+  const songsToCreate: ImportedSong[] = [];
+  const legacySongsToLink: Array<{ id: number; title: string; importedFilename: string }> = [];
+  let duplicates = 0;
+
+  for (const song of parsedSongs) {
+    if (knownFilenames.has(song.sourceFilename)) {
+      duplicates++;
+      continue;
+    }
+    knownFilenames.add(song.sourceFilename);
+
+    const contentKey = `${song.artist?.trim().toLocaleLowerCase() ?? ""}\u0000${song.lyrics.trim()}`;
+    const legacySongIds = legacySongsByContent.get(contentKey);
+    const legacySongId = legacySongIds?.shift();
+    if (legacySongId) {
+      legacySongsToLink.push({ id: legacySongId, title: song.title, importedFilename: song.sourceFilename });
+      continue;
+    }
+
+    songsToCreate.push(song);
+  }
+
+  let imported = legacySongsToLink.length;
+  if (legacySongsToLink.length > 0 || songsToCreate.length > 0) {
+    const createdCount = await prisma.$transaction(async (transaction) => {
+      if (legacySongsToLink.length > 0) {
+        const legacyRows = Prisma.join(
+          legacySongsToLink.map((song) => Prisma.sql`(${song.id}, ${song.title}, ${song.importedFilename})`),
+        );
+        await transaction.$executeRaw(Prisma.sql`
+          UPDATE "songs" AS "song"
+          SET
+            "title" = "imported"."title",
+            "imported_filename" = "imported"."filename",
+            "updated_at" = NOW()
+          FROM (VALUES ${legacyRows}) AS "imported"("id", "title", "filename")
+          WHERE "song"."id" = "imported"."id"::integer
+        `);
+      }
+
+      if (songsToCreate.length === 0) return 0;
+      const result = await transaction.song.createMany({
+        data: songsToCreate.map(({ sourceFilename, ...song }) => ({
+          ...song,
+          importedFilename: sourceFilename,
+          createdBy: user.id,
+        })),
+        skipDuplicates: true,
+      });
+      return result.count;
+    }, { timeout: 30_000 });
+
+    imported += createdCount;
+    duplicates += songsToCreate.length - createdCount;
+    revalidatePath("/admin/music");
+  }
+
+  return {
+    ok: imported > 0 || (duplicates > 0 && invalidSongs === 0),
+    message: "FreeShow song batch processed.",
+    imported,
+    duplicates,
+    failures: invalidSongs,
+  };
 }
 
 async function syncMusicActionPlanProgress(actionPlanId: number) {
@@ -292,6 +435,101 @@ export async function deleteSong(songId: number) {
   return { ok: true, message: "Song deleted." };
 }
 
+export async function bulkArchiveSongs(input: unknown, archive: boolean) {
+  await requirePermission("music-ministry", "delete-songs");
+  const songIds = normalizedSongIds(input);
+  if (songIds.length === 0) return { ok: false, message: "Select at least one song." };
+
+  const result = await prisma.song.updateMany({
+    where: { id: { in: songIds } },
+    data: {
+      isArchived: archive,
+      archivedAt: archive ? new Date() : null,
+    },
+  });
+
+  revalidatePath("/admin/music");
+  return {
+    ok: result.count > 0,
+    message: archive
+      ? `Archived ${result.count} song${result.count === 1 ? "" : "s"}.`
+      : `Restored ${result.count} song${result.count === 1 ? "" : "s"}.`,
+  };
+}
+
+export async function bulkDeleteSongs(input: unknown) {
+  await requirePermission("music-ministry", "delete-songs");
+  const songIds = normalizedSongIds(input);
+  if (songIds.length === 0) return { ok: false, message: "Select at least one song." };
+
+  const result = await prisma.song.deleteMany({ where: { id: { in: songIds } } });
+  revalidatePath("/admin/music");
+  return {
+    ok: result.count > 0,
+    message: `Permanently deleted ${result.count} song${result.count === 1 ? "" : "s"}.`,
+  };
+}
+
+export async function bulkAddSongsToPlaylistSession(sessionId: number, input: unknown) {
+  await requirePermission("music-ministry", "manage-playlists");
+  const songIds = normalizedSongIds(input);
+
+  if (!Number.isInteger(sessionId) || sessionId <= 0 || songIds.length === 0) {
+    return { ok: false, message: "Choose a playlist session and at least one song." };
+  }
+
+  const result = await prisma.$transaction(async (transaction) => {
+    const session = await transaction.playlistSession.findUnique({
+      where: { id: sessionId },
+      select: { id: true },
+    });
+    if (!session) return null;
+
+    const [availableSongs, existingAssignments, lastAssignment] = await Promise.all([
+      transaction.song.findMany({
+        where: { id: { in: songIds }, isArchived: false },
+        select: { id: true },
+      }),
+      transaction.playlistSong.findMany({
+        where: { sessionId, songId: { in: songIds } },
+        select: { songId: true },
+      }),
+      transaction.playlistSong.aggregate({
+        where: { sessionId },
+        _max: { displayOrder: true },
+      }),
+    ]);
+
+    const existingSongIds = new Set(existingAssignments.map((assignment) => assignment.songId));
+    const songsToAdd = availableSongs.filter((song) => !existingSongIds.has(song.id));
+    const startingOrder = (lastAssignment._max.displayOrder ?? -1) + 1;
+
+    if (songsToAdd.length > 0) {
+      await transaction.playlistSong.createMany({
+        data: songsToAdd.map((song, index) => ({
+          sessionId,
+          songId: song.id,
+          displayOrder: startingOrder + index,
+        })),
+        skipDuplicates: true,
+      });
+    }
+
+    return { added: songsToAdd.length, skipped: songIds.length - songsToAdd.length };
+  }, { timeout: 30_000 });
+
+  if (!result) return { ok: false, message: "Playlist session not found." };
+
+  revalidatePath("/admin/music");
+  return {
+    ok: result.added > 0 || result.skipped > 0,
+    message: [
+      `Added ${result.added} song${result.added === 1 ? "" : "s"}`,
+      result.skipped > 0 ? `skipped ${result.skipped} already assigned or archived song${result.skipped === 1 ? "" : "s"}` : null,
+    ].filter(Boolean).join("; ") + ".",
+  };
+}
+
 export async function updateSong(songId: number, formData: FormData) {
   await requirePermission("music-ministry", "manage-songs");
   const title = readString(formData, "title");
@@ -304,8 +542,6 @@ export async function updateSong(songId: number, formData: FormData) {
     where: { id: songId },
     data: {
       title,
-      artist: null,
-      tempo: null,
       lyrics: readString(formData, "lyrics"),
       youtubeLink: readString(formData, "youtubeLink"),
     },

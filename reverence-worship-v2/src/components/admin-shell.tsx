@@ -75,7 +75,7 @@ const navGroups: Array<{ label: string; items: NavItem[] }> = [
       { label: "My Family", href: "/admin/family", page: "family", icon: Home, memberOnly: true },
       { label: "Read Bible", href: "/admin/intercession?tab=bible", page: "intercession", feature: "read-bible", icon: BookOpen },
       { label: "Forms", href: "/admin/intercession?tab=forms", page: "intercession", feature: "submit-forms", icon: FileText },
-      { label: "Playlist", href: "/admin/music?tab=playlist", page: "music-ministry", feature: "view-playlists", icon: ListMusic },
+      { label: "Playlists & Songs", href: "/admin/music?tab=playlist", page: "music-ministry", feature: "view-playlists", icon: ListMusic },
       { label: "Announcements", href: "/admin/announcements", page: "announcements", feature: "view", icon: Megaphone },
       { label: "Permission Request", href: "/admin/discipline?tab=permission", page: "discipline", feature: "view-own-permission-requests", icon: MailOpen },
       { label: "Parent Dashboard", href: "/admin/parent", page: "parent", feature: "view", icon: UserCheck },
@@ -94,7 +94,7 @@ const navGroups: Array<{ label: string; items: NavItem[] }> = [
 const mobileNavItems = [
   { label: "Home", href: "/admin/dashboard", page: "dashboard", icon: Gauge },
   { label: "Bible", href: "/admin/intercession?tab=bible", page: "intercession", feature: "read-bible", icon: BookOpen },
-  { label: "Playlist", href: "/admin/music?tab=playlist", page: "music-ministry", feature: "view-playlists", icon: ListMusic },
+  { label: "Playlists & Songs", href: "/admin/music?tab=playlist", page: "music-ministry", feature: "view-playlists", icon: ListMusic },
   { label: "Giving", href: "/admin/contributions", page: "contributions", icon: HandCoins },
   { label: "Progress", href: "/admin/performance", page: "performance", icon: BarChart3 },
   { label: "Settings", href: "/admin/settings", page: "settings", icon: Settings },
