@@ -1,24 +1,60 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ActionNotice } from "@/components/action-notice";
-import { DragEvent, FormEvent, useMemo, useState, useTransition } from "react";
+import { useAppDialog } from "@/components/app-dialog-provider";
+import { ChangeEvent, DragEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   ArrowLeft,
+  ArrowRight,
+  BookOpen,
   Check,
+  ChevronDown,
+  ChevronUp,
   Copy,
+  FileCheck2,
   GripVertical,
   Heading,
+  ImagePlus,
   Layers,
   List,
+  Monitor,
   Plus,
+  Presentation,
+  Redo2,
+  Save,
   Settings,
+  Smartphone,
   Trash2,
+  Undo2,
+  X,
 } from "lucide-react";
-import { createSpiritualFormFromBuilder, updateSpiritualFormFromBuilder } from "@/app/admin/intercession/actions";
+import {
+  createSpiritualFormFromBuilder,
+  getSpiritualFormQuestionLibrary,
+  removeSpiritualFormQuestionFromLibrary,
+  saveSpiritualFormQuestionToLibrary,
+  updateSpiritualFormFromBuilder,
+  uploadSpiritualFormQuestionImages,
+} from "@/app/admin/intercession/actions";
 import { MobileTabScroller } from "@/components/mobile-tab-scroller";
 import { IntercessionRichTextEditor } from "@/components/intercession-rich-text-editor";
+import { IntercessionTakeForm } from "@/components/intercession-take-form";
+import { intercessionRichTextToPlainText } from "@/lib/intercession-rich-text";
+import {
+  getIntercessionPublishingIssues,
+  parseIntercessionQuestionCondition,
+  type IntercessionQuestionCondition,
+} from "@/lib/intercession-form-rules";
+import {
+  MAX_QUESTION_IMAGE_BYTES,
+  MAX_QUESTION_IMAGES,
+  parseQuestionImages,
+  QUESTION_IMAGE_ACCEPT,
+  type IntercessionQuestionImage,
+} from "@/lib/intercession-question-images";
 
 type QuestionType =
   | "short_answer"
@@ -32,6 +68,7 @@ type QuestionType =
   | "checkbox_grid"
   | "date"
   | "time"
+  | "file_upload"
   | "title_section"
   | "section_break";
 
@@ -50,6 +87,8 @@ type BuilderQuestion = {
   gridCorrectAnswers: Record<string, string | string[]>;
   min: number;
   max: number;
+  images: IntercessionQuestionImage[];
+  condition: IntercessionQuestionCondition | null;
 };
 
 type SettingsTab = "quiz" | "responses" | "presentation" | "defaults" | "advanced";
@@ -72,13 +111,17 @@ type BuilderSettings = {
   allow_export: boolean;
   include_timestamps: boolean;
   submission_deadline: string;
+  submission_opens_at: string;
+  max_responses: number;
+  thank_you_message: string;
+  redirect_url: string;
 };
 
 export type IntercessionBuilderInitialData = {
   id?: number;
   title?: string;
   description?: string | null;
-  questions?: Partial<BuilderQuestion & { text?: string; correctAnswers?: unknown; rows?: unknown; columns?: unknown }>[];
+  questions?: Partial<BuilderQuestion & { text?: string; correctAnswers?: unknown; rows?: unknown; columns?: unknown; images?: unknown }>[];
   settings?: Partial<BuilderSettings>;
 };
 
@@ -94,6 +137,7 @@ const questionTypes: Array<{ value: QuestionType; label: string }> = [
   { value: "checkbox_grid", label: "Checkbox grid" },
   { value: "date", label: "Date" },
   { value: "time", label: "Time" },
+  { value: "file_upload", label: "File upload" },
 ];
 
 function asGridCorrectAnswers(value: unknown): Record<string, string | string[]> {
@@ -105,13 +149,13 @@ function asGridCorrectAnswers(value: unknown): Record<string, string | string[]>
   return Object.fromEntries(entries);
 }
 
-function newQuestion(type: QuestionType = "short_answer"): BuilderQuestion {
+function newQuestion(type: QuestionType = "short_answer", required = true): BuilderQuestion {
   return {
     id: crypto.randomUUID(),
     type,
     label: type === "title_section" ? "Title and description" : type === "section_break" ? "New section" : "Untitled question",
     description: "",
-    required: true,
+    required,
     options: ["Option 1"],
     points: 1,
     correctAnswer: "",
@@ -121,11 +165,13 @@ function newQuestion(type: QuestionType = "short_answer"): BuilderQuestion {
     gridCorrectAnswers: {},
     min: 1,
     max: type === "rating" ? 5 : 5,
+    images: [],
+    condition: null,
   };
 }
 
-function normalizeQuestion(question: Partial<BuilderQuestion & { text?: string; correctAnswers?: unknown; rows?: unknown; columns?: unknown }>): BuilderQuestion {
-  const type = question.type && ["short_answer", "paragraph", "multiple_choice", "checkboxes", "dropdown", "linear_scale", "rating", "multiple_choice_grid", "checkbox_grid", "date", "time", "title_section", "section_break"].includes(question.type)
+function normalizeQuestion(question: Partial<BuilderQuestion & { text?: string; correctAnswers?: unknown; rows?: unknown; columns?: unknown; images?: unknown }>): BuilderQuestion {
+  const type = question.type && ["short_answer", "paragraph", "multiple_choice", "checkboxes", "dropdown", "linear_scale", "rating", "multiple_choice_grid", "checkbox_grid", "date", "time", "file_upload", "title_section", "section_break"].includes(question.type)
     ? question.type
     : "short_answer";
   const correctAnswers = Array.isArray(question.correctAnswers)
@@ -147,11 +193,83 @@ function normalizeQuestion(question: Partial<BuilderQuestion & { text?: string; 
     gridCorrectAnswers: asGridCorrectAnswers(question.correctAnswers),
     min: Number(question.min ?? 1),
     max: Number(question.max ?? 5),
+    images: parseQuestionImages(question.images),
+    condition: parseIntercessionQuestionCondition(question.condition),
+  };
+}
+
+type BuilderSnapshot = {
+  title: string;
+  description: string;
+  questions: BuilderQuestion[];
+  settings: BuilderSettings;
+};
+
+type DraftStatus = "saved" | "saving" | "unsaved" | "error";
+
+const NEW_FORM_DRAFT_KEY = "intercession-form-builder-draft-v1";
+
+const formTemplates: Array<{ id: string; name: string; description: string; title: string; questions: BuilderQuestion[] }> = [
+  {
+    id: "registration",
+    name: "Registration",
+    description: "Contact details and attendance confirmation.",
+    title: "Event registration",
+    questions: [
+      { ...newQuestion("short_answer"), label: "Full name", required: true },
+      { ...newQuestion("short_answer"), label: "Phone number", required: true },
+      { ...newQuestion("multiple_choice"), label: "Will you attend?", options: ["Yes", "No"], required: true },
+    ],
+  },
+  {
+    id: "feedback",
+    name: "Event feedback",
+    description: "Rating and open feedback of activity.",
+    title: "Event feedback",
+    questions: [
+      { ...newQuestion("rating"), label: "How would you rate the event?", required: true },
+      { ...newQuestion("paragraph"), label: "What did you appreciate most?" },
+      { ...newQuestion("paragraph"), label: "What should we improve?" },
+    ],
+  },
+  {
+    id: "survey",
+    name: "Simple survey",
+    description: "A balanced starting point for collecting opinions.",
+    title: "Community survey",
+    questions: [
+      { ...newQuestion("multiple_choice"), label: "Choose the option that fits you best", options: ["Option 1", "Option 2", "Option 3"], required: true },
+      { ...newQuestion("paragraph"), label: "Please explain your answer" },
+    ],
+  },
+  {
+    id: "quiz",
+    name: "Quiz",
+    description: "A scored questions.",
+    title: "Quiz",
+    questions: [
+      { ...newQuestion("multiple_choice"), label: "Enter your first question", options: ["Answer 1", "Answer 2", "Answer 3"], correctAnswer: "Answer 1", required: true },
+      { ...newQuestion("short_answer"), label: "Enter a short-answer question", correctAnswer: "Correct answer", required: true },
+    ],
+  },
+];
+
+function cloneQuestion(question: BuilderQuestion): BuilderQuestion {
+  return {
+    ...question,
+    id: crypto.randomUUID(),
+    options: [...question.options],
+    correctAnswers: [...question.correctAnswers],
+    rows: [...question.rows],
+    columns: [...question.columns],
+    gridCorrectAnswers: structuredClone(question.gridCorrectAnswers),
+    images: question.images.map((image) => ({ ...image })),
+    condition: question.condition ? { ...question.condition } : null,
   };
 }
 
 const defaultSettings: BuilderSettings = {
-  is_quiz: true,
+  is_quiz: false,
   release_grade: "never",
   default_points: 1,
   allow_view_response: true,
@@ -168,21 +286,38 @@ const defaultSettings: BuilderSettings = {
   allow_export: true,
   include_timestamps: true,
   submission_deadline: "",
+  submission_opens_at: "",
+  max_responses: 0,
+  thank_you_message: "Thank you. Your response has been recorded.",
+  redirect_url: "",
 };
 
 export function IntercessionFormBuilder({ initialData }: { initialData?: IntercessionBuilderInitialData }) {
   const router = useRouter();
+  const { confirm } = useAppDialog();
   const isEditing = Boolean(initialData?.id);
   const [activeArea, setActiveArea] = useState<"questions" | "settings">("questions");
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("quiz");
   const [title, setTitle] = useState(initialData?.title ?? "");
   const [description, setDescription] = useState(initialData?.description ?? "");
   const [questions, setQuestions] = useState<BuilderQuestion[]>(
-    initialData?.questions?.length ? initialData.questions.map(normalizeQuestion) : [newQuestion()],
+    initialData?.questions?.length ? initialData.questions.map(normalizeQuestion) : [newQuestion("short_answer", defaultSettings.default_required)],
   );
   const [selectedQuestionId, setSelectedQuestionId] = useState<string | null>(null);
   const [draggingQuestionId, setDraggingQuestionId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [activeImageUploads, setActiveImageUploads] = useState(0);
+  const [collapsedQuestionIds, setCollapsedQuestionIds] = useState<Set<string>>(new Set());
+  const [draftStatus, setDraftStatus] = useState<DraftStatus>("saved");
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const [showChecklist, setShowChecklist] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [showLibrary, setShowLibrary] = useState(false);
+  const [previewDevice, setPreviewDevice] = useState<"desktop" | "mobile">("desktop");
+  const [questionLibrary, setQuestionLibrary] = useState<BuilderQuestion[]>([]);
+  const [pastSnapshots, setPastSnapshots] = useState<BuilderSnapshot[]>([]);
+  const [futureSnapshots, setFutureSnapshots] = useState<BuilderSnapshot[]>([]);
   const [isPending, startTransition] = useTransition();
 
   const [settings, setSettings] = useState<BuilderSettings>({ ...defaultSettings, ...(initialData?.settings ?? {}) });
@@ -190,6 +325,7 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
   const savableQuestions = useMemo(
     () =>
       questions.map((question) => ({
+        id: question.id,
         type: question.type,
         label: question.label,
         text: question.label,
@@ -205,16 +341,171 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
         columns: question.columns.filter(Boolean),
         min: question.min,
         max: question.max,
+        images: question.images,
+        condition: question.condition,
       })),
     [questions],
   );
 
-  function updateQuestion(id: string, patch: Partial<BuilderQuestion>) {
-    setQuestions((current) => current.map((question) => (question.id === id ? { ...question, ...patch } : question)));
+  const currentSnapshot = useMemo<BuilderSnapshot>(() => ({ title, description, questions, settings }), [description, questions, settings, title]);
+  const serializedSnapshot = useMemo(() => JSON.stringify(currentSnapshot), [currentSnapshot]);
+  const lastHistorySnapshotRef = useRef(currentSnapshot);
+  const lastHistorySerializedRef = useRef(serializedSnapshot);
+  const latestSnapshotRef = useRef(currentSnapshot);
+  const autosaveSequenceRef = useRef(0);
+
+  useEffect(() => {
+    latestSnapshotRef.current = currentSnapshot;
+  }, [currentSnapshot]);
+
+  useEffect(() => {
+    let active = true;
+    getSpiritualFormQuestionLibrary().then((library) => {
+      if (active) setQuestionLibrary(library.map(normalizeQuestion));
+    }).catch(() => setMessage("The shared question library could not be loaded."));
+    return () => { active = false; };
+  }, []);
+
+  const publishingIssues = useMemo(
+    () => getIntercessionPublishingIssues(title, savableQuestions, settings),
+    [savableQuestions, settings, title],
+  );
+
+  const buildFormData = useCallback((snapshot: BuilderSnapshot) => {
+    const formData = new FormData();
+    formData.set("title", snapshot.title);
+    formData.set("description", snapshot.description);
+    formData.set("questions", JSON.stringify(snapshot.questions.map((question) => ({
+      ...question,
+      text: question.label,
+      options: question.options.filter(Boolean),
+      rows: question.rows.filter(Boolean),
+      columns: question.columns.filter(Boolean),
+      correctAnswer: question.correctAnswer || null,
+      correctAnswers: ["multiple_choice_grid", "checkbox_grid"].includes(question.type)
+        ? question.gridCorrectAnswers
+        : question.correctAnswers.length ? question.correctAnswers : null,
+    }))));
+    formData.set("settings", JSON.stringify(snapshot.settings));
+    return formData;
+  }, []);
+
+  const applySnapshot = useCallback((snapshot: BuilderSnapshot) => {
+    setTitle(snapshot.title);
+    setDescription(snapshot.description);
+    setQuestions(snapshot.questions.map((question) => ({ ...question, images: question.images.map((image) => ({ ...image })) })));
+    setSettings({ ...snapshot.settings });
+    lastHistorySnapshotRef.current = snapshot;
+    lastHistorySerializedRef.current = JSON.stringify(snapshot);
+    setDraftStatus("unsaved");
+  }, []);
+
+  useEffect(() => {
+    if (initialData?.id) return;
+    const timer = window.setTimeout(async () => {
+      try {
+        const storedDraft = localStorage.getItem(NEW_FORM_DRAFT_KEY);
+        if (storedDraft) {
+          const parsed = JSON.parse(storedDraft) as Partial<BuilderSnapshot>;
+          const hasContent = typeof parsed.title === "string" || Array.isArray(parsed.questions);
+          if (hasContent && await confirm({
+            title: "Restore saved draft?",
+            message: "A saved form draft was found on this device. Restore it and continue editing?",
+            confirmLabel: "Restore draft",
+          })) {
+            const restored: BuilderSnapshot = {
+              title: typeof parsed.title === "string" ? parsed.title : "",
+              description: typeof parsed.description === "string" ? parsed.description : "",
+              questions: Array.isArray(parsed.questions) && parsed.questions.length ? parsed.questions.map(normalizeQuestion) : [newQuestion("short_answer", Boolean(parsed.settings?.default_required))],
+              settings: { ...defaultSettings, ...(parsed.settings ?? {}) },
+            };
+            applySnapshot(restored);
+            setMessage("Your saved draft was restored.");
+          }
+        }
+      } catch {
+        setMessage("Saved drafts could not be read on this device.");
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [applySnapshot, confirm, initialData?.id]);
+
+  useEffect(() => {
+    if (serializedSnapshot === lastHistorySerializedRef.current) return;
+    setDraftStatus("unsaved");
+    const timer = window.setTimeout(() => {
+      setPastSnapshots((current) => [...current.slice(-49), lastHistorySnapshotRef.current]);
+      setFutureSnapshots([]);
+      lastHistorySnapshotRef.current = latestSnapshotRef.current;
+      lastHistorySerializedRef.current = JSON.stringify(latestSnapshotRef.current);
+    }, 450);
+    return () => window.clearTimeout(timer);
+  }, [serializedSnapshot]);
+
+  useEffect(() => {
+    if (activeImageUploads > 0 || draftStatus !== "unsaved") return;
+    const timer = window.setTimeout(async () => {
+      const snapshot = latestSnapshotRef.current;
+      const sequence = ++autosaveSequenceRef.current;
+      setDraftStatus("saving");
+      try {
+        localStorage.setItem(initialData?.id ? `${NEW_FORM_DRAFT_KEY}-${initialData.id}` : NEW_FORM_DRAFT_KEY, JSON.stringify(snapshot));
+        if (initialData?.id && !initialData.settings?.is_published && intercessionRichTextToPlainText(snapshot.title).trim()) {
+          const autosaveData = buildFormData(snapshot);
+          autosaveData.set("autosave", "1");
+          const result = await updateSpiritualFormFromBuilder(initialData.id, autosaveData);
+          if (!result.ok) throw new Error(result.message);
+        }
+        if (sequence === autosaveSequenceRef.current) {
+          if (JSON.stringify(latestSnapshotRef.current) === JSON.stringify(snapshot)) {
+            setDraftStatus("saved");
+            setLastSavedAt(new Date());
+          } else {
+            setDraftStatus("unsaved");
+          }
+        }
+      } catch {
+        if (sequence === autosaveSequenceRef.current) setDraftStatus("error");
+      }
+    }, 1200);
+    return () => window.clearTimeout(timer);
+  }, [activeImageUploads, buildFormData, draftStatus, initialData?.id, initialData?.settings?.is_published, serializedSnapshot]);
+
+  useEffect(() => {
+    function warnBeforeLeaving(event: BeforeUnloadEvent) {
+      if (draftStatus !== "unsaved" && draftStatus !== "saving" && draftStatus !== "error" && activeImageUploads === 0) return;
+      event.preventDefault();
+    }
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
+  }, [activeImageUploads, draftStatus]);
+
+  function undo() {
+    const previous = pastSnapshots.at(-1);
+    if (!previous) return;
+    setPastSnapshots((current) => current.slice(0, -1));
+    setFutureSnapshots((current) => [latestSnapshotRef.current, ...current].slice(0, 50));
+    applySnapshot(previous);
+  }
+
+  function redo() {
+    const next = futureSnapshots[0];
+    if (!next) return;
+    setFutureSnapshots((current) => current.slice(1));
+    setPastSnapshots((current) => [...current.slice(-49), latestSnapshotRef.current]);
+    applySnapshot(next);
+  }
+
+  function updateQuestion(id: string, patch: Partial<BuilderQuestion> | ((question: BuilderQuestion) => Partial<BuilderQuestion>)) {
+    setQuestions((current) => current.map((question) => (
+      question.id === id
+        ? { ...question, ...(typeof patch === "function" ? patch(question) : patch) }
+        : question
+    )));
   }
 
   function addQuestion(type: QuestionType = "short_answer", afterId = selectedQuestionId) {
-    const question = newQuestion(type);
+    const question = newQuestion(type, ["title_section", "section_break"].includes(type) ? false : settings.default_required);
     setQuestions((current) => {
       if (!afterId) return [...current, question];
       const index = current.findIndex((item) => item.id === afterId);
@@ -224,17 +515,55 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
     setSelectedQuestionId(question.id);
   }
 
+  function addQuestionCopy(question: BuilderQuestion, afterId = selectedQuestionId) {
+    const copy = cloneQuestion(question);
+    setQuestions((current) => {
+      const index = afterId ? current.findIndex((item) => item.id === afterId) : -1;
+      return index < 0 ? [...current, copy] : [...current.slice(0, index + 1), copy, ...current.slice(index + 1)];
+    });
+    setSelectedQuestionId(copy.id);
+  }
+
+  async function saveQuestionToLibrary(question: BuilderQuestion) {
+    const saved = cloneQuestion({ ...question, images: [] });
+    const result = await saveSpiritualFormQuestionToLibrary(saved);
+    setQuestionLibrary(result.questions.map(normalizeQuestion));
+    setMessage(result.message);
+  }
+
+  async function removeLibraryQuestion(id: string) {
+    const result = await removeSpiritualFormQuestionFromLibrary(id);
+    setQuestionLibrary(result.questions.map(normalizeQuestion));
+    setMessage(result.message);
+  }
+
+  async function applyTemplate(template: (typeof formTemplates)[number]) {
+    const hasWork = intercessionRichTextToPlainText(title).trim() || questions.some((question) => intercessionRichTextToPlainText(question.label).trim() !== "Untitled question");
+    if (hasWork && !await confirm({
+      title: "Replace current form?",
+      message: `Using the ${template.name} template will replace the current form content. You can undo this change afterward.`,
+      confirmLabel: "Replace form",
+    })) return;
+    setTitle(template.title);
+    setDescription(template.description);
+    setQuestions(template.questions.map(cloneQuestion));
+    if (template.id === "quiz") setSettings((current) => ({ ...current, is_quiz: true }));
+    setSelectedQuestionId(null);
+    setShowTemplates(false);
+  }
+
   function duplicateQuestion(id: string) {
     setQuestions((current) => {
       const index = current.findIndex((question) => question.id === id);
       if (index === -1) return current;
-      const copy = { ...current[index], id: crypto.randomUUID(), label: `${current[index].label} copy`, options: [...current[index].options], correctAnswers: [...current[index].correctAnswers], rows: [...current[index].rows], columns: [...current[index].columns], gridCorrectAnswers: { ...current[index].gridCorrectAnswers } };
+      const copy = { ...current[index], id: crypto.randomUUID(), label: `${current[index].label} copy`, options: [...current[index].options], correctAnswers: [...current[index].correctAnswers], rows: [...current[index].rows], columns: [...current[index].columns], gridCorrectAnswers: { ...current[index].gridCorrectAnswers }, images: current[index].images.map((image) => ({ ...image })) };
       return [...current.slice(0, index + 1), copy, ...current.slice(index + 1)];
     });
   }
 
   function deleteQuestion(id: string) {
-    setQuestions((current) => (current.length === 1 ? current : current.filter((question) => question.id !== id)));
+    if (questions.length === 1) return;
+    setQuestions((current) => current.filter((question) => question.id !== id));
     setSelectedQuestionId((current) => (current === id ? null : current));
   }
 
@@ -255,11 +584,16 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const formData = new FormData();
-    formData.set("title", title);
-    formData.set("description", description);
-    formData.set("questions", JSON.stringify(savableQuestions));
-    formData.set("settings", JSON.stringify(settings));
+    if (activeImageUploads > 0) {
+      setMessage("Wait for the question images to finish uploading before saving the form.");
+      return;
+    }
+    if (settings.is_published && publishingIssues.length > 0) {
+      setShowChecklist(true);
+      setMessage(`Cannot publish: ${publishingIssues[0].message}`);
+      return;
+    }
+    const formData = buildFormData(latestSnapshotRef.current);
 
     startTransition(async () => {
       const result = initialData?.id
@@ -267,6 +601,8 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
         : await createSpiritualFormFromBuilder(formData);
       setMessage(result.message);
       if (result.ok) {
+        localStorage.removeItem(initialData?.id ? `${NEW_FORM_DRAFT_KEY}-${initialData.id}` : NEW_FORM_DRAFT_KEY);
+        setDraftStatus("saved");
         router.push("/admin/intercession");
         router.refresh();
       }
@@ -279,20 +615,52 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
         <div className="mx-auto mb-5 max-w-5xl overflow-hidden rounded-xl border border-gray-200 bg-white shadow-[0_8px_28px_rgba(15,23,42,0.05)]">
           <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
             <div>
-              <Link href="/admin/intercession" className="inline-flex items-center gap-2 text-xs font-semibold text-gray-500 hover:text-blue-600">
+              <Link href="/admin/intercession" onClick={async (event) => {
+                if (!["unsaved", "saving", "error"].includes(draftStatus)) return;
+                event.preventDefault();
+                const shouldLeave = await confirm({
+                  title: "Leave form builder?",
+                  message: "Some changes may not be saved yet. If you leave now, those changes could be lost.",
+                  confirmLabel: "Leave builder",
+                  tone: "danger",
+                });
+                if (shouldLeave) router.push("/admin/intercession");
+              }} className="inline-flex items-center gap-2 rounded text-xs font-semibold text-gray-500 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
                 <ArrowLeft className="size-3.5" aria-hidden="true" />
                 Manage Forms
               </Link>
               <h1 className="mt-1 text-xl font-bold text-gray-900">{isEditing ? "Edit form" : "Create a new form"}</h1>
 
             </div>
-            <button
-              disabled={isPending}
-              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
-            >
-              <Check className="size-4" aria-hidden="true" />
-              {isPending ? "Saving..." : isEditing ? "Update Form" : "Save Form"}
-            </button>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <span className={`mr-1 inline-flex items-center gap-1.5 text-xs font-medium ${draftStatus === "error" ? "text-red-600" : draftStatus === "saved" ? "text-emerald-600" : "text-amber-600"}`} aria-live="polite">
+                <Save className="size-3.5" aria-hidden="true" />
+                {activeImageUploads > 0 ? "Uploading images…" : draftStatus === "saving" ? "Saving…" : draftStatus === "unsaved" ? "Unsaved changes" : draftStatus === "error" ? "Autosave failed" : lastSavedAt ? `Saved ${lastSavedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "All changes saved"}
+              </span>
+              <button type="button" onClick={undo} disabled={pastSnapshots.length === 0} className="inline-flex size-10 items-center justify-center rounded-lg border border-blue-200 text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-35" title="Undo" aria-label="Undo last change">
+                <Undo2 className="size-4" aria-hidden="true" />
+              </button>
+              <button type="button" onClick={redo} disabled={futureSnapshots.length === 0} className="inline-flex size-10 items-center justify-center rounded-lg border border-blue-200 text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-35" title="Redo" aria-label="Redo last change">
+                <Redo2 className="size-4" aria-hidden="true" />
+              </button>
+              <button type="button" onClick={() => setShowTemplates(true)} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-blue-200 px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50">
+                <Layers className="size-4" aria-hidden="true" /> Templates
+              </button>
+              <button type="button" onClick={() => setShowLibrary(true)} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-blue-200 px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50">
+                <BookOpen className="size-4" aria-hidden="true" /> Library
+              </button>
+              <button type="button" onClick={() => setShowChecklist(true)} className="relative inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-blue-200 px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50">
+                <FileCheck2 className="size-4" aria-hidden="true" /> Check
+                {publishingIssues.length > 0 ? <span className="rounded-full bg-red-100 px-1.5 text-[10px] text-red-700">{publishingIssues.length}</span> : null}
+              </button>
+              <button type="button" onClick={() => setShowPreview(true)} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-blue-200 px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50">
+                <Presentation className="size-4" aria-hidden="true" /> Preview
+              </button>
+              <button disabled={isPending || activeImageUploads > 0} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60">
+                <Check className="size-4" aria-hidden="true" />
+                {activeImageUploads > 0 ? "Uploading images…" : isPending ? "Saving…" : isEditing ? "Save form" : "Create form"}
+              </button>
+            </div>
           </div>
           <div className="flex gap-6 border-t border-gray-100 px-4 text-sm font-semibold text-gray-500 sm:px-5">
             <button
@@ -353,13 +721,29 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
                     question={question}
                     selected={selectedQuestionId === question.id}
                     dragging={draggingQuestionId === question.id}
+                    collapsed={collapsedQuestionIds.has(question.id)}
+                    showPoints={settings.is_quiz}
+                    actionsDisabled={isPending || activeImageUploads > 0}
+                    onUploadingChange={(uploading) => setActiveImageUploads((count) => Math.max(0, count + (uploading ? 1 : -1)))}
                     onSelect={() => setSelectedQuestionId(question.id)}
+                    onToggleCollapsed={() => setCollapsedQuestionIds((current) => {
+                      const next = new Set(current);
+                      if (next.has(question.id)) next.delete(question.id); else next.add(question.id);
+                      return next;
+                    })}
                     onChange={(patch) => updateQuestion(question.id, patch)}
+                    onRemoveImage={(index) => {
+                      const image = question.images[index];
+                      if (!image) return;
+                      updateQuestion(question.id, { images: question.images.filter((_, imageIndex) => imageIndex !== index) });
+                    }}
                     onAddQuestion={() => addQuestion("short_answer", question.id)}
                     onAddTitle={() => addQuestion("title_section", question.id)}
                     onAddSection={() => addQuestion("section_break", question.id)}
                     onDuplicate={() => duplicateQuestion(question.id)}
+                    onSaveToLibrary={() => saveQuestionToLibrary(question)}
                     onDelete={() => deleteQuestion(question.id)}
+                    precedingQuestions={questions.slice(0, questions.findIndex((item) => item.id === question.id))}
                     onDragStart={(event) => {
                       setDraggingQuestionId(question.id);
                       setSelectedQuestionId(question.id);
@@ -383,9 +767,19 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
             </div>
           </div>
         ) : (
-          <SettingsPanel settings={settings} setSettings={setSettings} activeTab={settingsTab} setActiveTab={setSettingsTab} />
+          <SettingsPanel settings={settings} setSettings={setSettings} activeTab={settingsTab} setActiveTab={setSettingsTab} hasOrderedQuestions={questions.some((question) => question.condition || ["title_section", "section_break"].includes(question.type))} />
         )}
       </form>
+      {showChecklist ? <PublishingChecklistModal issues={publishingIssues} onClose={() => setShowChecklist(false)} onGoToQuestion={(id) => {
+        setShowChecklist(false);
+        setActiveArea("questions");
+        setSelectedQuestionId(id);
+        setCollapsedQuestionIds((current) => { const next = new Set(current); next.delete(id); return next; });
+        window.setTimeout(() => document.getElementById(`builder-question-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
+      }} /> : null}
+      {showTemplates ? <TemplatesModal onClose={() => setShowTemplates(false)} onApply={applyTemplate} /> : null}
+      {showLibrary ? <QuestionLibraryModal questions={questionLibrary} onClose={() => setShowLibrary(false)} onAdd={(question) => { addQuestionCopy(question); setShowLibrary(false); }} onRemove={removeLibraryQuestion} /> : null}
+      {showPreview ? <BuilderPreviewModal title={title} description={description} questions={questions} settings={settings} device={previewDevice} setDevice={setPreviewDevice} onClose={() => setShowPreview(false)} /> : null}
     </div>
   );
 }
@@ -408,13 +802,21 @@ function QuestionCard({
   question,
   selected,
   dragging,
+  collapsed,
+  showPoints,
+  actionsDisabled,
+  onUploadingChange,
   onSelect,
+  onToggleCollapsed,
   onChange,
+  onRemoveImage,
   onAddQuestion,
   onAddTitle,
   onAddSection,
   onDuplicate,
+  onSaveToLibrary,
   onDelete,
+  precedingQuestions,
   onDragStart,
   onDragOver,
   onDrop,
@@ -423,22 +825,32 @@ function QuestionCard({
   question: BuilderQuestion;
   selected: boolean;
   dragging: boolean;
+  collapsed: boolean;
+  showPoints: boolean;
+  actionsDisabled: boolean;
+  onUploadingChange: (uploading: boolean) => void;
   onSelect: () => void;
-  onChange: (patch: Partial<BuilderQuestion>) => void;
+  onToggleCollapsed: () => void;
+  onChange: (patch: Partial<BuilderQuestion> | ((question: BuilderQuestion) => Partial<BuilderQuestion>)) => void;
+  onRemoveImage: (index: number) => void;
   onAddQuestion: () => void;
   onAddTitle: () => void;
   onAddSection: () => void;
   onDuplicate: () => void;
+  onSaveToLibrary: () => void;
   onDelete: () => void;
+  precedingQuestions: BuilderQuestion[];
   onDragStart: (event: DragEvent<HTMLDivElement>) => void;
   onDragOver: (event: DragEvent<HTMLDivElement>) => void;
   onDrop: (event: DragEvent<HTMLDivElement>) => void;
   onDragEnd: () => void;
 }) {
   const isDisplayOnly = question.type === "title_section" || question.type === "section_break";
+  const conditionSourceQuestions = precedingQuestions.filter((candidate) => ["short_answer", "paragraph", "multiple_choice", "checkboxes", "dropdown", "linear_scale", "rating", "multiple_choice_grid", "checkbox_grid", "date", "time"].includes(candidate.type));
 
   return (
     <div
+      id={`builder-question-${question.id}`}
       onClick={onSelect}
       onDragOver={onDragOver}
       onDrop={onDrop}
@@ -446,6 +858,13 @@ function QuestionCard({
         selected ? "border-blue-300 ring-2 ring-blue-100" : "border-gray-200"
       } ${dragging ? "opacity-50" : "opacity-100"}`}
     >
+      <div className="mb-2 flex items-center justify-between gap-3 sm:pl-7">
+        <p className={`truncate text-xs font-semibold text-slate-500 ${collapsed ? "block" : "hidden"}`}>{intercessionRichTextToPlainText(question.label) || "Untitled question"}</p>
+        <button type="button" onClick={(event) => { event.stopPropagation(); onToggleCollapsed(); }} className="ml-auto inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-blue-700 transition hover:bg-blue-50" aria-expanded={!collapsed} aria-controls={`question-content-${question.id}`} aria-label={collapsed ? "Expand question" : "Collapse question"}>
+          {collapsed ? <ChevronDown className="size-4" aria-hidden="true" /> : <ChevronUp className="size-4" aria-hidden="true" />}
+        </button>
+      </div>
+      <div id={`question-content-${question.id}`} hidden={collapsed}>
       {selected && (
         <div className="absolute bottom-[-52px] right-2 z-20 flex gap-1 rounded-xl border border-gray-200 bg-white p-1 shadow-sm sm:bottom-auto sm:right-[-62px] sm:top-0 sm:flex-col">
           <BuilderTool label="Add question" onClick={onAddQuestion}>
@@ -475,16 +894,14 @@ function QuestionCard({
             onChange={(value) => onChange({ label: value })}
             placeholder="Untitled question"
             ariaLabel="Question title"
-            multiline={false}
-            className="w-full border-0 border-b border-gray-300 bg-gray-50 px-3 py-2 text-lg font-medium text-gray-900 outline-none focus:border-gray-500 focus:ring-0 sm:text-xl"
+            className="min-h-11 w-full overflow-hidden break-words whitespace-pre-wrap border-0 border-b border-gray-300 bg-gray-50 px-3 py-2 text-lg font-medium text-gray-900 outline-none focus:border-gray-500 focus:ring-0 sm:text-xl"
           />
           <IntercessionRichTextEditor
             value={question.description}
             onChange={(value) => onChange({ description: value })}
             placeholder="Description (optional)"
             ariaLabel="Question description"
-            multiline={false}
-            className="mt-2 w-full border-0 border-b border-gray-100 px-3 py-2 text-sm text-gray-500 outline-none focus:border-gray-300 focus:ring-0"
+            className="mt-2 min-h-9 w-full overflow-hidden break-words whitespace-pre-wrap border-0 border-b border-gray-100 px-3 py-2 text-sm text-gray-500 outline-none focus:border-gray-300 focus:ring-0"
           />
         </div>
         <select
@@ -509,6 +926,7 @@ function QuestionCard({
 
       {!isDisplayOnly && (
         <div className="mt-4 space-y-3 pl-0 sm:pl-7">
+          <QuestionImageEditor question={question} disabled={actionsDisabled} onChange={onChange} onRemoveImage={onRemoveImage} onUploadingChange={onUploadingChange} />
           {["multiple_choice", "checkboxes", "dropdown"].includes(question.type) && (
             <div className="space-y-2">
               {(question.options.length ? question.options : [""]).map((option, index) => (
@@ -528,7 +946,7 @@ function QuestionCard({
                     className="min-w-0 flex-1 border-0 border-b border-gray-300 px-2 py-1 text-base text-gray-900 outline-none focus:border-indigo-500 focus:ring-0"
                     placeholder={`Option ${index + 1}`}
                   />
-                  <label className="flex items-center gap-1 text-xs text-gray-500">
+                  {showPoints ? <label className="flex items-center gap-1 text-xs text-gray-500">
                     {question.type === "checkboxes" ? (
                       <input
                         type="checkbox"
@@ -551,7 +969,7 @@ function QuestionCard({
                       />
                     )}
                     Correct
-                  </label>
+                  </label> : null}
                   <button
                     type="button"
                     onClick={() => {
@@ -578,7 +996,7 @@ function QuestionCard({
               </button>
             </div>
           )}
-          {["short_answer", "paragraph"].includes(question.type) && (
+          {showPoints && ["short_answer", "paragraph"].includes(question.type) && (
             <CorrectAnswerBox
               label="Correct Answer"
               value={question.correctAnswer}
@@ -586,10 +1004,10 @@ function QuestionCard({
               onChange={(value) => onChange({ correctAnswer: value })}
             />
           )}
-          {question.type === "date" && (
+          {showPoints && question.type === "date" && (
             <CorrectAnswerBox label="Correct Answer (Date)" type="date" value={question.correctAnswer} onChange={(value) => onChange({ correctAnswer: value })} />
           )}
-          {question.type === "time" && (
+          {showPoints && question.type === "time" && (
             <CorrectAnswerBox label="Correct Answer (Time)" type="time" value={question.correctAnswer} onChange={(value) => onChange({ correctAnswer: value })} />
           )}
           {question.type === "linear_scale" && (
@@ -598,14 +1016,13 @@ function QuestionCard({
               <input type="number" value={question.min} onChange={(event) => onChange({ min: Number(event.target.value) || 1 })} className="w-16 rounded-md border border-gray-200 px-2 py-1 text-center text-sm" />
               <span className="text-gray-400">to</span>
               <input type="number" value={question.max} onChange={(event) => onChange({ max: Number(event.target.value) || 5 })} className="w-16 rounded-md border border-gray-200 px-2 py-1 text-center text-sm" />
-              <span className="text-xs text-gray-500 sm:ml-4">Correct Value:</span>
-              <input
+              {showPoints ? <><span className="text-xs text-gray-500 sm:ml-4">Correct Value:</span><input
                 type="number"
                 value={question.correctAnswer}
                 onChange={(event) => onChange({ correctAnswer: event.target.value })}
                 className="w-20 rounded-md border border-gray-200 px-2 py-1 text-center text-sm"
                 placeholder="None"
-              />
+              /></> : null}
             </div>
           )}
           {question.type === "rating" && (
@@ -618,20 +1035,20 @@ function QuestionCard({
                   </option>
                 ))}
               </select>
-              <span className="text-xs text-gray-500 sm:ml-4">Correct Value:</span>
-              <select value={question.correctAnswer} onChange={(event) => onChange({ correctAnswer: event.target.value })} className="rounded-md border border-gray-200 px-2 py-1 text-sm">
+              {showPoints ? <><span className="text-xs text-gray-500 sm:ml-4">Correct Value:</span><select value={question.correctAnswer} onChange={(event) => onChange({ correctAnswer: event.target.value })} className="rounded-md border border-gray-200 px-2 py-1 text-sm">
                 <option value="">None</option>
                 {Array.from({ length: question.max }, (_, index) => index + 1).map((value) => (
                   <option key={value} value={value}>
                     {value} star{value > 1 ? "s" : ""}
                   </option>
                 ))}
-              </select>
+              </select></> : null}
             </div>
           )}
           {["multiple_choice_grid", "checkbox_grid"].includes(question.type) && (
-            <GridQuestionEditor question={question} onChange={onChange} />
+            <GridQuestionEditor question={question} showCorrectAnswers={showPoints} onChange={onChange} />
           )}
+          <ConditionalQuestionEditor question={question} precedingQuestions={precedingQuestions} onChange={onChange} />
         </div>
       )}
 
@@ -643,28 +1060,289 @@ function QuestionCard({
                 <input type="checkbox" checked={question.required} onChange={(event) => onChange({ required: event.target.checked })} className="size-4 rounded border-gray-300" />
                 Required
               </label>
-              <label className="flex items-center gap-2">
-                Points
-                <input
-                  type="number"
-                  min={0}
-                  value={question.points}
-                  onChange={(event) => onChange({ points: Number(event.target.value) || 0 })}
-                  className="w-16 rounded-md border border-gray-200 px-2 py-1 text-center text-sm"
-                />
-              </label>
+              {conditionSourceQuestions.length > 0 ? (
+                <label className="flex items-center gap-2" title="Show this question based on an earlier answer">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(question.condition)}
+                    onChange={(event) => onChange({
+                      condition: event.target.checked
+                        ? { questionId: conditionSourceQuestions.at(-1)!.id, operator: "answered", value: "" }
+                        : null,
+                    })}
+                    className="size-4 rounded border-gray-300"
+                  />
+                  Conditional
+                </label>
+              ) : null}
+              {showPoints && question.type !== "file_upload" ? (
+                <label className="flex items-center gap-2">
+                  Points
+                  <input
+                    type="number"
+                    min={0.01}
+                    step={0.01}
+                    value={question.points}
+                    onChange={(event) => onChange({ points: Number(event.target.value) || 0 })}
+                    className="w-16 rounded-md border border-gray-200 px-2 py-1 text-center text-sm"
+                  />
+                </label>
+              ) : null}
             </>
           )}
         </div>
         <div className="flex justify-end gap-2">
-          <button type="button" onClick={onDuplicate} className="inline-flex size-9 items-center justify-center rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50" aria-label="Duplicate question">
+          <button type="button" disabled={actionsDisabled} onClick={onSaveToLibrary} className="inline-flex size-9 items-center justify-center rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Save question to library" title="Save to question library">
+            <BookOpen className="size-4" aria-hidden="true" />
+          </button>
+          <button type="button" disabled={actionsDisabled} onClick={onDuplicate} className="inline-flex size-9 items-center justify-center rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Duplicate question">
             <Copy className="size-4" />
           </button>
-          <button type="button" onClick={onDelete} className="inline-flex size-9 items-center justify-center rounded-lg border border-red-100 text-red-600 hover:bg-red-50" aria-label="Delete question">
+          <button type="button" disabled={actionsDisabled} onClick={onDelete} className="inline-flex size-9 items-center justify-center rounded-lg border border-red-100 text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Delete question">
             <Trash2 className="size-4" />
           </button>
         </div>
       </div>
+      </div>
+    </div>
+  );
+}
+
+function QuestionImageEditor({
+  question,
+  disabled,
+  onChange,
+  onRemoveImage,
+  onUploadingChange,
+}: {
+  question: BuilderQuestion;
+  disabled: boolean;
+  onChange: (patch: Partial<BuilderQuestion> | ((question: BuilderQuestion) => Partial<BuilderQuestion>)) => void;
+  onRemoveImage: (index: number) => void;
+  onUploadingChange: (uploading: boolean) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [uploadNote, setUploadNote] = useState<string | null>(null);
+  const [draggedImageIndex, setDraggedImageIndex] = useState<number | null>(null);
+  const remainingSlots = MAX_QUESTION_IMAGES - question.images.length;
+
+  async function uploadImages(event: ChangeEvent<HTMLInputElement>) {
+    const input = event.currentTarget;
+    const files = Array.from(input.files ?? []);
+    input.value = "";
+    setError(null);
+    setUploadNote(null);
+
+    if (files.length === 0) return;
+    if (files.length > remainingSlots) {
+      setError(`You can add ${remainingSlots} more image${remainingSlots === 1 ? "" : "s"} to this question.`);
+      return;
+    }
+    const oversized = files.find((file) => file.size > MAX_QUESTION_IMAGE_BYTES);
+    if (oversized) {
+      setError(`${oversized.name} is larger than 3 MB.`);
+      return;
+    }
+
+    setUploading(true);
+    onUploadingChange(true);
+    let result: Awaited<ReturnType<typeof uploadSpiritualFormQuestionImages>>;
+    try {
+      const optimizedFiles = await Promise.all(files.map(optimizeQuestionImage));
+      const bytesSaved = files.reduce((total, file, index) => total + Math.max(0, file.size - optimizedFiles[index].size), 0);
+      const formData = new FormData();
+      optimizedFiles.forEach((file) => formData.append("images", file));
+      result = await uploadSpiritualFormQuestionImages(formData);
+      setUploadNote(bytesSaved > 1024 ? `Images optimized — saved ${formatBytes(bytesSaved)}.` : "Images checked and ready.");
+    } catch {
+      setError("The images could not be uploaded. Please try again.");
+      return;
+    } finally {
+      setUploading(false);
+      onUploadingChange(false);
+    }
+
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    onChange((currentQuestion) => ({ images: [...currentQuestion.images, ...result.images].slice(0, MAX_QUESTION_IMAGES) }));
+  }
+
+  function moveImage(index: number, direction: -1 | 1) {
+    const target = index + direction;
+    if (target < 0 || target >= question.images.length) return;
+    const images = [...question.images];
+    [images[index], images[target]] = [images[target], images[index]];
+    onChange({ images });
+  }
+
+  function dropImage(targetIndex: number) {
+    if (draggedImageIndex === null || draggedImageIndex === targetIndex) return setDraggedImageIndex(null);
+    const images = [...question.images];
+    const [dragged] = images.splice(draggedImageIndex, 1);
+    images.splice(targetIndex, 0, dragged);
+    onChange({ images });
+    setDraggedImageIndex(null);
+  }
+
+  return (
+    <div>
+      <div className="flex min-h-9 items-center justify-end gap-2">
+        {uploading ? <span className="text-xs font-medium text-blue-600" role="status">Optimizing and uploading…</span> : null}
+        {remainingSlots > 0 ? (
+          <label
+            title={question.images.length ? `Add more images (${question.images.length}/5)` : "Add images"}
+            aria-label={question.images.length ? `Add more question images. ${question.images.length} of 5 added.` : "Add question images"}
+            className={`relative inline-flex size-9 cursor-pointer items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 ${disabled || uploading ? "pointer-events-none opacity-50" : ""}`}
+          >
+            <ImagePlus className="size-4.5" aria-hidden="true" />
+            {question.images.length > 0 ? <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-blue-600 text-[9px] font-bold text-white">{question.images.length}</span> : null}
+            <input
+              type="file"
+              multiple
+              accept={QUESTION_IMAGE_ACCEPT}
+              disabled={disabled || uploading}
+              onChange={uploadImages}
+              className="sr-only"
+            />
+          </label>
+        ) : (
+          <span title="Maximum of 5 images added" className="relative inline-flex size-9 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-600">
+            <ImagePlus className="size-4.5" aria-hidden="true" />
+            <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-blue-600 text-[9px] font-bold text-white">5</span>
+          </span>
+        )}
+      </div>
+
+      {uploading ? <div className="ml-auto mt-1 h-1 w-32 overflow-hidden rounded-full bg-blue-100" aria-label="Image upload in progress"><div className="h-full w-2/3 animate-pulse rounded-full bg-blue-600" /></div> : null}
+
+      {error ? <p className="mt-1 text-right text-xs font-medium text-red-600" role="alert">{error}</p> : uploadNote ? <p className="mt-1 text-right text-xs font-medium text-emerald-600" role="status">{uploadNote}</p> : null}
+
+      {question.images.length > 0 ? (
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {question.images.map((image, index) => (
+            <div key={image.id} draggable={!disabled} onDragStart={() => setDraggedImageIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => dropImage(index)} onDragEnd={() => setDraggedImageIndex(null)} className={`overflow-hidden rounded-xl border bg-white shadow-sm transition ${draggedImageIndex === index ? "border-blue-400 opacity-50" : "border-slate-200"}`} title="Drag to reorder image">
+              <div className="relative aspect-[4/3] bg-slate-100">
+                <Image src={image.path} alt={image.alt || `Question image ${index + 1}`} fill sizes="(min-width: 1024px) 260px, 45vw" className="object-contain" />
+                <span className="absolute left-2 top-2 rounded-full bg-black/65 px-2 py-1 text-[11px] font-semibold text-white">{index + 1}</span>
+              </div>
+              <div className="space-y-2 p-2.5">
+                <input
+                  value={image.alt}
+                  maxLength={500}
+                  onChange={(event) => onChange({
+                    images: question.images.map((item, imageIndex) => imageIndex === index ? { ...item, alt: event.target.value } : item),
+                  })}
+                  placeholder="Image description (optional)"
+                  aria-label={`Description for question image ${index + 1}`}
+                  className="w-full rounded-md border border-slate-200 px-2.5 py-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+                <input
+                  value={image.caption}
+                  maxLength={500}
+                  onChange={(event) => onChange({
+                    images: question.images.map((item, imageIndex) => imageIndex === index ? { ...item, caption: event.target.value } : item),
+                  })}
+                  placeholder="Visible caption (optional)"
+                  aria-label={`Caption for question image ${index + 1}`}
+                  className="w-full rounded-md border border-slate-200 px-2.5 py-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex gap-1">
+                    <button type="button" disabled={disabled || index === 0} onClick={() => moveImage(index, -1)} className="inline-flex size-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-30" aria-label={`Move image ${index + 1} left`}>
+                      <ArrowLeft className="size-3.5" aria-hidden="true" />
+                    </button>
+                    <button type="button" disabled={disabled || index === question.images.length - 1} onClick={() => moveImage(index, 1)} className="inline-flex size-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-30" aria-label={`Move image ${index + 1} right`}>
+                      <ArrowRight className="size-3.5" aria-hidden="true" />
+                    </button>
+                  </div>
+                  <button type="button" disabled={disabled} onClick={() => onRemoveImage(index)} className="inline-flex size-8 items-center justify-center rounded-md border border-red-100 text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40" aria-label={`Remove image ${index + 1}`}>
+                    <Trash2 className="size-3.5" aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+async function optimizeQuestionImage(file: File): Promise<File> {
+  if (typeof createImageBitmap !== "function") return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const maxDimension = 1920;
+    const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+    if (scale === 1 && file.size < 900 * 1024) { bitmap.close(); return file; }
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const context = canvas.getContext("2d");
+    if (!context) { bitmap.close(); return file; }
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    const outputType = file.type === "image/png" ? "image/png" : "image/webp";
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, outputType, 0.84));
+    if (!blob || blob.size >= file.size) return file;
+    const extension = outputType === "image/png" ? ".png" : ".webp";
+    return new File([blob], file.name.replace(/\.[^.]+$/, extension), { type: outputType, lastModified: file.lastModified });
+  } catch {
+    return file;
+  }
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function ConditionalQuestionEditor({
+  question,
+  precedingQuestions,
+  onChange,
+}: {
+  question: BuilderQuestion;
+  precedingQuestions: BuilderQuestion[];
+  onChange: (patch: Partial<BuilderQuestion>) => void;
+}) {
+  const eligibleQuestions = precedingQuestions.filter((candidate) => ["short_answer", "paragraph", "multiple_choice", "checkboxes", "dropdown", "linear_scale", "rating", "multiple_choice_grid", "checkbox_grid", "date", "time"].includes(candidate.type));
+  const condition = question.condition;
+  if (eligibleQuestions.length === 0 || !condition) return null;
+  const sourceQuestion = eligibleQuestions.find((candidate) => candidate.id === condition?.questionId);
+  const sourceOptions = sourceQuestion && ["multiple_choice", "checkboxes", "dropdown"].includes(sourceQuestion.type) ? sourceQuestion.options.filter(Boolean) : [];
+  const sourceIsGrid = sourceQuestion ? ["multiple_choice_grid", "checkbox_grid"].includes(sourceQuestion.type) : false;
+  const gridRowIndex = sourceIsGrid ? Math.min(condition.rowIndex ?? 0, Math.max(0, (sourceQuestion?.rows.length ?? 1) - 1)) : undefined;
+  const conditionOptions = sourceIsGrid ? sourceQuestion?.columns.filter(Boolean) ?? [] : sourceOptions;
+
+  return (
+    <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-3">
+        <div className={`grid gap-2 ${sourceIsGrid ? "md:grid-cols-4" : "md:grid-cols-3"}`}>
+          <select value={condition.questionId} onChange={(event) => {
+            const nextSource = eligibleQuestions.find((candidate) => candidate.id === event.target.value);
+            const nextIsGrid = nextSource && ["multiple_choice_grid", "checkbox_grid"].includes(nextSource.type);
+            onChange({ condition: { ...condition, questionId: event.target.value, operator: condition.operator, value: "", ...(nextIsGrid ? { rowIndex: 0 } : { rowIndex: undefined }) } });
+          }} aria-label="Condition source question" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">
+            {eligibleQuestions.map((candidate) => <option key={candidate.id} value={candidate.id}>Q{precedingQuestions.findIndex((item) => item.id === candidate.id) + 1}: {intercessionRichTextToPlainText(candidate.label) || "Untitled"}</option>)}
+          </select>
+          {sourceIsGrid ? <select value={gridRowIndex} onChange={(event) => onChange({ condition: { ...condition, rowIndex: Number(event.target.value), value: "" } })} aria-label="Condition source row" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">{sourceQuestion?.rows.map((row, index) => <option key={`${row}-${index}`} value={index}>{row || `Row ${index + 1}`}</option>)}</select> : null}
+          <select value={condition.operator} onChange={(event) => onChange({ condition: { ...condition, operator: event.target.value as IntercessionQuestionCondition["operator"] } })} aria-label="Condition operator" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">
+            <option value="answered">is answered</option>
+            <option value="equals">equals</option>
+            <option value="not_equals">does not equal</option>
+          </select>
+          {condition.operator !== "answered" ? conditionOptions.length > 0 ? (
+            <select value={condition.value} onChange={(event) => onChange({ condition: { ...condition, value: event.target.value } })} aria-label="Condition value" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">
+              <option value="">Select an answer</option>
+              {conditionOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+            </select>
+          ) : (
+            <input value={condition.value} onChange={(event) => onChange({ condition: { ...condition, value: event.target.value } })} placeholder="Answer value" aria-label="Condition answer value" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100" />
+          ) : <span className="self-center text-xs text-slate-500">Any non-empty answer</span>}
+        </div>
     </div>
   );
 }
@@ -688,9 +1366,13 @@ function CorrectAnswerBox({
       {multiline ? (
         <textarea
           value={value}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={(event) => {
+            event.currentTarget.style.height = "auto";
+            event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`;
+            onChange(event.currentTarget.value);
+          }}
           rows={2}
-          className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-base text-gray-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+          className="min-w-0 flex-1 resize-none overflow-hidden rounded-lg border border-gray-300 px-3 py-2 text-base text-gray-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
           placeholder="Enter correct answer..."
         />
       ) : (
@@ -708,9 +1390,11 @@ function CorrectAnswerBox({
 
 function GridQuestionEditor({
   question,
+  showCorrectAnswers,
   onChange,
 }: {
   question: BuilderQuestion;
+  showCorrectAnswers: boolean;
   onChange: (patch: Partial<BuilderQuestion>) => void;
 }) {
   function updateRow(index: number, value: string) {
@@ -763,7 +1447,7 @@ function GridQuestionEditor({
           onRemove={(index) => onChange({ columns: question.columns.length > 1 ? question.columns.filter((_, columnIndex) => columnIndex !== index) : question.columns })}
         />
       </div>
-      <div className="mt-4 border-t border-gray-200 pt-3">
+      {showCorrectAnswers ? <div className="mt-4 border-t border-gray-200 pt-3">
         <p className="mb-2 text-xs font-semibold text-gray-600">
           {question.type === "checkbox_grid" ? "Correct Answers (select all that apply per row)" : "Correct Answers (per row)"}
         </p>
@@ -803,7 +1487,7 @@ function GridQuestionEditor({
             </div>
           ))}
         </div>
-      </div>
+      </div> : null}
     </div>
   );
 }
@@ -847,16 +1531,83 @@ function GridList({
   );
 }
 
+function ModalShell({ title, onClose, children, maxWidth = "max-w-3xl" }: { title: string; onClose: () => void; children: React.ReactNode; maxWidth?: string }) {
+  const dialogRef = useRef<HTMLElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusable = () => Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])') ?? []);
+    focusable()[0]?.focus();
+    function handleKeys(event: KeyboardEvent) {
+      if (event.key === "Escape") return onClose();
+      if (event.key !== "Tab") return;
+      const items = focusable(); if (!items.length) return;
+      const first = items[0]; const last = items.at(-1)!;
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    }
+    window.addEventListener("keydown", handleKeys);
+    return () => { window.removeEventListener("keydown", handleKeys); window.setTimeout(() => returnFocusRef.current?.focus(), 0); };
+  }, [onClose]);
+  return (
+    <div className="fixed inset-0 z-[170] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section ref={dialogRef} role="dialog" aria-modal="true" aria-label={title} className={`flex max-h-[94vh] w-full ${maxWidth} flex-col overflow-hidden rounded-2xl bg-white shadow-2xl`}>
+        <header className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-4">
+          <h2 className="text-lg font-bold text-slate-900">{title}</h2>
+          <button type="button" autoFocus onClick={onClose} className="inline-flex size-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900" aria-label={`Close ${title}`}><X className="size-5" aria-hidden="true" /></button>
+        </header>
+        {children}
+      </section>
+    </div>
+  );
+}
+
+function PublishingChecklistModal({ issues, onClose, onGoToQuestion }: { issues: ReturnType<typeof getIntercessionPublishingIssues>; onClose: () => void; onGoToQuestion: (id: string) => void }) {
+  return (
+    <ModalShell title="Publishing checklist" onClose={onClose}>
+      <div className="overflow-y-auto p-5">
+        {issues.length === 0 ? (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-5 text-center text-emerald-800"><Check className="mx-auto mb-2 size-7" aria-hidden="true" /><p className="font-semibold">Ready to publish</p><p className="mt-1 text-sm">No publishing problems were found.</p></div>
+        ) : (
+          <><p className="mb-3 text-sm text-slate-600">Resolve these {issues.length} item{issues.length === 1 ? "" : "s"} before publishing.</p><ul className="space-y-2">{issues.map((issue) => <li key={issue.id} className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3"><span className="text-sm text-amber-900">{issue.message}</span>{issue.questionId ? <button type="button" onClick={() => onGoToQuestion(issue.questionId!)} className="shrink-0 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700">Fix</button> : null}</li>)}</ul></>
+        )}
+      </div>
+    </ModalShell>
+  );
+}
+
+function TemplatesModal({ onClose, onApply }: { onClose: () => void; onApply: (template: (typeof formTemplates)[number]) => void }) {
+  return <ModalShell title="Start from a template" onClose={onClose}><div className="grid gap-3 overflow-y-auto p-5 sm:grid-cols-2">{formTemplates.map((template) => <button key={template.id} type="button" onClick={() => onApply(template)} className="rounded-xl border border-slate-200 p-4 text-left transition hover:border-blue-300 hover:bg-blue-50 focus:outline-none focus:ring-4 focus:ring-blue-100"><span className="font-semibold text-slate-900">{template.name}</span><span className="mt-1 block text-sm text-slate-500">{template.description}</span><span className="mt-3 block text-xs font-semibold text-blue-700">Use template</span></button>)}</div></ModalShell>;
+}
+
+function QuestionLibraryModal({ questions, onClose, onAdd, onRemove }: { questions: BuilderQuestion[]; onClose: () => void; onAdd: (question: BuilderQuestion) => void; onRemove: (id: string) => void }) {
+  return <ModalShell title="Question library" onClose={onClose}><div className="overflow-y-auto p-5">{questions.length === 0 ? <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">Use the book button on a question to save it here for reuse.</div> : <ul className="space-y-2">{questions.map((question) => <li key={question.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3"><div className="min-w-0"><p className="truncate font-medium text-slate-800">{intercessionRichTextToPlainText(question.label) || "Untitled question"}</p><p className="text-xs text-slate-500">{questionTypes.find((type) => type.value === question.type)?.label ?? question.type}</p></div><div className="flex shrink-0 gap-2"><button type="button" onClick={() => onAdd(question)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700">Add</button><button type="button" onClick={() => onRemove(question.id)} className="inline-flex size-8 items-center justify-center rounded-lg border border-red-100 text-red-600 hover:bg-red-50" aria-label="Remove from library"><Trash2 className="size-4" aria-hidden="true" /></button></div></li>)}</ul>}</div></ModalShell>;
+}
+
+function BuilderPreviewModal({ title, description, questions, settings, device, setDevice, onClose }: { title: string; description: string; questions: BuilderQuestion[]; settings: BuilderSettings; device: "desktop" | "mobile"; setDevice: (device: "desktop" | "mobile") => void; onClose: () => void }) {
+  return (
+    <ModalShell title="Form preview" onClose={onClose} maxWidth="max-w-6xl">
+      <div className="flex shrink-0 items-center justify-center gap-1 border-b border-slate-200 bg-slate-50 p-2" role="group" aria-label="Preview device">
+        <button type="button" onClick={() => setDevice("desktop")} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold ${device === "desktop" ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-white"}`} aria-pressed={device === "desktop"}><Monitor className="size-4" aria-hidden="true" /> Desktop</button>
+        <button type="button" onClick={() => setDevice("mobile")} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold ${device === "mobile" ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-white"}`} aria-pressed={device === "mobile"}><Smartphone className="size-4" aria-hidden="true" /> Mobile</button>
+      </div>
+      <div className="overflow-y-auto bg-slate-100 p-3 sm:p-5"><div className={`mx-auto transition-all ${device === "mobile" ? "max-w-[390px]" : "max-w-5xl"}`}><IntercessionTakeForm form={{ id: 0, title: title || "Untitled form", description }} questions={questions} settings={settings} alreadySubmitted={false} preview embedded onPreviewClose={onClose} /></div></div>
+    </ModalShell>
+  );
+}
+
 function SettingsPanel({
   settings,
   setSettings,
   activeTab,
   setActiveTab,
+  hasOrderedQuestions,
 }: {
   settings: BuilderSettings;
   setSettings: React.Dispatch<React.SetStateAction<BuilderSettings>>;
   activeTab: SettingsTab;
   setActiveTab: (tab: SettingsTab) => void;
+  hasOrderedQuestions: boolean;
 }) {
   const tabs: Array<{ id: SettingsTab; label: string }> = [
     { id: "quiz", label: "Quiz" },
@@ -909,17 +1660,20 @@ function SettingsPanel({
             <SettingToggle title="User can view their responses" description="Allow users to see their submitted answers" checked={Boolean(settings.allow_view_response)} onChange={(value) => update("allow_view_response", value)} />
             <SettingToggle title="Limit to 1 response" description="Prevent users from submitting more than once" checked={Boolean(settings.limit_one_response)} onChange={(value) => update("limit_one_response", value)} />
             <SettingToggle title="Require login to submit" description="Only authenticated users can submit responses" checked={Boolean(settings.require_login)} onChange={(value) => update("require_login", value)} />
+            <div className="grid gap-3 border-b border-gray-100 py-3 sm:grid-cols-2"><label className="text-sm font-medium text-gray-800">Opens at<input type="datetime-local" value={String(settings.submission_opens_at ?? "")} onChange={(event) => update("submission_opens_at", event.target.value)} className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label><label className="text-sm font-medium text-gray-800">Closes at<input type="datetime-local" value={String(settings.submission_deadline ?? "")} onChange={(event) => update("submission_deadline", event.target.value)} className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label></div>
             <div className="border-b border-gray-100 py-3">
-              <h3 className="mb-2 text-sm font-medium text-gray-800">Submission deadline</h3>
-              <input type="date" value={String(settings.submission_deadline ?? "")} onChange={(event) => update("submission_deadline", event.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" />
-              <p className="mt-1 text-xs text-gray-500">Users who have not submitted will be reminded as the deadline approaches.</p>
+              <h3 className="mb-2 text-sm font-medium text-gray-800">Maximum responses</h3>
+              <input type="number" min={0} value={Number(settings.max_responses)} onChange={(event) => update("max_responses", Math.max(0, Number(event.target.value) || 0))} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              <p className="mt-1 text-xs text-gray-500">Use 0 for no response limit.</p>
             </div>
+            <label className="block border-b border-gray-100 py-3 text-sm font-medium text-gray-800">Thank-you message<textarea value={settings.thank_you_message} onChange={(event) => update("thank_you_message", event.target.value)} rows={3} className="mt-2 w-full resize-y rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+            <label className="block border-b border-gray-100 py-3 text-sm font-medium text-gray-800">Continue to (optional)<input value={settings.redirect_url} onChange={(event) => update("redirect_url", event.target.value)} placeholder="/admin/intercession" className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /><span className="mt-1 block text-xs font-normal text-gray-500">Enter a safe path inside this system, beginning with /.</span></label>
           </>
         )}
         {activeTab === "presentation" && (
           <>
             <SettingToggle title="Show progress bar" description="Display progress during form filling" checked={Boolean(settings.show_progress_bar)} onChange={(value) => update("show_progress_bar", value)} />
-            <SettingToggle title="Shuffle question order" description="Randomize question order for each user" checked={Boolean(settings.shuffle_questions)} onChange={(value) => update("shuffle_questions", value)} />
+            <SettingToggle title="Shuffle question order" description={hasOrderedQuestions ? "Unavailable while the form contains sections or conditional questions" : "Randomize question order for each user"} checked={Boolean(settings.shuffle_questions) && !hasOrderedQuestions} disabled={hasOrderedQuestions} onChange={(value) => update("shuffle_questions", value)} />
             <SettingToggle title="Show question numbers" description="Display numbering on questions" checked={Boolean(settings.show_question_numbers)} onChange={(value) => update("show_question_numbers", value)} />
           </>
         )}
@@ -927,7 +1681,7 @@ function SettingsPanel({
           <>
             <SettingToggle title="Make questions required by default" description="Users must answer all questions" checked={Boolean(settings.default_required)} onChange={(value) => update("default_required", value)} />
             <SettingToggle title="Publish form by default" description="Form will be visible immediately" checked={Boolean(settings.is_published)} onChange={(value) => update("is_published", value)} />
-            <SettingToggle title="Allow partial points for checkboxes" description="Give points for correct selected answers" checked={Boolean(settings.allow_partial_points)} onChange={(value) => update("allow_partial_points", value)} />
+            <SettingToggle title="Allow partial points for checkboxes" description="Award proportional credit for correct selections; wrong selections do not subtract earned points" checked={Boolean(settings.allow_partial_points)} onChange={(value) => update("allow_partial_points", value)} />
           </>
         )}
         {activeTab === "advanced" && (
@@ -943,14 +1697,14 @@ function SettingsPanel({
   );
 }
 
-function SettingToggle({ title, description, checked, onChange }: { title: string; description: string; checked: boolean; onChange: (value: boolean) => void }) {
+function SettingToggle({ title, description, checked, disabled = false, onChange }: { title: string; description: string; checked: boolean; disabled?: boolean; onChange: (value: boolean) => void }) {
   return (
     <div className="flex items-start justify-between gap-4 border-b border-gray-100 py-3 last:border-b-0">
       <div>
         <h3 className="text-sm font-medium text-gray-800">{title}</h3>
         <p className="text-xs text-gray-500">{description}</p>
       </div>
-      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="mt-1 size-5 rounded border-gray-300 text-indigo-600" />
+      <input type="checkbox" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} className="mt-1 size-5 rounded border-gray-300 text-indigo-600 disabled:opacity-50" />
     </div>
   );
 }

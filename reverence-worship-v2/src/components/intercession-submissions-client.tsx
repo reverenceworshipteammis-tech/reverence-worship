@@ -7,6 +7,9 @@ import { deleteFormSubmission, saveSubmissionManualReview, setAllSubmissionRelea
 import { useAppDialog } from "@/components/app-dialog-provider";
 import { ActionNotice } from "@/components/action-notice";
 import { IntercessionRichText } from "@/components/intercession-rich-text";
+import { IntercessionQuestionImages } from "@/components/intercession-question-images";
+import type { IntercessionQuestionImage } from "@/lib/intercession-question-images";
+import { useDialogFocusTrap } from "@/hooks/use-dialog-focus-trap";
 
 type SubmissionRow = {
   id: number;
@@ -26,8 +29,10 @@ type SubmissionRow = {
     question: string;
     type: string;
     points: number;
+    images: IntercessionQuestionImage[];
     answer: string;
     correct: boolean | null;
+    earnedPoints: number | null;
   }>;
 };
 
@@ -35,7 +40,7 @@ export function IntercessionSubmissionsClient({
   form,
   submissions,
 }: {
-  form: { id: number; title: string; description: string | null; isQuiz: boolean; releaseGrade: string; canDeleteSubmissions: boolean };
+  form: { id: number; title: string; description: string | null; isQuiz: boolean; releaseGrade: string; canDeleteSubmissions: boolean; canGradeSubmissions: boolean; allowExport: boolean; includeTimestamps: boolean };
   submissions: SubmissionRow[];
 }) {
   const { confirm } = useAppDialog();
@@ -90,15 +95,13 @@ export function IntercessionSubmissionsClient({
   const releasedCount = submissions.filter((submission) => submission.isReleased).length;
 
   function exportCsv() {
-    const header = ["#", "Member", "Email", "Submitted Date", "Submitted Time", "Marks", "Score", "Answers", "Result Status"];
+    const header = ["#", "Member", "Email", ...(form.includeTimestamps ? ["Submitted Date", "Submitted Time"] : []), ...(form.isQuiz ? ["Marks", "Score"] : []), "Answers", "Result Status"];
     const rows = filteredSubmissions.map((submission) => [
       String(submissions.indexOf(submission) + 1),
       submission.memberName,
       submission.memberEmail,
-      submission.submittedDate,
-      submission.submittedTime,
-      submission.earnedPoints === null ? "" : `${submission.earnedPoints}/${submission.totalPoints}`,
-      submission.score === null ? "" : `${submission.score}%`,
+      ...(form.includeTimestamps ? [submission.submittedDate, submission.submittedTime] : []),
+      ...(form.isQuiz ? [submission.earnedPoints === null ? "" : `${submission.earnedPoints}/${submission.totalPoints}`, submission.score === null ? "" : `${submission.score}%`] : []),
       String(submission.answersCount),
       resultStatusLabel(form.releaseGrade, submission.isReleased),
     ]);
@@ -198,7 +201,7 @@ export function IntercessionSubmissionsClient({
                 <RotateCcw className="size-4" aria-hidden="true" />
                 Reset
               </button>
-              {submissions.length > 0 ? (
+              {form.allowExport && submissions.length > 0 ? (
                 <button
                   type="button"
                   onClick={exportCsv}
@@ -215,7 +218,7 @@ export function IntercessionSubmissionsClient({
           </div>
         </div>
 
-        {form.releaseGrade === "later" ? (
+        {form.releaseGrade === "later" && form.canGradeSubmissions ? (
           <div className="flex flex-col gap-3 border-b border-slate-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
             <div className="text-sm text-slate-600">
               {pendingReleaseCount > 0 ? (
@@ -309,7 +312,7 @@ export function IntercessionSubmissionsClient({
                           <UserCheck className="size-3.5" aria-hidden="true" />
                           Review
                         </button>
-                        {form.releaseGrade === "later" && submission.score !== null ? (
+                        {form.canGradeSubmissions && form.releaseGrade === "later" && submission.score !== null ? (
                           submission.isReleased ? (
                             <button
                               type="button"
@@ -383,7 +386,7 @@ function ReviewSubmissionModal({
   onClose,
   onSaved,
 }: {
-  form: { title: string; isQuiz: boolean; releaseGrade: string };
+  form: { title: string; isQuiz: boolean; releaseGrade: string; canGradeSubmissions: boolean };
   submission: SubmissionRow;
   onClose: () => void;
   onSaved: (result: { ok: boolean; message: string }) => void;
@@ -391,11 +394,17 @@ function ReviewSubmissionModal({
   const [grades, setGrades] = useState<Record<number, boolean | null>>(() =>
     Object.fromEntries(submission.answers.map((answer) => [answer.questionIndex, answer.correct])),
   );
+  const [awardedPoints, setAwardedPoints] = useState<Record<number, number>>(() =>
+    Object.fromEntries(submission.answers.map((answer) => [answer.questionIndex, answer.earnedPoints ?? (answer.correct ? answer.points : 0)])),
+  );
   const [pending, startTransition] = useTransition();
-  const manualReview = form.isQuiz && form.releaseGrade === "later";
+  const dialogRef = useDialogFocusTrap<HTMLDivElement>(true, onClose);
+  const manualReview = form.isQuiz && form.releaseGrade === "later" && form.canGradeSubmissions;
 
   function setGrade(questionIndex: number, correct: boolean) {
     setGrades((current) => ({ ...current, [questionIndex]: correct }));
+    const answer = submission.answers.find((item) => item.questionIndex === questionIndex);
+    setAwardedPoints((current) => ({ ...current, [questionIndex]: correct ? answer?.points ?? 0 : 0 }));
   }
 
   function saveReview() {
@@ -403,6 +412,7 @@ function ReviewSubmissionModal({
       questionIndex: answer.questionIndex,
       correct: grades[answer.questionIndex] === true,
       points: answer.points,
+      earnedPoints: awardedPoints[answer.questionIndex] ?? 0,
     }));
     const formData = new FormData();
     formData.set("submissionId", String(submission.id));
@@ -415,7 +425,7 @@ function ReviewSubmissionModal({
 
   return (
     <div className="fixed inset-0 z-[120] overflow-y-auto bg-black/50 px-3 py-6">
-      <div className="mx-auto max-w-3xl overflow-hidden rounded-xl bg-white shadow-2xl">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Review submission" className="mx-auto max-w-3xl overflow-hidden rounded-xl bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Review Submission</p>
@@ -444,11 +454,14 @@ function ReviewSubmissionModal({
                       </span>
                     ) : null}
                   </div>
+                  <IntercessionQuestionImages images={answer.images} className="mt-3" />
                   <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm leading-6 text-slate-700">
-                    {answer.answer}
+                    {/^https?:\/\//.test(answer.answer) || answer.answer.startsWith("/uploads/form-answers/") ? <a href={answer.answer} target="_blank" rel="noreferrer" className="font-semibold text-blue-700 underline underline-offset-2">Open uploaded file</a> : answer.answer}
                   </div>
+                  {form.isQuiz && answer.earnedPoints !== null ? <p className="mt-2 text-xs font-semibold text-blue-700">Awarded {answer.earnedPoints.toLocaleString()} of {answer.points.toLocaleString()} point{answer.points === 1 ? "" : "s"}</p> : null}
                   {manualReview ? (
-                    <div className="mt-3 flex flex-wrap gap-2">
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <label className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800">Award points<input type="number" min={0} max={answer.points} step={0.01} value={awardedPoints[answer.questionIndex] ?? 0} onChange={(event) => { const value = Math.min(answer.points, Math.max(0, Number(event.target.value) || 0)); setAwardedPoints((current) => ({ ...current, [answer.questionIndex]: value })); setGrades((current) => ({ ...current, [answer.questionIndex]: value >= answer.points })); }} className="w-20 rounded border border-blue-200 bg-white px-2 py-1 text-right" /><span>/ {answer.points}</span></label>
                       <button
                         type="button"
                         onClick={() => setGrade(answer.questionIndex, true)}

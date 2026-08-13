@@ -3,6 +3,9 @@ import { getUserPermissionSet, permissionSetHas, requireUser } from "@/lib/auth"
 import { memberCanViewScore, memberResultLabel, memberResultState } from "@/lib/intercession-result-rules";
 import { prisma } from "@/lib/prisma";
 import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
+import { parseQuestionImages } from "@/lib/intercession-question-images";
+import { parseIntercessionQuestionCondition } from "@/lib/intercession-form-rules";
+import { intercessionFormAvailability, parseIntercessionFormSettings } from "@/lib/intercession-form-domain";
 
 function formatDate(date: Date) {
   return new Intl.DateTimeFormat("en", {
@@ -22,14 +25,22 @@ function asObject(value: unknown) {
 
 function asQuestions(value: unknown) {
   return Array.isArray(value)
-      ? value.map((question) => {
+      ? value.map((question, index) => {
         const item = asObject(question);
         const label = typeof item.label === "string" ? item.label : typeof item.text === "string" ? item.text : "Question";
         return {
+          id: typeof item.id === "string" && item.id ? item.id : `question-${index + 1}`,
           type: typeof item.type === "string" ? item.type : "paragraph",
           label,
+          description: typeof item.description === "string" ? item.description : "",
           required: Boolean(item.required),
           options: Array.isArray(item.options) ? item.options.filter((option): option is string => typeof option === "string") : [],
+          rows: Array.isArray(item.rows) ? item.rows.filter((row): row is string => typeof row === "string") : [],
+          columns: Array.isArray(item.columns) ? item.columns.filter((column): column is string => typeof column === "string") : [],
+          min: Number(item.min ?? 1),
+          max: Number(item.max ?? 5),
+          images: parseQuestionImages(item.images),
+          condition: parseIntercessionQuestionCondition(item.condition),
         };
       })
     : [];
@@ -115,10 +126,22 @@ export default async function IntercessionPage({ searchParams }: { searchParams:
       isPublished: Boolean(settings.is_published),
       limitOneResponse: settings.limit_one_response !== false,
       isActive: form.isActive,
+      availabilityMessage: intercessionFormAvailability(parseIntercessionFormSettings(form.settings), form.isActive, form._count.submissions),
       createdAt: formatDate(form.createdAt),
       createdBy: form.creator?.name ?? "Unknown",
       submissionsCount: form._count.submissions,
       hasSubmitted: mySubmittedFormIds.has(form.id),
+      previewSettings: {
+        limit_one_response: settings.limit_one_response !== false,
+        show_progress_bar: Boolean(settings.show_progress_bar),
+        shuffle_questions: Boolean(settings.shuffle_questions),
+        show_question_numbers: settings.show_question_numbers !== false,
+        is_quiz: Boolean(settings.is_quiz),
+        release_grade: typeof settings.release_grade === "string" ? settings.release_grade : "never",
+        require_login: settings.require_login !== false,
+        allow_export: settings.allow_export !== false,
+        include_timestamps: settings.include_timestamps !== false,
+      },
     };
   });
   const activePublishedFormIds = new Set(

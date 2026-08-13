@@ -7,6 +7,7 @@ import jwt from "jsonwebtoken";
 import { prisma } from "@/lib/prisma";
 import { normalizeSessionLifetimeMinutes } from "@/lib/session-policy";
 import { getSystemSetting, settingToNumber } from "@/lib/system-settings";
+import { withDatabaseRetry } from "@/lib/database-retry";
 
 export const SESSION_COOKIE = "reverence_session";
 
@@ -84,7 +85,7 @@ export const getCurrentUser = cache(async () => {
   }
   const sessionVersion = payload.sessionVersion ?? 0;
 
-  return prisma.user.findFirst({
+  return withDatabaseRetry(() => prisma.user.findFirst({
     where: {
       id: payload.userId,
       status: "active",
@@ -97,7 +98,7 @@ export const getCurrentUser = cache(async () => {
         },
       },
     },
-  });
+  }), 3);
 });
 
 export async function requireUser() {

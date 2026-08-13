@@ -1,50 +1,524 @@
-(node:1328) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
-In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
-
-To prepare for this change:
-- If you want the current behavior, explicitly use 'sslmode=verify-full'
-- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
-
-See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
-(Use `node --trace-warnings ...` to show where the warning was created)
-⨯ TypeError: Cannot read properties of undefined (reading 'findUnique')
-    at FamilyPage (src\app\admin\family\page.tsx:37:48)
-  35 |   const user = await requireUser();
-  36 |
-> 37 |   const membership = await prisma.familyMember.findUnique({
-     |                                                ^
-  38 |     where: { userId: user.id },
-  39 |     include: {
-  40 |       family: { {
-  digest: '3359216464'
+⨯ ReferenceError: ConditionalQuestionEditor is not defined
+    at QuestionCard (src\components\intercession-form-builder.tsx:1035:12)
+  1033 |             <GridQuestionEditor question={question} onChange={onChange} />
+  1034 |           )}
+> 1035 |           <ConditionalQuestionEditor question={question} precedingQuestions={precedingQu...
+       |            ^
+  1036 |         </div>
+  1037 |       )}
+  1038 | {
+  digest: '3740851809'
 }
-[browser] Uncaught TypeError: Cannot read properties of undefined (reading 'findUnique')
-    at FamilyPage (src\app\admin\family\page.tsx:37:48)
-  35 |   const user = await requireUser();
-  36 |
-> 37 |   const membership = await prisma.familyMember.findUnique({
-     |                                                ^
-  38 |     where: { userId: user.id },
-  39 |     include: {
-  40 |       family: {
+[browser] The final argument passed to useEffect changed size between renders. The order and size of this array must remain constant.
+
+Previous: [0, (snapshot)=>{
+            const formData = new FormData();
+            formData.set("title", snapshot.title);
+            formData.set("description", snapshot.description);
+            formData.set("questions", JSON.stringify(snapshot.questions.map({
+                "IntercessionFormBuilder.useCallback[buildFormData]": (question)=>({
+                        ...question,
+                        text: question.label,
+                        options: question.options.filter(Boolean),
+                        rows: question.rows.filter(Boolean),
+                        columns: question.columns.filter(Boolean),
+                        correctAnswer: question.correctAnswer || null,
+                        correctAnswers: [
+                            "multiple_choice_grid",
+                            "checkbox_grid"
+                        ].includes(question.type) ? question.gridCorrectAnswers : question.correctAnswers.length ? question.correctAnswers : null
+                    })
+            }["IntercessionFormBuilder.useCallback[buildFormData]"])));
+            formData.set("settings", JSON.stringify(snapshot.settings));
+            return formData;
+        }, saved, 8, {"title":"Guteza imbere no gusigasira ubusabane mu bana b'Imana","description":"Instructions\r\n1. Kubanza gusoma ubusobanuro bw&#39;Imana \r\n2. Guhitamo izina rimwe gusa wumva ryakwitirirwa umunsi","questions":[{"id":"ab2bef62-1430-4a23-afef-fe9ca55a74e6","type":"short_answer","label":"Untitled question","description":"","required":true,"options":["Option 1"],"points":1,"correctAnswer":"","correctAnswers":[],"rows":["Row 1"],"columns":["Column 1"],"gridCorrectAnswers":{},"min":1,"max":5,"images":[],"condition":null}],"settings":{"is_quiz":false,"release_grade":"never","default_points":1,"allow_view_response":true,"limit_one_response":true,"require_login":true,"show_progress_bar":false,"shuffle_questions":false,"show_question_numbers":true,"default_required":false,"is_published":false,"allow_partial_points":true,"notify_on_submit":false,"notify_user_on_review":false,"allow_export":true,"include_timestamps":true,"submission_deadline":""}}]
+Incoming: [0, (snapshot)=>{
+            const formData = new FormData();
+            formData.set("title", snapshot.title);
+            formData.set("description", snapshot.description);
+            formData.set("questions", JSON.stringify(snapshot.questions.map({
+                "IntercessionFormBuilder.useCallback[buildFormData]": (question)=>({
+                        ...question,
+                        text: question.label,
+                        options: question.options.filter(Boolean),
+                        rows: question.rows.filter(Boolean),
+                        columns: question.columns.filter(Boolean),
+                        correctAnswer: question.correctAnswer || null,
+                        correctAnswers: [
+                            "multiple_choice_grid",
+                            "checkbox_grid"
+                        ].includes(question.type) ? question.gridCorrectAnswers : question.correctAnswers.length ? question.correctAnswers : null
+                    })
+            }["IntercessionFormBuilder.useCallback[buildFormData]"])));
+            formData.set("settings", JSON.stringify(snapshot.settings));
+            return formData;
+        }, saved, 8, false, {"title":"Guteza imbere no gusigasira ubusabane mu bana b'Imana","description":"Instructions\r\n1. Kubanza gusoma ubusobanuro bw&#39;Imana \r\n2. Guhitamo izina rimwe gusa wumva ryakwitirirwa umunsi","questions":[{"id":"ab2bef62-1430-4a23-afef-fe9ca55a74e6","type":"short_answer","label":"Untitled question","description":"","required":true,"options":["Option 1"],"points":1,"correctAnswer":"","correctAnswers":[],"rows":["Row 1"],"columns":["Column 1"],"gridCorrectAnswers":{},"min":1,"max":5,"images":[],"condition":null}],"settings":{"is_quiz":false,"release_grade":"never","default_points":1,"allow_view_response":true,"limit_one_response":true,"require_login":true,"show_progress_bar":false,"shuffle_questions":false,"show_question_numbers":true,"default_required":false,"is_published":false,"allow_partial_points":true,"notify_on_submit":false,"notify_user_on_review":false,"allow_export":true,"include_timestamps":true,"submission_deadline":""}}] 
+    at IntercessionFormBuilder (src/components/intercession-form-builder.tsx:428:12)
+    at Set.forEach (<anonymous>)
+  426 |   }, [serializedSnapshot]);
+  427 |
+> 428 |   useEffect(() => {
+      |            ^
+  429 |     if (activeImageUploads > 0 || draftStatus !== "unsaved") return;
+  430 |     const timer = window.setTimeout(async () => {
+  431 |       const snapshot = latestSnapshotRef.current; (src/components/intercession-form-builder.tsx:428:12)
+⨯ ./src/components/intercession-form-builder.tsx:240:5
+Unexpected token `ident`. Expected ... , *,  (, [, :, , ?, =, an identifier, public, protected, private, readonly, <.
+  [90m238 |[0m     id: [32m"quiz"[0m,
+  [90m239 |[0m     name: [32m"Quiz"[0m,
+[31m[1m>[0m [90m240 |[0m   [33mA[0m scored multiple-choice knowledge check.  description: [32m""[0m,
+  [90m    |[0m     [31m[1m^^^^^^[0m
+  [90m241 |[0m     title: [32m"Quiz"[0m,
+  [90m242 |[0m     questions: [
+  [90m243 |[0m       { ...newQuestion([32m"multiple_choice"[0m), label: [32m"Enter your first question"[0m, options: [[32m...[0m
+
+Parsing ecmascript source code failed
+
+Import trace:
+  Server Component:
+    ./src/components/intercession-form-builder.tsx
+    ./src/app/admin/intercession/forms/[id]/edit/page.tsx
+
+
+[browser] ./src/components/intercession-form-builder.tsx:240:5
+Unexpected token `ident`. Expected ... , *,  (, [, :, , ?, =, an identifier, public, protected, private, readonly, <.
+  238 |     id: "quiz",
+  239 |     name: "Quiz",
+> 240 |   A scored multiple-choice knowledge check.  description: "",
+      |     ^^^^^^
+  241 |     title: "Quiz",
+  242 |     questions: [
+  243 |       { ...newQuestion("multiple_choice"), label: "Enter your first question", options: [...
+
+Parsing ecmascript source code failed
+
+Import trace:
+  Server Component:
+    ./src/components/intercession-form-builder.tsx
+    ./src/app/admin/intercession/forms/[id]/edit/page.tsx 
+[browser] ./src/components/intercession-form-builder.tsx:240:5
+Unexpected token `ident`. Expected ... , *,  (, [, :, , ?, =, an identifier, public, protected, private, readonly, <.
+  238 |     id: "quiz",
+  239 |     name: "Quiz",
+> 240 |   A scored multiple-choice knowledge check.  description: "",
+      |     ^^^^^^
+  241 |     title: "Quiz",
+  242 |     questions: [
+  243 |       { ...newQuestion("multiple_choice"), label: "Enter your first question", options: [...
+
+Parsing ecmascript source code failed
+
+Import trace:
+  Server Component:
+    ./src/components/intercession-form-builder.tsx
+    ./src/app/admin/intercession/forms/[id]/edit/page.tsx 
+[browser] ./src/components/intercession-form-builder.tsx:240:5
+Unexpected token `ident`. Expected ... , *,  (, [, :, , ?, =, an identifier, public, protected, private, readonly, <.
+  238 |     id: "quiz",
+  239 |     name: "Quiz",
+> 240 |   A scored multiple-choice knowledge check.  description: "",
+      |     ^^^^^^
+  241 |     title: "Quiz",
+  242 |     questions: [
+  243 |       { ...newQuestion("multiple_choice"), label: "Enter your first question", options: [...
+
+Parsing ecmascript source code failed
+
+Import trace:
+  Server Component:
+    ./src/components/intercession-form-builder.tsx
+    ./src/app/admin/intercession/forms/[id]/edit/page.tsx 
+⨯ ./src/components/intercession-form-builder.tsx:240:5
+Unexpected token `ident`. Expected ... , *,  (, [, :, , ?, =, an identifier, public, protected, private, readonly, <.
+  [90m238 |[0m     id: [32m"quiz"[0m,
+  [90m239 |[0m     name: [32m"Quiz"[0m,
+[31m[1m>[0m [90m240 |[0m   [33mA[0m scored multiple-choice knowledge check.  description: [32m""[0m,
+  [90m    |[0m     [31m[1m^^^^^^[0m
+  [90m241 |[0m     title: [32m"Quiz"[0m,
+  [90m242 |[0m     questions: [
+  [90m243 |[0m       { ...newQuestion([32m"multiple_choice"[0m), label: [32m"Enter your first question"[0m, options: [[32m...[0m
+
+Parsing ecmascript source code failed
+
+Import trace:
+  Server Component:
+    ./src/components/intercession-form-builder.tsx
+    ./src/app/admin/intercession/forms/[id]/edit/page.tsx
+
+
+⨯ ./src/components/intercession-form-builder.tsx:240:5
+Unexpected token `ident`. Expected ... , *,  (, [, :, , ?, =, an identifier, public, protected, private, readonly, <.
+  [90m238 |[0m     id: [32m"quiz"[0m,
+  [90m239 |[0m     name: [32m"Quiz"[0m,
+[31m[1m>[0m [90m240 |[0m   [33mA[0m scored multiple-choice knowledge check.  description: [32m""[0m,
+  [90m    |[0m     [31m[1m^^^^^^[0m
+  [90m241 |[0m     title: [32m"Quiz"[0m,
+  [90m242 |[0m     questions: [
+  [90m243 |[0m       { ...newQuestion([32m"multiple_choice"[0m), label: [32m"Enter your first question"[0m, options: [[32m...[0m
+
+Parsing ecmascript source code failed
+
+Import trace:
+  Server Component:
+    ./src/components/intercession-form-builder.tsx
+    ./src/app/admin/intercession/forms/[id]/edit/page.tsx
+
+
+[browser] Uncaught Error: ./src/components/intercession-form-builder.tsx:240:5
+Unexpected token `ident`. Expected ... , *,  (, [, :, , ?, =, an identifier, public, protected, private, readonly, <.
+  238 |     id: "quiz",
+  239 |     name: "Quiz",
+> 240 |   A scored multiple-choice knowledge check.  description: "",
+      |     ^^^^^^
+  241 |     title: "Quiz",
+  242 |     questions: [
+  243 |       { ...newQuestion("multiple_choice"), label: "Enter your first question", options: [...
+
+Parsing ecmascript source code failed
+
+Import trace:
+  Server Component:
+    ./src/components/intercession-form-builder.tsx
+    ./src/app/admin/intercession/forms/[id]/edit/page.tsx
+
+
+    at <unknown> (Error: ./src/components/intercession-form-builder.tsx:240:5)
+    at <unknown> (Error: (./src/components/intercession-form-builder.tsx:240:5)
+[browser] ./src/components/intercession-form-builder.tsx:240:5
+Unexpected token `ident`. Expected ... , *,  (, [, :, , ?, =, an identifier, public, protected, private, readonly, <.
+  238 |     id: "quiz",
+  239 |     name: "Quiz",
+> 240 |   A scored multiple-choice knowledge check.  description: "",
+      |     ^^^^^^
+  241 |     title: "Quiz",
+  242 |     questions: [
+  243 |       { ...newQuestion("multiple_choice"), label: "Enter your first question", options: [...
+
+Parsing ecmascript source code failed
+
+Import trace:
+  Server Component:
+    ./src/components/intercession-form-builder.tsx
+    ./src/app/admin/intercession/forms/[id]/edit/page.tsx 
+[browser] ./src/components/intercession-form-builder.tsx:240:5
+Unexpected token `ident`. Expected ... , *,  (, [, :, , ?, =, an identifier, public, protected, private, readonly, <.
+  238 |     id: "quiz",
+  239 |     name: "Quiz",
+> 240 |   A scored multiple-choice knowledge check.  description: "",
+      |     ^^^^^^
+  241 |     title: "Quiz",
+  242 |     questions: [
+  243 |       { ...newQuestion("multiple_choice"), label: "Enter your first question", options: [...
+
+Parsing ecmascript source code failed
+
+Import trace:
+  Server Component:
+    ./src/components/intercession-form-builder.tsx
+    ./src/app/admin/intercession/forms/[id]/edit/page.tsx 
+[browser] ./src/components/intercession-form-builder.tsx:240:5
+Unexpected token `ident`. Expected ... , *,  (, [, :, , ?, =, an identifier, public, protected, private, readonly, <.
+  238 |     id: "quiz",
+  239 |     name: "Quiz",
+> 240 |   A scored multiple-choice  description: "",
+      |     ^^^^^^
+  241 |     title: "Quiz",
+  242 |     questions: [
+  243 |       { ...newQuestion("multiple_choice"), label: "Enter your first question", options: [...
+
+Parsing ecmascript source code failed
+
+Import trace:
+  Server Component:
+    ./src/components/intercession-form-builder.tsx
+    ./src/app/admin/intercession/forms/[id]/edit/page.tsx 
+[browser] ./src/components/intercession-form-builder.tsx:240:5
+Unexpected token `ident`. Expected ... , *,  (, [, :, , ?, =, an identifier, public, protected, private, readonly, <.
+  238 |     id: "quiz",
+  239 |     name: "Quiz",
+> 240 |   A scored multiple-choice knowledge check.  description: "",
+      |     ^^^^^^
+  241 |     title: "Quiz",
+  242 |     questions: [
+  243 |       { ...newQuestion("multiple_choice"), label: "Enter your first question", options: [...
+
+Parsing ecmascript source code failed
+
+Import trace:
+  Server Component:
+    ./src/components/intercession-form-builder.tsx
+    ./src/app/admin/intercession/forms/[id]/edit/page.tsx 
+[browser] ./src/components/intercession-form-builder.tsx:240:5
+Unexpected token `ident`. Expected ... , *,  (, [, :, , ?, =, an identifier, public, protected, private, readonly, <.
+  238 |     id: "quiz",
+  239 |     name: "Quiz",
+> 240 |   A scored multiple-choice knowledge check.  description: "",
+      |     ^^^^^^
+  241 |     title: "Quiz",
+  242 |     questions: [
+  243 |       { ...newQuestion("multiple_choice"), label: "Enter your first question", options: [...
+
+Parsing ecmascript source code failed
+
+Import trace:
+  Server Component:
+    ./src/components/intercession-form-builder.tsx
+    ./src/app/admin/intercession/forms/[id]/edit/page.tsx 
+[browser] ./src/components/intercession-form-builder.tsx:240:5
+Unexpected token `ident`. Expected ... , *,  (, [, :, , ?, =, an identifier, public, protected, private, readonly, <.
+  238 |     id: "quiz",
+  239 |     name: "Quiz",
+> 240 |   A scored multiple-choice knowledge check.  description: "",
+      |     ^^^^^^
+  241 |     title: "Quiz",
+  242 |     questions: [
+  243 |       { ...newQuestion("multiple_choice"), label: "Enter your first question", options: [...
+
+Parsing ecmascript source code failed
+
+Import trace:
+  Server Component:
+    ./src/components/intercession-form-builder.tsx
+    ./src/app/admin/intercession/forms/[id]/edit/page.tsx 
+[browser] ./src/components/intercession-form-builder.tsx:240:5
+Unexpected token `ident`. Expected ... , *,  (, [, :, , ?, =, an identifier, public, protected, private, readonly, <.
+  238 |     id: "quiz",
+  239 |     name: "Quiz",
+> 240 |   A scored multiple-choice knowledge check.  description: "",
+      |     ^^^^^^
+  241 |     title: "Quiz",
+  242 |     questions: [
+  243 |       { ...newQuestion("multiple_choice"), label: "Enter your first question", options: [...
+
+Parsing ecmascript source code failed
+
+Import trace:
+  Server Component:
+    ./src/components/intercession-form-builder.tsx
+    ./src/app/admin/intercession/forms/[id]/edit/page.tsx 
+[browser] ./src/components/intercession-form-builder.tsx:240:5
+Unexpected token `ident`. Expected ... , *,  (, [, :, , ?, =, an identifier, public, protected, private, readonly, <.
+  238 |     id: "quiz",
+  239 |     name: "Quiz",
+> 240 |   A scored multiple-choice knowledge check.  description: "",
+      |     ^^^^^^
+  241 |     title: "Quiz",
+  242 |     questions: [
+  243 |       { ...newQuestion("multiple_choice"), label: "Enter your first question", options: [...
+
+Parsing ecmascript source code failed
+
+Import trace:
+  Server Component:
+    ./src/components/intercession-form-builder.tsx
+    ./src/app/admin/intercession/forms/[id]/edit/page.tsx 
+[browser] ./src/components/intercession-form-builder.tsx:240:5
+Unexpected token `ident`. Expected ... , *,  (, [, :, , ?, =, an identifier, public, protected, private, readonly, <.
+  238 |     id: "quiz",
+  239 |     name: "Quiz",
+> 240 |   A scored multiple-choice knowledge check.  description: "",
+      |     ^^^^^^
+  241 |     title: "Quiz",
+  242 |     questions: [
+  243 |       { ...newQuestion("multiple_choice"), label: "Enter your first question", options: [...
+
+Parsing ecmascript source code failed
+
+Import trace:
+  Server Component:
+    ./src/components/intercession-form-builder.tsx
+    ./src/app/admin/intercession/forms/[id]/edit/page.tsx 
+[browser] ./src/components/intercession-form-builder.tsx:240:5
+Unexpected token `ident`. Expected ... , *,  (, [, :, , ?, =, an identifier, public, protected, private, readonly, <.
+  238 |     id: "quiz",
+  239 |     name: "Quiz",
+> 240 |   A scored multiple-choice knowledge check.  description: "",
+      |     ^^^^^^
+  241 |     title: "Quiz",
+  242 |     questions: [
+  243 |       { ...newQuestion("multiple_choice"), label: "Enter your first question", options: [...
+
+Parsing ecmascript source code failed
+
+Import trace:
+  Server Component:
+    ./src/components/intercession-form-builder.tsx
+    ./src/app/admin/intercession/forms/[id]/edit/page.tsx 
+[browser] ./src/components/intercession-form-builder.tsx:240:5
+Unexpected token `ident`. Expected ... , *,  (, [, :, , ?, =, an identifier, public, protected, private, readonly, <.
+  238 |     id: "quiz",
+  239 |     name: "Quiz",
+> 240 |   A scored multiple-choice knowledge check.  description: "",
+      |     ^^^^^^
+  241 |     title: "Quiz",
+  242 |     questions: [
+  243 |       { ...newQuestion("multiple_choice"), label: "Enter your first question", options: [...
+
+Parsing ecmascript source code failed
+
+Import trace:
+  Server Component:
+    ./src/components/intercession-form-builder.tsx
+    ./src/app/admin/intercession/forms/[id]/edit/page.tsx 
+[browser] ./src/components/intercession-form-builder.tsx:240:5
+Unexpected token `ident`. Expected ... , *,  (, [, :, , ?, =, an identifier, public, protected, private, readonly, <.
+  238 |     id: "quiz",
+  239 |     name: "Quiz",
+> 240 |   A scored multiple-choice knowledge check.  description: "",
+      |     ^^^^^^
+  241 |     title: "Quiz",
+  242 |     questions: [
+  243 |       { ...newQuestion("multiple_choice"), label: "Enter your first question", options: [...
+
+Parsing ecmascript source code failed
+
+Import trace:
+  Server Component:
+    ./src/components/intercession-form-builder.tsx
+    ./src/app/admin/intercession/forms/[id]/edit/page.tsx 
+[browser] ./src/components/intercession-form-builder.tsx:240:5
+Unexpected token `ident`. Expected ... , *,  (, [, :, , ?, =, an identifier, public, protected, private, readonly, <.
+  238 |     id: "quiz",
+  239 |     name: "Quiz",
+> 240 |   A scored multiple-choice knowledge check.  description: "",
+      |     ^^^^^^
+  241 |     title: "Quiz",
+  242 |     questions: [
+  243 |       { ...newQuestion("multiple_choice"), label: "Enter your first question", options: [...
+
+Parsing ecmascript source code failed
+
+Import trace:
+  Server Component:
+    ./src/components/intercession-form-builder.tsx
+    ./src/app/admin/intercession/forms/[id]/edit/page.tsx 
+[browser] ./src/components/intercession-form-builder.tsx:240:5
+Unexpected token `ident`. Expected ... , *,  (, [, :, , ?, =, an identifier, public, protected, private, readonly, <.
+  238 |     id: "quiz",
+  239 |     name: "Quiz",
+> 240 |   A scored Questions  description: "",
+      |     ^^^^^^
+  241 |     title: "Quiz",
+  242 |     questions: [
+  243 |       { ...newQuestion("multiple_choice"), label: "Enter your first question", options: [...
+
+Parsing ecmascript source code failed
+
+Import trace:
+  Server Component:
+    ./src/components/intercession-form-builder.tsx
+    ./src/app/admin/intercession/forms/[id]/edit/page.tsx 
+[browser] ./src/components/intercession-form-builder.tsx:240:5
+Unexpected token `ident`. Expected ... , *,  (, [, :, , ?, =, an identifier, public, protected, private, readonly, <.
+  238 |     id: "quiz",
+  239 |     name: "Quiz",
+> 240 |   A scored Questionsmultiple-choice knowledge check.  description: "",
+      |     ^^^^^^
+  241 |     title: "Quiz",
+  242 |     questions: [
+  243 |       { ...newQuestion("multiple_choice"), label: "Enter your first question", options: [...
+
+Parsing ecmascript source code failed
+
+Import trace:
+  Server Component:
+    ./src/components/intercession-form-builder.tsx
+    ./src/app/admin/intercession/forms/[id]/edit/page.tsx 
 ⚠ Fast Refresh had to perform a full reload due to a runtime error.
-⨯ TypeError: Cannot read properties of undefined (reading 'findUnique')
-    at FamilyPage (src\app\admin\family\page.tsx:37:48)
-  35 |   const user = await requireUser();
-  36 |
-> 37 |   const membership = await prisma.familyMember.findUnique({
-     |                                                ^
-  38 |     where: { userId: user.id },
-  39 |     include: {
-  40 |       family: { {
-  digest: '3359216464'
+⚠ Fast Refresh had to perform a full reload when ./src/components/app-dialog-provider.tsx changed. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+[browser] Failed to fetch RSC payload for http://localhost:3000/admin/intercession/forms/8/edit. Falling back to browser navigation. TypeError: Failed to fetch
+[browser] Failed to fetch RSC payload for http://localhost:3000/admin/intercession/forms/8/edit. Falling back to browser navigation. TypeError: Failed to fetch
+[browser] Failed to fetch RSC payload for http://localhost:3000/admin/intercession/forms/8/edit. Falling back to browser navigation. TypeError: Failed to fetch
+[browser] Failed to fetch RSC payload for http://localhost:3000/admin/intercession/forms/8/edit. Falling back to browser navigation. TypeError: Failed to fetch
+[browser] Failed to fetch RSC payload for http://localhost:3000/admin/intercession/forms/8/edit. Falling back to browser navigation. TypeError: Failed to fetch
+[browser] ⨯ unhandledRejection: TypeError: Failed to fetch
+[browser] ⨯ unhandledRejection: TypeError: Failed to fetch
+    at AdminShell.useEffect.refreshSession (src/components/admin-shell.tsx:258:30)
+    at AdminShell.useEffect.interval (src/components/admin-shell.tsx:278:12)
+  256 |       activitySincePingRef.current = false;
+  257 |
+> 258 |       const response = await fetch("/api/session/ping", {
+      |                              ^
+  259 |         method: "POST",
+  260 |         cache: "no-store",
+  261 |       });
+⨯ Error [PrismaClientKnownRequestError]: 
+Invalid `{imported module ./src/lib/prisma.ts}["prisma"].systemSetting.findUnique()` invocation in
+D:\MY.DATA\Systems\New_System\reverence-worship\reverence-worship-v2\.next\dev\server\chunks\ssr\[root-of-the-server]__0o038mu._.js:1145:168
+
+  1142     return Number.isFinite(numeric) ? numeric : fallback;
+  1143 }
+  1144 const getSystemSetting = (0, {imported module ./nodemodules/next/dist/server/route-modules/app-page/vendored/rsc/react.js}["cache"])(async (key)=>{
+→ 1145     const setting = await {imported module ./src/lib/prisma.ts}["prisma"].systemSetting.findUnique(
+
+    at <unknown> (src\lib\system-settings.ts:19:46)
+    at async (src\lib\system-settings.ts:19:19)
+    at async isRegistrationEnabled (src\lib\system-settings.ts:28:27)
+    at async RegistrationLink (src\app\(auth)\login\page.tsx:9:8)
+  17 |
+  18 | export const getSystemSetting = cache(async (key: string) => {
+> 19 |   const setting = await prisma.systemSetting.findUnique({
+     |                                              ^
+  20 |     where: { key },
+  21 |     select: { value: true },
+  22 |   }); {
+  code: 'ETIMEDOUT',
+  meta: { modelName: 'SystemSetting' },
+  clientVersion: '7.8.0',
+  digest: '135036366'
 }
-[browser] Uncaught TypeError: Cannot read properties of undefined (reading 'findUnique')
-    at FamilyPage (src\app\admin\family\page.tsx:37:48)
-  35 |   const user = await requireUser();
-  36 |
-> 37 |   const membership = await prisma.familyMember.findUnique({
-     |                                                ^
-  38 |     where: { userId: user.id },
-  39 |     include: {
-  40 |       family: {
+⨯ Error [PrismaClientKnownRequestError]: 
+Invalid `{imported module ./src/lib/prisma.ts}["prisma"].systemSetting.findUnique()` invocation in
+D:\MY.DATA\Systems\New_System\reverence-worship\reverence-worship-v2\.next\dev\server\chunks\ssr\[root-of-the-server]__0o038mu._.js:1145:168
+
+  1142     return Number.isFinite(numeric) ? numeric : fallback;
+  1143 }
+  1144 const getSystemSetting = (0, {imported module ./nodemodules/next/dist/server/route-modules/app-page/vendored/rsc/react.js}["cache"])(async (key)=>{
+→ 1145     const setting = await {imported module ./src/lib/prisma.ts}["prisma"].systemSetting.findUnique(
+
+    at <unknown> (src\lib\system-settings.ts:19:46)
+    at async (src\lib\system-settings.ts:19:19)
+    at async isRegistrationEnabled (src\lib\system-settings.ts:28:27)
+    at async RegistrationLink (src\app\(auth)\login\page.tsx:9:8)
+  17 |
+  18 | export const getSystemSetting = cache(async (key: string) => {
+> 19 |   const setting = await prisma.systemSetting.findUnique({
+     |                                              ^
+  20 |     where: { key },
+  21 |     select: { value: true },
+  22 |   }); {
+  code: 'ETIMEDOUT',
+  meta: { modelName: 'SystemSetting' },
+  clientVersion: '7.8.0',
+  digest: '135036366'
+}
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+⨯ Error [PrismaClientKnownRequestError]: 
+Invalid `{imported module ./src/lib/prisma.ts}["prisma"].spiritualForm.findUnique()` invocation in
+D:\MY.DATA\Systems\New_System\reverence-worship\reverence-worship-v2\.next\dev\server\chunks\ssr\[root-of-the-server]__0v7orcg._.js:112:150
+
+  109 const formId = Number(id);
+  110 if (!Number.isInteger(formId) || formId <= 0) (0, {imported module ./nodemodules/next/dist/client/components/navigation.react-server.js}["notFound"])();
+  111 const [form, user] = await Promise.all([
+→ 112     {imported module ./src/lib/prisma.ts}["prisma"].spiritualForm.findUnique(
+Server has closed the connection.
+    at <unknown> (src\app\forms\[id]\page.tsx:12:26)
+    at async PublicIntercessionFormPage (src\app\forms\[id]\page.tsx:11:24)
+  10 |   if (!Number.isInteger(formId) || formId <= 0) notFound();
+  11 |   const [form, user] = await Promise.all([
+> 12 |     prisma.spiritualForm.findUnique({ where: { id: formId }, include: { _count: { select: ...
+     |                          ^
+  13 |     getCurrentUser(),
+  14 |   ]);
+  15 |   if (!form) notFound(); {
+  code: 'P1017',
+  meta: {
+    modelName: 'SpiritualForm',
+    driverAdapterError: Error [DriverAdapterError]: ConnectionClosed
+        at ignore-listed frames {
+      [cause]: [Object]
+    }
+  },
+  clientVersion: '7.8.0',
+  digest: '1287273530'
+}

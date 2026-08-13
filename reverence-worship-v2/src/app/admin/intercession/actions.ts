@@ -1,11 +1,48 @@
 "use server";
 
+import { mkdir, unlink, writeFile } from "fs/promises";
+import path from "path";
+import { del as deleteBlob, put } from "@vercel/blob";
 import { revalidatePath } from "next/cache";
 import type { Prisma } from "@/generated/prisma/client";
-import { requireAnyPermission, requirePermission } from "@/lib/auth";
+import { getCurrentUser, requireAnyPermission, requirePermission } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { notifyUsers, userIdsWithPermission } from "@/lib/notifications";
 import { intercessionRichTextToPlainText } from "@/lib/intercession-rich-text";
+import { getIntercessionPublishingIssues, parseIntercessionQuestionCondition } from "@/lib/intercession-form-rules";
+import {
+  intercessionFormAvailability,
+  isIntercessionAnswerable,
+  parseIntercessionFormQuestions,
+  parseIntercessionFormSettings,
+  scoreIntercessionQuiz,
+  visibleIntercessionQuestions,
+  type IntercessionFormAnswer,
+} from "@/lib/intercession-form-domain";
+import {
+  isManagedQuestionImagePath,
+  MAX_QUESTION_IMAGE_BYTES,
+  MAX_QUESTION_IMAGES,
+  parseQuestionImages,
+  questionImagePaths,
+} from "@/lib/intercession-question-images";
+
+const QUESTION_IMAGE_MIME_EXTENSIONS: Record<string, string> = {
+  "image/jpeg": ".jpg",
+  "image/png": ".png",
+  "image/webp": ".webp",
+};
+
+const RESPONSE_FILE_MIME_EXTENSIONS: Record<string, string> = {
+  "image/jpeg": ".jpg",
+  "image/png": ".png",
+  "image/webp": ".webp",
+  "application/pdf": ".pdf",
+  "application/msword": ".doc",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+};
+const MAX_RESPONSE_FILE_BYTES = 10 * 1024 * 1024;
+const QUESTION_LIBRARY_SETTING = "intercession_question_library";
 
 async function notifyFormPublished(form: { id: number; title: string }, event: string) {
   await notifyUsers({
@@ -86,6 +123,190 @@ function readJsonObject(formData: FormData, key: string) {
   } catch {
     return {};
   }
+}
+
+function sanitizeBuilderQuestions(value: unknown[]) {
+  return value
+    .map((question): Record<string, unknown> | null => {
+      if (!question || typeof question !== "object" || Array.isArray(question)) return null;
+      const item = question as Record<string, unknown>;
+      return {
+        ...item,
+        id: typeof item.id === "string" && item.id ? item.id.slice(0, 100) : crypto.randomUUID(),
+        images: parseQuestionImages(item.images),
+        condition: parseIntercessionQuestionCondition(item.condition),
+      };
+    })
+    .filter((question): question is Record<string, unknown> => question !== null);
+}
+
+async function isRecognizedQuestionImage(file: File) {
+  const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+  if (file.type === "image/jpeg") return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  if (file.type === "image/png") return bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+  if (file.type === "image/webp") {
+    return String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" && String.fromCharCode(...bytes.slice(8, 12)) === "WEBP";
+  }
+  return false;
+}
+
+async function saveQuestionImage(file: File) {
+  const extension = QUESTION_IMAGE_MIME_EXTENSIONS[file.type];
+  if (!extension || !(await isRecognizedQuestionImage(file))) {
+    throw new Error("Only valid JPG, PNG, and WebP images are allowed.");
+  }
+  if (file.size > MAX_QUESTION_IMAGE_BYTES) {
+    throw new Error("Each question image must be 3 MB or smaller.");
+  }
+
+  const filename = `${Date.now()}-${crypto.randomUUID()}${extension}`;
+  if (process.env.BLOB_READ_WRITE_TOKEN) {
+    const blob = await put(`uploads/forms/${filename}`, file, {
+      access: "public",
+      contentType: file.type,
+    });
+    return blob.url;
+  }
+
+  if (process.env.VERCEL) {
+    throw new Error("Form image uploads require Vercel Blob. Add BLOB_READ_WRITE_TOKEN in Vercel Environment Variables.");
+  }
+
+  const uploadDirectory = path.join(process.cwd(), "public", "uploads", "forms");
+  await mkdir(uploadDirectory, { recursive: true });
+  await writeFile(path.join(uploadDirectory, filename), Buffer.from(await file.arrayBuffer()));
+  return `/uploads/forms/${filename}`;
+}
+
+async function deleteQuestionImageFile(imagePath: string) {
+  if (!isManagedQuestionImagePath(imagePath)) return;
+
+  if (imagePath.startsWith("https://")) {
+    await deleteBlob(imagePath).catch(() => undefined);
+    return;
+  }
+
+  const filename = path.basename(imagePath);
+  await unlink(path.join(process.cwd(), "public", "uploads", "forms", filename)).catch(() => undefined);
+}
+
+async function deleteQuestionImagesIfUnreferenced(paths: string[]) {
+  const candidates = [...new Set(paths.filter(isManagedQuestionImagePath))];
+  if (candidates.length === 0) return;
+
+  const forms = await prisma.spiritualForm.findMany({ select: { questions: true } });
+  const referencedPaths = new Set(forms.flatMap((form) => questionImagePaths(form.questions)));
+  await Promise.all(candidates.filter((imagePath) => !referencedPaths.has(imagePath)).map(deleteQuestionImageFile));
+}
+
+async function isRecognizedResponseFile(file: File) {
+  const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+  if (file.type === "image/jpeg") return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  if (file.type === "image/png") return bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+  if (file.type === "image/webp") return String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" && String.fromCharCode(...bytes.slice(8, 12)) === "WEBP";
+  if (file.type === "application/pdf") return String.fromCharCode(...bytes.slice(0, 4)) === "%PDF";
+  if (file.type === "application/msword") return bytes.slice(0, 8).every((value, index) => value === [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1][index]);
+  if (file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") return bytes[0] === 0x50 && bytes[1] === 0x4b;
+  return false;
+}
+
+async function saveResponseFile(file: File) {
+  const extension = RESPONSE_FILE_MIME_EXTENSIONS[file.type];
+  if (!extension || !(await isRecognizedResponseFile(file))) throw new Error("Upload a valid JPG, PNG, WebP, PDF, DOC, or DOCX file.");
+  if (file.size > MAX_RESPONSE_FILE_BYTES) throw new Error("Each response file must be 10 MB or smaller.");
+  const filename = `${Date.now()}-${crypto.randomUUID()}${extension}`;
+  if (process.env.BLOB_READ_WRITE_TOKEN) {
+    const blob = await put(`uploads/form-answers/${filename}`, file, { access: "public", contentType: file.type });
+    return blob.url;
+  }
+  if (process.env.VERCEL) throw new Error("File answers require Vercel Blob. Add BLOB_READ_WRITE_TOKEN in Vercel Environment Variables.");
+  const uploadDirectory = path.join(process.cwd(), "public", "uploads", "form-answers");
+  await mkdir(uploadDirectory, { recursive: true });
+  await writeFile(path.join(uploadDirectory, filename), Buffer.from(await file.arrayBuffer()));
+  return `/uploads/form-answers/${filename}`;
+}
+
+function isManagedResponseFilePath(value: string) {
+  return value.startsWith("/uploads/form-answers/") || /^https:\/\/[^/]+\.public\.blob\.vercel-storage\.com\/uploads\/form-answers\//.test(value);
+}
+
+async function deleteResponseFile(value: string) {
+  if (!isManagedResponseFilePath(value)) return;
+  if (value.startsWith("https://")) return void await deleteBlob(value).catch(() => undefined);
+  await unlink(path.join(process.cwd(), "public", "uploads", "form-answers", path.basename(value))).catch(() => undefined);
+}
+
+function responseFilePaths(value: unknown): string[] {
+  if (typeof value === "string") return isManagedResponseFilePath(value) ? [value] : [];
+  if (Array.isArray(value)) return value.flatMap(responseFilePaths);
+  if (value && typeof value === "object") return Object.values(value as Record<string, unknown>).flatMap(responseFilePaths);
+  return [];
+}
+
+export async function uploadSpiritualFormQuestionImages(formData: FormData) {
+  await requireAnyPermission("intercession", ["create-forms", "edit-forms"], "/admin/intercession");
+  const files = formData.getAll("images").filter((value): value is File => value instanceof File && value.size > 0);
+
+  if (files.length === 0) return { ok: false, message: "Select at least one image.", images: [] };
+  if (files.length > MAX_QUESTION_IMAGES) return { ok: false, message: "A question can contain no more than 5 images.", images: [] };
+
+  const uploaded: string[] = [];
+  try {
+    for (const file of files) uploaded.push(await saveQuestionImage(file));
+    return {
+      ok: true,
+      message: `${uploaded.length} image${uploaded.length === 1 ? "" : "s"} uploaded.`,
+      images: uploaded.map((imagePath) => ({ id: crypto.randomUUID(), path: imagePath, alt: "", caption: "" })),
+    };
+  } catch (error) {
+    await Promise.all(uploaded.map(deleteQuestionImageFile));
+    return { ok: false, message: error instanceof Error ? error.message : "The images could not be uploaded.", images: [] };
+  }
+}
+
+export async function discardSpiritualFormQuestionImage(imagePath: string) {
+  await requireAnyPermission("intercession", ["create-forms", "edit-forms"], "/admin/intercession");
+  if (!isManagedQuestionImagePath(imagePath)) return { ok: false, message: "Invalid image path." };
+
+  await deleteQuestionImagesIfUnreferenced([imagePath]);
+  return { ok: true, message: "Image removed." };
+}
+
+function libraryQuestions(value: unknown) {
+  return Array.isArray(value) ? sanitizeBuilderQuestions(value).slice(0, 100) : [];
+}
+
+export async function getSpiritualFormQuestionLibrary() {
+  await requireAnyPermission("intercession", ["create-forms", "edit-forms"], "/admin/intercession");
+  const setting = await prisma.systemSetting.findUnique({ where: { key: QUESTION_LIBRARY_SETTING }, select: { value: true } });
+  return libraryQuestions(setting?.value);
+}
+
+export async function saveSpiritualFormQuestionToLibrary(questionValue: unknown) {
+  await requireAnyPermission("intercession", ["create-forms", "edit-forms"], "/admin/intercession");
+  const question = sanitizeBuilderQuestions([questionValue])[0];
+  if (!question) return { ok: false, message: "Invalid question.", questions: [] };
+  question.images = [];
+  const current = await prisma.systemSetting.findUnique({ where: { key: QUESTION_LIBRARY_SETTING }, select: { value: true } });
+  const questions = [...libraryQuestions(current?.value), question].slice(-100);
+  await prisma.systemSetting.upsert({
+    where: { key: QUESTION_LIBRARY_SETTING },
+    update: { value: questions as Prisma.InputJsonValue },
+    create: { key: QUESTION_LIBRARY_SETTING, value: questions as Prisma.InputJsonValue, group: "intercession" },
+  });
+  return { ok: true, message: "Question saved to the shared library.", questions };
+}
+
+export async function removeSpiritualFormQuestionFromLibrary(questionId: string) {
+  await requireAnyPermission("intercession", ["create-forms", "edit-forms"], "/admin/intercession");
+  const current = await prisma.systemSetting.findUnique({ where: { key: QUESTION_LIBRARY_SETTING }, select: { value: true } });
+  const questions = libraryQuestions(current?.value).filter((question) => question.id !== questionId);
+  await prisma.systemSetting.upsert({
+    where: { key: QUESTION_LIBRARY_SETTING },
+    update: { value: questions as Prisma.InputJsonValue },
+    create: { key: QUESTION_LIBRARY_SETTING, value: questions as Prisma.InputJsonValue, group: "intercession" },
+  });
+  return { ok: true, message: "Question removed from the shared library.", questions };
 }
 
 async function syncIntercessionActionPlanProgress(actionPlanId: number) {
@@ -279,7 +500,7 @@ export async function createSpiritualFormFromBuilder(formData: FormData) {
     return { ok: false, message: "Form title is required." };
   }
 
-  const questions = readJsonArray(formData, "questions");
+  const questions = sanitizeBuilderQuestions(readJsonArray(formData, "questions"));
   const settings = {
     is_published: false,
     limit_one_response: true,
@@ -287,12 +508,16 @@ export async function createSpiritualFormFromBuilder(formData: FormData) {
     allow_partial_points: true,
     ...readJsonObject(formData, "settings"),
   };
+  if (Boolean((settings as Record<string, unknown>).is_published)) {
+    const publishingIssues = getIntercessionPublishingIssues(title, questions, settings);
+    if (publishingIssues.length > 0) return { ok: false, message: publishingIssues[0].message };
+  }
 
   const form = await prisma.spiritualForm.create({
     data: {
       title,
       description: readString(formData, "description"),
-      questions,
+      questions: questions as Prisma.InputJsonValue,
       settings,
       isActive: true,
       createdBy: user.id,
@@ -350,24 +575,33 @@ export async function updateSpiritualFormFromBuilder(formId: number, formData: F
 
   const current = await prisma.spiritualForm.findUnique({
     where: { id: formId },
-    select: { settings: true },
+    select: { questions: true, settings: true },
   });
 
   if (!current) {
     return { ok: false, message: "Form not found." };
   }
 
+  const questions = sanitizeBuilderQuestions(readJsonArray(formData, "questions"));
+  const isAutosave = readBoolean(formData, "autosave");
+  const incomingSettings = readJsonObject(formData, "settings");
+  const mergedSettings = {
+    ...((current.settings as Record<string, unknown> | null) ?? {}),
+    ...incomingSettings,
+    ...(isAutosave ? { is_published: Boolean((current.settings as Record<string, unknown> | null)?.is_published) } : {}),
+  };
+  if (!isAutosave && Boolean(mergedSettings.is_published)) {
+    const publishingIssues = getIntercessionPublishingIssues(title, questions, mergedSettings);
+    if (publishingIssues.length > 0) return { ok: false, message: publishingIssues[0].message };
+  }
+  const removedImagePaths = questionImagePaths(current.questions).filter((imagePath) => !questionImagePaths(questions).includes(imagePath));
   const updated = await prisma.spiritualForm.update({
     where: { id: formId },
     data: {
       title,
       description: readString(formData, "description"),
-      questions: readJsonArray(formData, "questions"),
-      settings: {
-        ...((current.settings as Record<string, unknown> | null) ?? {}),
-        ...readJsonObject(formData, "settings"),
-      },
-      isActive: true,
+      questions: questions as Prisma.InputJsonValue,
+      settings: mergedSettings,
     },
   });
 
@@ -381,6 +615,7 @@ export async function updateSpiritualFormFromBuilder(formId: number, formData: F
 
   revalidatePath("/admin/intercession");
   revalidatePath(`/admin/intercession/forms/${formId}/edit`);
+  if (!isAutosave) await deleteQuestionImagesIfUnreferenced(removedImagePaths);
 
   return { ok: true, message: "Form updated successfully." };
 }
@@ -433,7 +668,7 @@ export async function toggleSpiritualFormPublish(formId: number) {
 
   const form = await prisma.spiritualForm.findUnique({
     where: { id: formId },
-    select: { settings: true, title: true },
+    select: { settings: true, title: true, questions: true },
   });
 
   if (!form) {
@@ -442,6 +677,12 @@ export async function toggleSpiritualFormPublish(formId: number) {
 
   const settings = (form.settings as Record<string, unknown> | null) ?? {};
   const nextPublished = !Boolean(settings.is_published);
+  if (nextPublished) {
+    const publishingIssues = getIntercessionPublishingIssues(form.title, form.questions, settings);
+    if (publishingIssues.length > 0) {
+      return { ok: false, message: `Cannot publish: ${publishingIssues[0].message}` };
+    }
+  }
 
   const updated = await prisma.spiritualForm.update({
     where: { id: formId },
@@ -450,6 +691,7 @@ export async function toggleSpiritualFormPublish(formId: number) {
         ...settings,
         is_published: nextPublished,
       },
+      ...(nextPublished ? { isActive: true } : {}),
     },
   });
 
@@ -461,8 +703,27 @@ export async function toggleSpiritualFormPublish(formId: number) {
   return { ok: true, message: nextPublished ? "Form published." : "Form unpublished." };
 }
 
+export async function setSpiritualFormArchived(formId: number, archived: boolean) {
+  await requireAnyPermission("intercession", ["edit-forms", "manage-forms"], "/admin/intercession");
+  if (!Number.isInteger(formId) || formId <= 0) return { ok: false, message: "Invalid form." };
+  const form = await prisma.spiritualForm.findUnique({ where: { id: formId }, select: { settings: true } });
+  if (!form) return { ok: false, message: "Form not found." };
+  const settings = (form.settings as Record<string, unknown> | null) ?? {};
+  await prisma.spiritualForm.update({
+    where: { id: formId },
+    data: { isActive: !archived, ...(archived ? { settings: { ...settings, is_published: false } } : {}) },
+  });
+  if (archived) await prisma.notification.deleteMany({ where: { sourceType: "spiritual_form", sourceId: formId } });
+  revalidatePath("/admin/intercession");
+  return { ok: true, message: archived ? "Form archived." : "Form restored." };
+}
+
 export async function deleteSpiritualForm(formId: number) {
   await requirePermission("intercession", "delete-forms", "/admin/intercession");
+
+  const form = await prisma.spiritualForm.findUnique({ where: { id: formId }, select: { questions: true, submissions: { select: { answers: true } } } });
+  if (!form) return { ok: false, message: "Form not found." };
+  const imagePaths = questionImagePaths(form.questions);
 
   await prisma.$transaction([
     prisma.notification.deleteMany({ where: { sourceType: "spiritual_form", sourceId: formId } }),
@@ -470,77 +731,163 @@ export async function deleteSpiritualForm(formId: number) {
   ]);
 
   revalidatePath("/admin/intercession");
+  await deleteQuestionImagesIfUnreferenced(imagePaths);
+  await Promise.all(form.submissions.flatMap((submission) => responseFilePaths(submission.answers)).map(deleteResponseFile));
 
   return { ok: true, message: "Form deleted." };
 }
 
 export async function submitSpiritualForm(formId: number, formData: FormData) {
-  const user = await requirePermission("intercession", "submit-forms", "/admin/intercession");
-
   const form = await prisma.spiritualForm.findUnique({
     where: { id: formId },
-    select: { questions: true, settings: true },
+    select: { id: true, title: true, questions: true, settings: true, isActive: true, _count: { select: { submissions: true } } },
   });
+  if (!form) return { ok: false, message: "Form not found." };
 
-  if (!form) {
-    return { ok: false, message: "Form not found." };
-  }
+  const settings = parseIntercessionFormSettings(form.settings);
+  const user = settings.require_login
+    ? await requirePermission("intercession", "submit-forms", "/admin/intercession")
+    : await getCurrentUser();
+  const availability = intercessionFormAvailability(settings, form.isActive, form._count.submissions);
+  if (availability) return { ok: false, message: availability };
 
-  const settings = (form.settings as Record<string, unknown> | null) ?? {};
-  const limitOneResponse = settings.limit_one_response !== false;
-
-  if (limitOneResponse) {
-    const existing = await prisma.formSubmission.findFirst({
-      where: { formId, userId: user.id },
-      select: { id: true },
-    });
-
-    if (existing) {
-      return { ok: false, message: "You already submitted this form." };
-    }
-  }
-
-  const questions = Array.isArray(form.questions) ? form.questions : [];
-  const answers = questions.reduce<Record<string, string | string[] | Record<string, string | string[]>>>((carry, question, index) => {
-    const questionObject = question && typeof question === "object" && !Array.isArray(question) ? (question as Record<string, unknown>) : {};
+  const questions = parseIntercessionFormQuestions(form.questions);
+  const rawAnswers: Record<string, IntercessionFormAnswer> = {};
+  const answersByQuestionId: Record<string, IntercessionFormAnswer> = {};
+  const pendingFiles = new Map<number, File>();
+  for (const [index, question] of questions.entries()) {
+    if (!isIntercessionAnswerable(question.type)) continue;
     const key = `question_${index}`;
-    if (questionObject.type === "checkboxes") {
-      carry[key] = readValues(formData, key);
-    } else if (questionObject.type === "multiple_choice_grid" || questionObject.type === "checkbox_grid") {
-      const rows = Array.isArray(questionObject.rows) ? questionObject.rows : [];
-      carry[key] = rows.reduce<Record<string, string | string[]>>((rowCarry, _row, rowIndex) => {
-        const rowKey = `${key}_${rowIndex}`;
-        rowCarry[rowKey] =
-          questionObject.type === "checkbox_grid"
-            ? readValues(formData, rowKey)
-            : readString(formData, rowKey) ?? "";
-        return rowCarry;
-      }, {});
-    } else {
-      carry[key] = readString(formData, key) ?? "";
+    let answer: IntercessionFormAnswer;
+    if (question.type === "checkboxes") answer = readValues(formData, key);
+    else if (["multiple_choice_grid", "checkbox_grid"].includes(question.type)) {
+      answer = Object.fromEntries(question.rows.map((_row, rowIndex) => [
+        `row_${rowIndex}`,
+        question.type === "checkbox_grid" ? readValues(formData, `${key}_${rowIndex}`) : readString(formData, `${key}_${rowIndex}`) ?? "",
+      ]));
+    } else if (question.type === "file_upload") {
+      const value = formData.get(key);
+      if (value instanceof File && value.size > 0) pendingFiles.set(index, value);
+      answer = value instanceof File && value.size > 0 ? value.name.slice(0, 500) : "";
+    } else answer = (readString(formData, key) ?? "").slice(0, 20_000);
+    rawAnswers[key] = answer;
+    answersByQuestionId[question.id] = answer;
+  }
+
+  const visible = visibleIntercessionQuestions(questions, answersByQuestionId);
+  const visibleIndexes = new Set(visible.filter(({ question }) => isIntercessionAnswerable(question.type)).map(({ index }) => index));
+  const answers: Record<string, IntercessionFormAnswer> = {};
+  for (const { question, index } of visible) {
+    if (!isIntercessionAnswerable(question.type)) continue;
+    const key = `question_${index}`;
+    const answer = rawAnswers[key];
+    const values = Array.isArray(answer)
+      ? answer
+      : answer && typeof answer === "object"
+        ? Object.values(answer).flatMap((value) => Array.isArray(value) ? value : [value])
+        : [answer];
+    const nonEmpty = values.some((value) => String(value ?? "").trim());
+    if (question.required && !nonEmpty) return { ok: false, message: `Please answer required question ${index + 1}.` };
+    if (["multiple_choice", "dropdown", "checkboxes"].includes(question.type)) {
+      if (values.some((value) => value && !question.options.includes(String(value)))) return { ok: false, message: `Question ${index + 1} contains an invalid option.` };
     }
-    return carry;
-  }, {});
+    if (["linear_scale", "rating"].includes(question.type) && nonEmpty) {
+      const selected = Number(values[0]);
+      const min = question.type === "rating" ? 1 : question.min;
+      if (!Number.isInteger(selected) || selected < min || selected > question.max) return { ok: false, message: `Question ${index + 1} contains an invalid value.` };
+    }
+    if (question.type === "date" && nonEmpty && !/^\d{4}-\d{2}-\d{2}$/.test(String(values[0]))) return { ok: false, message: `Question ${index + 1} contains an invalid date.` };
+    if (question.type === "time" && nonEmpty && !/^([01]\d|2[0-3]):[0-5]\d$/.test(String(values[0]))) return { ok: false, message: `Question ${index + 1} contains an invalid time.` };
+    if (["multiple_choice_grid", "checkbox_grid"].includes(question.type)) {
+      const rows = answer && typeof answer === "object" && !Array.isArray(answer) ? answer : {};
+      for (const [rowIndex, row] of question.rows.entries()) {
+        const selected = rows[`row_${rowIndex}`];
+        const rowValues = Array.isArray(selected) ? selected : selected ? [selected] : [];
+        if (question.required && rowValues.length === 0) return { ok: false, message: `Please answer ${row} in question ${index + 1}.` };
+        if (rowValues.some((value) => !question.columns.includes(value))) return { ok: false, message: `Question ${index + 1} contains an invalid grid option.` };
+      }
+    }
+    answers[key] = answer;
+  }
 
-  await prisma.$transaction([
-    prisma.formSubmission.create({
-      data: {
-        formId,
-        userId: user.id,
-        answers,
-        score: null,
-      },
-    }),
-    prisma.notification.deleteMany({ where: { userId: user.id, sourceType: "spiritual_form", sourceId: formId } }),
-  ]);
+  const uploadedFiles: string[] = [];
+  try {
+    for (const [index, file] of pendingFiles) {
+      if (!visibleIndexes.has(index)) continue;
+      const uploaded = await saveResponseFile(file);
+      uploadedFiles.push(uploaded);
+      answers[`question_${index}`] = uploaded;
+      answersByQuestionId[questions[index].id] = uploaded;
+    }
+  } catch (error) {
+    await Promise.all(uploadedFiles.map(deleteResponseFile));
+    return { ok: false, message: error instanceof Error ? error.message : "The answer file could not be uploaded." };
+  }
 
-  revalidatePath("/admin/intercession");
+  const responseKeyRaw = readString(formData, "respondentKey") ?? "";
+  const responseKey = user ? `user:${user.id}` : /^[a-zA-Z0-9:_-]{8,200}$/.test(responseKeyRaw) ? `guest:${responseKeyRaw}` : "";
+  if (!user && settings.limit_one_response && !responseKey) {
+    await Promise.all(uploadedFiles.map(deleteResponseFile));
+    return { ok: false, message: "Your browser could not create a response key. Refresh this page and try again." };
+  }
+  if (responseKey) answers.__respondentKey = responseKey;
 
-  return { ok: true, message: "Form submitted successfully." };
+  const quizResult = settings.is_quiz
+    ? scoreIntercessionQuiz(questions, answers, visibleIndexes, settings.allow_partial_points)
+    : { score: null, grades: [] };
+
+  try {
+    const submission = await prisma.$transaction(async (tx) => {
+      const lockKey = `intercession-form:${formId}`;
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+      const freshForm = await tx.spiritualForm.findUnique({ where: { id: formId }, select: { settings: true, isActive: true, _count: { select: { submissions: true } } } });
+      if (!freshForm) throw new Error("Form not found.");
+      const freshSettings = parseIntercessionFormSettings(freshForm.settings);
+      const freshAvailability = intercessionFormAvailability(freshSettings, freshForm.isActive, freshForm._count.submissions);
+      if (freshAvailability) throw new Error(freshAvailability);
+      if (settings.limit_one_response) {
+        if (user && await tx.formSubmission.findFirst({ where: { formId, userId: user.id }, select: { id: true } })) throw new Error("You already submitted this form.");
+        if (!user) {
+          const existingAnswers = await tx.formSubmission.findMany({ where: { formId, userId: null }, select: { answers: true } });
+          if (existingAnswers.some((item) => (item.answers as Record<string, unknown> | null)?.__respondentKey === responseKey)) throw new Error("You already submitted this form from this browser.");
+        }
+      }
+      const releaseNow = settings.is_quiz && settings.release_grade === "immediately";
+      const created = await tx.formSubmission.create({
+        data: {
+          formId, userId: user?.id ?? null, answers: answers as Prisma.InputJsonValue,
+          manualGrades: settings.is_quiz ? quizResult.grades as Prisma.InputJsonValue : undefined,
+          score: settings.is_quiz ? quizResult.score : null,
+          isReleased: releaseNow, releasedAt: releaseNow ? new Date() : null,
+        },
+      });
+      if (user) await tx.notification.deleteMany({ where: { userId: user.id, sourceType: "spiritual_form", sourceId: formId } });
+      return created;
+    }, { isolationLevel: "ReadCommitted" });
+
+    if (settings.notify_on_submit) {
+      const adminIds = [...new Set([
+        ...await userIdsWithPermission("intercession", "view-submissions"),
+        ...await userIdsWithPermission("intercession", "view-results"),
+      ])];
+      await notifyUsers({
+        userIds: adminIds, type: "form", title: "New form response",
+        message: `${user?.name ?? "A guest"} submitted ${intercessionRichTextToPlainText(form.title)}.`,
+        link: `/admin/intercession/forms/${form.id}/submissions`, sourceType: "form_submission", sourceId: submission.id,
+        dedupeKey: `form-submission:${submission.id}`,
+      });
+    }
+    revalidatePath("/admin/intercession");
+    revalidatePath(`/admin/intercession/forms/${form.id}/submissions`);
+    return { ok: true, message: settings.thank_you_message, redirectUrl: settings.redirect_url, score: settings.release_grade === "immediately" ? quizResult.score : null };
+  } catch (error) {
+    await Promise.all(uploadedFiles.map(deleteResponseFile));
+    return { ok: false, message: error instanceof Error ? error.message : "The form could not be submitted." };
+  }
 }
 
 export async function saveSubmissionManualReview(formData: FormData) {
-  await requireAnyPermission("intercession", ["view-submissions", "view-results"], "/admin/intercession");
+  await requirePermission("intercession", "view-results", "/admin/intercession");
 
   const submissionId = Number(readString(formData, "submissionId"));
   const gradesRaw = readString(formData, "grades");
@@ -553,7 +900,16 @@ export async function saveSubmissionManualReview(formData: FormData) {
     return { ok: false, message: "Review data is required." };
   }
 
-  let grades: Array<{ questionIndex: number; correct: boolean; points: number }> = [];
+  const currentSubmission = await prisma.formSubmission.findUnique({
+    where: { id: submissionId },
+    select: { form: { select: { questions: true, settings: true } } },
+  });
+  if (!currentSubmission) return { ok: false, message: "Submission not found." };
+  const reviewSettings = parseIntercessionFormSettings(currentSubmission.form.settings);
+  if (!reviewSettings.is_quiz) return { ok: false, message: "Only quiz submissions can be graded." };
+  const reviewQuestions = parseIntercessionFormQuestions(currentSubmission.form.questions);
+
+  let grades: Array<{ questionIndex: number; correct: boolean; points: number; earnedPoints: number }> = [];
   try {
     const parsed = JSON.parse(gradesRaw) as unknown;
     if (Array.isArray(parsed)) {
@@ -562,14 +918,20 @@ export async function saveSubmissionManualReview(formData: FormData) {
           if (!item || typeof item !== "object") return null;
           const record = item as Record<string, unknown>;
           const questionIndex = Number(record.questionIndex);
-          const points = Number(record.points);
+          const question = reviewQuestions[questionIndex];
+          if (!question || !isIntercessionAnswerable(question.type) || question.type === "file_upload") return null;
+          const requestedEarnedPoints = Number(record.earnedPoints);
+          const earnedPoints = Number.isFinite(requestedEarnedPoints)
+            ? Math.min(question.points, Math.max(0, Math.round(requestedEarnedPoints * 100) / 100))
+            : Boolean(record.correct) ? question.points : 0;
           return {
             questionIndex,
-            correct: Boolean(record.correct),
-            points: Number.isFinite(points) && points > 0 ? points : 1,
+            correct: earnedPoints >= question.points,
+            points: question.points,
+            earnedPoints,
           };
         })
-        .filter((item): item is { questionIndex: number; correct: boolean; points: number } =>
+        .filter((item): item is { questionIndex: number; correct: boolean; points: number; earnedPoints: number } =>
           item !== null && Number.isInteger(item.questionIndex),
         );
     }
@@ -582,7 +944,7 @@ export async function saveSubmissionManualReview(formData: FormData) {
   }
 
   const totalPoints = grades.reduce((sum, grade) => sum + grade.points, 0);
-  const earnedPoints = grades.reduce((sum, grade) => sum + (grade.correct ? grade.points : 0), 0);
+  const earnedPoints = grades.reduce((sum, grade) => sum + grade.earnedPoints, 0);
   const score = totalPoints > 0 ? Math.round((earnedPoints / totalPoints) * 1000) / 10 : null;
 
   const submission = await prisma.formSubmission.update({
@@ -601,7 +963,7 @@ export async function saveSubmissionManualReview(formData: FormData) {
 }
 
 export async function setSubmissionRelease(submissionId: number, release: boolean) {
-  await requireAnyPermission("intercession", ["view-submissions", "view-results"], "/admin/intercession");
+  await requirePermission("intercession", "view-results", "/admin/intercession");
 
   if (!Number.isInteger(submissionId) || submissionId <= 0) {
     return { ok: false, message: "Invalid submission." };
@@ -613,8 +975,18 @@ export async function setSubmissionRelease(submissionId: number, release: boolea
       isReleased: release,
       releasedAt: release ? new Date() : null,
     },
-    select: { formId: true },
+    select: { formId: true, userId: true, form: { select: { title: true, settings: true } } },
   });
+
+  const settings = parseIntercessionFormSettings(submission.form.settings);
+  if (release && submission.userId && settings.notify_user_on_review) {
+    await notifyUsers({
+      userIds: [submission.userId], type: "form", title: "Form response reviewed",
+      message: `Your response to ${intercessionRichTextToPlainText(submission.form.title)} is ready.`,
+      link: "/admin/intercession?section=results", sourceType: "form_submission", sourceId: submissionId,
+      dedupeKey: `form-submission:${submissionId}:reviewed`,
+    });
+  }
 
   revalidatePath("/admin/intercession");
   revalidatePath(`/admin/intercession/forms/${submission.formId}/submissions`);
@@ -623,12 +995,16 @@ export async function setSubmissionRelease(submissionId: number, release: boolea
 }
 
 export async function setAllSubmissionRelease(formId: number, release: boolean) {
-  await requireAnyPermission("intercession", ["view-submissions", "view-results"], "/admin/intercession");
+  await requirePermission("intercession", "view-results", "/admin/intercession");
 
   if (!Number.isInteger(formId) || formId <= 0) {
     return { ok: false, message: "Invalid form." };
   }
 
+  const form = await prisma.spiritualForm.findUnique({ where: { id: formId }, select: { title: true, settings: true } });
+  if (!form) return { ok: false, message: "Form not found." };
+  const notify = release && parseIntercessionFormSettings(form.settings).notify_user_on_review;
+  const recipients = notify ? await prisma.formSubmission.findMany({ where: { formId, score: { not: null }, isReleased: false, userId: { not: null } }, select: { id: true, userId: true } }) : [];
   await prisma.formSubmission.updateMany({
     where: { formId, score: { not: null }, ...(release ? { isReleased: false } : { isReleased: true }) },
     data: {
@@ -636,6 +1012,18 @@ export async function setAllSubmissionRelease(formId: number, release: boolean) 
       releasedAt: release ? new Date() : null,
     },
   });
+
+  if (notify) {
+    for (const submission of recipients) {
+      if (!submission.userId) continue;
+      await notifyUsers({
+        userIds: [submission.userId], type: "form", title: "Form response reviewed",
+        message: `Your response to ${intercessionRichTextToPlainText(form.title)} is ready.`,
+        link: "/admin/intercession?section=results", sourceType: "form_submission", sourceId: submission.id,
+        dedupeKey: `form-submission:${submission.id}:reviewed`,
+      });
+    }
+  }
 
   revalidatePath("/admin/intercession");
   revalidatePath(`/admin/intercession/forms/${formId}/submissions`);
@@ -650,10 +1038,11 @@ export async function deleteFormSubmission(submissionId: number) {
     return { ok: false, message: "Invalid submission." };
   }
 
-  const submission = await prisma.formSubmission.delete({
-    where: { id: submissionId },
-    select: { formId: true },
-  });
+  const existing = await prisma.formSubmission.findUnique({ where: { id: submissionId }, select: { formId: true, answers: true } });
+  if (!existing) return { ok: false, message: "Submission not found." };
+  await prisma.formSubmission.delete({ where: { id: submissionId } });
+  const submission = existing;
+  await Promise.all(responseFilePaths(existing.answers).map(deleteResponseFile));
 
   revalidatePath("/admin/intercession");
   revalidatePath(`/admin/intercession/forms/${submission.formId}/submissions`);

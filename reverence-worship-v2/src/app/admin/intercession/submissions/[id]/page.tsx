@@ -9,6 +9,8 @@ import {
 } from "@/lib/intercession-result-rules";
 import { prisma } from "@/lib/prisma";
 import { IntercessionRichText } from "@/components/intercession-rich-text";
+import { IntercessionQuestionImages } from "@/components/intercession-question-images";
+import { parseQuestionImages, type IntercessionQuestionImage } from "@/lib/intercession-question-images";
 
 type Question = {
   index: number;
@@ -16,6 +18,7 @@ type Question = {
   label: string;
   description: string;
   rows: string[];
+  images: IntercessionQuestionImage[];
 };
 
 function asObject(value: unknown): Record<string, unknown> {
@@ -42,6 +45,7 @@ function parseQuestions(value: unknown): Question[] {
         label: String(question.label ?? question.text ?? `Question ${index + 1}`),
         description: typeof question.description === "string" ? question.description : "",
         rows: asStringArray(question.rows),
+        images: parseQuestionImages(question.images),
       };
     })
     .filter((question) => question.type !== "title_section" && question.type !== "section_break");
@@ -79,6 +83,15 @@ function manualGradeFor(value: unknown, questionIndex: number) {
   return grade && typeof grade === "object"
     ? Boolean((grade as Record<string, unknown>).correct)
     : null;
+}
+
+function earnedPointsFor(value: unknown, questionIndex: number) {
+  if (!Array.isArray(value)) return null;
+  const grade = value.find((item) => item && typeof item === "object" && Number((item as Record<string, unknown>).questionIndex) === questionIndex);
+  if (!grade || typeof grade !== "object") return null;
+  const record = grade as Record<string, unknown>;
+  const earned = Number(record.earnedPoints);
+  return Number.isFinite(earned) ? Math.round(earned * 100) / 100 : record.correct ? Number(record.points ?? 1) : 0;
 }
 
 function formatDateTime(date: Date) {
@@ -171,6 +184,7 @@ export default async function MemberSubmissionResultPage({
                   const grade = canViewScore
                     ? manualGradeFor(submission.manualGrades, question.index)
                     : null;
+                  const awardedPoints = canViewScore ? earnedPointsFor(submission.manualGrades, question.index) : null;
                   return (
                     <article key={question.index} className="rounded-xl border border-slate-200 bg-white p-5">
                       <div className="flex items-start justify-between gap-3">
@@ -180,20 +194,19 @@ export default async function MemberSubmissionResultPage({
                         </h3>
                         {grade !== null ? (
                           <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${
-                            grade ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                            grade ? "bg-green-100 text-green-700" : awardedPoints && awardedPoints > 0 ? "bg-blue-100 text-blue-700" : "bg-red-100 text-red-700"
                           }`}>
-                            {grade ? "Correct" : "Incorrect"}
+                            {grade ? "Correct" : awardedPoints && awardedPoints > 0 ? `Partial · ${awardedPoints} points` : "Incorrect"}
                           </span>
                         ) : null}
                       </div>
                       {question.description ? (
                         <p className="mt-1 whitespace-pre-line text-sm text-slate-500">{question.description}</p>
                       ) : null}
+                      <IntercessionQuestionImages images={question.images} className="mt-4" />
                       <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
                         <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Answer</p>
-                        <p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-800">
-                          {answerText(answers[`question_${question.index}`], question.rows)}
-                        </p>
+                        {question.type === "file_upload" && typeof answers[`question_${question.index}`] === "string" && String(answers[`question_${question.index}`]).startsWith("/") ? <a href={String(answers[`question_${question.index}`])} target="_blank" rel="noreferrer" className="text-sm font-semibold text-blue-700 underline underline-offset-2">Open uploaded file</a> : question.type === "file_upload" && /^https?:\/\//.test(String(answers[`question_${question.index}`] ?? "")) ? <a href={String(answers[`question_${question.index}`])} target="_blank" rel="noreferrer" className="text-sm font-semibold text-blue-700 underline underline-offset-2">Open uploaded file</a> : <p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-800">{answerText(answers[`question_${question.index}`], question.rows)}</p>}
                       </div>
                     </article>
                   );

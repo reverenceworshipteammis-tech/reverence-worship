@@ -2,6 +2,7 @@ import "server-only";
 
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
+import { withDatabaseRetry } from "@/lib/database-retry";
 
 export function settingToBoolean(value: unknown, fallback = false) {
   if (typeof value === "boolean") return value;
@@ -16,10 +17,10 @@ export function settingToNumber(value: unknown, fallback: number) {
 }
 
 export const getSystemSetting = cache(async (key: string) => {
-  const setting = await prisma.systemSetting.findUnique({
+  const setting = await withDatabaseRetry(() => prisma.systemSetting.findUnique({
     where: { key },
     select: { value: true },
-  });
+  }), 3);
 
   return setting?.value;
 });

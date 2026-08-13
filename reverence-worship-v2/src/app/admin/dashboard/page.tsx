@@ -509,10 +509,15 @@ function isPublishedForm(settings: unknown) {
   return (settings as { is_published?: unknown }).is_published === true;
 }
 
-function formIsStillAvailable(settings: unknown, today: string) {
+function formIsStillAvailable(settings: unknown, today: string, submissionCount: number) {
   if (!isPublishedForm(settings)) return false;
-  const deadline = (settings as { submission_deadline?: unknown }).submission_deadline;
-  return typeof deadline !== "string" || !deadline || deadline >= today;
+  const values = settings as { submission_deadline?: unknown; submission_opens_at?: unknown; max_responses?: unknown };
+  const deadline = values.submission_deadline;
+  const opens = values.submission_opens_at;
+  if (typeof opens === "string" && opens && opens.slice(0, 10) > today) return false;
+  const maxResponses = Number(values.max_responses ?? 0);
+  if (Number.isInteger(maxResponses) && maxResponses > 0 && submissionCount >= maxResponses) return false;
+  return typeof deadline !== "string" || !deadline || deadline.slice(0, 10) >= today;
 }
 
 async function DashboardTodoPanel({ userId, includeProbation = false }: { userId: number; includeProbation?: boolean }) {
@@ -522,7 +527,7 @@ async function DashboardTodoPanel({ userId, includeProbation = false }: { userId
   const [forms, submissions, countRows] = await withDatabaseRetry(() => Promise.all([
     prisma.spiritualForm.findMany({
       where: { isActive: true },
-      select: { id: true, settings: true },
+      select: { id: true, settings: true, _count: { select: { submissions: true } } },
     }),
     prisma.formSubmission.findMany({
       where: { userId },
@@ -553,7 +558,7 @@ async function DashboardTodoPanel({ userId, includeProbation = false }: { userId
 
   const submittedFormIds = new Set(submissions.map((submission) => submission.formId));
   const incompleteForms = forms.filter((form) =>
-    !submittedFormIds.has(form.id) && formIsStillAvailable(form.settings, todayValue),
+    !submittedFormIds.has(form.id) && formIsStillAvailable(form.settings, todayValue, form._count.submissions),
   ).length;
   const items: DashboardCard[] = [
     ...(incompleteForms > 0 ? [{

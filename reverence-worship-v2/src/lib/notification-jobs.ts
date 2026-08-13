@@ -2,6 +2,7 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { intercessionRichTextToPlainText } from "@/lib/intercession-rich-text";
+import { intercessionLifecycleDate } from "@/lib/intercession-form-domain";
 import { notifySuperAdmins, notifyUsers, processPendingEmailDeliveries, reconcilePendingPermissionNotifications, userIdsForAnnouncement, userIdsWithPermission } from "@/lib/notifications";
 import { maintainNotificationArchive } from "@/lib/notification-maintenance";
 import { reconcileNotificationSources } from "@/lib/notification-source-validity";
@@ -154,7 +155,8 @@ export async function runScheduledNotificationJobs() {
   for (const form of forms) {
     const settings = (form.settings as Record<string, unknown> | null) ?? {};
     if (settings.is_published !== true || typeof settings.submission_deadline !== "string" || !settings.submission_deadline) continue;
-    const deadline = new Date(`${settings.submission_deadline}T23:59:59.999Z`);
+    const deadline = intercessionLifecycleDate(settings.submission_deadline, true);
+    if (!deadline) continue;
     const daysRemaining = Math.ceil((deadline.getTime() - today.start.getTime()) / 86_400_000);
     if (daysRemaining < 0 || daysRemaining > 3) continue;
     const submissions = await prisma.formSubmission.findMany({ where: { formId: form.id, userId: { not: null } }, select: { userId: true } });

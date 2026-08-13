@@ -3,10 +3,11 @@ import { PrismaClient } from "@/generated/prisma/client";
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
+  prismaClientConstructor?: typeof PrismaClient;
   prismaSchemaVersion?: string;
 };
 
-const PRISMA_SCHEMA_VERSION = "2026-08-12-song-archiving";
+const PRISMA_SCHEMA_VERSION = "2026-08-13-generated-client-cache";
 
 function databaseUrl() {
   const value = process.env.DATABASE_URL;
@@ -44,7 +45,9 @@ const existingPrisma = globalForPrisma.prisma;
 
 export const prisma =
   existingPrisma &&
+  globalForPrisma.prismaClientConstructor === PrismaClient &&
   globalForPrisma.prismaSchemaVersion === PRISMA_SCHEMA_VERSION &&
+  "familyMember" in existingPrisma &&
   "actionPlan" in existingPrisma &&
   "actionPlanTask" in existingPrisma &&
   "attendanceRecord" in existingPrisma &&
@@ -77,5 +80,6 @@ export const prisma =
 
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
+  globalForPrisma.prismaClientConstructor = PrismaClient;
   globalForPrisma.prismaSchemaVersion = PRISMA_SCHEMA_VERSION;
 }

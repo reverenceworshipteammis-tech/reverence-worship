@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { IntercessionBuilderInitialData, IntercessionFormBuilder } from "@/components/intercession-form-builder";
 import { requirePermission } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { withDatabaseRetry } from "@/lib/database-retry";
 
 function asObject(value: unknown) {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
@@ -24,9 +25,9 @@ export default async function EditIntercessionFormPage({
     notFound();
   }
 
-  const form = await prisma.spiritualForm.findUnique({
+  const form = await withDatabaseRetry(() => prisma.spiritualForm.findUnique({
     where: { id: formId },
-  });
+  }), 3);
 
   if (!form) {
     notFound();
