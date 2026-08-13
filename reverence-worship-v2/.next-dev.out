@@ -1837,3 +1837,7 @@ Creating turbopack project {
   └─ ƒ getSpiritualFormQuestionLibrary() in 4215ms src/app/admin/intercession/actions.ts
  GET /admin/intercession 200 in 8.5s (next.js: 330ms, application-code: 8.2s)
  GET /manifest.webmanifest 200 in 13ms (next.js: 4ms, application-code: 9ms)
+ POST /admin/intercession 200 in 1551ms (next.js: 3ms, application-code: 1548ms)
+  └─ ƒ getAdminNotifications() in 1515ms src/app/admin/notifications/actions.ts
+ POST /admin/intercession 200 in 1576ms (next.js: 3ms, application-code: 1573ms)
+  └─ ƒ getAdminNotifications() in 1539ms src/app/admin/notifications/actions.ts
