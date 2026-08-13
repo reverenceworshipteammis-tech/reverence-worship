@@ -3,11 +3,53 @@ import test from "node:test";
 import {
   intercessionFormAvailability,
   intercessionLifecycleDate,
+  intercessionGuestFieldConfigurationIssue,
+  normalizeIntercessionRespondentName,
+  parseIntercessionVisitorDetails,
+  parseIntercessionVisitorFields,
   parseIntercessionFormQuestions,
   parseIntercessionFormSettings,
   scoreIntercessionQuiz,
   visibleIntercessionQuestions,
 } from "../src/lib/intercession-form-domain";
+
+test("anonymous respondent names are normalized and bounded", () => {
+  assert.equal(normalizeIntercessionRespondentName("  Jean   Claude  "), "Jean Claude");
+  assert.equal(normalizeIntercessionRespondentName("x".repeat(200)).length, 150);
+  assert.equal(normalizeIntercessionRespondentName(null), "");
+});
+
+test("visitor fields always include a required full name and sanitize configurable fields", () => {
+  const fields = parseIntercessionVisitorFields([
+    { id: "phone", label: "Telephone", type: "phone", required: true },
+    { id: "church", label: "Church", type: "select", options: [" One ", "Two"] },
+  ]);
+  assert.equal(fields[0].id, "full_name");
+  assert.equal(fields[0].required, true);
+  assert.deepEqual(fields[2].options, ["One", "Two"]);
+});
+
+test("visitor detail snapshots preserve labels and multi-value responses", () => {
+  assert.deepEqual(parseIntercessionVisitorDetails([
+    { fieldId: "phone", label: "Telephone", type: "phone", value: "+250788000000" },
+    { fieldId: "interests", label: "Interests", type: "checkboxes", value: ["Music", "Prayer"] },
+  ]), [
+    { fieldId: "phone", label: "Telephone", type: "phone", value: "+250788000000" },
+    { fieldId: "interests", label: "Interests", type: "checkboxes", value: ["Music", "Prayer"] },
+  ]);
+});
+
+test("guest field configuration reports incomplete and duplicate fields", () => {
+  assert.equal(intercessionGuestFieldConfigurationIssue([{ id: "full_name", label: "", type: "text" }]), "Guest field 1 needs a label.");
+  assert.match(intercessionGuestFieldConfigurationIssue([
+    { id: "full_name", label: "Name", type: "text" },
+    { id: "another", label: "name", type: "text" },
+  ]) ?? "", /must be unique/);
+  assert.equal(intercessionGuestFieldConfigurationIssue([
+    { id: "full_name", label: "Name", type: "text" },
+    { id: "church", label: "Church", type: "select", options: [] },
+  ]), "Church needs at least one option.");
+});
 
 test("conditional grid questions can target a row and value", () => {
   const questions = parseIntercessionFormQuestions([

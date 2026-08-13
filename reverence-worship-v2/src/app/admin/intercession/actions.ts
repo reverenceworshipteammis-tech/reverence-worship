@@ -12,7 +12,10 @@ import { intercessionRichTextToPlainText } from "@/lib/intercession-rich-text";
 import { getIntercessionPublishingIssues, parseIntercessionQuestionCondition } from "@/lib/intercession-form-rules";
 import {
   intercessionFormAvailability,
+  intercessionGuestFieldConfigurationIssue,
   isIntercessionAnswerable,
+  normalizeIntercessionRespondentName,
+  parseIntercessionVisitorFields,
   parseIntercessionFormQuestions,
   parseIntercessionFormSettings,
   scoreIntercessionQuiz,
@@ -75,6 +78,33 @@ function boundedProgress(value: FormDataEntryValue | null) {
 
 function readValues(formData: FormData, key: string) {
   return formData.getAll(key).filter((value): value is string => typeof value === "string");
+}
+
+function validateVisitorDetails(fieldsValue: unknown, formData: FormData) {
+  const fields = parseIntercessionVisitorFields(fieldsValue);
+  const details = [] as Array<{ fieldId: string; label: string; type: string; value: string | string[] }>;
+
+  for (const field of fields) {
+    const key = `visitor_${field.id}`;
+    const value = field.type === "checkboxes"
+      ? readValues(formData, key).map((item) => item.trim()).filter(Boolean).slice(0, 30)
+      : (readString(formData, key) ?? "").slice(0, field.id === "full_name" ? 150 : 2000);
+    const values = Array.isArray(value) ? value : value ? [value] : [];
+    if (field.required && values.length === 0) return { ok: false as const, message: `${field.label} is required.` };
+    if (field.type === "email" && values[0] && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values[0])) return { ok: false as const, message: `Enter a valid ${field.label.toLowerCase()}.` };
+    if (field.type === "phone" && values[0] && !/^\+?[0-9][0-9 ()-]{4,29}$/.test(values[0])) return { ok: false as const, message: `Enter a valid ${field.label.toLowerCase()}.` };
+    if (field.type === "number" && values[0] && !Number.isFinite(Number(values[0]))) return { ok: false as const, message: `${field.label} must be a number.` };
+    if (field.type === "date" && values[0] && !/^\d{4}-\d{2}-\d{2}$/.test(values[0])) return { ok: false as const, message: `Enter a valid ${field.label.toLowerCase()}.` };
+    if (["select", "checkboxes"].includes(field.type) && values.some((item) => !field.options.includes(item))) return { ok: false as const, message: `${field.label} contains an invalid option.` };
+    details.push({ fieldId: field.id, label: field.label, type: field.type, value });
+  }
+
+  return { ok: true as const, details };
+}
+
+function getVisitorSettingsIssue(settings: Record<string, unknown>) {
+  if (settings.require_login !== false) return null;
+  return intercessionGuestFieldConfigurationIssue(settings.visitor_fields);
 }
 
 function buildQuestions(formData: FormData) {
@@ -197,6 +227,14 @@ async function deleteQuestionImagesIfUnreferenced(paths: string[]) {
   const forms = await prisma.spiritualForm.findMany({ select: { questions: true } });
   const referencedPaths = new Set(forms.flatMap((form) => questionImagePaths(form.questions)));
   await Promise.all(candidates.filter((imagePath) => !referencedPaths.has(imagePath)).map(deleteQuestionImageFile));
+}
+
+function revalidateSpiritualFormPaths(formId: number) {
+  revalidatePath("/admin/intercession");
+  revalidatePath(`/admin/intercession/forms/${formId}/edit`);
+  revalidatePath(`/admin/intercession/forms/${formId}/take`);
+  revalidatePath(`/admin/intercession/forms/${formId}/submissions`);
+  revalidatePath(`/forms/${formId}`);
 }
 
 async function isRecognizedResponseFile(file: File) {
@@ -501,13 +539,19 @@ export async function createSpiritualFormFromBuilder(formData: FormData) {
   }
 
   const questions = sanitizeBuilderQuestions(readJsonArray(formData, "questions"));
+  const incomingSettings = readJsonObject(formData, "settings");
+  const rawVisitorSettingsIssue = incomingSettings.require_login === false ? intercessionGuestFieldConfigurationIssue(incomingSettings.visitor_fields) : null;
+  if (rawVisitorSettingsIssue) return { ok: false, message: rawVisitorSettingsIssue };
   const settings = {
     is_published: false,
     limit_one_response: true,
     release_grade: "never",
     allow_partial_points: true,
-    ...readJsonObject(formData, "settings"),
+    ...incomingSettings,
+    visitor_fields: parseIntercessionVisitorFields(incomingSettings.visitor_fields),
   };
+  const visitorSettingsIssue = getVisitorSettingsIssue(settings);
+  if (visitorSettingsIssue) return { ok: false, message: visitorSettingsIssue };
   if (Boolean((settings as Record<string, unknown>).is_published)) {
     const publishingIssues = getIntercessionPublishingIssues(title, questions, settings);
     if (publishingIssues.length > 0) return { ok: false, message: publishingIssues[0].message };
@@ -584,13 +628,21 @@ export async function updateSpiritualFormFromBuilder(formId: number, formData: F
 
   const questions = sanitizeBuilderQuestions(readJsonArray(formData, "questions"));
   const isAutosave = readBoolean(formData, "autosave");
-  const incomingSettings = readJsonObject(formData, "settings");
+  const rawIncomingSettings = readJsonObject(formData, "settings");
+  const rawVisitorSettingsIssue = rawIncomingSettings.require_login === false ? intercessionGuestFieldConfigurationIssue(rawIncomingSettings.visitor_fields) : null;
+  if (rawVisitorSettingsIssue) return { ok: false, message: rawVisitorSettingsIssue };
+  const incomingSettings = {
+    ...rawIncomingSettings,
+    visitor_fields: parseIntercessionVisitorFields(rawIncomingSettings.visitor_fields),
+  };
   const mergedSettings = {
     ...((current.settings as Record<string, unknown> | null) ?? {}),
     ...incomingSettings,
     ...(isAutosave ? { is_published: Boolean((current.settings as Record<string, unknown> | null)?.is_published) } : {}),
   };
-  if (!isAutosave && Boolean(mergedSettings.is_published)) {
+  const visitorSettingsIssue = getVisitorSettingsIssue(mergedSettings);
+  if (visitorSettingsIssue) return { ok: false, message: visitorSettingsIssue };
+  if (Boolean(mergedSettings.is_published)) {
     const publishingIssues = getIntercessionPublishingIssues(title, questions, mergedSettings);
     if (publishingIssues.length > 0) return { ok: false, message: publishingIssues[0].message };
   }
@@ -613,8 +665,7 @@ export async function updateSpiritualFormFromBuilder(formId: number, formData: F
     await prisma.notification.deleteMany({ where: { sourceType: "spiritual_form", sourceId: formId } });
   }
 
-  revalidatePath("/admin/intercession");
-  revalidatePath(`/admin/intercession/forms/${formId}/edit`);
+  revalidateSpiritualFormPaths(formId);
   if (!isAutosave) await deleteQuestionImagesIfUnreferenced(removedImagePaths);
 
   return { ok: true, message: "Form updated successfully." };
@@ -658,7 +709,7 @@ export async function updateSpiritualForm(formId: number, formData: FormData) {
     await prisma.notification.deleteMany({ where: { sourceType: "spiritual_form", sourceId: formId } });
   }
 
-  revalidatePath("/admin/intercession");
+  revalidateSpiritualFormPaths(formId);
 
   return { ok: true, message: "Form updated successfully." };
 }
@@ -698,7 +749,7 @@ export async function toggleSpiritualFormPublish(formId: number) {
   if (nextPublished) await notifyFormPublished(updated, String(updated.updatedAt.getTime()));
   else await prisma.notification.deleteMany({ where: { sourceType: "spiritual_form", sourceId: formId } });
 
-  revalidatePath("/admin/intercession");
+  revalidateSpiritualFormPaths(formId);
 
   return { ok: true, message: nextPublished ? "Form published." : "Form unpublished." };
 }
@@ -714,7 +765,7 @@ export async function setSpiritualFormArchived(formId: number, archived: boolean
     data: { isActive: !archived, ...(archived ? { settings: { ...settings, is_published: false } } : {}) },
   });
   if (archived) await prisma.notification.deleteMany({ where: { sourceType: "spiritual_form", sourceId: formId } });
-  revalidatePath("/admin/intercession");
+  revalidateSpiritualFormPaths(formId);
   return { ok: true, message: archived ? "Form archived." : "Form restored." };
 }
 
@@ -730,7 +781,7 @@ export async function deleteSpiritualForm(formId: number) {
     prisma.spiritualForm.delete({ where: { id: formId } }),
   ]);
 
-  revalidatePath("/admin/intercession");
+  revalidateSpiritualFormPaths(formId);
   await deleteQuestionImagesIfUnreferenced(imagePaths);
   await Promise.all(form.submissions.flatMap((submission) => responseFilePaths(submission.answers)).map(deleteResponseFile));
 
@@ -750,6 +801,14 @@ export async function submitSpiritualForm(formId: number, formData: FormData) {
     : await getCurrentUser();
   const availability = intercessionFormAvailability(settings, form.isActive, form._count.submissions);
   if (availability) return { ok: false, message: availability };
+
+  const respondentName = user?.name ?? normalizeIntercessionRespondentName(formData.get("respondent_name"));
+  const visitorDetails = !user ? validateVisitorDetails(settings.visitor_fields, formData) : { ok: true as const, details: [] };
+  if (!visitorDetails.ok) return { ok: false, message: visitorDetails.message };
+  const visitorName = !user
+    ? normalizeIntercessionRespondentName(visitorDetails.details.find((detail) => detail.fieldId === "full_name")?.value)
+    : respondentName;
+  if (!user && visitorName.length < 2) return { ok: false, message: "Enter your full name before submitting the form." };
 
   const questions = parseIntercessionFormQuestions(form.questions);
   const rawAnswers: Record<string, IntercessionFormAnswer> = {};
@@ -855,7 +914,9 @@ export async function submitSpiritualForm(formId: number, formData: FormData) {
       const releaseNow = settings.is_quiz && settings.release_grade === "immediately";
       const created = await tx.formSubmission.create({
         data: {
-          formId, userId: user?.id ?? null, answers: answers as Prisma.InputJsonValue,
+          formId, userId: user?.id ?? null, respondentName: visitorName,
+          respondentDetails: !user ? visitorDetails.details as Prisma.InputJsonValue : undefined,
+          answers: answers as Prisma.InputJsonValue,
           manualGrades: settings.is_quiz ? quizResult.grades as Prisma.InputJsonValue : undefined,
           score: settings.is_quiz ? quizResult.score : null,
           isReleased: releaseNow, releasedAt: releaseNow ? new Date() : null,
@@ -872,7 +933,7 @@ export async function submitSpiritualForm(formId: number, formData: FormData) {
       ])];
       await notifyUsers({
         userIds: adminIds, type: "form", title: "New form response",
-        message: `${user?.name ?? "A guest"} submitted ${intercessionRichTextToPlainText(form.title)}.`,
+        message: `${visitorName} submitted ${intercessionRichTextToPlainText(form.title)}.`,
         link: `/admin/intercession/forms/${form.id}/submissions`, sourceType: "form_submission", sourceId: submission.id,
         dedupeKey: `form-submission:${submission.id}`,
       });

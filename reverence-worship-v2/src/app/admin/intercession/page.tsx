@@ -115,6 +115,7 @@ export default async function IntercessionPage({ searchParams }: { searchParams:
   const mySubmittedFormIds = new Set(mySubmissions.map((submission) => submission.formId));
   const serializedForms = forms.map((form) => {
     const settings = asObject(form.settings);
+    const parsedSettings = parseIntercessionFormSettings(form.settings);
     const questions = asQuestions(form.questions);
 
     return {
@@ -126,7 +127,7 @@ export default async function IntercessionPage({ searchParams }: { searchParams:
       isPublished: Boolean(settings.is_published),
       limitOneResponse: settings.limit_one_response !== false,
       isActive: form.isActive,
-      availabilityMessage: intercessionFormAvailability(parseIntercessionFormSettings(form.settings), form.isActive, form._count.submissions),
+      availabilityMessage: intercessionFormAvailability(parsedSettings, form.isActive, form._count.submissions),
       createdAt: formatDate(form.createdAt),
       createdBy: form.creator?.name ?? "Unknown",
       submissionsCount: form._count.submissions,
@@ -141,6 +142,7 @@ export default async function IntercessionPage({ searchParams }: { searchParams:
         require_login: settings.require_login !== false,
         allow_export: settings.allow_export !== false,
         include_timestamps: settings.include_timestamps !== false,
+        visitor_fields: parsedSettings.visitor_fields,
       },
     };
   });

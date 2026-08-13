@@ -21,5 +21,5 @@ export default async function PublicIntercessionFormPage({ params }: { params: P
   const existingSubmission = user && settings.limit_one_response
     ? await withDatabaseRetry(() => prisma.formSubmission.findFirst({ where: { formId, userId: user.id }, select: { id: true } }), 3)
     : null;
-  return <main className="min-h-screen bg-slate-50"><IntercessionTakeForm form={{ id: form.id, title: form.title, description: form.description }} questions={parseIntercessionFormQuestions(form.questions)} settings={settings} alreadySubmitted={Boolean(existingSubmission)} backHref="/" /></main>;
+  return <main className="min-h-screen bg-slate-50"><IntercessionTakeForm form={{ id: form.id, title: form.title, description: form.description }} questions={parseIntercessionFormQuestions(form.questions)} settings={settings} alreadySubmitted={Boolean(existingSubmission)} requireRespondentName={!user} backHref="/" /></main>;
 }

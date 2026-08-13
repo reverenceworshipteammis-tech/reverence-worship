@@ -9,7 +9,12 @@ import { IntercessionRichText } from "@/components/intercession-rich-text";
 import { IntercessionQuestionImages } from "@/components/intercession-question-images";
 import type { IntercessionQuestionImage } from "@/lib/intercession-question-images";
 import type { IntercessionQuestionCondition } from "@/lib/intercession-form-rules";
-import { visibleIntercessionQuestions, type IntercessionFormAnswer } from "@/lib/intercession-form-domain";
+import {
+  parseIntercessionVisitorFields,
+  visibleIntercessionQuestions,
+  type IntercessionFormAnswer,
+  type IntercessionVisitorField,
+} from "@/lib/intercession-form-domain";
 
 type TakeQuestion = {
   id: string;
@@ -38,6 +43,7 @@ type TakeSettings = {
   release_grade?: string;
   thank_you_message?: string;
   redirect_url?: string;
+  visitor_fields?: IntercessionVisitorField[];
 };
 
 export function IntercessionTakeForm({
@@ -49,6 +55,7 @@ export function IntercessionTakeForm({
   embedded = false,
   onPreviewClose,
   backHref = "/admin/intercession",
+  requireRespondentName = false,
 }: {
   form: { id: number; title: string; description: string | null };
   questions: TakeQuestion[];
@@ -58,6 +65,7 @@ export function IntercessionTakeForm({
   embedded?: boolean;
   onPreviewClose?: () => void;
   backHref?: string;
+  requireRespondentName?: boolean;
 }) {
   const [message, setMessage] = useState<string | null>(null);
   const [messageIsError, setMessageIsError] = useState(false);
@@ -130,7 +138,7 @@ export function IntercessionTakeForm({
     const data = new FormData(target);
     const values: Record<string, string | string[]> = {};
     for (const [key, value] of data.entries()) {
-      if (!key.startsWith("question_") || value instanceof File) continue;
+      if (!key.startsWith("visitor_") && !key.startsWith("question_") || value instanceof File) continue;
       const all = data.getAll(key).filter((item): item is string => typeof item === "string");
       values[key] = all.length > 1 ? all : String(value);
     }
@@ -141,6 +149,17 @@ export function IntercessionTakeForm({
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (preview) return;
+    if (requireRespondentName) {
+      const submissionData = new FormData(event.currentTarget);
+      const missingCheckboxField = parseIntercessionVisitorFields(settings.visitor_fields)
+        .find((field) => field.required && field.type === "checkboxes" && submissionData.getAll(`visitor_${field.id}`).length === 0);
+      if (missingCheckboxField) {
+        setMessage(`${missingCheckboxField.label} is required.`);
+        setMessageIsError(true);
+        event.currentTarget.querySelector<HTMLInputElement>(`[name="${CSS.escape(`visitor_${missingCheckboxField.id}`)}"]`)?.focus();
+        return;
+      }
+    }
     if (!event.currentTarget.checkValidity()) {
       setMessage("Please complete the highlighted required questions before submitting.");
       setMessageIsError(true);
@@ -226,6 +245,7 @@ export function IntercessionTakeForm({
 
         <form ref={formRef} onSubmit={submit} noValidate onInput={(event) => saveDraft(event.currentTarget)}>
           <div className="space-y-6 bg-slate-50 p-5 sm:p-8">
+            {requireRespondentName ? <VisitorInformationFields fields={parseIntercessionVisitorFields(settings.visitor_fields)} formId={form.id} /> : null}
             {displayQuestions.length ? (
               displayQuestions.map(({ question, index }) => (
                 <div key={`${question.id}-${index}`}>
@@ -268,6 +288,60 @@ export function IntercessionTakeForm({
         </form>
       </div>
     </div>
+  );
+}
+
+function VisitorInformationFields({ fields, formId }: { fields: IntercessionVisitorField[]; formId: number }) {
+  return (
+    <section className="overflow-hidden rounded-xl border border-blue-200 bg-white shadow-sm">
+      <div className="border-b border-blue-100 bg-blue-50/70 px-5 py-4">
+        <h2 className="text-lg font-bold text-slate-900">About you</h2>
+        <p className="mt-1 text-sm text-slate-600">Please provide these details so the form owner can identify your response.</p>
+      </div>
+      <div className="grid gap-5 p-5 sm:grid-cols-2">
+        {fields.map((field) => {
+          const name = `visitor_${field.id}`;
+          const fieldId = `${name}-${formId}`;
+          const commonClass = "w-full rounded-lg border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100";
+          return (
+            <div key={field.id} className={field.type === "checkboxes" ? "sm:col-span-2" : ""}>
+              <label htmlFor={field.type === "checkboxes" ? undefined : fieldId} className="mb-2 block text-sm font-semibold text-slate-900">
+                {field.label}{field.required ? <span className="ml-1 text-red-500">*</span> : null}
+              </label>
+              {field.helpText ? <p className="mb-2 text-xs text-slate-500">{field.helpText}</p> : null}
+              {field.type === "select" ? (
+                <select id={fieldId} name={name} required={field.required} defaultValue="" className={commonClass}>
+                  <option value="" disabled>{field.placeholder || "Select an option"}</option>
+                  {field.options.map((option) => <option key={option} value={option}>{option}</option>)}
+                </select>
+              ) : field.type === "checkboxes" ? (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {field.options.map((option) => (
+                    <label key={option} className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2.5 text-sm text-slate-800 hover:bg-blue-50">
+                      <input type="checkbox" name={name} value={option} className="size-4 rounded text-blue-600" />
+                      {option}
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <input
+                  id={fieldId}
+                  name={name}
+                  type={field.type === "phone" ? "tel" : field.type}
+                  required={field.required}
+                  minLength={field.id === "full_name" ? 2 : undefined}
+                  maxLength={field.type === "number" || field.type === "date" ? undefined : 500}
+                  autoComplete={field.id === "full_name" ? "name" : field.type === "email" ? "email" : field.type === "phone" ? "tel" : undefined}
+                  placeholder={field.placeholder}
+                  className={commonClass}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <p className="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">Your information is saved with this response and is visible only to authorized form managers.</p>
+    </section>
   );
 }
 

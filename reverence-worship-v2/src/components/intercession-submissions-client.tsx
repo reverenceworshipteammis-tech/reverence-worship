@@ -9,12 +9,15 @@ import { ActionNotice } from "@/components/action-notice";
 import { IntercessionRichText } from "@/components/intercession-rich-text";
 import { IntercessionQuestionImages } from "@/components/intercession-question-images";
 import type { IntercessionQuestionImage } from "@/lib/intercession-question-images";
+import type { IntercessionVisitorDetail } from "@/lib/intercession-form-domain";
 import { useDialogFocusTrap } from "@/hooks/use-dialog-focus-trap";
 
 type SubmissionRow = {
   id: number;
   memberName: string;
   memberEmail: string;
+  respondentType: "Member" | "Guest";
+  visitorDetails: IntercessionVisitorDetail[];
   submittedAt: string;
   submittedDate: string;
   submittedTime: string;
@@ -56,7 +59,7 @@ export function IntercessionSubmissionsClient({
     return submissions.filter((submission) => {
       const matchesSearch =
         !normalized ||
-        [submission.memberName, submission.memberEmail].some((value) => value.toLowerCase().includes(normalized));
+        [submission.memberName, submission.memberEmail, ...submission.visitorDetails.flatMap((detail) => Array.isArray(detail.value) ? detail.value : [detail.value])].some((value) => value.toLowerCase().includes(normalized));
       const score = submission.score ?? 0;
       const matchesScore = !form.isQuiz || scoreFilter === "all" ||
         (scoreFilter === "high" && score >= 80) ||
@@ -95,11 +98,17 @@ export function IntercessionSubmissionsClient({
   const releasedCount = submissions.filter((submission) => submission.isReleased).length;
 
   function exportCsv() {
-    const header = ["#", "Member", "Email", ...(form.includeTimestamps ? ["Submitted Date", "Submitted Time"] : []), ...(form.isQuiz ? ["Marks", "Score"] : []), "Answers", "Result Status"];
+    const visitorColumns = Array.from(new Map(filteredSubmissions.flatMap((submission) => submission.visitorDetails.map((detail) => [detail.fieldId, detail.label] as const))).entries());
+    const header = ["#", "Responder", "Type", "Email", ...visitorColumns.map(([, label]) => label), ...(form.includeTimestamps ? ["Submitted Date", "Submitted Time"] : []), ...(form.isQuiz ? ["Marks", "Score"] : []), "Answers", "Result Status"];
     const rows = filteredSubmissions.map((submission) => [
       String(submissions.indexOf(submission) + 1),
       submission.memberName,
+      submission.respondentType,
       submission.memberEmail,
+      ...visitorColumns.map(([fieldId]) => {
+        const value = submission.visitorDetails.find((detail) => detail.fieldId === fieldId)?.value;
+        return Array.isArray(value) ? value.join(", ") : value ?? "";
+      }),
       ...(form.includeTimestamps ? [submission.submittedDate, submission.submittedTime] : []),
       ...(form.isQuiz ? [submission.earnedPoints === null ? "" : `${submission.earnedPoints}/${submission.totalPoints}`, submission.score === null ? "" : `${submission.score}%`] : []),
       String(submission.answersCount),
@@ -150,13 +159,13 @@ export function IntercessionSubmissionsClient({
         <div className="border-b border-slate-200 bg-slate-50 p-3 sm:p-4">
           <div className={`grid grid-cols-1 gap-3 ${form.isQuiz ? "sm:grid-cols-2 lg:grid-cols-[minmax(220px,1fr)_180px_180px_auto]" : "sm:grid-cols-[minmax(220px,1fr)_auto]"}`}>
             <div>
-              <label className="mb-1 block text-xs font-semibold text-slate-600">Search member</label>
+              <label className="mb-1 block text-xs font-semibold text-slate-600">Search responder</label>
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                 <input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Name or email"
+                  placeholder="Name, email, telephone or other detail"
                   className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
               </div>
@@ -257,7 +266,7 @@ export function IntercessionSubmissionsClient({
             <thead className="bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
               <tr>
                 <th className="px-4 py-3">#</th>
-                <th className="px-4 py-3">Member</th>
+                <th className="px-4 py-3">Responder</th>
                 {form.isQuiz ? <th className="px-4 py-3">Marks</th> : null}
                 <th className="px-4 py-3">Submitted</th>
                 <th className="px-4 py-3">Result status</th>
@@ -276,7 +285,7 @@ export function IntercessionSubmissionsClient({
                         </div>
                         <div>
                           <div className="font-medium text-gray-800">{submission.memberName}</div>
-                          <div className="text-xs text-gray-400">{submission.memberEmail || "No email"}</div>
+                          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-gray-400"><span className={`rounded-full px-1.5 py-0.5 font-semibold ${submission.respondentType === "Guest" ? "bg-amber-50 text-amber-700" : "bg-blue-50 text-blue-700"}`}>{submission.respondentType}</span><span>{submission.memberEmail || "No email"}</span></div>
                         </div>
                       </div>
                     </td>
@@ -440,6 +449,14 @@ function ReviewSubmissionModal({
         </div>
 
         <div className="max-h-[65vh] overflow-y-auto p-4">
+          {submission.visitorDetails.length ? (
+            <section className="mb-4 rounded-xl border border-blue-200 bg-blue-50/40 p-4">
+              <h3 className="text-sm font-bold text-slate-900">Guest information</h3>
+              <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+                {submission.visitorDetails.map((detail) => <div key={detail.fieldId} className="rounded-lg bg-white px-3 py-2"><dt className="text-xs font-semibold text-slate-500">{detail.label}</dt><dd className="mt-1 break-words text-sm font-medium text-slate-900">{Array.isArray(detail.value) ? detail.value.join(", ") || "—" : detail.value || "—"}</dd></div>)}
+              </dl>
+            </section>
+          ) : null}
           <div className="space-y-3">
             {submission.answers.length ? (
               submission.answers.map((answer, index) => (

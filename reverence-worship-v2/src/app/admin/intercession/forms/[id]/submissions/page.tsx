@@ -3,7 +3,7 @@ import { IntercessionSubmissionsClient } from "@/components/intercession-submiss
 import { getUserPermissionSet, permissionSetHas, requireAnyPermission } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { parseQuestionImages } from "@/lib/intercession-question-images";
-import { parseIntercessionFormQuestions, visibleIntercessionQuestions, type IntercessionFormAnswer } from "@/lib/intercession-form-domain";
+import { parseIntercessionFormQuestions, parseIntercessionVisitorDetails, visibleIntercessionQuestions, type IntercessionFormAnswer } from "@/lib/intercession-form-domain";
 
 function formatDateTime(date: Date) {
   return new Intl.DateTimeFormat("en", {
@@ -144,14 +144,18 @@ export default async function IntercessionFormSubmissionsPage({
       }}
       submissions={form.submissions.map((submission) => {
         const answers = parseObject(submission.answers);
+        const visitorDetails = parseIntercessionVisitorDetails(submission.respondentDetails);
+        const visitorEmail = visitorDetails.find((detail) => detail.type === "email");
         const answersByQuestionId = Object.fromEntries(domainQuestions.map((question, index) => [question.id, answers[`question_${index}`] as IntercessionFormAnswer]));
         const visibleIndexes = new Set(visibleIntercessionQuestions(domainQuestions, answersByQuestionId).map((item) => item.index));
         const visibleReviewQuestions = reviewQuestions.filter((question) => visibleIndexes.has(question.index));
         const totalPoints = visibleReviewQuestions.reduce((sum, question) => sum + (question.type === "file_upload" ? 0 : Number.isFinite(question.points) && question.points > 0 ? question.points : 1), 0);
         return {
           id: submission.id,
-          memberName: submission.user?.name ?? "Unknown",
-          memberEmail: submission.user?.email ?? "",
+          memberName: submission.user?.name ?? submission.respondentName ?? "Anonymous guest",
+          memberEmail: submission.user?.email ?? (typeof visitorEmail?.value === "string" ? visitorEmail.value : ""),
+          respondentType: submission.user ? "Member" : "Guest",
+          visitorDetails,
           submittedAt: formatDateTime(submission.submittedAt),
           submittedDate: formatDate(submission.submittedAt),
           submittedTime: formatTime(submission.submittedAt),

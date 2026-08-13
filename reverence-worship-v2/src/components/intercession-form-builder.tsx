@@ -24,7 +24,6 @@ import {
   Plus,
   Presentation,
   Redo2,
-  Save,
   Settings,
   Smartphone,
   Trash2,
@@ -33,6 +32,7 @@ import {
 } from "lucide-react";
 import {
   createSpiritualFormFromBuilder,
+  discardSpiritualFormQuestionImage,
   getSpiritualFormQuestionLibrary,
   removeSpiritualFormQuestionFromLibrary,
   saveSpiritualFormQuestionToLibrary,
@@ -43,6 +43,11 @@ import { MobileTabScroller } from "@/components/mobile-tab-scroller";
 import { IntercessionRichTextEditor } from "@/components/intercession-rich-text-editor";
 import { IntercessionTakeForm } from "@/components/intercession-take-form";
 import { intercessionRichTextToPlainText } from "@/lib/intercession-rich-text";
+import {
+  DEFAULT_INTERCESSION_VISITOR_FIELDS,
+  parseIntercessionVisitorFields,
+  type IntercessionVisitorField,
+} from "@/lib/intercession-form-domain";
 import {
   getIntercessionPublishingIssues,
   parseIntercessionQuestionCondition,
@@ -115,6 +120,7 @@ type BuilderSettings = {
   max_responses: number;
   thank_you_message: string;
   redirect_url: string;
+  visitor_fields: IntercessionVisitorField[];
 };
 
 export type IntercessionBuilderInitialData = {
@@ -290,7 +296,16 @@ const defaultSettings: BuilderSettings = {
   max_responses: 0,
   thank_you_message: "Thank you. Your response has been recorded.",
   redirect_url: "",
+  visitor_fields: DEFAULT_INTERCESSION_VISITOR_FIELDS.map((field) => ({ ...field, options: [...field.options] })),
 };
+
+function normalizeBuilderSettings(value: Partial<BuilderSettings> | undefined): BuilderSettings {
+  return {
+    ...defaultSettings,
+    ...(value ?? {}),
+    visitor_fields: parseIntercessionVisitorFields(value?.visitor_fields),
+  };
+}
 
 export function IntercessionFormBuilder({ initialData }: { initialData?: IntercessionBuilderInitialData }) {
   const router = useRouter();
@@ -309,7 +324,6 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
   const [activeImageUploads, setActiveImageUploads] = useState(0);
   const [collapsedQuestionIds, setCollapsedQuestionIds] = useState<Set<string>>(new Set());
   const [draftStatus, setDraftStatus] = useState<DraftStatus>("saved");
-  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [showChecklist, setShowChecklist] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
@@ -320,7 +334,7 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
   const [futureSnapshots, setFutureSnapshots] = useState<BuilderSnapshot[]>([]);
   const [isPending, startTransition] = useTransition();
 
-  const [settings, setSettings] = useState<BuilderSettings>({ ...defaultSettings, ...(initialData?.settings ?? {}) });
+  const [settings, setSettings] = useState<BuilderSettings>(normalizeBuilderSettings(initialData?.settings));
 
   const savableQuestions = useMemo(
     () =>
@@ -352,7 +366,7 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
   const lastHistorySnapshotRef = useRef(currentSnapshot);
   const lastHistorySerializedRef = useRef(serializedSnapshot);
   const latestSnapshotRef = useRef(currentSnapshot);
-  const autosaveSequenceRef = useRef(0);
+  const removedImagePathsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     latestSnapshotRef.current = currentSnapshot;
@@ -417,7 +431,7 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
               title: typeof parsed.title === "string" ? parsed.title : "",
               description: typeof parsed.description === "string" ? parsed.description : "",
               questions: Array.isArray(parsed.questions) && parsed.questions.length ? parsed.questions.map(normalizeQuestion) : [newQuestion("short_answer", Boolean(parsed.settings?.default_required))],
-              settings: { ...defaultSettings, ...(parsed.settings ?? {}) },
+              settings: normalizeBuilderSettings(parsed.settings),
             };
             applySnapshot(restored);
             setMessage("Your saved draft was restored.");
@@ -444,32 +458,16 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
 
   useEffect(() => {
     if (activeImageUploads > 0 || draftStatus !== "unsaved") return;
-    const timer = window.setTimeout(async () => {
+    const timer = window.setTimeout(() => {
       const snapshot = latestSnapshotRef.current;
-      const sequence = ++autosaveSequenceRef.current;
-      setDraftStatus("saving");
       try {
         localStorage.setItem(initialData?.id ? `${NEW_FORM_DRAFT_KEY}-${initialData.id}` : NEW_FORM_DRAFT_KEY, JSON.stringify(snapshot));
-        if (initialData?.id && !initialData.settings?.is_published && intercessionRichTextToPlainText(snapshot.title).trim()) {
-          const autosaveData = buildFormData(snapshot);
-          autosaveData.set("autosave", "1");
-          const result = await updateSpiritualFormFromBuilder(initialData.id, autosaveData);
-          if (!result.ok) throw new Error(result.message);
-        }
-        if (sequence === autosaveSequenceRef.current) {
-          if (JSON.stringify(latestSnapshotRef.current) === JSON.stringify(snapshot)) {
-            setDraftStatus("saved");
-            setLastSavedAt(new Date());
-          } else {
-            setDraftStatus("unsaved");
-          }
-        }
       } catch {
-        if (sequence === autosaveSequenceRef.current) setDraftStatus("error");
+        setMessage("The recovery draft could not be saved on this device. Use Save form before leaving.");
       }
     }, 1200);
     return () => window.clearTimeout(timer);
-  }, [activeImageUploads, buildFormData, draftStatus, initialData?.id, initialData?.settings?.is_published, serializedSnapshot]);
+  }, [activeImageUploads, draftStatus, initialData?.id, serializedSnapshot]);
 
   useEffect(() => {
     function warnBeforeLeaving(event: BeforeUnloadEvent) {
@@ -601,6 +599,10 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
         : await createSpiritualFormFromBuilder(formData);
       setMessage(result.message);
       if (result.ok) {
+        const retainedImagePaths = new Set(latestSnapshotRef.current.questions.flatMap((question) => question.images.map((image) => image.path)));
+        const discardedImagePaths = [...removedImagePathsRef.current].filter((imagePath) => !retainedImagePaths.has(imagePath));
+        await Promise.allSettled(discardedImagePaths.map((imagePath) => discardSpiritualFormQuestionImage(imagePath)));
+        discardedImagePaths.forEach((imagePath) => removedImagePathsRef.current.delete(imagePath));
         localStorage.removeItem(initialData?.id ? `${NEW_FORM_DRAFT_KEY}-${initialData.id}` : NEW_FORM_DRAFT_KEY);
         setDraftStatus("saved");
         router.push("/admin/intercession");
@@ -633,10 +635,6 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
 
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
-              <span className={`mr-1 inline-flex items-center gap-1.5 text-xs font-medium ${draftStatus === "error" ? "text-red-600" : draftStatus === "saved" ? "text-emerald-600" : "text-amber-600"}`} aria-live="polite">
-                <Save className="size-3.5" aria-hidden="true" />
-                {activeImageUploads > 0 ? "Uploading images…" : draftStatus === "saving" ? "Saving…" : draftStatus === "unsaved" ? "Unsaved changes" : draftStatus === "error" ? "Autosave failed" : lastSavedAt ? `Saved ${lastSavedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "All changes saved"}
-              </span>
               <button type="button" onClick={undo} disabled={pastSnapshots.length === 0} className="inline-flex size-10 items-center justify-center rounded-lg border border-blue-200 text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-35" title="Undo" aria-label="Undo last change">
                 <Undo2 className="size-4" aria-hidden="true" />
               </button>
@@ -736,6 +734,7 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
                       const image = question.images[index];
                       if (!image) return;
                       updateQuestion(question.id, { images: question.images.filter((_, imageIndex) => imageIndex !== index) });
+                      removedImagePathsRef.current.add(image.path);
                     }}
                     onAddQuestion={() => addQuestion("short_answer", question.id)}
                     onAddTitle={() => addQuestion("title_section", question.id)}
@@ -1591,7 +1590,7 @@ function BuilderPreviewModal({ title, description, questions, settings, device, 
         <button type="button" onClick={() => setDevice("desktop")} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold ${device === "desktop" ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-white"}`} aria-pressed={device === "desktop"}><Monitor className="size-4" aria-hidden="true" /> Desktop</button>
         <button type="button" onClick={() => setDevice("mobile")} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold ${device === "mobile" ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-white"}`} aria-pressed={device === "mobile"}><Smartphone className="size-4" aria-hidden="true" /> Mobile</button>
       </div>
-      <div className="overflow-y-auto bg-slate-100 p-3 sm:p-5"><div className={`mx-auto transition-all ${device === "mobile" ? "max-w-[390px]" : "max-w-5xl"}`}><IntercessionTakeForm form={{ id: 0, title: title || "Untitled form", description }} questions={questions} settings={settings} alreadySubmitted={false} preview embedded onPreviewClose={onClose} /></div></div>
+      <div className="overflow-y-auto bg-slate-100 p-3 sm:p-5"><div className={`mx-auto transition-all ${device === "mobile" ? "max-w-[390px]" : "max-w-5xl"}`}><IntercessionTakeForm form={{ id: 0, title: title || "Untitled form", description }} questions={questions} settings={settings} alreadySubmitted={false} requireRespondentName={!settings.require_login} preview embedded onPreviewClose={onClose} /></div></div>
     </ModalShell>
   );
 }
@@ -1660,6 +1659,7 @@ function SettingsPanel({
             <SettingToggle title="User can view their responses" description="Allow users to see their submitted answers" checked={Boolean(settings.allow_view_response)} onChange={(value) => update("allow_view_response", value)} />
             <SettingToggle title="Limit to 1 response" description="Prevent users from submitting more than once" checked={Boolean(settings.limit_one_response)} onChange={(value) => update("limit_one_response", value)} />
             <SettingToggle title="Require login to submit" description="Only authenticated users can submit responses" checked={Boolean(settings.require_login)} onChange={(value) => update("require_login", value)} />
+            {!settings.require_login ? <VisitorFieldsEditor fields={settings.visitor_fields} onChange={(visitor_fields) => setSettings((current) => ({ ...current, visitor_fields }))} /> : null}
             <div className="grid gap-3 border-b border-gray-100 py-3 sm:grid-cols-2"><label className="text-sm font-medium text-gray-800">Opens at<input type="datetime-local" value={String(settings.submission_opens_at ?? "")} onChange={(event) => update("submission_opens_at", event.target.value)} className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label><label className="text-sm font-medium text-gray-800">Closes at<input type="datetime-local" value={String(settings.submission_deadline ?? "")} onChange={(event) => update("submission_deadline", event.target.value)} className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label></div>
             <div className="border-b border-gray-100 py-3">
               <h3 className="mb-2 text-sm font-medium text-gray-800">Maximum responses</h3>
@@ -1694,6 +1694,74 @@ function SettingsPanel({
         )}
       </div>
     </div>
+  );
+}
+
+function VisitorFieldsEditor({ fields, onChange }: { fields: IntercessionVisitorField[]; onChange: (fields: IntercessionVisitorField[]) => void }) {
+  const normalized = fields.length ? fields : DEFAULT_INTERCESSION_VISITOR_FIELDS;
+
+  function updateField(id: string, patch: Partial<IntercessionVisitorField>) {
+    onChange(normalized.map((field) => field.id === id ? { ...field, ...patch } : field));
+  }
+
+  function moveField(index: number, direction: -1 | 1) {
+    const target = index + direction;
+    if (index === 0 || target < 1 || target >= normalized.length) return;
+    const next = [...normalized];
+    [next[index], next[target]] = [next[target], next[index]];
+    onChange(next);
+  }
+
+  function addField() {
+    if (normalized.length >= 12) return;
+    onChange([...normalized, {
+      id: `visitor_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`,
+      label: "New guest field",
+      type: "text",
+      required: false,
+      placeholder: "",
+      helpText: "",
+      options: [],
+    }]);
+  }
+
+  return (
+    <section className="rounded-xl border border-blue-200 bg-blue-50/40 p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-900">Guest information</h3>
+          <p className="mt-1 text-xs leading-5 text-slate-600">These fields appear only to people who are not signed in. Details are stored separately from form answers.</p>
+        </div>
+        <button type="button" onClick={addField} disabled={normalized.length >= 12} className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
+          <Plus className="size-3.5" aria-hidden="true" /> Add field
+        </button>
+      </div>
+      <div className="mt-4 space-y-3">
+        {normalized.map((field, index) => {
+          const isName = field.id === "full_name";
+          return (
+            <article key={field.id} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+              <div className="grid gap-3 lg:grid-cols-[minmax(200px,1.5fr)_160px_auto]">
+                <label className="text-xs font-semibold text-slate-600">Field label<input value={field.label} maxLength={120} onChange={(event) => updateField(field.id, { label: event.target.value })} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" /></label>
+                <label className="text-xs font-semibold text-slate-600">Type<select value={field.type} disabled={isName} onChange={(event) => updateField(field.id, { type: event.target.value as IntercessionVisitorField["type"], options: [] })} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 disabled:bg-slate-100"><option value="text">Short text</option><option value="phone">Telephone</option><option value="email">Email</option><option value="number">Number</option><option value="date">Date</option><option value="select">Dropdown</option><option value="checkboxes">Checkboxes</option></select></label>
+                <div className="flex items-end justify-end gap-1">
+                  <button type="button" onClick={() => moveField(index, -1)} disabled={isName || index === 1} className="inline-flex size-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 disabled:opacity-30" aria-label={`Move ${field.label} up`}><ChevronUp className="size-4" /></button>
+                  <button type="button" onClick={() => moveField(index, 1)} disabled={isName || index === normalized.length - 1} className="inline-flex size-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 disabled:opacity-30" aria-label={`Move ${field.label} down`}><ChevronDown className="size-4" /></button>
+                  <button type="button" onClick={() => onChange(normalized.filter((item) => item.id !== field.id))} disabled={isName} className="inline-flex size-9 items-center justify-center rounded-lg border border-red-100 text-red-600 disabled:opacity-30" aria-label={`Remove ${field.label}`}><Trash2 className="size-4" /></button>
+                </div>
+              </div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <input value={field.placeholder} maxLength={200} onChange={(event) => updateField(field.id, { placeholder: event.target.value })} placeholder="Placeholder (optional)" className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500" />
+                <input value={field.helpText} maxLength={300} onChange={(event) => updateField(field.id, { helpText: event.target.value })} placeholder="Help text (optional)" className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500" />
+              </div>
+              {["select", "checkboxes"].includes(field.type) ? <textarea value={field.options.join("\n")} onChange={(event) => updateField(field.id, { options: event.target.value.split("\n").slice(0, 30) })} rows={3} placeholder="One option per line" className="mt-3 w-full resize-y rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500" /> : null}
+              <label className="mt-3 inline-flex items-center gap-2 text-xs font-medium text-slate-700"><input type="checkbox" checked={isName || field.required} disabled={isName} onChange={(event) => updateField(field.id, { required: event.target.checked })} className="size-4 rounded text-blue-600" /> Required{isName ? " (guest identity)" : ""}</label>
+            </article>
+          );
+        })}
+      </div>
+      <p className="mt-3 text-xs text-slate-500">Up to 12 guest fields. Full name is always required.</p>
+    </section>
   );
 }
 

@@ -522,3 +522,222 @@ Server has closed the connection.
   clientVersion: '7.8.0',
   digest: '1287273530'
 }
+[browser] The final argument passed to useEffect changed size between renders. The order and size of this array must remain constant.
+
+Previous: [0, (snapshot)=>{
+            const formData = new FormData();
+            formData.set("title", snapshot.title);
+            formData.set("description", snapshot.description);
+            formData.set("questions", JSON.stringify(snapshot.questions.map({
+                "IntercessionFormBuilder.useCallback[buildFormData]": (question)=>({
+                        ...question,
+                        text: question.label,
+                        options: question.options.filter(Boolean),
+                        rows: question.rows.filter(Boolean),
+                        columns: question.columns.filter(Boolean),
+                        correctAnswer: question.correctAnswer || null,
+                        correctAnswers: [
+                            "multiple_choice_grid",
+                            "checkbox_grid"
+                        ].includes(question.type) ? question.gridCorrectAnswers : question.correctAnswers.length ? question.correctAnswers : null
+                    })
+            }["IntercessionFormBuilder.useCallback[buildFormData]"])));
+            formData.set("settings", JSON.stringify(snapshot.settings));
+            return formData;
+        }, saved, 9, true, {"title":"Guhitamo izina ry&#39;umunsi w&#39;umuryango","description":"Amabwiriza:1. Banza usome ubusobanuro bw&#39;izina\r\n2. Hitamo izina rimwe gusa wumva ryakwitirirwa umunsi w&#39;umuryango","questions":[{"id":"1ced9c5d-cd5a-41d1-b272-34e359b0cd46","type":"multiple_choice","label":"Umaze gusoma ubusobanuro bw&#39;amazina yatanzwe, hitamo izina rimwe wumva ryahabwa umunsi w&#39;umuryango","description":"","required":true,"options":["1. AMAVUTA","2. UMURUNGA (Bond)","3. DUKUNDANE","4. KOINONIA","5. IGIHANGO"],"points":1,"correctAnswer":"","correctAnswers":[],"rows":["Row 1"],"columns":["Column 1"],"gridCorrectAnswers":{},"min":1,"max":5,"images":[],"condition":null}],"settings":{"is_quiz":false,"release_grade":"never","default_points":1,"allow_view_response":true,"limit_one_response":true,"require_login":true,"show_progress_bar":false,"shuffle_questions":false,"show_question_numbers":true,"default_required":false,"is_published":true,"allow_partial_points":true,"notify_on_submit":false,"notify_user_on_review":false,"allow_export":true,"include_timestamps":true,"submission_deadline":"","submission_opens_at":"","max_responses":0,"thank_you_message":"Thank you. Your response has been recorded.","redirect_url":""}}]
+Incoming: [0, (snapshot)=>{
+            const formData = new FormData();
+            formData.set("title", snapshot.title);
+            formData.set("description", snapshot.description);
+            formData.set("questions", JSON.stringify(snapshot.questions.map({
+                "IntercessionFormBuilder.useCallback[buildFormData]": (question)=>({
+                        ...question,
+                        text: question.label,
+                        options: question.options.filter(Boolean),
+                        rows: question.rows.filter(Boolean),
+                        columns: question.columns.filter(Boolean),
+                        correctAnswer: question.correctAnswer || null,
+                        correctAnswers: [
+                            "multiple_choice_grid",
+                            "checkbox_grid"
+                        ].includes(question.type) ? question.gridCorrectAnswers : question.correctAnswers.length ? question.correctAnswers : null
+                    })
+            }["IntercessionFormBuilder.useCallback[buildFormData]"])));
+            formData.set("settings", JSON.stringify(snapshot.settings));
+            return formData;
+        }, saved, 9, {"title":"Guhitamo izina ry&#39;umunsi w&#39;umuryango","description":"Amabwiriza:1. Banza usome ubusobanuro bw&#39;izina\r\n2. Hitamo izina rimwe gusa wumva ryakwitirirwa umunsi w&#39;umuryango","questions":[{"id":"1ced9c5d-cd5a-41d1-b272-34e359b0cd46","type":"multiple_choice","label":"Umaze gusoma ubusobanuro bw&#39;amazina yatanzwe, hitamo izina rimwe wumva ryahabwa umunsi w&#39;umuryango","description":"","required":true,"options":["1. AMAVUTA","2. UMURUNGA (Bond)","3. DUKUNDANE","4. KOINONIA","5. IGIHANGO"],"points":1,"correctAnswer":"","correctAnswers":[],"rows":["Row 1"],"columns":["Column 1"],"gridCorrectAnswers":{},"min":1,"max":5,"images":[],"condition":null}],"settings":{"is_quiz":false,"release_grade":"never","default_points":1,"allow_view_response":true,"limit_one_response":true,"require_login":true,"show_progress_bar":false,"shuffle_questions":false,"show_question_numbers":true,"default_required":false,"is_published":true,"allow_partial_points":true,"notify_on_submit":false,"notify_user_on_review":false,"allow_export":true,"include_timestamps":true,"submission_deadline":"","submission_opens_at":"","max_responses":0,"thank_you_message":"Thank you. Your response has been recorded.","redirect_url":""}}] 
+    at IntercessionFormBuilder (src/components/intercession-form-builder.tsx:448:12)
+    at Set.forEach (<anonymous>)
+  446 |   }, [serializedSnapshot]);
+  447 |
+> 448 |   useEffect(() => {
+      |            ^
+  449 |     if (activeImageUploads > 0 || draftStatus !== "unsaved") return;
+  450 |     const timer = window.setTimeout(async () => {
+  451 |       const snapshot = latestSnapshotRef.current; (src/components/intercession-form-builder.tsx:448:12)
+Database connection dropped; retrying (1/2).
+⨯ Error: timeout exceeded when trying to connect
+    at async withDatabaseRetry (src\lib\database-retry.ts:41:14)
+  39 |   for (let attempt = 1; attempt <= attempts; attempt += 1) {
+  40 |     try {
+> 41 |       return await operation();
+     |              ^
+  42 |     } catch (error) {
+  43 |       lastError = error;
+  44 |       if (!isTransientDatabaseError(error) || attempt === attempts) throw error; {
+  clientVersion: '7.8.0',
+  digest: '4294716338'
+}
+⨯ Error: timeout exceeded when trying to connect
+    at async withDatabaseRetry (src\lib\database-retry.ts:41:14)
+  39 |   for (let attempt = 1; attempt <= attempts; attempt += 1) {
+  40 |     try {
+> 41 |       return await operation();
+     |              ^
+  42 |     } catch (error) {
+  43 |       lastError = error;
+  44 |       if (!isTransientDatabaseError(error) || attempt === attempts) throw error; {
+  clientVersion: '7.8.0',
+  digest: '4294716338'
+}
+⨯ Error: timeout exceeded when trying to connect
+    at async (src\lib\auth.ts:181:7)
+  179 |   const roleIds = roleIdsKey.split(",").map(Number).filter((roleId) => Number.isInteger(r...
+  180 |   const permissions = roleIds.length > 0
+> 181 |     ? await prisma.rolePageFeature.findMany({
+      |       ^
+  182 |         where: { roleId: { in: roleIds } },
+  183 |         include: {
+  184 |           page: { select: { name: true } }, {
+  clientVersion: '7.8.0',
+  digest: '1684933394'
+}
+⨯ Error: timeout exceeded when trying to connect
+    at async (src\lib\auth.ts:181:7)
+  179 |   const roleIds = roleIdsKey.split(",").map(Number).filter((roleId) => Number.isInteger(r...
+  180 |   const permissions = roleIds.length > 0
+> 181 |     ? await prisma.rolePageFeature.findMany({
+      |       ^
+  182 |         where: { roleId: { in: roleIds } },
+  183 |         include: {
+  184 |           page: { select: { name: true } }, {
+  clientVersion: '7.8.0',
+  digest: '1684933394'
+}
+Database connection dropped; retrying (1/2).
+Database connection dropped; retrying (2/2).
+Database connection dropped; retrying (1/2).
+⨯ Error [PrismaClientKnownRequestError]: 
+Invalid `{imported module ./src/lib/database-retry.ts}["withDatabaseRetry"])(()=>{imported module ./src/lib/prisma.ts}["prisma"].systemSetting.findUnique()` invocation in
+D:\MY.DATA\Systems\New_System\reverence-worship\reverence-worship-v2\.next\dev\server\chunks\ssr\[root-of-the-server]__0grl-9w._.js:1202:326
+
+  1199     return Number.isFinite(numeric) ? numeric : fallback;
+  1200 }
+  1201 const getSystemSetting = (0, {imported module ./nodemodules/next/dist/server/route-modules/app-page/vendored/rsc/react.js}["cache"])(async (key)=>{
+→ 1202     const setting = await (0, {imported module ./src/lib/database-retry.ts}["withDatabaseRetry"])(()=>{imported module ./src/lib/prisma.ts}["prisma"].systemSetting.findUnique(
+Can't reach database server at ep-odd-credit-at9o2ii3-pooler.c-9.us-east-1.aws.neon.tech
+    at <unknown> (src\lib\system-settings.ts:20:70)
+    at async withDatabaseRetry (src\lib\database-retry.ts:41:14)
+    at async (src\lib\system-settings.ts:20:19)
+    at async isRegistrationEnabled (src\lib\system-settings.ts:29:27)
+    at async RegistrationLink (src\app\(auth)\login\page.tsx:9:8)
+  18 |
+  19 | export const getSystemSetting = cache(async (key: string) => {
+> 20 |   const setting = await withDatabaseRetry(() => prisma.systemSetting.findUnique({
+     |                                                                      ^
+  21 |     where: { key },
+  22 |     select: { value: true },
+  23 |   }), 3); {
+  code: 'P1001',
+  meta: {
+    modelName: 'SystemSetting',
+    driverAdapterError: Error [DriverAdapterError]: DatabaseNotReachable
+        at ignore-listed frames {
+      [cause]: [Object]
+    }
+  },
+  clientVersion: '7.8.0',
+  digest: '2811246332'
+}
+Database connection dropped; retrying (2/2).
+⨯ Error [PrismaClientKnownRequestError]: 
+Invalid `{imported module ./src/lib/database-retry.ts}["withDatabaseRetry"])(()=>{imported module ./src/lib/prisma.ts}["prisma"].systemSetting.findUnique()` invocation in
+D:\MY.DATA\Systems\New_System\reverence-worship\reverence-worship-v2\.next\dev\server\chunks\ssr\[root-of-the-server]__0grl-9w._.js:1202:326
+
+  1199     return Number.isFinite(numeric) ? numeric : fallback;
+  1200 }
+  1201 const getSystemSetting = (0, {imported module ./nodemodules/next/dist/server/route-modules/app-page/vendored/rsc/react.js}["cache"])(async (key)=>{
+→ 1202     const setting = await (0, {imported module ./src/lib/database-retry.ts}["withDatabaseRetry"])(()=>{imported module ./src/lib/prisma.ts}["prisma"].systemSetting.findUnique(
+Can't reach database server at ep-odd-credit-at9o2ii3-pooler.c-9.us-east-1.aws.neon.tech
+    at <unknown> (src\lib\system-settings.ts:20:70)
+    at async withDatabaseRetry (src\lib\database-retry.ts:41:14)
+    at async (src\lib\system-settings.ts:20:19)
+    at async isRegistrationEnabled (src\lib\system-settings.ts:29:27)
+    at async RegistrationLink (src\app\(auth)\login\page.tsx:9:8)
+  18 |
+  19 | export const getSystemSetting = cache(async (key: string) => {
+> 20 |   const setting = await withDatabaseRetry(() => prisma.systemSetting.findUnique({
+     |                                                                      ^
+  21 |     where: { key },
+  22 |     select: { value: true },
+  23 |   }), 3); {
+  code: 'P1001',
+  meta: {
+    modelName: 'SystemSetting',
+    driverAdapterError: Error [DriverAdapterError]: DatabaseNotReachable
+        at ignore-listed frames {
+      [cause]: [Object]
+    }
+  },
+  clientVersion: '7.8.0',
+  digest: '2811246332'
+}
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+⨯ Error [PrismaClientKnownRequestError]: 
+Invalid `prisma.systemSetting.findUnique()` invocation:
+
+
+Server has closed the connection.
+    at async withDatabaseRetry (src\lib\database-retry.ts:41:14)
+    at async (src\lib\system-settings.ts:20:19)
+    at async isRegistrationEnabled (src\lib\system-settings.ts:29:27)
+    at async RegistrationLink (src\app\(auth)\login\page.tsx:9:8)
+  39 |   for (let attempt = 1; attempt <= attempts; attempt += 1) {
+  40 |     try {
+> 41 |       return await operation();
+     |              ^
+  42 |     } catch (error) {
+  43 |       lastError = error;
+  44 |       if (!isTransientDatabaseError(error) || attempt === attempts) throw error; {
+  code: 'P1017',
+  meta: {
+    modelName: 'SystemSetting',
+    driverAdapterError: Error [DriverAdapterError]: ConnectionClosed
+        at ignore-listed frames {
+      [cause]: [Object]
+    }
+  },
+  clientVersion: '7.8.0',
+  digest: '44487036'
+}
+⨯ Error: timeout exceeded when trying to connect
+    at ignore-listed frames {
+  clientVersion: '7.8.0',
+  digest: '655592453'
+}
+⨯ Error: timeout exceeded when trying to connect
+    at ignore-listed frames {
+  clientVersion: '7.8.0',
+  digest: '655592453'
+}
+⨯ Error: timeout exceeded when trying to connect
+    at ignore-listed frames {
+  clientVersion: '7.8.0',
+  digest: '655592453'
+}
+⨯ Error: timeout exceeded when trying to connect
+    at ignore-listed frames {
+  clientVersion: '7.8.0',
+  digest: '655592453'
+}
+Database connection dropped; retrying (1/2).

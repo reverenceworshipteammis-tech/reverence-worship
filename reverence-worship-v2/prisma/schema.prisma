@@ -915,6 +915,8 @@ model FormSubmission {
   id           Int       @id @default(autoincrement())
   formId       Int       @map("form_id")
   userId       Int?      @map("user_id")
+  respondentName String?  @map("respondent_name")
+  respondentDetails Json? @map("respondent_details")
   answers      Json      @default("{}")
   manualGrades Json?     @map("manual_grades")
   score        Float?

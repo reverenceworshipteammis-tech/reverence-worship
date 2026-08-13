@@ -7,7 +7,7 @@ const globalForPrisma = globalThis as unknown as {
   prismaSchemaVersion?: string;
 };
 
-const PRISMA_SCHEMA_VERSION = "2026-08-13-generated-client-cache";
+const PRISMA_SCHEMA_VERSION = "2026-08-13-form-submission-respondent-details";
 
 function databaseUrl() {
   const value = process.env.DATABASE_URL;

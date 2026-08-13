@@ -13,6 +13,100 @@ export const INTERCESSION_ANSWERABLE_TYPES = [
 
 export type IntercessionFormAnswer = IntercessionConditionAnswer;
 
+export const INTERCESSION_VISITOR_FIELD_TYPES = ["text", "phone", "email", "number", "date", "select", "checkboxes"] as const;
+export type IntercessionVisitorFieldType = typeof INTERCESSION_VISITOR_FIELD_TYPES[number];
+
+export type IntercessionVisitorField = {
+  id: string;
+  label: string;
+  type: IntercessionVisitorFieldType;
+  required: boolean;
+  placeholder: string;
+  helpText: string;
+  options: string[];
+};
+
+export type IntercessionVisitorDetail = {
+  fieldId: string;
+  label: string;
+  type: IntercessionVisitorFieldType;
+  value: string | string[];
+};
+
+export const DEFAULT_INTERCESSION_VISITOR_FIELDS: IntercessionVisitorField[] = [{
+  id: "full_name",
+  label: "Full name",
+  type: "text",
+  required: true,
+  placeholder: "Enter your full name",
+  helpText: "",
+  options: [],
+}];
+
+export function normalizeIntercessionRespondentName(value: unknown) {
+  if (typeof value !== "string") return "";
+  return value.trim().replace(/\s+/g, " ").slice(0, 150);
+}
+
+export function parseIntercessionVisitorFields(value: unknown): IntercessionVisitorField[] {
+  const source = Array.isArray(value) ? value : [];
+  const parsed = source.flatMap((entry, index) => {
+    const item = record(entry);
+    const id = typeof item.id === "string" && /^[a-zA-Z0-9_-]{1,80}$/.test(item.id) ? item.id : `visitor_${index + 1}`;
+    const type = typeof item.type === "string" && (INTERCESSION_VISITOR_FIELD_TYPES as readonly string[]).includes(item.type)
+      ? item.type as IntercessionVisitorFieldType
+      : "text";
+    const label = typeof item.label === "string" ? item.label.trim().slice(0, 120) : "";
+    if (!label) return [];
+    return [{
+      id,
+      label,
+      type,
+      required: Boolean(item.required),
+      placeholder: typeof item.placeholder === "string" ? item.placeholder.trim().slice(0, 200) : "",
+      helpText: typeof item.helpText === "string" ? item.helpText.trim().slice(0, 300) : "",
+      options: ["select", "checkboxes"].includes(type) ? strings(item.options).slice(0, 30).map((option) => option.slice(0, 150)) : [],
+    }];
+  });
+  const unique = parsed.filter((field, index) => parsed.findIndex((item) => item.id === field.id) === index).slice(0, 12);
+  const configuredName = unique.find((field) => field.id === "full_name");
+  const nameField = configuredName
+    ? { ...configuredName, type: "text" as const, required: true, options: [] }
+    : { ...DEFAULT_INTERCESSION_VISITOR_FIELDS[0] };
+  return [nameField, ...unique.filter((field) => field.id !== "full_name")].slice(0, 12);
+}
+
+export function parseIntercessionVisitorDetails(value: unknown): IntercessionVisitorDetail[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    const item = record(entry);
+    if (typeof item.fieldId !== "string" || typeof item.label !== "string") return [];
+    const type = typeof item.type === "string" && (INTERCESSION_VISITOR_FIELD_TYPES as readonly string[]).includes(item.type)
+      ? item.type as IntercessionVisitorFieldType
+      : "text";
+    const detailValue = Array.isArray(item.value)
+      ? item.value.filter((entry): entry is string => typeof entry === "string").map((entry) => entry.slice(0, 500)).slice(0, 30)
+      : typeof item.value === "string" ? item.value.slice(0, 2000) : "";
+    return [{ fieldId: item.fieldId.slice(0, 80), label: item.label.slice(0, 120), type, value: detailValue }];
+  }).slice(0, 12);
+}
+
+export function intercessionGuestFieldConfigurationIssue(value: unknown) {
+  if (value === undefined || value === null) return null;
+  if (!Array.isArray(value)) return "Guest fields have an invalid configuration.";
+  for (const [index, entry] of value.entries()) {
+    const item = record(entry);
+    const label = typeof item.label === "string" ? item.label.trim() : "";
+    if (!label) return `Guest field ${index + 1} needs a label.`;
+  }
+  const fields = parseIntercessionVisitorFields(value);
+  const duplicateLabel = fields.find((field, index) => fields.findIndex((item) => item.label.toLowerCase() === field.label.toLowerCase()) !== index);
+  if (duplicateLabel) return `Guest field labels must be unique. “${duplicateLabel.label}” is used more than once.`;
+  const emptyOptions = fields.find((field) => ["select", "checkboxes"].includes(field.type) && field.options.length === 0);
+  if (emptyOptions) return `${emptyOptions.label} needs at least one option.`;
+  return null;
+}
+
 export type IntercessionFormQuestion = {
   id: string;
   type: string;
@@ -52,6 +146,7 @@ export type IntercessionFormSettings = {
   max_responses: number;
   thank_you_message: string;
   redirect_url: string;
+  visitor_fields: IntercessionVisitorField[];
 };
 
 function record(value: unknown): Record<string, unknown> {
@@ -111,6 +206,7 @@ export function parseIntercessionFormSettings(value: unknown): IntercessionFormS
     max_responses: Number.isInteger(maxResponses) && maxResponses > 0 ? maxResponses : 0,
     thank_you_message: typeof item.thank_you_message === "string" ? item.thank_you_message.slice(0, 1000) : "Thank you. Your response has been recorded.",
     redirect_url: safeFormRedirect(typeof item.redirect_url === "string" ? item.redirect_url : ""),
+    visitor_fields: parseIntercessionVisitorFields(item.visitor_fields),
   };
 }
 

@@ -1425,6 +1425,7 @@ function FormPreviewModal({ form, onClose }: { form: SpiritualForm; onClose: () 
             questions={form.questions}
             settings={form.previewSettings}
             alreadySubmitted={false}
+            requireRespondentName={!form.previewSettings.require_login}
             preview
             embedded
             onPreviewClose={onClose}
