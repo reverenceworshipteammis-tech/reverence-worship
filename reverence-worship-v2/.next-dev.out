@@ -1841,3 +1841,18 @@ Creating turbopack project {
   └─ ƒ getAdminNotifications() in 1515ms src/app/admin/notifications/actions.ts
  POST /admin/intercession 200 in 1576ms (next.js: 3ms, application-code: 1573ms)
   └─ ƒ getAdminNotifications() in 1539ms src/app/admin/notifications/actions.ts
+ POST /api/session/ping 200 in 1822ms (next.js: 4ms, application-code: 1819ms)
+ POST /admin/intercession 200 in 1556ms (next.js: 4ms, application-code: 1552ms)
+  └─ ƒ getAdminNotifications() in 1540ms src/app/admin/notifications/actions.ts
+ POST /admin/intercession 200 in 1448ms (next.js: 4ms, application-code: 1445ms)
+  └─ ƒ getAdminNotifications() in 1438ms src/app/admin/notifications/actions.ts
+ POST /api/session/ping 200 in 1149ms (next.js: 3ms, application-code: 1146ms)
+ POST /admin/intercession/forms/9/take 200 in 3.1s (next.js: 8ms, application-code: 3.1s)
+  └─ ƒ getAdminNotifications() in 2966ms src/app/admin/notifications/actions.ts
+ POST /admin/intercession 200 in 7.7s (next.js: 4ms, application-code: 7.7s)
+  └─ ƒ getAdminNotifications() in 7737ms src/app/admin/notifications/actions.ts
+ GET /admin/intercession/forms/9/take 200 in 5.8s (next.js: 622ms, application-code: 5.2s)
+ GET /manifest.webmanifest 200 in 10ms (next.js: 4ms, application-code: 6ms)
+ POST /api/session/ping 200 in 5.5s (next.js: 2ms, application-code: 5.5s)
+✓ Compiled in 717ms
+ GET /admin/intercession/forms/9/take 200 in 14.2s (next.js: 511ms, application-code: 13.6s)

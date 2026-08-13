@@ -211,7 +211,7 @@ export function IntercessionTakeForm({
           </Link>
         </div>
       ) : null}
-      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white text-slate-900 [color-scheme:light] shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
         <div className="border-b border-sky-100 bg-gradient-to-br from-white via-sky-50 to-cyan-50/40 px-5 py-6 sm:px-8">
           {!embedded ? <div className="flex items-center justify-between text-sky-700">
             <Link href={preview ? "/admin/intercession?section=manage" : backHref} className="flex items-center gap-2 text-sm text-sky-700 hover:text-sky-900">
@@ -421,7 +421,7 @@ function QuestionField({
       {question.type === "multiple_choice" && (
         <div className="space-y-3">
           {options.map((option) => (
-            <label key={option} className="flex cursor-pointer items-center gap-3 rounded-lg border border-gray-200 p-3 hover:bg-indigo-50">
+            <label key={option} className="flex cursor-pointer items-center gap-3 rounded-lg border border-gray-200 p-3 text-slate-800 hover:bg-indigo-50">
               <input type="radio" name={name} value={option} required={question.required} onChange={() => { onAnswered(true); onAnswerChange(option); }} className="size-4 text-indigo-600" />
               <span>{option}</span>
             </label>
@@ -431,7 +431,7 @@ function QuestionField({
       {question.type === "checkboxes" && (
         <div className="space-y-3">
           {options.map((option) => (
-            <label key={option} className="flex cursor-pointer items-center gap-3 rounded-lg border border-gray-200 p-3 hover:bg-indigo-50">
+            <label key={option} className="flex cursor-pointer items-center gap-3 rounded-lg border border-gray-200 p-3 text-slate-800 hover:bg-indigo-50">
               <input type="checkbox" name={name} value={option} onChange={(event) => { const values = event.currentTarget.form ? new FormData(event.currentTarget.form).getAll(name).map(String) : []; onAnswered(values.length > 0); onAnswerChange(values); }} className="size-4 rounded text-indigo-600" />
               <span>{option}</span>
             </label>
