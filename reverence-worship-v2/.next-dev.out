@@ -1815,3 +1815,25 @@ Creating turbopack project {
  POST /api/session/ping 200 in 3.3s (next.js: 3ms, application-code: 3.3s)
  POST /admin/intercession 200 in 4.2s (next.js: 5ms, application-code: 4.2s)
   └─ ƒ getAdminNotifications() in 4139ms src/app/admin/notifications/actions.ts
+ POST /api/session/ping 200 in 2.1s (next.js: 3ms, application-code: 2.1s)
+ POST /admin/intercession 200 in 3.2s (next.js: 4ms, application-code: 3.2s)
+  └─ ƒ getAdminNotifications() in 3139ms src/app/admin/notifications/actions.ts
+ POST /api/session/ping 200 in 1578ms (next.js: 4ms, application-code: 1573ms)
+ POST /admin/intercession 200 in 3.1s (next.js: 7ms, application-code: 3.1s)
+ GET /manifest.webmanifest 200 in 9ms (next.js: 3ms, application-code: 6ms)
+ GET /admin/intercession/forms/9/edit 200 in 15.9s (next.js: 580ms, application-code: 15.4s)
+ POST /admin/intercession/forms/9/edit 200 in 3.3s (next.js: 20ms, application-code: 3.3s)
+  └─ ƒ getAdminNotifications() in 3204ms src/app/admin/notifications/actions.ts
+ POST /api/session/ping 200 in 6.2s (next.js: 4ms, application-code: 6.2s)
+ POST /admin/intercession/forms/9/edit 200 in 5.1s (next.js: 17ms, application-code: 5.1s)
+  └─ ƒ getSpiritualFormQuestionLibrary() in 5047ms src/app/admin/intercession/actions.ts
+✓ Compiled in 1360ms
+ GET /manifest.webmanifest 200 in 110ms (next.js: 71ms, application-code: 40ms)
+ GET /admin/intercession/forms/9/edit 200 in 7.1s (next.js: 315ms, application-code: 6.8s)
+ POST /admin/intercession/forms/9/edit 200 in 1695ms (next.js: 16ms, application-code: 1679ms)
+  └─ ƒ getAdminNotifications() in 1619ms src/app/admin/notifications/actions.ts
+ POST /api/session/ping 200 in 3.8s (next.js: 85ms, application-code: 3.7s)
+ POST /admin/intercession/forms/9/edit 200 in 4.3s (next.js: 21ms, application-code: 4.2s)
+  └─ ƒ getSpiritualFormQuestionLibrary() in 4215ms src/app/admin/intercession/actions.ts
+ GET /admin/intercession 200 in 8.5s (next.js: 330ms, application-code: 8.2s)
+ GET /manifest.webmanifest 200 in 13ms (next.js: 4ms, application-code: 9ms)

@@ -15,6 +15,7 @@ import {
   Copy,
   Download,
   FileText,
+  Link2,
   ListChecks,
   Layers,
   Mail,
@@ -339,9 +340,17 @@ export function IntercessionClient({
     runAction(() => duplicateSpiritualForm(formId));
   }
 
+  function formUrl(formId: number) {
+    const selected = forms.find((form) => form.id === formId);
+    const path = selected?.previewSettings.require_login === false
+      ? `/forms/${formId}`
+      : `/admin/intercession/forms/${formId}/take`;
+
+    return `${window.location.origin}${path}`;
+  }
+
   function formShareData(form: ShareTarget) {
-    const selected = forms.find((item) => item.id === form.id);
-    const url = `${window.location.origin}${selected?.previewSettings.require_login === false ? `/forms/${form.id}` : `/admin/intercession/forms/${form.id}/take`}`;
+    const url = formUrl(form.id);
     const plainTitle = intercessionRichTextToPlainText(form.title);
     const plainDescription = intercessionRichTextToPlainText(form.description ?? "");
     const text = [plainTitle, plainDescription].filter(Boolean).join("\n\n");
@@ -352,6 +361,15 @@ export function IntercessionClient({
       text: text || plainTitle,
       message: `${text || plainTitle}\n\n${url}`,
     };
+  }
+
+  async function copyFormLink(formId: number) {
+    try {
+      await navigator.clipboard.writeText(formUrl(formId));
+      setNotice({ ok: true, message: "Form link copied. It is ready to share." });
+    } catch {
+      setNotice({ ok: false, message: "Could not copy the form link. Please try again." });
+    }
   }
 
   async function copyFormShare(form: ShareTarget) {
@@ -740,12 +758,12 @@ export function IntercessionClient({
                     const cardUrl = `/admin/intercession/forms/${form.id}/take`;
                     
                     return (
-                      <Link
+                      <article
                         key={form.id}
-                        href={cardUrl}
-                        className="available-form-card group block w-full rounded-xl border border-gray-200 bg-gradient-to-br from-white to-blue-50/30 p-4 transition hover:border-blue-200 hover:shadow-md sm:p-5"
+                        className="available-form-card group flex w-full items-start gap-2 rounded-xl border border-gray-200 bg-gradient-to-br from-white to-blue-50/30 p-4 transition hover:border-blue-200 hover:shadow-md sm:p-5"
                       >
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <Link href={cardUrl} className="min-w-0 flex-1">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
                               <h3 className="text-base font-semibold text-slate-800 sm:text-lg"><IntercessionRichText value={form.title} /></h3>
@@ -780,8 +798,18 @@ export function IntercessionClient({
                               </span>
                             </div>
                           </div>
-                        </div>
-                      </Link>
+                          </div>
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => copyFormLink(form.id)}
+                          className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-white text-blue-600 transition hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                          aria-label={`Copy link to ${intercessionRichTextToPlainText(form.title)}`}
+                          title="Copy form link"
+                        >
+                          <Link2 className="size-4" aria-hidden="true" />
+                        </button>
+                      </article>
                     );
                   })
                 ) : (
@@ -878,6 +906,10 @@ export function IntercessionClient({
                     </div>
 
                     <div className="mt-3 flex flex-wrap gap-2">
+                      <button type="button" onClick={() => copyFormLink(form.id)} className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-blue-50 px-3 text-xs font-semibold text-blue-700 transition hover:bg-blue-100">
+                        <Link2 className="size-3.5" aria-hidden="true" />
+                        Copy link
+                      </button>
                       <button type="button" onClick={() => setPreviewForm(form)} className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-blue-50 px-3 text-xs font-semibold text-blue-700 transition hover:bg-blue-100">
                         <Presentation className="size-3.5" />
                         Preview
@@ -987,6 +1019,18 @@ export function IntercessionClient({
                         <td className="px-4 py-3 text-center text-sm text-gray-500">{form.submissionsCount}</td>
                         <td className="px-4 py-3">
                           <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                copyFormLink(form.id);
+                              }}
+                              className="inline-flex size-9 items-center justify-center rounded-lg border border-blue-200 text-blue-600 transition hover:bg-blue-50"
+                              aria-label={`Copy link to ${intercessionRichTextToPlainText(form.title)}`}
+                              title="Copy form link"
+                            >
+                              <Link2 className="size-4" aria-hidden="true" />
+                            </button>
                             <button
                               type="button"
                               aria-label="Preview form"
