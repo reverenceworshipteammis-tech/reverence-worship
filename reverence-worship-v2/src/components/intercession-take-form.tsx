@@ -161,7 +161,7 @@ export function IntercessionTakeForm({
       }
     }
     if (!event.currentTarget.checkValidity()) {
-      setMessage("Please complete the highlighted required questions before submitting.");
+      setMessage("Please fill all required fields.");
       setMessageIsError(true);
       event.currentTarget.querySelector<HTMLElement>(":invalid")?.focus();
       return;
