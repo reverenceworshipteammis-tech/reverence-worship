@@ -1145,3 +1145,24 @@ Creating turbopack project {
  GET /login 200 in 749ms (next.js: 10ms, application-code: 739ms)
  GET /login 200 in 833ms (next.js: 10ms, application-code: 822ms)
  GET /manifest.webmanifest 200 in 141ms (next.js: 113ms, application-code: 29ms)
+ GET /manifest.webmanifest 200 in 71ms (next.js: 24ms, application-code: 47ms)
+ GET /admin/dashboard 200 in 10.9s (next.js: 600ms, application-code: 10.3s)
+ POST /login 303 in 14.5s (next.js: 8ms, application-code: 14.5s)
+  └─ ƒ loginAction({}, {}) in 3502ms src/app/auth-actions.ts
+ POST /admin/dashboard 200 in 3.3s (next.js: 34ms, application-code: 3.2s)
+  └─ ƒ getAdminNotifications() in 3141ms src/app/admin/notifications/actions.ts
+ POST /api/session/ping 200 in 4.3s (next.js: 425ms, application-code: 3.8s)
+ POST /api/session/ping 200 in 4.3s (next.js: 394ms, application-code: 3.9s)
+ GET /manifest.webmanifest 200 in 78ms (next.js: 21ms, application-code: 57ms)
+ GET /admin/intercession 200 in 10.0s (next.js: 1135ms, application-code: 8.8s)
+ GET /manifest.webmanifest 200 in 139ms (next.js: 81ms, application-code: 58ms)
+ GET /admin/intercession/forms/8/edit 200 in 9.4s (next.js: 960ms, application-code: 8.4s)
+ POST /api/session/ping 200 in 1143ms (next.js: 8ms, application-code: 1135ms)
+ POST /admin/intercession/forms/8/edit 200 in 1669ms (next.js: 28ms, application-code: 1641ms)
+  └─ ƒ getAdminNotifications() in 1515ms src/app/admin/notifications/actions.ts
+ POST /admin/intercession/forms/8/edit 200 in 2.0s (next.js: 33ms, application-code: 1979ms)
+  └─ ƒ getSpiritualFormQuestionLibrary() in 1956ms src/app/admin/intercession/actions.ts
+ POST /api/session/ping 200 in 1080ms (next.js: 8ms, application-code: 1072ms)
+ POST /admin/intercession/forms/8/edit 200 in 5.6s (next.js: 34ms, application-code: 5.6s)
+  └─ ƒ getAdminNotifications() in 5557ms src/app/admin/notifications/actions.ts
+ POST /api/session/ping 200 in 3.2s (next.js: 9ms, application-code: 3.2s)
