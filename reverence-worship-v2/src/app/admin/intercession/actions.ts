@@ -80,6 +80,15 @@ function readValues(formData: FormData, key: string) {
   return formData.getAll(key).filter((value): value is string => typeof value === "string");
 }
 
+function formSubmissionErrorMessage(error: unknown) {
+  if (!(error instanceof Error)) return "The form could not be submitted. Please try again.";
+  if (error.name.startsWith("Prisma") || error.message.includes("prisma.") || error.message.includes("Raw query failed")) {
+    console.error("Form submission database operation failed", error);
+    return "The form could not be submitted. Please try again.";
+  }
+  return error.message;
+}
+
 function validateVisitorDetails(fieldsValue: unknown, formData: FormData) {
   const fields = parseIntercessionVisitorFields(fieldsValue);
   const details = [] as Array<{ fieldId: string; label: string; type: string; value: string | string[] }>;
@@ -898,7 +907,7 @@ export async function submitSpiritualForm(formId: number, formData: FormData) {
   try {
     const submission = await prisma.$transaction(async (tx) => {
       const lockKey = `intercession-form:${formId}`;
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))::text AS "lock"`;
       const freshForm = await tx.spiritualForm.findUnique({ where: { id: formId }, select: { settings: true, isActive: true, _count: { select: { submissions: true } } } });
       if (!freshForm) throw new Error("Form not found.");
       const freshSettings = parseIntercessionFormSettings(freshForm.settings);
@@ -943,7 +952,7 @@ export async function submitSpiritualForm(formId: number, formData: FormData) {
     return { ok: true, message: settings.thank_you_message, redirectUrl: settings.redirect_url, score: settings.release_grade === "immediately" ? quizResult.score : null };
   } catch (error) {
     await Promise.all(uploadedFiles.map(deleteResponseFile));
-    return { ok: false, message: error instanceof Error ? error.message : "The form could not be submitted." };
+    return { ok: false, message: formSubmissionErrorMessage(error) };
   }
 }
 
