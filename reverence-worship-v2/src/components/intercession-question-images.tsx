@@ -41,6 +41,7 @@ export function IntercessionQuestionImages({
                 alt={image.alt || `Question image ${index + 1}`}
                 fill
                 sizes={safeImages.length === 1 ? "(min-width: 1024px) 800px, 95vw" : "(min-width: 1024px) 400px, 48vw"}
+                quality={90}
                 className="object-contain transition duration-200 group-hover:scale-[1.02]"
               />
             </span>
@@ -66,6 +67,7 @@ export function IntercessionQuestionImages({
               alt={selectedImage.alt || "Question image preview"}
               fill
               sizes="95vw"
+              unoptimized
               className="object-contain"
               priority
             />

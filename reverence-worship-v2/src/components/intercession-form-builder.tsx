@@ -1148,12 +1148,10 @@ function QuestionImageEditor({
     onUploadingChange(true);
     let result: Awaited<ReturnType<typeof uploadSpiritualFormQuestionImages>>;
     try {
-      const optimizedFiles = await Promise.all(files.map(optimizeQuestionImage));
-      const bytesSaved = files.reduce((total, file, index) => total + Math.max(0, file.size - optimizedFiles[index].size), 0);
       const formData = new FormData();
-      optimizedFiles.forEach((file) => formData.append("images", file));
+      files.forEach((file) => formData.append("images", file));
       result = await uploadSpiritualFormQuestionImages(formData);
-      setUploadNote(bytesSaved > 1024 ? `Images optimized — saved ${formatBytes(bytesSaved)}.` : "Images checked and ready.");
+      setUploadNote("Original image quality preserved.");
     } catch {
       setError("The images could not be uploaded. Please try again.");
       return;
@@ -1224,7 +1222,7 @@ function QuestionImageEditor({
           {question.images.map((image, index) => (
             <div key={image.id} draggable={!disabled} onDragStart={() => setDraggedImageIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => dropImage(index)} onDragEnd={() => setDraggedImageIndex(null)} className={`overflow-hidden rounded-xl border bg-white shadow-sm transition ${draggedImageIndex === index ? "border-blue-400 opacity-50" : "border-slate-200"}`} title="Drag to reorder image">
               <div className="relative aspect-[4/3] bg-slate-100">
-                <Image src={image.path} alt={image.alt || `Question image ${index + 1}`} fill sizes="(min-width: 1024px) 260px, 45vw" className="object-contain" />
+                <Image src={image.path} alt={image.alt || `Question image ${index + 1}`} fill sizes="(min-width: 1024px) 260px, 45vw" quality={90} className="object-contain" />
                 <span className="absolute left-2 top-2 rounded-full bg-black/65 px-2 py-1 text-[11px] font-semibold text-white">{index + 1}</span>
               </div>
               <div className="space-y-2 p-2.5">
@@ -1268,35 +1266,6 @@ function QuestionImageEditor({
       ) : null}
     </div>
   );
-}
-
-async function optimizeQuestionImage(file: File): Promise<File> {
-  if (typeof createImageBitmap !== "function") return file;
-  try {
-    const bitmap = await createImageBitmap(file);
-    const maxDimension = 1920;
-    const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
-    if (scale === 1 && file.size < 900 * 1024) { bitmap.close(); return file; }
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-    const context = canvas.getContext("2d");
-    if (!context) { bitmap.close(); return file; }
-    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    bitmap.close();
-    const outputType = file.type === "image/png" ? "image/png" : "image/webp";
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, outputType, 0.84));
-    if (!blob || blob.size >= file.size) return file;
-    const extension = outputType === "image/png" ? ".png" : ".webp";
-    return new File([blob], file.name.replace(/\.[^.]+$/, extension), { type: outputType, lastModified: file.lastModified });
-  } catch {
-    return file;
-  }
-}
-
-function formatBytes(bytes: number) {
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function ConditionalQuestionEditor({
