@@ -363,6 +363,13 @@ function MusicNoticeBanner({ notice, onClose }: { notice: MusicNotice; onClose: 
   return <ActionNotice message={notice.message} tone={notice.ok ? "success" : "error"} onClose={onClose} className="mb-4" />;
 }
 
+function resizeTextareaToContent(textarea: HTMLTextAreaElement | null) {
+  if (!textarea) return;
+
+  textarea.style.height = "auto";
+  textarea.style.height = `${textarea.scrollHeight}px`;
+}
+
 function MusicConfirmModal({
   confirm,
   pending,
@@ -417,7 +424,14 @@ function SongFields({ song }: { song?: Song }) {
       </label>
       <label className="sm:col-span-2">
         <span className="mb-1 block text-sm font-medium text-gray-700">Lyrics</span>
-        <textarea name="lyrics" defaultValue={song?.lyrics ?? ""} rows={6} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+        <textarea
+          ref={resizeTextareaToContent}
+          name="lyrics"
+          defaultValue={song?.lyrics ?? ""}
+          rows={6}
+          onInput={(event) => resizeTextareaToContent(event.currentTarget)}
+          className="w-full resize-none overflow-hidden rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+        />
       </label>
     </div>
   );
@@ -457,6 +471,7 @@ function synchronizePlaylistSessionStructure(
 function songSearchScore(song: Song, query: string) {
   const title = song.title.toLowerCase();
   const artist = song.artist?.toLowerCase() ?? "";
+  const lyrics = song.lyrics?.toLowerCase() ?? "";
 
   if (title === query) return 0;
   if (title.startsWith(query)) return 1;
@@ -465,6 +480,7 @@ function songSearchScore(song: Song, query: string) {
   if (artist.startsWith(query)) return 4;
   if (title.includes(query)) return 5;
   if (artist.includes(query)) return 6;
+  if (lyrics.includes(query)) return 7;
   return null;
 }
 
@@ -1313,9 +1329,7 @@ export function MusicClient({
     return songs.filter((song) => {
       if (song.isArchived !== (songStatusFilter === "archived")) return false;
       if (!query) return true;
-      return [song.title, song.artist]
-        .filter(Boolean)
-        .some((value) => value!.toLowerCase().includes(query));
+      return songSearchScore(song, query) !== null;
     });
   }, [songSearch, songs, songStatusFilter]);
   const songPageCount = Math.max(1, Math.ceil(filteredSongs.length / songPageSize));
@@ -2316,7 +2330,7 @@ export function MusicClient({
               </div> : null}
               <div className="relative mb-2 sm:mb-3">
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" aria-hidden />
-                <input value={songSearch} onChange={(event) => { setSongSearch(event.target.value); setSongPage(1); }} placeholder="Search songs..." className="h-10 w-full rounded-lg border border-gray-300 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 sm:rounded-xl" />
+                <input value={songSearch} onChange={(event) => { setSongSearch(event.target.value); setSongPage(1); }} placeholder="Search titles, or lyrics..." className="h-10 w-full rounded-lg border border-gray-300 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 sm:rounded-xl" />
               </div>
               {canManage ? <div className="mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
                 <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-700">
