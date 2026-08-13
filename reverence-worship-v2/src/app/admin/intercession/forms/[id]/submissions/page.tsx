@@ -141,6 +141,7 @@ export default async function IntercessionFormSubmissionsPage({
         canGradeSubmissions: permissionSetHas(permissions, "intercession", "view-results"),
         allowExport: settings.allow_export !== false,
         includeTimestamps: settings.include_timestamps !== false,
+        exportQuestions: reviewQuestions.map((question) => ({ questionIndex: question.index, question: question.label })),
       }}
       submissions={form.submissions.map((submission) => {
         const answers = parseObject(submission.answers);
@@ -164,7 +165,6 @@ export default async function IntercessionFormSubmissionsPage({
           totalPoints: Math.round(totalPoints * 100) / 100,
           isReleased: submission.isReleased,
           releasedAt: submission.releasedAt ? formatDateTime(submission.releasedAt) : null,
-          answersCount: visibleReviewQuestions.length,
           answers: visibleReviewQuestions.map((question) => ({
             questionIndex: question.index,
             question: question.label,

@@ -296,7 +296,7 @@ function VisitorInformationFields({ fields, formId }: { fields: IntercessionVisi
     <section className="overflow-hidden rounded-xl border border-blue-200 bg-white shadow-sm">
       <div className="border-b border-blue-100 bg-blue-50/70 px-5 py-4">
         <h2 className="text-lg font-bold text-slate-900">About you</h2>
-        <p className="mt-1 text-sm text-slate-600">Please provide these details so the form owner can identify your response.</p>
+       
       </div>
       <div className="grid gap-5 p-5 sm:grid-cols-2">
         {fields.map((field) => {
@@ -340,7 +340,7 @@ function VisitorInformationFields({ fields, formId }: { fields: IntercessionVisi
           );
         })}
       </div>
-      <p className="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">Your information is saved with this response and is visible only to authorized form managers.</p>
+   
     </section>
   );
 }

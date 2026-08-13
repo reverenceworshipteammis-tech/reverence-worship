@@ -8,6 +8,7 @@ import { useAppDialog } from "@/components/app-dialog-provider";
 import { ActionNotice } from "@/components/action-notice";
 import { IntercessionRichText } from "@/components/intercession-rich-text";
 import { IntercessionQuestionImages } from "@/components/intercession-question-images";
+import { intercessionRichTextToPlainText } from "@/lib/intercession-rich-text";
 import type { IntercessionQuestionImage } from "@/lib/intercession-question-images";
 import type { IntercessionVisitorDetail } from "@/lib/intercession-form-domain";
 import { useDialogFocusTrap } from "@/hooks/use-dialog-focus-trap";
@@ -26,7 +27,6 @@ type SubmissionRow = {
   totalPoints: number;
   isReleased: boolean;
   releasedAt: string | null;
-  answersCount: number;
   answers: Array<{
     questionIndex: number;
     question: string;
@@ -43,7 +43,7 @@ export function IntercessionSubmissionsClient({
   form,
   submissions,
 }: {
-  form: { id: number; title: string; description: string | null; isQuiz: boolean; releaseGrade: string; canDeleteSubmissions: boolean; canGradeSubmissions: boolean; allowExport: boolean; includeTimestamps: boolean };
+  form: { id: number; title: string; description: string | null; isQuiz: boolean; releaseGrade: string; canDeleteSubmissions: boolean; canGradeSubmissions: boolean; allowExport: boolean; includeTimestamps: boolean; exportQuestions: Array<{ questionIndex: number; question: string }> };
   submissions: SubmissionRow[];
 }) {
   const { confirm } = useAppDialog();
@@ -99,7 +99,11 @@ export function IntercessionSubmissionsClient({
 
   function exportCsv() {
     const visitorColumns = Array.from(new Map(filteredSubmissions.flatMap((submission) => submission.visitorDetails.map((detail) => [detail.fieldId, detail.label] as const))).entries());
-    const header = ["#", "Responder", "Type", "Email", ...visitorColumns.map(([, label]) => label), ...(form.includeTimestamps ? ["Submitted Date", "Submitted Time"] : []), ...(form.isQuiz ? ["Marks", "Score"] : []), "Answers", "Result Status"];
+    const answerColumns = form.exportQuestions.map((question) => ({
+      ...question,
+      header: `Q${question.questionIndex + 1}: ${intercessionRichTextToPlainText(question.question).replace(/\s+/g, " ").trim()}`,
+    }));
+    const header = ["#", "Responder", "Type", "Email", ...visitorColumns.map(([, label]) => label), ...(form.includeTimestamps ? ["Submitted Date", "Submitted Time"] : []), ...answerColumns.map((question) => question.header), ...(form.isQuiz ? ["Marks", "Score"] : [])];
     const rows = filteredSubmissions.map((submission) => [
       String(submissions.indexOf(submission) + 1),
       submission.memberName,
@@ -110,14 +114,13 @@ export function IntercessionSubmissionsClient({
         return Array.isArray(value) ? value.join(", ") : value ?? "";
       }),
       ...(form.includeTimestamps ? [submission.submittedDate, submission.submittedTime] : []),
+      ...answerColumns.map((question) => submission.answers.find((answer) => answer.questionIndex === question.questionIndex)?.answer ?? ""),
       ...(form.isQuiz ? [submission.earnedPoints === null ? "" : `${submission.earnedPoints}/${submission.totalPoints}`, submission.score === null ? "" : `${submission.score}%`] : []),
-      String(submission.answersCount),
-      resultStatusLabel(form.releaseGrade, submission.isReleased),
     ]);
     const csv = [header, ...rows]
       .map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(","))
       .join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -269,7 +272,6 @@ export function IntercessionSubmissionsClient({
                 <th className="px-4 py-3">Responder</th>
                 {form.isQuiz ? <th className="px-4 py-3">Marks</th> : null}
                 <th className="px-4 py-3">Submitted</th>
-                <th className="px-4 py-3">Result status</th>
                 <th className="px-4 py-3">Actions</th>
               </tr>
             </thead>
@@ -307,9 +309,6 @@ export function IntercessionSubmissionsClient({
                         {submission.submittedDate}
                       </div>
                       <div className="text-xs text-gray-400">{submission.submittedTime}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <ResultStatus releaseGrade={form.releaseGrade} isReleased={submission.isReleased} />
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-2">
@@ -362,7 +361,7 @@ export function IntercessionSubmissionsClient({
                 ))
               ) : (
                 <tr>
-                  <td colSpan={form.isQuiz ? 6 : 5} className="px-4 py-12 text-center">
+                  <td colSpan={form.isQuiz ? 5 : 4} className="px-4 py-12 text-center">
                     <FileText className="mx-auto mb-3 size-10 text-slate-300" aria-hidden="true" />
                     <p className="font-medium text-slate-500">No submissions yet</p>
                     <p className="text-sm text-slate-400">Be the first to submit this form</p>
@@ -537,31 +536,10 @@ function initials(name: string) {
     .toUpperCase();
 }
 
-function resultStatusLabel(releaseGrade: string, isReleased = false) {
-  if (releaseGrade === "never") return "Private";
-  if (releaseGrade === "later") return isReleased ? "Released" : "Pending review";
-  return "Available";
-}
-
 function resultModeLabel(releaseGrade: string) {
   if (releaseGrade === "never") return "Private";
   if (releaseGrade === "later") return "Pending Review";
   return "Auto-graded";
-}
-
-function ResultStatus({ releaseGrade, isReleased = false }: { releaseGrade: string; isReleased?: boolean }) {
-  if (releaseGrade === "never") {
-    return <span className="inline-flex rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600">Private</span>;
-  }
-
-  if (releaseGrade === "later") {
-    if (isReleased) {
-      return <span className="inline-flex rounded-full bg-green-50 px-2 py-1 text-xs text-green-700">Released</span>;
-    }
-    return <span className="inline-flex rounded-full bg-amber-50 px-2 py-1 text-xs text-amber-700">Pending review</span>;
-  }
-
-  return <span className="inline-flex rounded-full bg-blue-50 px-2 py-1 text-xs text-blue-700">Available</span>;
 }
 
 function StatCard({ label, value, tone }: { label: string; value: string | number; tone: "blue" | "green" | "purple" }) {
