@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { parseQuestionImages } from "@/lib/intercession-question-images";
 import { parseIntercessionFormQuestions, parseIntercessionVisitorDetails, visibleIntercessionQuestions, type IntercessionFormAnswer } from "@/lib/intercession-form-domain";
 
+const INTERCESSION_TIME_ZONE = "Africa/Kigali";
+
 function formatDateTime(date: Date) {
   return new Intl.DateTimeFormat("en", {
     month: "short",
@@ -12,6 +14,7 @@ function formatDateTime(date: Date) {
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: INTERCESSION_TIME_ZONE,
   }).format(date);
 }
 
@@ -28,6 +31,7 @@ function formatDate(date: Date) {
     month: "short",
     day: "2-digit",
     year: "numeric",
+    timeZone: INTERCESSION_TIME_ZONE,
   }).format(date);
 }
 
@@ -35,6 +39,7 @@ function formatTime(date: Date) {
   return new Intl.DateTimeFormat("en", {
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: INTERCESSION_TIME_ZONE,
   }).format(date);
 }
 

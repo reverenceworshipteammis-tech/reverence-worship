@@ -12,6 +12,7 @@ function formatDate(date: Date) {
     month: "short",
     day: "2-digit",
     year: "numeric",
+    timeZone: "Africa/Kigali",
   }).format(date);
 }
 

@@ -98,6 +98,7 @@ function formatDateTime(date: Date) {
   return new Intl.DateTimeFormat("en", {
     dateStyle: "medium",
     timeStyle: "short",
+    timeZone: "Africa/Kigali",
   }).format(date);
 }
 
