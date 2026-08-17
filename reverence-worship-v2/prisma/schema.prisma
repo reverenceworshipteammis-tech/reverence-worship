@@ -899,12 +899,14 @@ model SpiritualForm {
   questions   Json     @default("[]")
   settings    Json     @default("{}")
   isActive    Boolean  @default(true) @map("is_active")
+  version     Int      @default(1)
   createdBy   Int?     @map("created_by")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  creator     User?            @relation("CreatedSpiritualForms", fields: [createdBy], references: [id], onDelete: SetNull)
-  submissions FormSubmission[]
+  creator       User?              @relation("CreatedSpiritualForms", fields: [createdBy], references: [id], onDelete: SetNull)
+  submissions   FormSubmission[]
+  summaryShares FormSummaryShare[]
 
   @@index([createdBy])
   @@index([isActive])
@@ -912,26 +914,57 @@ model SpiritualForm {
 }
 
 model FormSubmission {
-  id           Int       @id @default(autoincrement())
-  formId       Int       @map("form_id")
-  userId       Int?      @map("user_id")
-  respondentName String?  @map("respondent_name")
-  respondentDetails Json? @map("respondent_details")
-  answers      Json      @default("{}")
-  manualGrades Json?     @map("manual_grades")
-  score        Float?
-  isReleased   Boolean   @default(false) @map("is_released")
-  releasedAt   DateTime? @map("released_at")
-  submittedAt  DateTime  @default(now()) @map("submitted_at")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  id                Int       @id @default(autoincrement())
+  formId            Int       @map("form_id")
+  userId            Int?      @map("user_id")
+  respondentName    String?   @map("respondent_name")
+  respondentDetails Json?     @map("respondent_details")
+  answers           Json      @default("{}")
+  questionSnapshot  Json?     @map("question_snapshot")
+  formVersion       Int       @default(1) @map("form_version")
+  manualGrades      Json?     @map("manual_grades")
+  score             Float?
+  isReleased        Boolean   @default(false) @map("is_released")
+  releasedAt        DateTime? @map("released_at")
+  submittedAt       DateTime  @default(now()) @map("submitted_at")
+  startedAt         DateTime? @map("started_at")
+  completionSeconds Int?      @map("completion_seconds")
+  reviewedAt        DateTime? @map("reviewed_at")
+  reviewedBy        Int?      @map("reviewed_by")
+  deletedAt         DateTime? @map("deleted_at")
+  deletedBy         Int?      @map("deleted_by")
+  editTokenHash     String?   @unique @map("edit_token_hash")
+  editUntil         DateTime? @map("edit_until")
+  receiptSentAt     DateTime? @map("receipt_sent_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
 
   form SpiritualForm @relation(fields: [formId], references: [id], onDelete: Cascade)
   user User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([formId])
   @@index([userId])
+  @@index([formId, deletedAt])
+  @@index([formId, submittedAt])
   @@map("form_submissions")
+}
+
+model FormSummaryShare {
+  id           Int       @id @default(autoincrement())
+  formId       Int       @map("form_id")
+  tokenHash    String    @unique @map("token_hash")
+  createdBy    Int?      @map("created_by")
+  expiresAt    DateTime? @map("expires_at")
+  revokedAt    DateTime? @map("revoked_at")
+  hideIdentity Boolean   @default(true) @map("hide_identity")
+  questionIds  Json?     @map("question_ids")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  form SpiritualForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@index([formId, revokedAt])
+  @@index([expiresAt])
+  @@map("form_summary_shares")
 }
 
 model Announcement {

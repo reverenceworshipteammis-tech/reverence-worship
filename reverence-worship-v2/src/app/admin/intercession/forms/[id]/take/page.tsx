@@ -62,11 +62,11 @@ export default async function TakeIntercessionFormPage({
   }
 
   const formSettings = parseIntercessionFormSettings(form.settings);
-  const availability = intercessionFormAvailability(formSettings, form.isActive, await withDatabaseRetry(() => prisma.formSubmission.count({ where: { formId } }), 3));
+  const availability = intercessionFormAvailability(formSettings, form.isActive, await withDatabaseRetry(() => prisma.formSubmission.count({ where: { formId, deletedAt: null } }), 3));
   if (availability) return <div className="mx-auto max-w-2xl p-6"><div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-center text-amber-900">{availability}</div></div>;
 
   const existingSubmission = await withDatabaseRetry(() => prisma.formSubmission.findFirst({
-    where: { formId, userId: user.id },
+    where: { formId, userId: user.id, deletedAt: null },
     select: { id: true },
   }), 3);
 

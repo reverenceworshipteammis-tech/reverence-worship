@@ -56,6 +56,8 @@ export function IntercessionTakeForm({
   onPreviewClose,
   backHref = "/admin/intercession",
   requireRespondentName = false,
+  editToken = "",
+  initialValues,
 }: {
   form: { id: number; title: string; description: string | null };
   questions: TakeQuestion[];
@@ -66,12 +68,15 @@ export function IntercessionTakeForm({
   onPreviewClose?: () => void;
   backHref?: string;
   requireRespondentName?: boolean;
+  editToken?: string;
+  initialValues?: Record<string, string | string[]>;
 }) {
   const [message, setMessage] = useState<string | null>(null);
   const [messageIsError, setMessageIsError] = useState(false);
   const [answered, setAnswered] = useState<Record<string, boolean>>({});
   const [answersByQuestionId, setAnswersByQuestionId] = useState<Record<string, IntercessionFormAnswer>>({});
-  const [submitted, setSubmitted] = useState<{ message: string; redirectUrl: string; score: number | null } | null>(null);
+  const [submitted, setSubmitted] = useState<{ message: string; redirectUrl: string; score: number | null; editUrl: string } | null>(null);
+  const startedAt = useRef(new Date().toISOString());
   const [draftStatus, setDraftStatus] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const draftRestored = useRef(false);
@@ -98,18 +103,19 @@ export function IntercessionTakeForm({
     ? Math.round((answeredVisibleQuestions / answerableQuestions.length) * 100)
     : 0;
 
-  const draftKey = `intercession-response-draft:${form.id}`;
+  const draftKey = `intercession-response-draft:${form.id}:${editToken ? "edit" : "new"}`;
   useEffect(() => {
     if (preview || form.id <= 0 || draftRestored.current) return;
     draftRestored.current = true;
     try {
       const saved = localStorage.getItem(draftKey);
-      if (!saved || !formRef.current) return;
-      const values = JSON.parse(saved) as Record<string, string | string[]>;
+      if ((!initialValues && !saved) || !formRef.current) return;
+      const values = initialValues ?? JSON.parse(saved!) as Record<string, string | string[]>;
       const restoredAnswers: Record<string, IntercessionFormAnswer> = {};
       Object.entries(values).forEach(([name, savedValue]) => {
         const fields = formRef.current?.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`[name="${CSS.escape(name)}"]`);
         fields?.forEach((field) => {
+          if (field instanceof HTMLInputElement && field.type === "file") return;
           if (field instanceof HTMLInputElement && ["radio", "checkbox"].includes(field.type)) field.checked = Array.isArray(savedValue) ? savedValue.includes(field.value) : savedValue === field.value;
           else if (!Array.isArray(savedValue)) field.value = savedValue;
           if (field instanceof HTMLTextAreaElement) { field.style.height = "auto"; field.style.height = `${field.scrollHeight}px`; }
@@ -129,9 +135,9 @@ export function IntercessionTakeForm({
         if (match) result[`question_${match[1]}`] = Boolean(result[`question_${match[1]}`]) || (Array.isArray(value) ? value.length > 0 : Boolean(value));
         return result;
       }, {}));
-      setDraftStatus("Draft restored");
+      setDraftStatus(initialValues ? "Response loaded" : "Draft restored");
     } catch { localStorage.removeItem(draftKey); }
-  }, [draftKey, form.id, preview, questions]);
+  }, [draftKey, form.id, initialValues, preview, questions]);
 
   function saveDraft(target: HTMLFormElement) {
     if (preview || form.id <= 0) return;
@@ -167,6 +173,8 @@ export function IntercessionTakeForm({
       return;
     }
     const formData = new FormData(event.currentTarget);
+    formData.set("startedAt", startedAt.current);
+    if (editToken) formData.set("editToken", editToken);
     let respondentKey = localStorage.getItem(`intercession-respondent:${form.id}`);
     if (!respondentKey) { respondentKey = crypto.randomUUID(); localStorage.setItem(`intercession-respondent:${form.id}`, respondentKey); }
     formData.set("respondentKey", respondentKey);
@@ -176,12 +184,12 @@ export function IntercessionTakeForm({
       setMessageIsError(!result.ok);
       if (result.ok) {
         localStorage.removeItem(draftKey);
-        setSubmitted({ message: result.message, redirectUrl: result.redirectUrl ?? "", score: result.score ?? null });
+        setSubmitted({ message: result.message, redirectUrl: result.redirectUrl ?? "", score: result.score ?? null, editUrl: result.editUrl ?? "" });
       }
     });
   }
 
-  if (!preview && alreadySubmitted && limitOneResponse) {
+  if (!preview && !editToken && alreadySubmitted && limitOneResponse) {
     return (
       <TakeShell title="Already Submitted" tone="yellow">
         <Info className="mx-auto mb-3 size-10 text-yellow-500" aria-hidden="true" />
@@ -193,7 +201,7 @@ export function IntercessionTakeForm({
     );
   }
 
-  if (submitted) return <TakeShell title="Response recorded" tone="green"><CheckCircle2 className="mx-auto mb-3 size-10 text-emerald-600" aria-hidden="true" /><p className="mb-2 text-slate-700">{submitted.message}</p>{submitted.score !== null ? <p className="mb-4 text-lg font-bold text-blue-700">Score: {submitted.score}%</p> : null}<Link href={submitted.redirectUrl || backHref} className="inline-flex rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">Continue</Link></TakeShell>;
+  if (submitted) return <TakeShell title={editToken ? "Response updated" : "Response recorded"} tone="green"><CheckCircle2 className="mx-auto mb-3 size-10 text-emerald-600" aria-hidden="true" /><p className="mb-2 text-slate-700">{submitted.message}</p>{submitted.score !== null ? <p className="mb-4 text-lg font-bold text-blue-700">Score: {submitted.score}%</p> : null}<div className="flex flex-wrap justify-center gap-2">{submitted.editUrl ? <Link href={submitted.editUrl} className="inline-flex rounded-lg border border-blue-200 bg-blue-50 px-5 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-100">Edit response</Link> : null}<Link href={submitted.redirectUrl || backHref} className="inline-flex rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">Continue</Link></div></TakeShell>;
 
   return (
     <div className={embedded ? "w-full" : "mx-auto max-w-5xl px-3 py-5 sm:px-4 sm:py-8"}>
@@ -253,6 +261,7 @@ export function IntercessionTakeForm({
                     question={question}
                     index={index}
                     displayNumber={settings.show_question_numbers ? answerableQuestions.findIndex((item) => item.index === index) + 1 : null}
+                    editing={Boolean(editToken)}
                     onAnswered={(value) => setAnswered((current) => ({ ...current, [`question_${index}`]: value }))}
                     onAnswerChange={(value) => setAnswersByQuestionId((current) => ({ ...current, [question.id]: value }))}
                   />}
@@ -366,12 +375,14 @@ function QuestionField({
   question,
   index,
   displayNumber,
+  editing,
   onAnswered,
   onAnswerChange,
 }: {
   question: TakeQuestion;
   index: number;
   displayNumber: number | null;
+  editing: boolean;
   onAnswered: (answered: boolean) => void;
   onAnswerChange: (answer: IntercessionFormAnswer) => void;
 }) {
@@ -484,7 +495,7 @@ function QuestionField({
         <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-dashed border-blue-300 bg-blue-50/50 p-4 text-sm text-blue-800 transition hover:bg-blue-50">
           <Paperclip className="size-5" aria-hidden="true" />
           <span><strong>Choose a file</strong><span className="block text-xs text-slate-500">JPG, PNG, WebP, PDF, DOC, or DOCX · 10 MB maximum</span></span>
-          <input type="file" name={name} required={question.required} accept="image/jpeg,image/png,image/webp,application/pdf,.doc,.docx" onChange={(event) => { const file = event.target.files?.[0]; onAnswered(Boolean(file)); onAnswerChange(file?.name ?? ""); }} className="sr-only" />
+          <input type="file" name={name} required={question.required && !editing} accept="image/jpeg,image/png,image/webp,application/pdf,.doc,.docx" onChange={(event) => { const file = event.target.files?.[0]; onAnswered(Boolean(file)); onAnswerChange(file?.name ?? ""); }} className="sr-only" />
         </label>
       )}
       {!["short_answer", "paragraph", "multiple_choice", "checkboxes", "dropdown", "linear_scale", "rating", "multiple_choice_grid", "checkbox_grid", "date", "time", "file_upload"].includes(question.type) && (

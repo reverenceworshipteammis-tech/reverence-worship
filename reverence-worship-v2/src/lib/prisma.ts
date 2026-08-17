@@ -3,11 +3,10 @@ import { PrismaClient } from "@/generated/prisma/client";
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
-  prismaClientConstructor?: typeof PrismaClient;
   prismaSchemaVersion?: string;
 };
 
-const PRISMA_SCHEMA_VERSION = "2026-08-13-form-submission-respondent-details";
+const PRISMA_SCHEMA_VERSION = "2026-08-17-form-response-management";
 
 function databaseUrl() {
   const value = process.env.DATABASE_URL;
@@ -42,11 +41,10 @@ const adapter = new PrismaPg({
 });
 
 const existingPrisma = globalForPrisma.prisma;
-
-export const prisma =
+const canReusePrisma =
   existingPrisma &&
-  globalForPrisma.prismaClientConstructor === PrismaClient &&
   globalForPrisma.prismaSchemaVersion === PRISMA_SCHEMA_VERSION &&
+  "formSummaryShare" in existingPrisma &&
   "familyMember" in existingPrisma &&
   "actionPlan" in existingPrisma &&
   "actionPlanTask" in existingPrisma &&
@@ -74,12 +72,14 @@ export const prisma =
   "passwordResetToken" in existingPrisma &&
   "probation" in existingPrisma &&
   "probationExtension" in existingPrisma &&
-  "probationDecisionRequest" in existingPrisma
+  "probationDecisionRequest" in existingPrisma;
+
+export const prisma =
+  canReusePrisma
     ? existingPrisma
     : new PrismaClient({ adapter });
 
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
-  globalForPrisma.prismaClientConstructor = PrismaClient;
   globalForPrisma.prismaSchemaVersion = PRISMA_SCHEMA_VERSION;
 }

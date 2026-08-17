@@ -606,7 +606,12 @@ export function AdminShell({
         </button>
       </nav>
 
-      <ProfileModal profile={user.profile} open={profileOpen} onClose={closeProfile} />
+      <ProfileModal
+        profile={user.profile}
+        open={profileOpen}
+        canEdit={user.permissions.includes("*") || user.permissions.includes("profile.edit")}
+        onClose={closeProfile}
+      />
     </main>
   );
 }

@@ -100,6 +100,7 @@ type SettingsTab = "quiz" | "responses" | "presentation" | "defaults" | "advance
 
 type BuilderSettings = {
   is_quiz: boolean;
+  accepting_responses: boolean;
   release_grade: string;
   default_points: number;
   allow_view_response: boolean;
@@ -112,6 +113,10 @@ type BuilderSettings = {
   is_published: boolean;
   allow_partial_points: boolean;
   notify_on_submit: boolean;
+  send_response_receipt: boolean;
+  allow_response_editing: boolean;
+  response_edit_hours: number;
+  response_closed_message: string;
   notify_user_on_review: boolean;
   allow_export: boolean;
   include_timestamps: boolean;
@@ -276,6 +281,7 @@ function cloneQuestion(question: BuilderQuestion): BuilderQuestion {
 
 const defaultSettings: BuilderSettings = {
   is_quiz: false,
+  accepting_responses: true,
   release_grade: "never",
   default_points: 1,
   allow_view_response: true,
@@ -288,6 +294,10 @@ const defaultSettings: BuilderSettings = {
   is_published: false,
   allow_partial_points: true,
   notify_on_submit: false,
+  send_response_receipt: false,
+  allow_response_editing: false,
+  response_edit_hours: 24,
+  response_closed_message: "This form is no longer accepting responses.",
   notify_user_on_review: false,
   allow_export: true,
   include_timestamps: true,
@@ -1625,6 +1635,7 @@ function SettingsPanel({
         )}
         {activeTab === "responses" && (
           <>
+            <SettingToggle title="Accept responses" description="Temporarily open or close this form without archiving it" checked={Boolean(settings.accepting_responses)} onChange={(value) => update("accepting_responses", value)} />
             <SettingToggle title="User can view their responses" description="Allow users to see their submitted answers" checked={Boolean(settings.allow_view_response)} onChange={(value) => update("allow_view_response", value)} />
             <SettingToggle title="Limit to 1 response" description="Prevent users from submitting more than once" checked={Boolean(settings.limit_one_response)} onChange={(value) => update("limit_one_response", value)} />
             <SettingToggle title="Require login to submit" description="Only authenticated users can submit responses" checked={Boolean(settings.require_login)} onChange={(value) => update("require_login", value)} />
@@ -1636,6 +1647,7 @@ function SettingsPanel({
               <p className="mt-1 text-xs text-gray-500">Use 0 for no response limit.</p>
             </div>
             <label className="block border-b border-gray-100 py-3 text-sm font-medium text-gray-800">Thank-you message<textarea value={settings.thank_you_message} onChange={(event) => update("thank_you_message", event.target.value)} rows={3} className="mt-2 w-full resize-y rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+            <label className="block border-b border-gray-100 py-3 text-sm font-medium text-gray-800">Closed-form message<textarea value={settings.response_closed_message} onChange={(event) => update("response_closed_message", event.target.value)} rows={2} className="mt-2 w-full resize-y rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
             <label className="block border-b border-gray-100 py-3 text-sm font-medium text-gray-800">Continue to (optional)<input value={settings.redirect_url} onChange={(event) => update("redirect_url", event.target.value)} placeholder="/admin/intercession" className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /><span className="mt-1 block text-xs font-normal text-gray-500">Enter a safe path inside this system, beginning with /.</span></label>
           </>
         )}
@@ -1657,8 +1669,11 @@ function SettingsPanel({
           <>
             <SettingToggle title="Notify admin on submission" description="Send notification when someone submits" checked={Boolean(settings.notify_on_submit)} onChange={(value) => update("notify_on_submit", value)} />
             <SettingToggle title="Notify user when reviewed" description="Notify when score is released" checked={Boolean(settings.notify_user_on_review)} onChange={(value) => update("notify_user_on_review", value)} />
-            <SettingToggle title="Allow CSV export" description="Admin can export responses" checked={Boolean(settings.allow_export)} onChange={(value) => update("allow_export", value)} />
-            <SettingToggle title="Include timestamps in export" description="Show submission time in CSV" checked={Boolean(settings.include_timestamps)} onChange={(value) => update("include_timestamps", value)} />
+            <SettingToggle title="Send response receipt" description="Send members or guests with an email address a submission receipt" checked={Boolean(settings.send_response_receipt)} onChange={(value) => update("send_response_receipt", value)} />
+            <SettingToggle title="Allow response editing" description="Give respondents a secure, time-limited edit link after submission" checked={Boolean(settings.allow_response_editing)} onChange={(value) => update("allow_response_editing", value)} />
+            {settings.allow_response_editing ? <SettingNumber title="Editing window (hours)" value={Number(settings.response_edit_hours)} onChange={(value) => update("response_edit_hours", Math.min(720, Math.max(1, value)))} /> : null}
+            <SettingToggle title="Allow response export" description="Admin can download CSV or Excel workbooks" checked={Boolean(settings.allow_export)} onChange={(value) => update("allow_export", value)} />
+            <SettingToggle title="Include timestamps in export" description="Show submission time in downloaded files" checked={Boolean(settings.include_timestamps)} onChange={(value) => update("include_timestamps", value)} />
           </>
         )}
       </div>

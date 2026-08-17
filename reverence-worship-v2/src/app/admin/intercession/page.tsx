@@ -73,11 +73,11 @@ export default async function IntercessionPage({ searchParams }: { searchParams:
       orderBy: { createdAt: "desc" },
       include: {
         creator: { select: { name: true, email: true } },
-        _count: { select: { submissions: true } },
+        _count: { select: { submissions: { where: { deletedAt: null } } } },
       },
     }) : Promise.resolve([]),
     canLoadForms ? prisma.formSubmission.findMany({
-      where: { userId: user.id },
+      where: { userId: user.id, deletedAt: null },
       orderBy: { submittedAt: "desc" },
       include: {
         form: true,
@@ -92,6 +92,7 @@ export default async function IntercessionPage({ searchParams }: { searchParams:
       : Promise.resolve([]),
     canLoadReports
       ? prisma.formSubmission.findMany({
+          where: { deletedAt: null },
           select: {
             id: true,
             formId: true,

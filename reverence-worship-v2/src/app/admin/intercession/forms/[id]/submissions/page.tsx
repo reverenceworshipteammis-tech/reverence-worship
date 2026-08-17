@@ -2,8 +2,9 @@ import { notFound } from "next/navigation";
 import { IntercessionSubmissionsClient } from "@/components/intercession-submissions-client";
 import { getUserPermissionSet, permissionSetHas, requireAnyPermission } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { parseQuestionImages } from "@/lib/intercession-question-images";
-import { parseIntercessionFormQuestions, parseIntercessionVisitorDetails, visibleIntercessionQuestions, type IntercessionFormAnswer } from "@/lib/intercession-form-domain";
+import { parseIntercessionFormSettings, parseIntercessionVisitorDetails } from "@/lib/intercession-form-domain";
+import { normalizeIntercessionResponseValue } from "@/lib/intercession-response-summary";
+import { intercessionAnswerForQuestion, intercessionAnswerText, intercessionResponseQuestionCatalog, intercessionSubmissionQuestions } from "@/lib/intercession-response-data";
 
 const INTERCESSION_TIME_ZONE = "Africa/Kigali";
 
@@ -16,14 +17,6 @@ function formatDateTime(date: Date) {
     minute: "2-digit",
     timeZone: INTERCESSION_TIME_ZONE,
   }).format(date);
-}
-
-function parseObject(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
-}
-
-function parseQuestions(value: unknown): Array<Record<string, unknown>> {
-  return Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item)) : [];
 }
 
 function formatDate(date: Date) {
@@ -41,20 +34,6 @@ function formatTime(date: Date) {
     minute: "2-digit",
     timeZone: INTERCESSION_TIME_ZONE,
   }).format(date);
-}
-
-function answerText(value: unknown): string {
-  if (Array.isArray(value)) return value.map((item) => String(item)).join(", ");
-  if (value && typeof value === "object") {
-    return Object.entries(value as Record<string, unknown>)
-      .map(([key, item]) => {
-        const row = key.replace(/^question_\d+_/, "Row ");
-        return `${row}: ${answerText(item)}`;
-      })
-      .join("; ");
-  }
-  if (value === null || value === undefined || value === "") return "-";
-  return String(value);
 }
 
 function manualGradeFor(value: unknown, questionIndex: number) {
@@ -112,25 +91,37 @@ export default async function IntercessionFormSubmissionsPage({
           },
         },
       },
+      summaryShares: {
+        where: { revokedAt: null },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, expiresAt: true, createdAt: true },
+      },
     },
   });
 
   if (!form) {
     notFound();
   }
+  const activity = (await prisma.activityLog.findMany({ where: { module: "intercession" }, orderBy: { createdAt: "desc" }, take: 200, include: { user: { select: { name: true } } } }))
+    .filter((entry) => Number((entry.metadata as Record<string, unknown> | null)?.formId) === formId)
+    .slice(0, 30);
 
-  const settings = parseObject(form.settings);
-  const questions = parseQuestions(form.questions);
-  const domainQuestions = parseIntercessionFormQuestions(form.questions);
-  const releaseGrade = String(settings.release_grade ?? "immediately");
-  const isQuiz = Boolean(settings.is_quiz);
-  const reviewQuestions = questions
-    .map((question, index) => ({
-      index,
-      label: String(question.label ?? question.title ?? `Question ${index + 1}`),
-      type: String(question.type ?? "short_answer"),
-      points: Number(question.points ?? 1),
-      images: parseQuestionImages(question.images),
+  const settings = parseIntercessionFormSettings(form.settings);
+  const releaseGrade = settings.release_grade;
+  const isQuiz = settings.is_quiz;
+  const reviewQuestions = intercessionResponseQuestionCatalog(form.questions, form.submissions.map((submission) => submission.questionSnapshot))
+    .map((question, catalogIndex) => ({
+      id: question.id,
+      index: catalogIndex,
+      label: question.label || `Question ${catalogIndex + 1}`,
+      type: question.type,
+      points: question.points,
+      images: question.images,
+      options: question.options,
+      rows: question.rows,
+      columns: question.columns,
+      min: question.min,
+      max: question.max,
     }))
     .filter((question) => question.type !== "title_section" && question.type !== "section_break");
 
@@ -138,23 +129,54 @@ export default async function IntercessionFormSubmissionsPage({
     <IntercessionSubmissionsClient
       form={{
         id: form.id,
+        generatedAtIso: new Date().toISOString(),
+        createdAtIso: form.createdAt.toISOString(),
         title: form.title,
         description: form.description,
+        version: form.version,
+        isActive: form.isActive,
+        isPublished: settings.is_published,
+        acceptingResponses: settings.accepting_responses,
+        requireLogin: settings.require_login,
+        notifyOnSubmit: settings.notify_on_submit,
+        sendResponseReceipt: settings.send_response_receipt,
+        allowResponseEditing: settings.allow_response_editing,
+        responseEditHours: settings.response_edit_hours,
+        responseClosedMessage: settings.response_closed_message,
+        canManageResponses: permissionSetHas(permissions, "intercession", "manage-forms") || permissionSetHas(permissions, "intercession", "edit-forms"),
+        activeSummaryShares: form.summaryShares.map((share) => ({ id: share.id, expiresAt: share.expiresAt?.toISOString() ?? null, createdAt: share.createdAt.toISOString() })),
+        summaryQuestions: reviewQuestions.map((question) => ({ id: question.id, label: question.label })),
+        responseActivity: activity.map((entry) => ({ id: entry.id, action: entry.action, actor: entry.user?.name ?? "System / respondent", createdAt: formatDateTime(entry.createdAt) })),
         isQuiz,
         releaseGrade,
         canDeleteSubmissions: permissionSetHas(permissions, "intercession", "delete-forms"),
         canGradeSubmissions: permissionSetHas(permissions, "intercession", "view-results"),
-        allowExport: settings.allow_export !== false,
-        includeTimestamps: settings.include_timestamps !== false,
-        exportQuestions: reviewQuestions.map((question) => ({ questionIndex: question.index, question: question.label })),
+        allowExport: settings.allow_export,
+        includeTimestamps: settings.include_timestamps,
+        exportQuestions: reviewQuestions.map((question) => ({ questionId: question.id, questionIndex: question.index, question: question.label })),
+        analyticsQuestions: reviewQuestions.map((question) => ({
+          questionId: question.id,
+          questionIndex: question.index,
+          label: question.label,
+          type: question.type,
+          options: question.options,
+          rows: question.rows,
+          columns: question.columns,
+          min: question.min,
+          max: question.max,
+        })),
       }}
       submissions={form.submissions.map((submission) => {
-        const answers = parseObject(submission.answers);
+        const submissionQuestions = intercessionSubmissionQuestions(submission.questionSnapshot, form.questions);
         const visitorDetails = parseIntercessionVisitorDetails(submission.respondentDetails);
         const visitorEmail = visitorDetails.find((detail) => detail.type === "email");
-        const answersByQuestionId = Object.fromEntries(domainQuestions.map((question, index) => [question.id, answers[`question_${index}`] as IntercessionFormAnswer]));
-        const visibleIndexes = new Set(visibleIntercessionQuestions(domainQuestions, answersByQuestionId).map((item) => item.index));
-        const visibleReviewQuestions = reviewQuestions.filter((question) => visibleIndexes.has(question.index));
+        const visibleReviewQuestions = reviewQuestions.flatMap((catalogQuestion) => {
+          const questionIndex = submissionQuestions.findIndex((question) => question.id === catalogQuestion.id);
+          if (questionIndex < 0) return [];
+          const question = submissionQuestions[questionIndex];
+          const value = intercessionAnswerForQuestion(submission.answers, submissionQuestions, question.id);
+          return value === null ? [] : [{ ...catalogQuestion, ...question, questionIndex, value }];
+        });
         const totalPoints = visibleReviewQuestions.reduce((sum, question) => sum + (question.type === "file_upload" ? 0 : Number.isFinite(question.points) && question.points > 0 ? question.points : 1), 0);
         return {
           id: submission.id,
@@ -163,22 +185,29 @@ export default async function IntercessionFormSubmissionsPage({
           respondentType: submission.user ? "Member" : "Guest",
           visitorDetails,
           submittedAt: formatDateTime(submission.submittedAt),
+          submittedAtIso: submission.submittedAt.toISOString(),
           submittedDate: formatDate(submission.submittedAt),
           submittedTime: formatTime(submission.submittedAt),
           score: submission.score,
           earnedPoints: submission.score === null ? null : totalEarnedPoints(submission.manualGrades) ?? 0,
           totalPoints: Math.round(totalPoints * 100) / 100,
           isReleased: submission.isReleased,
+          reviewedAt: submission.reviewedAt ? formatDateTime(submission.reviewedAt) : null,
+          deletedAt: submission.deletedAt ? formatDateTime(submission.deletedAt) : null,
+          formVersion: submission.formVersion,
+          completionSeconds: submission.completionSeconds,
           releasedAt: submission.releasedAt ? formatDateTime(submission.releasedAt) : null,
           answers: visibleReviewQuestions.map((question) => ({
-            questionIndex: question.index,
+            questionId: question.id,
+            questionIndex: question.questionIndex,
             question: question.label,
             type: question.type,
             points: Number.isFinite(question.points) && question.points > 0 ? question.points : 1,
             images: question.images,
-            answer: answerText(answers[`question_${question.index}`]),
-            correct: manualGradeFor(submission.manualGrades, question.index),
-            earnedPoints: earnedPointsFor(submission.manualGrades, question.index),
+            answer: intercessionAnswerText(question.value),
+            responseValue: normalizeIntercessionResponseValue(question.value),
+            correct: manualGradeFor(submission.manualGrades, question.questionIndex),
+            earnedPoints: earnedPointsFor(submission.manualGrades, question.questionIndex),
           })),
         };
       })}

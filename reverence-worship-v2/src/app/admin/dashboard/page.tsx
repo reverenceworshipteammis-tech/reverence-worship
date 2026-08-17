@@ -527,10 +527,10 @@ async function DashboardTodoPanel({ userId, includeProbation = false }: { userId
   const [forms, submissions, countRows] = await withDatabaseRetry(() => Promise.all([
     prisma.spiritualForm.findMany({
       where: { isActive: true },
-      select: { id: true, settings: true, _count: { select: { submissions: true } } },
+      select: { id: true, settings: true, _count: { select: { submissions: { where: { deletedAt: null } } } } },
     }),
     prisma.formSubmission.findMany({
-      where: { userId },
+      where: { userId, deletedAt: null },
       select: { formId: true },
     }),
     prisma.$queryRaw<Array<{

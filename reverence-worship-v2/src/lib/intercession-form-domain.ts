@@ -127,6 +127,7 @@ export type IntercessionFormQuestion = {
 
 export type IntercessionFormSettings = {
   is_published: boolean;
+  accepting_responses: boolean;
   is_quiz: boolean;
   release_grade: string;
   allow_partial_points: boolean;
@@ -138,6 +139,10 @@ export type IntercessionFormSettings = {
   show_question_numbers: boolean;
   default_required: boolean;
   notify_on_submit: boolean;
+  send_response_receipt: boolean;
+  allow_response_editing: boolean;
+  response_edit_hours: number;
+  response_closed_message: string;
   notify_user_on_review: boolean;
   allow_export: boolean;
   include_timestamps: boolean;
@@ -192,6 +197,7 @@ export function parseIntercessionFormSettings(value: unknown): IntercessionFormS
   const maxResponses = Number(item.max_responses ?? 0);
   return {
     is_published: Boolean(item.is_published), is_quiz: Boolean(item.is_quiz),
+    accepting_responses: item.accepting_responses !== false,
     release_grade: typeof item.release_grade === "string" ? item.release_grade : "never",
     allow_partial_points: item.allow_partial_points !== false,
     allow_view_response: item.allow_view_response !== false,
@@ -200,6 +206,11 @@ export function parseIntercessionFormSettings(value: unknown): IntercessionFormS
     show_progress_bar: Boolean(item.show_progress_bar), shuffle_questions: Boolean(item.shuffle_questions),
     show_question_numbers: item.show_question_numbers !== false, default_required: Boolean(item.default_required),
     notify_on_submit: Boolean(item.notify_on_submit), notify_user_on_review: Boolean(item.notify_user_on_review),
+    send_response_receipt: Boolean(item.send_response_receipt), allow_response_editing: Boolean(item.allow_response_editing),
+    response_edit_hours: Math.min(720, Math.max(1, Number.isInteger(Number(item.response_edit_hours)) ? Number(item.response_edit_hours) : 24)),
+    response_closed_message: typeof item.response_closed_message === "string" && item.response_closed_message.trim()
+      ? item.response_closed_message.trim().slice(0, 500)
+      : "This form is no longer accepting responses.",
     allow_export: item.allow_export !== false, include_timestamps: item.include_timestamps !== false,
     submission_opens_at: typeof item.submission_opens_at === "string" ? item.submission_opens_at : "",
     submission_deadline: typeof item.submission_deadline === "string" ? item.submission_deadline : "",
@@ -242,6 +253,7 @@ export function intercessionLifecycleDate(value: string, endOfDay = false) {
 export function intercessionFormAvailability(settings: IntercessionFormSettings, isActive: boolean, submissionCount: number, now = new Date()) {
   if (!isActive) return "This form is archived.";
   if (!settings.is_published) return "This form is not published.";
+  if (!settings.accepting_responses) return settings.response_closed_message;
   if (settings.submission_opens_at) {
     const opens = intercessionLifecycleDate(settings.submission_opens_at);
     if (opens && now < opens) return `This form opens on ${opens.toLocaleString("en-RW", { timeZone: "Africa/Kigali" })}.`;
