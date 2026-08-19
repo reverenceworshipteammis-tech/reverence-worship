@@ -6,7 +6,7 @@ const globalForPrisma = globalThis as unknown as {
   prismaSchemaVersion?: string;
 };
 
-const PRISMA_SCHEMA_VERSION = "2026-08-17-form-response-management";
+const PRISMA_SCHEMA_VERSION = "2026-08-19-database-pool-resilience";
 
 function databaseUrl() {
   const value = process.env.DATABASE_URL;
@@ -24,15 +24,15 @@ function databaseUrl() {
 }
 
 function databasePoolMax() {
-  const configured = Number(process.env.DATABASE_POOL_MAX ?? 2);
-  if (!Number.isInteger(configured)) return 2;
+  const configured = Number(process.env.DATABASE_POOL_MAX ?? 5);
+  if (!Number.isInteger(configured)) return 5;
   return Math.min(10, Math.max(1, configured));
 }
 
 const adapter = new PrismaPg({
   connectionString: databaseUrl(),
-  // A small pool avoids opening several expensive remote connections during
-  // the first authenticated request. The Neon endpoint already provides pooling.
+  // Leave enough local capacity for the parallel queries used by authenticated
+  // layouts while keeping the Neon pooled endpoint's connection usage bounded.
   max: databasePoolMax(),
   connectionTimeoutMillis: 30_000,
   idleTimeoutMillis: 60_000,

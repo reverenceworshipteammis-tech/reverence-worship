@@ -404,7 +404,6 @@ export function AdminShell({
               </div>
               <div className="user-info-text min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-gray-800">{user.name}</p>
-                <p className="truncate text-xs text-gray-400">{user.email}</p>
               </div>
               <form action="/logout" method="post">
                 <button
@@ -534,7 +533,6 @@ export function AdminShell({
                 >
                   <div className="hidden text-right sm:block">
                     <p className="text-sm font-semibold text-gray-800">{user.name}</p>
-                    <p className="text-xs text-gray-500">{user.email}</p>
                   </div>
                   <div className="relative flex size-10 items-center justify-center overflow-hidden rounded-full bg-gray-200">
                     {user.avatarUrl ? (

@@ -451,7 +451,7 @@ export function DisciplineClient({
   const filteredSessionUsers = eligibleAttendanceUsers.filter((user) => {
     const query = sessionUserSearch.trim().toLowerCase();
     if (!query) return true;
-    return user.name.toLowerCase().includes(query) || user.email.toLowerCase().includes(query);
+    return user.name.toLowerCase().includes(query);
   });
   const sessionDraftSummary = {
     present: attendanceDrafts.filter((draft) => draft.present).length,
@@ -687,7 +687,7 @@ export function DisciplineClient({
     const normalized = permissionSearch.trim().toLowerCase();
     const matchesSearch =
       !normalized ||
-      [permission.userName, permission.userEmail, permission.reason, permission.type].some((value) => value.toLowerCase().includes(normalized));
+      [permission.userName, permission.reason, permission.type].some((value) => value.toLowerCase().includes(normalized));
     const matchesStatus = permissionStatus === "all" || permission.status === permissionStatus;
     const matchesFrom = !permissionFrom || permission.endDateValue >= permissionFrom;
     const matchesTo = !permissionTo || permission.startDateValue <= permissionTo;
@@ -709,7 +709,7 @@ export function DisciplineClient({
   const filteredPermissionUsers = users.filter((user) => {
     const normalized = permissionUserSearch.trim().toLowerCase();
     if (normalized.length < 2) return false;
-    return [user.name, user.email].some((value) => value.toLowerCase().includes(normalized));
+    return user.name.toLowerCase().includes(normalized);
   });
 
   function exportPermissionsCsv() {
@@ -797,7 +797,7 @@ export function DisciplineClient({
   }
 
   function viewRecentPermission(permission: RecentPermission) {
-    setPermissionSearch(permission.userEmail);
+    setPermissionSearch(permission.userName);
     setPermissionStatus("all");
     setPermissionFrom("");
     setPermissionTo("");
@@ -989,7 +989,7 @@ export function DisciplineClient({
     if (!disciplineDrafts.some((draft) => draft.userId === user.id)) return false;
     const normalized = disciplineSearch.trim().toLowerCase();
     if (!normalized) return true;
-    return [user.name, user.email].some((value) => value.toLowerCase().includes(normalized));
+    return user.name.toLowerCase().includes(normalized);
   });
 
   function openDisciplineSession(date = new Date().toISOString().slice(0, 10), title = "") {
@@ -1648,7 +1648,6 @@ export function DisciplineClient({
                           <StatusBadge status={permission.status} />
                           <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{permission.type}</span>
                         </div>
-                        <p className="text-sm text-gray-500">{permission.userEmail}</p>
                         <p className="mt-2 text-sm text-gray-700">{permission.reason}</p>
                         <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-gray-500">
                           <div className="rounded-lg bg-gray-50 p-2"><span className="block">From</span><strong className="text-gray-800">{permission.startDate}</strong></div>
@@ -2467,7 +2466,6 @@ export function DisciplineClient({
                         <div className="mb-1.5 flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <p className="truncate text-sm font-semibold text-gray-900">{user.name}</p>
-                            <p className="truncate text-[11px] text-gray-500">{user.email}</p>
                           </div>
                           <div className="shrink-0 rounded-md bg-gray-50 px-2 py-1 text-center text-[11px] font-semibold text-gray-700">
                             <span className="block leading-none text-gray-500">Pts</span>
@@ -2540,7 +2538,6 @@ export function DisciplineClient({
                     <div className="flex items-start justify-between">
                       <div>
                         <h4 className="font-semibold text-gray-800">{permission.userName}</h4>
-                        <p className="text-xs text-gray-500">{permission.userEmail}</p>
                       </div>
                       <StatusBadge status={permission.status} />
                     </div>
@@ -2600,7 +2597,7 @@ export function DisciplineClient({
                         setPermissionUserSearch(event.target.value);
                         setSelectedPermissionUser(null);
                       }}
-                      placeholder="Search by name or email..."
+                      placeholder="Search by name..."
                       className={`h-10 w-full rounded-lg border bg-white py-2 pl-9 pr-10 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 ${
                         !selectedPermissionUser && permissionUserSearch.length > 0 && permissionUserSearch.length < 2 ? "border-red-300" : "border-gray-300"
                       }`}
@@ -2638,7 +2635,6 @@ export function DisciplineClient({
                             </span>
                             <span className="min-w-0 flex-1">
                               <span className="block truncate text-sm font-medium text-gray-800">{user.name}</span>
-                              <span className="block truncate text-xs text-gray-500">{user.email}</span>
                             </span>
                           </button>
                         ))
@@ -2646,7 +2642,7 @@ export function DisciplineClient({
                         <div className="px-3 py-4 text-center text-sm text-gray-500">
                           <XCircle className="mx-auto mb-1 size-5 text-gray-300" />
                           <p>No users found</p>
-                          <p className="mt-1 text-xs">Try a different name or email</p>
+                          <p className="mt-1 text-xs">Try a different name</p>
                         </div>
                       )}
                     </div>
@@ -2832,7 +2828,7 @@ export function DisciplineClient({
                   </div>
                   <div className="relative mt-2">
                     <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
-                    <input value={disciplineSearch} onChange={(event) => setDisciplineSearch(event.target.value)} placeholder="Search member by name or email..." className="w-full rounded-lg border border-gray-300 py-1.5 pl-9 pr-3 text-sm focus:border-blue-500 focus:ring-blue-500" />
+                    <input value={disciplineSearch} onChange={(event) => setDisciplineSearch(event.target.value)} placeholder="Search member by name..." className="w-full rounded-lg border border-gray-300 py-1.5 pl-9 pr-3 text-sm focus:border-blue-500 focus:ring-blue-500" />
                   </div>
                 </div>
 

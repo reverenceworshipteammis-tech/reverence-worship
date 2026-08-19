@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { ArrowLeft, BarChart3, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Download, FileSpreadsheet, FileText, List, RotateCcw, Search, UserCheck, Users, X, XCircle, type LucideIcon } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowUp, ArrowUpDown, BarChart3, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Download, FileSpreadsheet, FileText, List, RotateCcw, Search, UserCheck, Users, X, XCircle, type LucideIcon } from "lucide-react";
 import { bulkUpdateFormSubmissions, deleteFormSubmission, permanentlyDeleteFormSubmission, restoreFormSubmission, saveSubmissionManualReview, setAllSubmissionRelease, setSubmissionRelease } from "@/app/admin/intercession/actions";
 import { useAppDialog } from "@/components/app-dialog-provider";
 import { ActionNotice } from "@/components/action-notice";
@@ -20,7 +20,6 @@ import { useDialogFocusTrap } from "@/hooks/use-dialog-focus-trap";
 type SubmissionRow = {
   id: number;
   memberName: string;
-  memberEmail: string;
   respondentType: "Member" | "Guest";
   visitorDetails: IntercessionVisitorDetail[];
   submittedAt: string;
@@ -50,6 +49,8 @@ type SubmissionRow = {
   }>;
 };
 
+type SubmissionSortField = "responder" | "type" | "submitted";
+
 export function IntercessionSubmissionsClient({
   form,
   submissions,
@@ -73,6 +74,8 @@ export function IntercessionSubmissionsClient({
   const [dateTo, setDateTo] = useState("");
   const [questionFilter, setQuestionFilter] = useState("");
   const [answerFilter, setAnswerFilter] = useState("");
+  const [sortField, setSortField] = useState<SubmissionSortField>("submitted");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [reviewSubmission, setReviewSubmission] = useState<SubmissionRow | null>(null);
   const [answerDrilldown, setAnswerDrilldown] = useState<IntercessionChartSelection | null>(null);
   const [notice, setNotice] = useState<{ ok: boolean; message: string } | null>(null);
@@ -93,7 +96,7 @@ export function IntercessionSubmissionsClient({
     return submissions.filter((submission) => {
       const matchesSearch =
         !normalized ||
-        [submission.memberName, submission.memberEmail, ...submission.visitorDetails.flatMap((detail) => Array.isArray(detail.value) ? detail.value : [detail.value]), ...submission.answers.map((answer) => answer.answer)].some((value) => value.toLowerCase().includes(normalized));
+        [submission.memberName, ...submission.visitorDetails.flatMap((detail) => Array.isArray(detail.value) ? detail.value : [detail.value]), ...submission.answers.map((answer) => answer.answer)].some((value) => value.toLowerCase().includes(normalized));
       const score = submission.score ?? 0;
       const matchesScore = !form.isQuiz || scoreFilter === "all" ||
         (scoreFilter === "high" && score >= 80) ||
@@ -114,8 +117,14 @@ export function IntercessionSubmissionsClient({
       const selectedAnswer = questionFilter ? submission.answers.find((answer) => answer.questionId === questionFilter)?.answer ?? "" : submission.answers.map((answer) => answer.answer).join(" ");
       const matchesAnswer = !answerFilter.trim() || selectedAnswer.toLowerCase().includes(answerFilter.trim().toLowerCase());
       return matchesSearch && matchesScore && matchesRelease && matchesRespondent && matchesReview && matchesDeleted && matchesDate && matchesAnswer;
+    }).sort((first, second) => {
+      let comparison = 0;
+      if (sortField === "responder") comparison = first.memberName.localeCompare(second.memberName, undefined, { sensitivity: "base" });
+      if (sortField === "type") comparison = first.respondentType.localeCompare(second.respondentType, undefined, { sensitivity: "base" });
+      if (sortField === "submitted") comparison = new Date(first.submittedAtIso).getTime() - new Date(second.submittedAtIso).getTime();
+      return (comparison || first.id - second.id) * (sortDirection === "asc" ? 1 : -1);
     });
-  }, [submissions, query, scoreFilter, releaseFilter, respondentFilter, reviewFilter, deletionFilter, dateFrom, dateTo, questionFilter, answerFilter, form.isQuiz, form.releaseGrade]);
+  }, [submissions, query, scoreFilter, releaseFilter, respondentFilter, reviewFilter, deletionFilter, dateFrom, dateTo, questionFilter, answerFilter, sortField, sortDirection, form.isQuiz, form.releaseGrade]);
 
   const averageScore = useMemo(() => {
     const scored = activeSubmissions.map((submission) => submission.score).filter((score): score is number => typeof score === "number");
@@ -134,6 +143,17 @@ export function IntercessionSubmissionsClient({
     setDateTo("");
     setQuestionFilter("");
     setAnswerFilter("");
+    setSortField("submitted");
+    setSortDirection("desc");
+  }
+
+  function changeSort(field: SubmissionSortField) {
+    if (sortField === field) {
+      setSortDirection((current) => current === "asc" ? "desc" : "asc");
+      return;
+    }
+    setSortField(field);
+    setSortDirection(field === "submitted" ? "desc" : "asc");
   }
 
   function runSubmissionAction(action: () => Promise<{ ok: boolean; message: string }>) {
@@ -164,12 +184,11 @@ export function IntercessionSubmissionsClient({
       ...question,
       header: `Q${question.questionIndex + 1}: ${intercessionRichTextToPlainText(question.question).replace(/\s+/g, " ").trim()}`,
     }));
-    const header = ["#", "Responder", "Type", "Email", ...visitorColumns.map(([, label]) => label), ...(form.includeTimestamps ? ["Submitted Date", "Submitted Time"] : []), ...answerColumns.map((question) => question.header), ...(form.isQuiz ? ["Marks", "Score"] : [])];
+    const header = ["#", "Responder", "Type", ...visitorColumns.map(([, label]) => label), ...(form.includeTimestamps ? ["Submitted Date", "Submitted Time"] : []), ...answerColumns.map((question) => question.header), ...(form.isQuiz ? ["Marks", "Score"] : [])];
     const rows = filteredSubmissions.map((submission) => [
       String(submissions.indexOf(submission) + 1),
       submission.memberName,
       submission.respondentType,
-      submission.memberEmail,
       ...visitorColumns.map(([fieldId]) => {
         const value = submission.visitorDetails.find((detail) => detail.fieldId === fieldId)?.value;
         return Array.isArray(value) ? value.join(", ") : value ?? "";
@@ -276,7 +295,7 @@ export function IntercessionSubmissionsClient({
                 <input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Name, email, detail, or answer"
+                  placeholder="Name, detail, or answer"
                   className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
               </div>
@@ -392,9 +411,10 @@ export function IntercessionSubmissionsClient({
               <tr>
                 <th className="w-10 px-4 py-3"><input type="checkbox" aria-label="Select all visible submissions" checked={filteredSubmissions.length > 0 && filteredSubmissions.every((submission) => selectedSubmissionIds.has(submission.id))} onChange={(event) => setSelectedSubmissionIds((current) => { const next = new Set(current); filteredSubmissions.forEach((submission) => event.target.checked ? next.add(submission.id) : next.delete(submission.id)); return next; })} className="size-4 rounded border-slate-300 text-blue-600" /></th>
                 <th className="px-4 py-3">#</th>
-                <th className="px-4 py-3">Responder</th>
+                <th className="px-4 py-3" aria-sort={sortField === "responder" ? sortDirection === "asc" ? "ascending" : "descending" : "none"}><SortHeader label="Responder" active={sortField === "responder"} direction={sortDirection} onClick={() => changeSort("responder")} /></th>
+                <th className="w-24 px-4 py-3" aria-sort={sortField === "type" ? sortDirection === "asc" ? "ascending" : "descending" : "none"}><SortHeader label="Type" active={sortField === "type"} direction={sortDirection} onClick={() => changeSort("type")} /></th>
                 {form.isQuiz ? <th className="px-4 py-3">Marks</th> : null}
-                <th className="px-4 py-3">Submitted</th>
+                <th className="px-4 py-3" aria-sort={sortField === "submitted" ? sortDirection === "asc" ? "ascending" : "descending" : "none"}><SortHeader label="Submitted" active={sortField === "submitted"} direction={sortDirection} onClick={() => changeSort("submitted")} /></th>
                 <th className="px-4 py-3">Actions</th>
               </tr>
             </thead>
@@ -402,19 +422,17 @@ export function IntercessionSubmissionsClient({
               {filteredSubmissions.length ? (
                 filteredSubmissions.map((submission, index) => (
                   <tr key={submission.id} className={submission.deletedAt ? "bg-red-50/40 hover:bg-red-50" : "hover:bg-slate-50"}>
-                    <td className="px-4 py-3"><input type="checkbox" aria-label={`Select ${submission.memberName}`} checked={selectedSubmissionIds.has(submission.id)} onChange={(event) => setSelectedSubmissionIds((current) => { const next = new Set(current); if (event.target.checked) next.add(submission.id); else next.delete(submission.id); return next; })} className="size-4 rounded border-slate-300 text-blue-600" /></td>
-                    <td className="px-4 py-3 text-gray-400">{index + 1}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-2.5"><input type="checkbox" aria-label={`Select ${submission.memberName}`} checked={selectedSubmissionIds.has(submission.id)} onChange={(event) => setSelectedSubmissionIds((current) => { const next = new Set(current); if (event.target.checked) next.add(submission.id); else next.delete(submission.id); return next; })} className="size-4 rounded border-slate-300 text-blue-600" /></td>
+                    <td className="px-4 py-2.5 text-gray-400">{index + 1}</td>
+                    <td className="px-4 py-2.5">
                       <div className="flex items-center gap-2">
                         <div className="flex size-8 items-center justify-center rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 text-xs font-medium text-white">
                           {initials(submission.memberName)}
                         </div>
-                        <div>
-                          <div className="font-medium text-gray-800">{submission.memberName}</div>
-                          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-gray-400"><span className={`rounded-full px-1.5 py-0.5 font-semibold ${submission.respondentType === "Guest" ? "bg-amber-50 text-amber-700" : "bg-blue-50 text-blue-700"}`}>{submission.respondentType}</span><span>{submission.memberEmail || "No email"}</span></div>
-                        </div>
+                        <div className="font-medium text-gray-800">{submission.memberName}</div>
                       </div>
                     </td>
+                    <td className="px-4 py-2.5"><span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${submission.respondentType === "Guest" ? "bg-amber-50 text-amber-700" : "bg-blue-50 text-blue-700"}`}>{submission.respondentType}</span></td>
                     {form.isQuiz ? (
                       <td className="px-4 py-3">
                         {submission.earnedPoints === null ? (
@@ -427,12 +445,11 @@ export function IntercessionSubmissionsClient({
                         )}
                       </td>
                     ) : null}
-                    <td className="px-4 py-3 text-gray-600">
-                      <div className="flex items-center gap-1">
+                    <td className="whitespace-nowrap px-4 py-2.5 text-gray-600">
+                      <div className="flex items-center gap-1.5">
                         <CalendarDays className="size-3.5 text-gray-400" aria-hidden="true" />
-                        {submission.submittedDate}
+                        <span>{submission.submittedDate}, {submission.submittedTime}</span>
                       </div>
-                      <div className="text-xs text-gray-400">{submission.submittedTime}</div>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-2">
@@ -487,7 +504,7 @@ export function IntercessionSubmissionsClient({
                 ))
               ) : (
                 <tr>
-                  <td colSpan={form.isQuiz ? 6 : 5} className="px-4 py-12 text-center">
+                  <td colSpan={form.isQuiz ? 7 : 6} className="px-4 py-12 text-center">
                     <FileText className="mx-auto mb-3 size-10 text-slate-300" aria-hidden="true" />
                     <p className="font-medium text-slate-500">No submissions yet</p>
                     <p className="text-sm text-slate-400">Be the first to submit this form</p>
@@ -531,6 +548,11 @@ function ResponseViewTab({ active, icon: Icon, label, onClick }: { active: boole
       {label}
     </button>
   );
+}
+
+function SortHeader({ label, active, direction, onClick }: { label: string; active: boolean; direction: "asc" | "desc"; onClick: () => void }) {
+  const Icon = !active ? ArrowUpDown : direction === "asc" ? ArrowUp : ArrowDown;
+  return <button type="button" onClick={onClick} className={`inline-flex items-center gap-1.5 rounded px-1 py-0.5 transition hover:bg-slate-100 hover:text-slate-800 ${active ? "text-blue-700" : "text-gray-500"}`}>{label}<Icon className="size-3.5" aria-hidden="true" /></button>;
 }
 
 function FilterSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: Array<[string, string]> }) {
@@ -582,7 +604,6 @@ function IndividualResponseView({ submissions, selectedId, onSelectedId, onRevie
   const normalizedSearch = search.trim().toLowerCase();
   const filteredSubmissions = submissions.filter((submission) => !normalizedSearch || [
     submission.memberName,
-    submission.memberEmail,
     submission.respondentType,
     ...submission.visitorDetails.flatMap((detail) => Array.isArray(detail.value) ? detail.value : [detail.value]),
   ].some((value) => value.toLowerCase().includes(normalizedSearch)));
@@ -600,7 +621,7 @@ function IndividualResponseView({ submissions, selectedId, onSelectedId, onRevie
             <label className="relative mt-3 block">
               <span className="sr-only">Search submitted members</span>
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-              <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name or email" className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+              <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by name" className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
             </label>
           </div>
           <div className="max-h-[65vh] overflow-y-auto p-2" role="list" aria-label="Submitted members">
@@ -608,7 +629,7 @@ function IndividualResponseView({ submissions, selectedId, onSelectedId, onRevie
               const selected = item.id === selectedId;
               return (
                 <button key={item.id} type="button" role="listitem" aria-current={selected ? "true" : undefined} onClick={() => onSelectedId(item.id)} className={`mb-1 w-full rounded-xl border px-3 py-3 text-left transition last:mb-0 ${selected ? "border-blue-300 bg-blue-50 ring-2 ring-blue-100" : "border-transparent hover:border-slate-200 hover:bg-slate-50"}`}>
-                  <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-bold text-slate-900">{item.memberName}</p><p className="mt-0.5 truncate text-xs text-slate-500">{item.memberEmail || item.respondentType}</p></div><span className={`mt-0.5 size-2 shrink-0 rounded-full ${selected ? "bg-blue-600" : "bg-emerald-500"}`} aria-hidden="true" /></div>
+                  <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-bold text-slate-900">{item.memberName}</p><p className="mt-0.5 truncate text-xs text-slate-500">{item.respondentType}</p></div><span className={`mt-0.5 size-2 shrink-0 rounded-full ${selected ? "bg-blue-600" : "bg-emerald-500"}`} aria-hidden="true" /></div>
                   <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-slate-400"><span>{item.respondentType}</span><span>{item.submittedDate}</span></div>
                 </button>
               );
@@ -619,7 +640,7 @@ function IndividualResponseView({ submissions, selectedId, onSelectedId, onRevie
         {submission ? (
           <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex flex-col gap-4 border-b border-slate-200 pb-4 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0"><button type="button" onClick={() => onSelectedId(null)} className="mb-2 text-xs font-semibold text-blue-700 hover:underline lg:hidden">Back to all responses</button><h2 className="text-lg font-bold text-slate-900">{submission.memberName}</h2><p className="truncate text-sm text-slate-500">{submission.memberEmail || "No email"} · {submission.respondentType}</p><div className="mt-2 text-sm text-slate-500"><p>{submission.submittedAt}</p><p>Completed in {submission.completionSeconds === null ? "unknown time" : formatDuration(submission.completionSeconds)} · Form v{submission.formVersion}</p></div></div>
+              <div className="min-w-0"><button type="button" onClick={() => onSelectedId(null)} className="mb-2 text-xs font-semibold text-blue-700 hover:underline lg:hidden">Back to all responses</button><h2 className="text-lg font-bold text-slate-900">{submission.memberName}</h2><p className="truncate text-sm text-slate-500">{submission.respondentType}</p><div className="mt-2 text-sm text-slate-500"><p>{submission.submittedAt}</p><p>Completed in {submission.completionSeconds === null ? "unknown time" : formatDuration(submission.completionSeconds)} · Form v{submission.formVersion}</p></div></div>
               <div className="flex shrink-0 flex-wrap gap-2"><PrintButton label="Print response" /><button type="button" onClick={() => onReview(submission)} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Open review</button></div>
             </div>
             <div className="mt-4 space-y-3">{submission.answers.map((answer) => <section key={answer.questionId} className="rounded-xl border border-slate-200 p-4"><h3 className="font-semibold text-slate-900"><IntercessionRichText value={answer.question} /></h3><div className="mt-2 whitespace-pre-wrap rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">{answer.answer}</div></section>)}</div>
@@ -643,7 +664,7 @@ function AnswerDrilldownModal({ selection, submissions, onClose, onOpenSubmissio
     <div className="fixed inset-0 z-[125] overflow-y-auto bg-slate-950/50 px-3 py-6">
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="answer-drilldown-title" className="mx-auto max-w-xl overflow-hidden rounded-2xl bg-white shadow-2xl">
         <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4"><div className="min-w-0"><p className="text-xs font-bold uppercase tracking-wide text-blue-600">Selected answer</p><h2 id="answer-drilldown-title" className="mt-1 text-lg font-bold text-slate-900">{selection.answerLabel}</h2>{selection.rowLabel ? <p className="mt-1 text-sm text-slate-500">{selection.rowLabel}</p> : null}<p className="mt-1 text-xs text-slate-400">{selection.questionLabel}</p></div><button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Close"><X className="size-5" aria-hidden="true" /></button></header>
-        <div className="max-h-[65vh] overflow-y-auto p-3"><p className="px-2 pb-2 text-sm font-semibold text-slate-600">{matching.length} {matching.length === 1 ? "respondent" : "respondents"}</p>{matching.length ? <div className="space-y-1">{matching.map((submission) => <button key={submission.id} type="button" onClick={() => onOpenSubmission(submission.id)} className="flex w-full items-center justify-between gap-3 rounded-xl border border-transparent px-3 py-3 text-left transition hover:border-blue-200 hover:bg-blue-50"><div className="min-w-0"><p className="truncate text-sm font-bold text-slate-900">{submission.memberName}</p><p className="truncate text-xs text-slate-500">{submission.memberEmail || submission.respondentType}</p></div><div className="shrink-0 text-right"><p className="text-xs font-semibold text-blue-700">View response</p><p className="mt-0.5 text-[11px] text-slate-400">{submission.submittedDate}</p></div></button>)}</div> : <div className="rounded-xl border border-dashed border-slate-200 py-10 text-center"><Users className="mx-auto size-8 text-slate-300" aria-hidden="true" /><p className="mt-2 text-sm text-slate-500">No respondents matched this answer.</p></div>}</div>
+        <div className="max-h-[65vh] overflow-y-auto p-3"><p className="px-2 pb-2 text-sm font-semibold text-slate-600">{matching.length} {matching.length === 1 ? "respondent" : "respondents"}</p>{matching.length ? <div className="space-y-1">{matching.map((submission) => <button key={submission.id} type="button" onClick={() => onOpenSubmission(submission.id)} className="flex w-full items-center justify-between gap-3 rounded-xl border border-transparent px-3 py-3 text-left transition hover:border-blue-200 hover:bg-blue-50"><div className="min-w-0"><p className="truncate text-sm font-bold text-slate-900">{submission.memberName}</p><p className="truncate text-xs text-slate-500">{submission.respondentType}</p></div><div className="shrink-0 text-right"><p className="text-xs font-semibold text-blue-700">View response</p><p className="mt-0.5 text-[11px] text-slate-400">{submission.submittedDate}</p></div></button>)}</div> : <div className="rounded-xl border border-dashed border-slate-200 py-10 text-center"><Users className="mx-auto size-8 text-slate-300" aria-hidden="true" /><p className="mt-2 text-sm text-slate-500">No respondents matched this answer.</p></div>}</div>
         <footer className="flex justify-end border-t border-slate-200 px-5 py-3"><button type="button" onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Close</button></footer>
       </div>
     </div>

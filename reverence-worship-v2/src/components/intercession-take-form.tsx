@@ -189,6 +189,8 @@ export function IntercessionTakeForm({
     });
   }
 
+  if (submitted) return <TakeShell title={editToken ? "Response updated" : "Response recorded"} tone="green"><CheckCircle2 className="mx-auto mb-3 size-10 text-emerald-600" aria-hidden="true" /><p className="mb-2 text-slate-700">{submitted.message}</p>{submitted.score !== null ? <p className="mb-4 text-lg font-bold text-blue-700">Score: {submitted.score}%</p> : null}<div className="flex flex-wrap justify-center gap-2">{submitted.editUrl ? <Link href={submitted.editUrl} className="inline-flex rounded-lg border border-blue-200 bg-blue-50 px-5 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-100">Edit response</Link> : null}<Link href={submitted.redirectUrl || backHref} className="inline-flex rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">Continue</Link></div></TakeShell>;
+
   if (!preview && !editToken && alreadySubmitted && limitOneResponse) {
     return (
       <TakeShell title="Already Submitted" tone="yellow">
@@ -200,8 +202,6 @@ export function IntercessionTakeForm({
       </TakeShell>
     );
   }
-
-  if (submitted) return <TakeShell title={editToken ? "Response updated" : "Response recorded"} tone="green"><CheckCircle2 className="mx-auto mb-3 size-10 text-emerald-600" aria-hidden="true" /><p className="mb-2 text-slate-700">{submitted.message}</p>{submitted.score !== null ? <p className="mb-4 text-lg font-bold text-blue-700">Score: {submitted.score}%</p> : null}<div className="flex flex-wrap justify-center gap-2">{submitted.editUrl ? <Link href={submitted.editUrl} className="inline-flex rounded-lg border border-blue-200 bg-blue-50 px-5 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-100">Edit response</Link> : null}<Link href={submitted.redirectUrl || backHref} className="inline-flex rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">Continue</Link></div></TakeShell>;
 
   return (
     <div className={embedded ? "w-full" : "mx-auto max-w-5xl px-3 py-5 sm:px-4 sm:py-8"}>

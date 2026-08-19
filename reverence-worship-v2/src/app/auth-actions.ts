@@ -5,6 +5,7 @@ import { createHash, randomBytes } from "crypto";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createSession, requireUser } from "@/lib/auth";
+import { withDatabaseRetry } from "@/lib/database-retry";
 import { prisma } from "@/lib/prisma";
 import { getSystemSetting, isRegistrationEnabled, settingToNumber } from "@/lib/system-settings";
 import { notifyUsers, userIdsWithPermission } from "@/lib/notifications";
@@ -114,10 +115,16 @@ export async function loginAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid login details." };
   }
 
-  const user = await prisma.user.findUnique({
-    where: { email: parsed.data.email },
-    select: { id: true, passwordHash: true, status: true, mustChangePassword: true, sessionVersion: true },
-  });
+  let user;
+  try {
+    user = await withDatabaseRetry(() => prisma.user.findUnique({
+      where: { email: parsed.data.email },
+      select: { id: true, passwordHash: true, status: true, mustChangePassword: true, sessionVersion: true },
+    }), 3);
+  } catch (error) {
+    console.error("Login database lookup failed.", error);
+    return { error: "Unable to sign in right now. Please try again shortly." };
+  }
 
   if (!user?.passwordHash) {
     return { error: "Invalid email or password." };

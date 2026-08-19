@@ -87,7 +87,7 @@ export default async function IntercessionPage({ searchParams }: { searchParams:
       ? prisma.user.findMany({
           where: { status: "active", ...excludeSuperAdminUserWhere() },
           orderBy: { name: "asc" },
-          select: { id: true, name: true, email: true },
+          select: { id: true, name: true, membershipType: true },
         })
       : Promise.resolve([]),
     canLoadReports
@@ -211,7 +211,7 @@ export default async function IntercessionPage({ searchParams }: { searchParams:
         return {
           id: reportUser.id,
           name: reportUser.name,
-          email: reportUser.email,
+          membershipType: reportUser.membershipType,
           submissions: submitted.map((submission) => ({
             formId: submission.formId,
             score: submission.score,

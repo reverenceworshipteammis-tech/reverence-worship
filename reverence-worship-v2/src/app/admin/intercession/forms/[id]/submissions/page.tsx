@@ -87,7 +87,7 @@ export default async function IntercessionFormSubmissionsPage({
         orderBy: { submittedAt: "desc" },
         include: {
           user: {
-            select: { name: true, email: true },
+            select: { name: true },
           },
         },
       },
@@ -168,8 +168,7 @@ export default async function IntercessionFormSubmissionsPage({
       }}
       submissions={form.submissions.map((submission) => {
         const submissionQuestions = intercessionSubmissionQuestions(submission.questionSnapshot, form.questions);
-        const visitorDetails = parseIntercessionVisitorDetails(submission.respondentDetails);
-        const visitorEmail = visitorDetails.find((detail) => detail.type === "email");
+        const visitorDetails = parseIntercessionVisitorDetails(submission.respondentDetails).filter((detail) => detail.type !== "email");
         const visibleReviewQuestions = reviewQuestions.flatMap((catalogQuestion) => {
           const questionIndex = submissionQuestions.findIndex((question) => question.id === catalogQuestion.id);
           if (questionIndex < 0) return [];
@@ -181,7 +180,6 @@ export default async function IntercessionFormSubmissionsPage({
         return {
           id: submission.id,
           memberName: submission.user?.name ?? submission.respondentName ?? "Anonymous guest",
-          memberEmail: submission.user?.email ?? (typeof visitorEmail?.value === "string" ? visitorEmail.value : ""),
           respondentType: submission.user ? "Member" : "Guest",
           visitorDetails,
           submittedAt: formatDateTime(submission.submittedAt),

@@ -102,7 +102,7 @@ export function ParentDashboardClient({ accessDenied, parentName, familyName, ch
 
   const filteredContributions = useMemo(() => {
     const normalized = contributionSearch.trim().toLowerCase();
-    return contributions.filter((item) => !normalized || item.childName.toLowerCase().includes(normalized) || item.email.toLowerCase().includes(normalized));
+    return contributions.filter((item) => !normalized || item.childName.toLowerCase().includes(normalized));
   }, [contributions, contributionSearch]);
 
   const totals = useMemo(() => filteredContributions.reduce((acc, item) => ({
@@ -238,7 +238,6 @@ function ChildrenTab({ childRows, onView }: { childRows: ChildRow[]; onView: (ch
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <h4 className="font-bold text-gray-900">{child.name}</h4>
-                <p className="truncate text-xs text-gray-500">{child.email}</p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   <span className="inline-flex rounded-full bg-blue-100 px-2.5 py-1 text-xs capitalize text-blue-700">{child.role}</span>
                   <span className="inline-flex rounded-full bg-gray-100 px-2.5 py-1 text-xs capitalize text-gray-600">{child.membershipType}</span>
@@ -327,7 +326,7 @@ function ContributionsTab({ contributions, search, setSearch, totals }: { contri
           <tbody className="divide-y divide-gray-100">
             {contributions.map((item) => (
               <tr key={item.childId} className="hover:bg-gray-50">
-                <td className="px-4 py-3"><p className="font-medium text-gray-800">{item.childName}</p><p className="text-xs text-gray-500">{item.email}</p><span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-xs ${statusBadge(item.progress)}`}>{item.progress >= 100 ? "Completed" : item.progress > 0 ? "In Progress" : "Not Started"}</span></td>
+                <td className="px-4 py-3"><p className="font-medium text-gray-800">{item.childName}</p><span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-xs ${statusBadge(item.progress)}`}>{item.progress >= 100 ? "Completed" : item.progress > 0 ? "In Progress" : "Not Started"}</span></td>
                 {item.terms.map((term) => <td key={term.term} className="px-4 py-3 text-sm"><p><span className="text-gray-500">To pay:</span> <strong>{rwf(term.target)}</strong></p><p><span className="text-gray-500">Paid:</span> <strong className="text-green-700">{rwf(term.paid)}</strong></p></td>)}
                 <td className="px-4 py-3 text-sm"><strong className="text-purple-600">{rwf(item.totalPaid)}</strong><span className="text-gray-400"> / {rwf(item.annualAmount)}</span><p className="text-xs text-gray-500">{item.progress}% complete</p></td>
               </tr>
@@ -338,7 +337,7 @@ function ContributionsTab({ contributions, search, setSearch, totals }: { contri
       <div className="space-y-3 md:hidden">
         {contributions.map((item) => (
           <article key={item.childId} className="rounded-2xl border border-gray-200 p-3 shadow-sm">
-            <div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{item.childName}</p><p className="text-xs text-gray-500">{item.email}</p></div><span className={`rounded-full px-2.5 py-1 text-xs ${statusBadge(item.progress)}`}>{item.progress}%</span></div>
+            <div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{item.childName}</p></div><span className={`rounded-full px-2.5 py-1 text-xs ${statusBadge(item.progress)}`}>{item.progress}%</span></div>
             <div className="mt-3 rounded-xl bg-purple-50 px-3 py-2 text-sm"><strong className="text-purple-700">Paid {rwf(item.totalPaid)}</strong><span className="text-gray-400"> / {rwf(item.annualAmount)}</span></div>
             <div className="mt-3 rounded-xl border border-gray-100 px-2">{item.terms.map((term) => <div key={term.term} className="grid grid-cols-[4.5rem_1fr_1fr] gap-2 border-t border-gray-100 py-2 first:border-t-0"><strong>Term {term.term}</strong><span>{rwf(term.target)}</span><span className="text-right text-green-700">{rwf(term.paid)}</span></div>)}</div>
           </article>
@@ -357,7 +356,7 @@ function ChildModal({ child, onClose }: { child: ChildRow; onClose: () => void }
   const detailGroups = [
     {
       title: "Contact",
-      items: [["Email", child.email], ["Phone", child.phone || "N/A"], ["Emergency Name", child.emergencyName], ["Emergency Phone", child.emergencyPhone]],
+      items: [["Phone", child.phone || "N/A"], ["Emergency Name", child.emergencyName], ["Emergency Phone", child.emergencyPhone]],
     },
     {
       title: "Personal Details",

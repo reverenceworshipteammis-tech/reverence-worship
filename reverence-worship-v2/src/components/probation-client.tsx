@@ -29,7 +29,7 @@ import { DisciplineWorkspaceTabs } from "@/components/discipline-workspace-tabs"
 import type { ProbationMonitoring } from "@/lib/probation-data";
 import { addCalendarMonths, PROBATION_GOOD_THRESHOLD } from "@/lib/probation-rules";
 
-type Person = { id: number; name: string; email: string };
+type Person = { id: number; name: string };
 
 export type ProbationRow = {
   id: number;
@@ -217,7 +217,7 @@ export function ProbationClient({
 
   const filtered = useMemo(() => rows.filter((row) => {
     const needle = query.toLowerCase().trim();
-    const matchesQuery = !needle || `${row.member.name} ${row.member.email}`.toLowerCase().includes(needle);
+    const matchesQuery = !needle || row.member.name.toLowerCase().includes(needle);
     const matchesStatus =
       status === "all"
       || (status === "open" && isOpen(row))
@@ -230,7 +230,7 @@ export function ProbationClient({
     const needle = enrollMemberSearch.trim().toLowerCase();
     if (!needle) return eligibleMembers.slice(0, 8);
     return eligibleMembers
-      .filter((member) => `${member.name} ${member.email}`.toLowerCase().includes(needle))
+      .filter((member) => member.name.toLowerCase().includes(needle))
       .slice(0, 8);
   }, [eligibleMembers, enrollMemberSearch]);
 
@@ -335,7 +335,7 @@ export function ProbationClient({
         <div className="grid gap-3 sm:grid-cols-[1fr_220px]">
           <label className="relative">
             <Search className="pointer-events-none absolute left-3 top-3 size-4 text-slate-400" />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search member by name or email" className={`${inputClass} pl-9`} />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search member by name" className={`${inputClass} pl-9`} />
           </label>
           <select value={status} onChange={(event) => setStatus(event.target.value)} className={inputClass}>
             <option value="open">Open probation</option>
@@ -368,7 +368,6 @@ export function ProbationClient({
                 <tr key={row.id} className="align-top hover:bg-slate-50/70">
                   <td className="px-4 py-4">
                     <p className="font-bold text-slate-900">{row.member.name}</p>
-                    <p className="text-xs text-slate-500">{row.member.email}</p>
                     {pendingDecision(row) ? <p className="mt-1 text-xs font-semibold text-violet-700">Decision awaiting approval</p> : null}
                   </td>
                   <td className="px-4 py-4"><StateBadge row={row} /></td>
@@ -395,7 +394,7 @@ export function ProbationClient({
           {filtered.map((row) => (
             <div key={row.id} className="space-y-3 p-4">
               <div className="flex items-start justify-between gap-3">
-                <div><p className="font-bold text-slate-900">{row.member.name}</p><p className="text-xs text-slate-500">{row.member.email}</p></div>
+                <div><p className="font-bold text-slate-900">{row.member.name}</p></div>
                 <StateBadge row={row} />
               </div>
               <MonitoringGrid monitoring={row.monitoring} />
@@ -432,7 +431,7 @@ export function ProbationClient({
                     }}
                     onFocus={() => setMemberPickerOpen(true)}
                     onBlur={() => window.setTimeout(() => setMemberPickerOpen(false), 150)}
-                    placeholder="Search active member by name or email"
+                    placeholder="Search active member by name"
                     autoComplete="off"
                     className={`${inputClass} pl-9 pr-9`}
                     aria-label="Search active member"
@@ -463,7 +462,6 @@ export function ProbationClient({
                           }`}
                         >
                           <span className="block text-sm font-semibold text-slate-900">{member.name}</span>
-                          <span className="block text-xs text-slate-500">{member.email}</span>
                         </button>
                       )) : (
                         <p className="px-3 py-5 text-center text-sm text-slate-500">No eligible active member found.</p>
@@ -533,7 +531,7 @@ export function ProbationClient({
                 <select name="approverId" required className={inputClass} defaultValue="">
                   <option value="" disabled>Select an active administrator</option>
                   {decisionApprovers.map((approver) => (
-                    <option key={approver.id} value={approver.id}>{approver.name} — {approver.email}</option>
+                    <option key={approver.id} value={approver.id}>{approver.name}</option>
                   ))}
                 </select>
               </Field>
@@ -621,7 +619,7 @@ function Details({
       <div className="flex flex-col gap-3 rounded-xl bg-slate-50 p-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h3 className="text-lg font-black text-slate-900">{row.member.name}</h3>
-          <p className="text-sm text-slate-500">{row.member.email}{row.member.phone ? ` · ${row.member.phone}` : ""}</p>
+          {row.member.phone ? <p className="text-sm text-slate-500">{row.member.phone}</p> : null}
         </div>
         <StateBadge row={row} />
       </div>

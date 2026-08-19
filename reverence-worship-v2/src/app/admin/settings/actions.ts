@@ -216,7 +216,7 @@ export async function sendTestEmail() {
     "Email delivery is configured correctly. This test was requested from System Settings.",
   );
   return result.status === "sent"
-    ? { ok: true, message: `Test email sent successfully to ${user.email}.` }
+    ? { ok: true, message: "Test email sent successfully." }
     : { ok: false, message: result.error ?? "The test email was not sent." };
 }
 

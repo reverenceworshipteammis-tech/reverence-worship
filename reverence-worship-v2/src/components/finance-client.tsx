@@ -1464,7 +1464,7 @@ function FinanceContributionsTab({
     return users
       .filter((user) => user.familyYear === selectedYear || !user.familyYear)
       .filter((user) => familyFilter === "all" || user.familyId === Number(familyFilter))
-      .filter((user) => !query || user.name.toLowerCase().includes(query) || user.email.toLowerCase().includes(query))
+      .filter((user) => !query || user.name.toLowerCase().includes(query))
       .map((user) => {
         const contribution = contributionMap.get(user.id);
         const annualAmount = contribution?.annualAmount ?? 0;
@@ -1566,7 +1566,7 @@ function FinanceContributionsTab({
   }
 
   function exportCsv() {
-    const headers = ["Member", "Email", "Family", "Annual Target"];
+    const headers = ["Member", "Family", "Annual Target"];
     termNumbers.forEach((term) => {
       headers.push(`Term ${term} Target`, `Term ${term} Paid`);
     });
@@ -1576,7 +1576,6 @@ function FinanceContributionsTab({
       headers,
       ...sortedRows.map((row) => [
         row.user.name,
-        row.user.email,
         row.familyName ?? "",
         row.annualAmount,
         ...row.termRows.flatMap((term) => [term.target.toFixed(2), term.paid.toFixed(2)]),
@@ -1678,7 +1677,7 @@ function FinanceContributionsTab({
               setSearch(event.target.value);
               setRequestedPage(1);
             }}
-            placeholder="Search by member name or email..."
+            placeholder="Search by member name..."
             className="h-8 w-full rounded-lg border border-gray-300 px-9 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
           />
         </label>
@@ -1724,7 +1723,6 @@ function FinanceContributionsTab({
               <tr key={row.user.id}>
                 <td className="min-w-56 px-3 py-3">
                   <p className="font-medium text-gray-800">{row.user.name}</p>
-                  <p className="text-xs text-gray-500">{row.user.email}</p>
                   <p className={`mt-1 text-xs text-gray-400 ${row.familyName ? "" : "italic"}`}>{row.familyName ?? `No Family in ${selectedYear}`}</p>
                 </td>
                 {row.termRows.map((term) => (
@@ -1786,7 +1784,6 @@ function FinanceContributionsTab({
           <article key={row.user.id} className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
             <div className="bg-gray-50 px-3 py-2">
               <p className="font-medium text-gray-800">{row.user.name}</p>
-              <p className="truncate text-xs text-gray-500">{row.user.email}</p>
               <div className="mt-1 flex flex-wrap gap-2 text-xs text-gray-500">
                 <span className={row.familyName ? "" : "italic"}>{row.familyName ?? `No Family in ${selectedYear}`}</span>
               </div>
@@ -1890,7 +1887,7 @@ function FinancePaymentsTab({
       .filter((payment) => payment.status !== "voided")
       .filter((payment) => !fromDate || payment.paymentDateRaw >= fromDate)
       .filter((payment) => !toDate || payment.paymentDateRaw <= toDate)
-      .filter((payment) => !query || payment.userName.toLowerCase().includes(query) || payment.userEmail.toLowerCase().includes(query))
+      .filter((payment) => !query || payment.userName.toLowerCase().includes(query))
       .sort((firstPayment, secondPayment) => {
         let comparison = 0;
         if (sortField === "date") comparison = firstPayment.paymentDateRaw.localeCompare(secondPayment.paymentDateRaw) || firstPayment.createdAt.localeCompare(secondPayment.createdAt);
@@ -1990,7 +1987,7 @@ function FinancePaymentsTab({
           <label className="relative col-span-2 sm:col-auto">
             <span className="mb-1 block text-xs font-medium text-gray-600">Search Member</span>
             <Search className="absolute left-3 top-[34px] size-4 text-gray-400 sm:top-[31px]" aria-hidden="true" />
-            <input value={search} onChange={(event) => { setSearch(event.target.value); setRequestedPage(1); }} placeholder="Search by member name or email..." className="h-9 w-full rounded-lg border border-gray-300 px-9 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:h-8 sm:w-72" />
+            <input value={search} onChange={(event) => { setSearch(event.target.value); setRequestedPage(1); }} placeholder="Search by member name..." className="h-9 w-full rounded-lg border border-gray-300 px-9 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:h-8 sm:w-72" />
           </label>
           <button type="button" onClick={exportCsv} className="col-span-2 inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-green-600 px-3 text-xs font-medium text-white transition hover:bg-green-700 sm:h-8 sm:w-auto">
             <FileSpreadsheet className="size-4" aria-hidden="true" />
@@ -2518,7 +2515,7 @@ function FinanceSponsorsTab({ currentYear, sponsors, fromDate, toDate, setFromDa
         };
       })
       .filter((sponsor) => (sponsor.year >= fromYear && sponsor.year <= toYear) || sponsor.rangePayments.length > 0)
-      .filter((sponsor) => !query || sponsor.name.toLowerCase().includes(query) || (sponsor.email ?? "").toLowerCase().includes(query) || (sponsor.phone ?? "").toLowerCase().includes(query))
+      .filter((sponsor) => !query || sponsor.name.toLowerCase().includes(query) || (sponsor.phone ?? "").toLowerCase().includes(query))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [sponsors, fromDate, toDate, fromYear, toYear, search]);
 
@@ -2600,10 +2597,9 @@ function FinanceSponsorsTab({ currentYear, sponsors, fromDate, toDate, setFromDa
     }
 
     const lines = [
-      ["Sponsor", "Email", "Phone", "Commitment (RWF)", "Received (RWF)", "Remaining (RWF)", "Fund Type", "Status", "Notes"],
+      ["Sponsor", "Phone", "Commitment (RWF)", "Received (RWF)", "Remaining (RWF)", "Fund Type", "Status", "Notes"],
       ...filteredSponsors.map((sponsor) => [
         sponsor.name,
-        sponsor.email ?? "",
         sponsor.phone ?? "",
         sponsor.commitmentAmount,
         sponsor.rangeReceived,
@@ -2654,7 +2650,7 @@ function FinanceSponsorsTab({ currentYear, sponsors, fromDate, toDate, setFromDa
       <div className="max-w-xl">
         <label className="relative block">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" aria-hidden="true" />
-          <input value={search} onChange={(event) => { setSearch(event.target.value); setRequestedPage(1); }} placeholder="Search by sponsor name or email..." className="h-9 w-full rounded-lg border border-gray-300 px-9 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:h-8" />
+          <input value={search} onChange={(event) => { setSearch(event.target.value); setRequestedPage(1); }} placeholder="Search by sponsor name or phone..." className="h-9 w-full rounded-lg border border-gray-300 px-9 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:h-8" />
         </label>
         <p className="mt-1 text-xs text-gray-500">{filteredSponsors.length} sponsors found</p>
       </div>
@@ -2680,7 +2676,6 @@ function FinanceSponsorsTab({ currentYear, sponsors, fromDate, toDate, setFromDa
                 <tr key={sponsor.id} className="transition hover:bg-gray-50">
                   <td className="px-3 py-3">
                     <p className="font-medium text-gray-800">{sponsor.name} <span className="text-xs text-gray-400">({sponsor.year})</span></p>
-                    <p className="text-xs text-gray-500">{sponsor.email || "No email"}</p>
                   </td>
                   <td className="px-3 py-3 font-medium text-gray-700">{sponsor.commitmentAmount > 0 ? formatCurrency(sponsor.commitmentAmount) : "-"}</td>
                   <td className="px-3 py-3 font-medium text-green-600">{formatCurrency(sponsor.rangeReceived)}</td>
@@ -2880,7 +2875,7 @@ function MemberSearchField({
   const normalized = query.trim().toLowerCase();
   const matches = normalized
     ? users
-        .filter((item) => item.name.toLowerCase().includes(normalized) || item.email.toLowerCase().includes(normalized))
+        .filter((item) => item.name.toLowerCase().includes(normalized))
         .slice(0, 8)
     : [];
 
@@ -2896,7 +2891,7 @@ function MemberSearchField({
             onUserChange(null);
             setQuery(event.target.value);
           }}
-          placeholder="Search member by name or email..."
+          placeholder="Search member by name..."
           className="h-10 w-full rounded-lg border border-gray-300 bg-white px-9 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
           autoComplete="off"
         />
@@ -2922,7 +2917,6 @@ function MemberSearchField({
                 </span>
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-medium text-gray-800">{item.name}</span>
-                  <span className="block truncate text-xs text-gray-500">{item.email}</span>
                 </span>
               </button>
             )) : (
@@ -3064,7 +3058,6 @@ function DetailsModal({ row, payments, onClose }: { row: ContributionRow; paymen
       <div className="space-y-4">
         <div>
           <h3 className="font-semibold text-gray-900">{row.user.name}</h3>
-          <p className="text-sm text-gray-500">{row.user.email}</p>
         </div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           <InfoCard label="Annual Amount" value={formatCurrency(row.annualAmount)} tone="blue" />
@@ -3117,7 +3110,6 @@ function PaymentDetailsModal({ payment, onClose }: { payment: Payment; onClose: 
         <div className="border-b border-gray-100 pb-3">
           <p className="text-xs text-gray-500">Member</p>
           <p className="text-sm font-semibold text-gray-800">{payment.userName}</p>
-          <p className="text-xs text-gray-500">{payment.userEmail}</p>
         </div>
         <div className="grid grid-cols-2 gap-x-4 gap-y-3">
           <DetailItem label="Term" value={`Term ${payment.term ?? "-"}`} />
@@ -3385,8 +3377,7 @@ function ExpenseModal({
   const normalizedApproverSearch = approverSearch.trim().toLowerCase();
   const matchingApprovers = users.filter((user) => {
     if (!normalizedApproverSearch) return true;
-    return user.name.toLowerCase().includes(normalizedApproverSearch)
-      || user.email.toLowerCase().includes(normalizedApproverSearch);
+    return user.name.toLowerCase().includes(normalizedApproverSearch);
   });
 
   return (
@@ -3458,7 +3449,7 @@ function ExpenseModal({
               onKeyDown={(event) => {
                 if (event.key === "Escape") setApproverListOpen(false);
               }}
-              placeholder="Search approver by name or email..."
+              placeholder="Search approver by name..."
               className={`${fieldClass} pl-9 ${approverError ? "border-red-400 focus:border-red-500 focus:ring-red-100" : ""}`}
             />
           </div>
@@ -3473,14 +3464,13 @@ function ExpenseModal({
                   aria-selected={selectedApproverId === user.id}
                   onClick={() => {
                     setSelectedApproverId(user.id);
-                    setApproverSearch(`${user.name} - ${user.email}`);
+                    setApproverSearch(user.name);
                     setApproverError("");
                     setApproverListOpen(false);
                   }}
                   className={`block w-full rounded-md px-3 py-2 text-left transition hover:bg-blue-50 ${selectedApproverId === user.id ? "bg-blue-50" : ""}`}
                 >
                   <span className="block text-sm font-medium text-gray-800">{user.name}</span>
-                  <span className="block text-xs text-gray-500">{user.email}</span>
                 </button>
               ))}
               {!matchingApprovers.length && normalizedApproverSearch ? (

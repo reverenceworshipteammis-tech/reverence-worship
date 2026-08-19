@@ -116,7 +116,7 @@ export function AnnouncementsClient({
   const filteredUsers = useMemo(() => {
     const needle = userSearch.trim().toLowerCase();
     return users
-      .filter((user) => !needle || `${user.name} ${user.email}`.toLowerCase().includes(needle))
+      .filter((user) => !needle || user.name.toLowerCase().includes(needle))
       .slice(0, 12);
   }, [users, userSearch]);
   const selectedRoleLabels = roles.filter((role) => selectedRoles.includes(role.id)).map((role) => role.displayName);
@@ -409,14 +409,13 @@ export function AnnouncementsClient({
                     )}
                     <div className="relative">
                       <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-gray-400" />
-                      <input value={userSearch} onChange={(event) => setUserSearch(event.target.value)} placeholder="Search by name or email..." className="w-full rounded-lg border bg-gray-50 py-2 pl-8 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                      <input value={userSearch} onChange={(event) => setUserSearch(event.target.value)} placeholder="Search by name..." className="w-full rounded-lg border bg-gray-50 py-2 pl-8 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
                     </div>
                     <div className="mt-2 max-h-40 overflow-y-auto rounded-lg border bg-white shadow-lg">
                       {filteredUsers.map((user) => (
                         <label key={user.id} className="flex cursor-pointer items-center justify-between gap-3 border-b border-gray-100 px-3 py-2 last:border-0 hover:bg-gray-50">
                           <span>
                             <span className="block text-sm font-medium text-gray-800">{user.name}</span>
-                            <span className="block text-xs text-gray-500">{user.email}</span>
                           </span>
                           <input type="checkbox" checked={selectedUsers.includes(user.id)} onChange={() => toggleUser(user.id)} className="rounded border-gray-300" />
                         </label>
@@ -586,7 +585,6 @@ export function AnnouncementsClient({
                           </span>
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-sm font-semibold text-slate-900">{reader.name}</span>
-                            <span className="block truncate text-xs text-slate-500">{reader.email}</span>
                           </span>
                           <span className="shrink-0 text-right text-[11px] text-slate-400">
                             <span className="block font-medium text-emerald-700">Read</span>
@@ -610,7 +608,6 @@ export function AnnouncementsClient({
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-semibold text-slate-900">{recipient.name}</span>
-                          <span className="block truncate text-xs text-slate-500">{recipient.email}</span>
                         </span>
                         <span className="shrink-0 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
                           Not read

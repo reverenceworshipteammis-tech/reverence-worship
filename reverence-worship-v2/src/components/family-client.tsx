@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Clock, Home, Mail, Phone, Users, ListTodo } from "lucide-react";
+import { Check, Clock, Home, Phone, Users, ListTodo } from "lucide-react";
 
 type FamilyMember = {
   id: number;
@@ -159,12 +159,6 @@ export function FamilyClient({ family, members, tasks, taskStats }: FamilyClient
                           <div className="flex items-center gap-1.5 text-xs text-gray-500">
                             <Phone className="size-3 text-gray-400" aria-hidden="true" />
                             <span>{member.phone}</span>
-                          </div>
-                        ) : null}
-                        {member.email ? (
-                          <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                            <Mail className="size-3 text-gray-400" aria-hidden="true" />
-                            <span className="truncate">{member.email}</span>
                           </div>
                         ) : null}
                       </div>

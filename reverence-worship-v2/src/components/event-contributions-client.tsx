@@ -311,7 +311,7 @@ function EventPaymentModal({ event, users, pending, onClose, onSubmit }: { event
   const [resultsOpen, setResultsOpen] = useState(false);
   const normalizedSearch = memberSearch.trim().toLowerCase();
   const filteredUsers = users
-    .filter((user) => !normalizedSearch || `${user.name} ${user.email}`.toLowerCase().includes(normalizedSearch))
+    .filter((user) => !normalizedSearch || user.name.toLowerCase().includes(normalizedSearch))
     .slice(0, 10);
   const selectedContribution = selectedUserId
     ? event.payments.filter((payment) => payment.userId === Number(selectedUserId)).reduce((sum, payment) => sum + payment.amount, 0)
@@ -319,7 +319,7 @@ function EventPaymentModal({ event, users, pending, onClose, onSubmit }: { event
 
   function selectMember(user: EventUser) {
     setSelectedUserId(String(user.id));
-    setMemberSearch(`${user.name} · ${user.email}`);
+    setMemberSearch(user.name);
     setResultsOpen(false);
   }
 
@@ -340,7 +340,7 @@ function EventPaymentModal({ event, users, pending, onClose, onSubmit }: { event
               }}
               onFocus={() => setResultsOpen(true)}
               onBlur={() => window.setTimeout(() => setResultsOpen(false), 100)}
-              placeholder="Search member by name or email..."
+              placeholder="Search member by name..."
               autoComplete="off"
               required
               aria-autocomplete="list"
@@ -363,7 +363,6 @@ function EventPaymentModal({ event, users, pending, onClose, onSubmit }: { event
                   >
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-semibold text-gray-900">{user.name}</span>
-                      <span className="block truncate text-xs text-gray-500">{user.email}</span>
                     </span>
                     <span className="flex shrink-0 items-center gap-2">
                       <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${contributed > 0 ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500"}`}>{contributed > 0 ? `${formatCurrency(contributed)} contributed` : "Not Started"}</span>
@@ -410,7 +409,7 @@ function EventHistoryModal({ event, users, canVoid, pending, onClose, onVoid }: 
           {activeList === "contributors" ? (
             <table className="min-w-full divide-y divide-gray-200 text-sm">
               <thead className="sticky top-0 bg-gray-50"><tr>{["Member", "Amount", "Date", "Method", "Recorded by", ""].map((header, index) => <th key={`${header}-${index}`} className="px-3 py-2 text-left text-xs uppercase text-gray-500">{header}</th>)}</tr></thead>
-              <tbody className="divide-y divide-gray-100">{event.payments.length ? event.payments.map((payment) => <tr key={payment.id}><td className="px-3 py-3"><p className="font-medium text-gray-900">{payment.userName}</p><p className="text-xs text-gray-500">{payment.userEmail}</p></td><td className="whitespace-nowrap px-3 py-3 font-semibold text-emerald-600">{formatCurrency(payment.amount)}</td><td className="whitespace-nowrap px-3 py-3 text-gray-600">{payment.paymentDate}</td><td className="px-3 py-3 capitalize text-gray-600">{payment.paymentMethod.replaceAll("_", " ")}</td><td className="px-3 py-3 text-gray-600">{payment.createdByName}</td><td className="px-3 py-3">{canVoid ? <button type="button" disabled={pending} onClick={() => onVoid(payment)} title="Void payment" aria-label="Void payment" className="inline-flex size-8 items-center justify-center rounded-lg text-red-600 hover:bg-red-50 disabled:opacity-50"><Trash2 className="size-4" /></button> : null}</td></tr>) : <tr><td colSpan={6} className="px-4 py-10 text-center text-gray-400">No payments recorded.</td></tr>}</tbody>
+              <tbody className="divide-y divide-gray-100">{event.payments.length ? event.payments.map((payment) => <tr key={payment.id}><td className="px-3 py-3"><p className="font-medium text-gray-900">{payment.userName}</p></td><td className="whitespace-nowrap px-3 py-3 font-semibold text-emerald-600">{formatCurrency(payment.amount)}</td><td className="whitespace-nowrap px-3 py-3 text-gray-600">{payment.paymentDate}</td><td className="px-3 py-3 capitalize text-gray-600">{payment.paymentMethod.replaceAll("_", " ")}</td><td className="px-3 py-3 text-gray-600">{payment.createdByName}</td><td className="px-3 py-3">{canVoid ? <button type="button" disabled={pending} onClick={() => onVoid(payment)} title="Void payment" aria-label="Void payment" className="inline-flex size-8 items-center justify-center rounded-lg text-red-600 hover:bg-red-50 disabled:opacity-50"><Trash2 className="size-4" /></button> : null}</td></tr>) : <tr><td colSpan={6} className="px-4 py-10 text-center text-gray-400">No payments recorded.</td></tr>}</tbody>
             </table>
           ) : (
             <table className="min-w-full divide-y divide-gray-200 text-sm">

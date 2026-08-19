@@ -1013,11 +1013,10 @@ function teamLabel(teamNumber: number) {
 
 function downloadGenerationCsv(generation: ServiceTeam) {
   const rows = [
-    ["Team", "Name", "Email", "Voice Part", "Performance Level"],
+    ["Team", "Name", "Voice Part", "Performance Level"],
     ...generation.members.map((member) => [
       teamLabel(member.teamNumber),
       member.user?.name ?? "",
-      member.user?.email ?? "",
       member.voicePart ?? "",
       member.performanceLevel ?? "",
     ]),
@@ -1363,7 +1362,7 @@ export function MusicClient({
     const query = singerSearch.trim().toLowerCase();
     if (!query) return singers;
 
-    return singers.filter((singer) => [singer.name, singer.email].some((value) => value.toLowerCase().includes(query)));
+    return singers.filter((singer) => singer.name.toLowerCase().includes(query));
   }, [singerSearch, singers]);
 
   const latestGeneration = serviceTeams[0] ?? null;
@@ -2639,7 +2638,7 @@ export function MusicClient({
             <p className="mb-3 text-xs text-gray-400">{singers.length} permanent members found</p>
             <div className="relative mb-3">
               <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" aria-hidden />
-              <input value={singerSearch} onChange={(event) => setSingerSearch(event.target.value)} placeholder="Search singers by name or email..." className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input value={singerSearch} onChange={(event) => setSingerSearch(event.target.value)} placeholder="Search singers by name..." className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div className="max-h-[55vh] overflow-y-auto rounded-lg border border-gray-200">
               <table className="min-w-full divide-y divide-gray-200 text-sm">
@@ -2655,7 +2654,6 @@ export function MusicClient({
                     <tr key={singer.id} className="hover:bg-gray-50">
                       <td className="px-4 py-2">
                         <p className="font-medium text-gray-900">{singer.name}</p>
-                        <p className="text-xs text-gray-400">{singer.email}</p>
                       </td>
                       <td className="px-4 py-2">
                         <select name={`singer:${singer.id}:voicePart`} defaultValue={singer.voicePart ?? ""} className="w-32 rounded-md border border-gray-200 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">

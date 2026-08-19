@@ -14,7 +14,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!Number.isInteger(formId) || formId <= 0) return new Response("Invalid form.", { status: 400 });
   const form = await prisma.spiritualForm.findUnique({
     where: { id: formId },
-    include: { submissions: { orderBy: { submittedAt: "desc" }, include: { user: { select: { name: true, email: true } } } } },
+    include: { submissions: { orderBy: { submittedAt: "desc" }, include: { user: { select: { name: true } } } } },
   });
   if (!form) return new Response("Form not found.", { status: 404 });
   const settings = parseIntercessionFormSettings(form.settings);
@@ -36,8 +36,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   const prepared = form.submissions.map((submission) => {
     const questions = intercessionSubmissionQuestions(submission.questionSnapshot, form.questions);
-    const visitorDetails = parseIntercessionVisitorDetails(submission.respondentDetails);
-    const visitorEmail = visitorDetails.find((detail) => detail.type === "email")?.value;
+    const visitorDetails = parseIntercessionVisitorDetails(submission.respondentDetails).filter((detail) => detail.type !== "email");
     const answers = catalog.map((question) => ({
       questionId: question.id,
       value: intercessionAnswerForQuestion(submission.answers, questions, question.id),
@@ -45,7 +44,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     return {
       submission,
       name: submission.user?.name ?? submission.respondentName ?? "Anonymous guest",
-      email: submission.user?.email ?? (typeof visitorEmail === "string" ? visitorEmail : ""),
       type: submission.user ? "Member" : "Guest",
       visitorDetails,
       answers,
@@ -60,7 +58,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     if (reviewFilter === "reviewed" && !row.submission.reviewedAt || reviewFilter === "pending" && row.submission.reviewedAt) return false;
     if (dateFrom && row.submission.submittedAt < dateFrom || dateTo && row.submission.submittedAt > dateTo) return false;
     if (query) {
-      const searchable = [row.name, row.email, ...row.visitorDetails.flatMap((detail) => Array.isArray(detail.value) ? detail.value : [detail.value]), ...row.answers.map((answer) => intercessionAnswerText(answer.value))].join(" ").toLowerCase();
+      const searchable = [row.name, ...row.visitorDetails.flatMap((detail) => Array.isArray(detail.value) ? detail.value : [detail.value]), ...row.answers.map((answer) => intercessionAnswerText(answer.value))].join(" ").toLowerCase();
       if (!searchable.includes(query)) return false;
     }
     if (answerFilter) {
@@ -72,21 +70,16 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   });
 
   const visitorColumns = Array.from(new Map(prepared.flatMap((row) => row.visitorDetails.map((detail) => [detail.fieldId, detail.label] as const))).entries());
-  const responseHeader: XlsxCell[] = ["Response ID", "Responder", "Type", "Email", ...visitorColumns.map(([, label]) => label), ...(settings.include_timestamps ? ["Submitted"] : []), "Completion seconds", "Review status", "Release status", "Form version", ...catalog.map((question, index) => `Q${index + 1}: ${plain(question.label)}`), ...(settings.is_quiz ? ["Score"] : [])];
+  const responseHeader: XlsxCell[] = ["Response ID", "Responder", "Type", ...visitorColumns.map(([, label]) => label), ...(settings.include_timestamps ? ["Submitted"] : []), ...catalog.map((question, index) => `Q${index + 1}: ${plain(question.label)}`), ...(settings.is_quiz ? ["Score"] : [])];
   const responseRows: XlsxCell[][] = prepared.map((row) => [
     row.submission.id,
     row.name,
     row.type,
-    row.email,
     ...visitorColumns.map(([fieldId]) => {
       const value = row.visitorDetails.find((detail) => detail.fieldId === fieldId)?.value;
       return Array.isArray(value) ? value.join(", ") : value ?? "";
     }),
     ...(settings.include_timestamps ? [row.submission.submittedAt] : []),
-    row.submission.completionSeconds,
-    row.submission.reviewedAt ? "Reviewed" : "Pending",
-    row.submission.isReleased ? "Released" : "Hidden",
-    row.submission.formVersion,
     ...catalog.map((question) => intercessionAnswerText(row.answers.find((answer) => answer.questionId === question.id)?.value ?? null)),
     ...(settings.is_quiz ? [row.submission.score === null ? null : xlsxPercentage(row.submission.score)] : []),
   ]);

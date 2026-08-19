@@ -2,35 +2,52 @@ const TRANSIENT_DATABASE_ERRORS = [
   "connection terminated unexpectedly",
   "connection terminated",
   "connection timeout",
+  "connection pool timeout",
   "connection closed",
   "server closed the connection",
   "can't reach database server",
+  "timed out fetching a new connection from the connection pool",
+  "too many clients already",
+  "remaining connection slots are reserved",
   "econnreset",
   "etimedout",
-  "p1001",
-  "p1017",
 ];
 
-function errorMessages(error: unknown) {
+const TRANSIENT_DATABASE_CODES = new Set([
+  "ECONNRESET",
+  "ETIMEDOUT",
+  "P1001",
+  "P1002",
+  "P1008",
+  "P1017",
+  "P2024",
+  "P2037",
+]);
+
+function errorDetails(error: unknown) {
   const messages: string[] = [];
+  const codes: string[] = [];
   let current: unknown = error;
 
   for (let depth = 0; current && depth < 4; depth += 1) {
-    if (current instanceof Error) {
-      messages.push(current.message);
-      current = current.cause;
-    } else {
+    if (typeof current !== "object") {
       messages.push(String(current));
       break;
     }
+
+    const candidate = current as { code?: unknown; message?: unknown; cause?: unknown };
+    if (typeof candidate.code === "string") codes.push(candidate.code.toUpperCase());
+    if (typeof candidate.message === "string") messages.push(candidate.message);
+    current = candidate.cause;
   }
 
-  return messages.join(" ").toLowerCase();
+  return { codes, message: messages.join(" ").toLowerCase() };
 }
 
 export function isTransientDatabaseError(error: unknown) {
-  const message = errorMessages(error);
-  return TRANSIENT_DATABASE_ERRORS.some((pattern) => message.includes(pattern));
+  const { codes, message } = errorDetails(error);
+  return codes.some((code) => TRANSIENT_DATABASE_CODES.has(code))
+    || TRANSIENT_DATABASE_ERRORS.some((pattern) => message.includes(pattern));
 }
 
 export async function withDatabaseRetry<T>(operation: () => Promise<T>, attempts = 2): Promise<T> {

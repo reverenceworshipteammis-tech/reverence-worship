@@ -21,7 +21,7 @@ export async function GET() {
   const probations = await prisma.probation.findMany({
     orderBy: [{ state: "asc" }, { currentExpectedEndDate: "asc" }],
     include: {
-      member: { select: { name: true, email: true, status: true } },
+      member: { select: { name: true, status: true } },
       extensions: { select: { id: true } },
       decisionRequests: { where: { status: "pending" }, select: { requestedState: true } },
     },
@@ -29,7 +29,6 @@ export async function GET() {
 
   const header = [
     "Member",
-    "Email",
     "Account Status",
     "Probation State",
     "Original Start",
@@ -62,7 +61,6 @@ export async function GET() {
     const dates = probationDateSummary(probation.currentExpectedEndDate);
     lines.push([
       probation.member.name,
-      probation.member.email,
       probation.member.status,
       probation.state,
       probation.originalStartDate.toISOString().slice(0, 10),
