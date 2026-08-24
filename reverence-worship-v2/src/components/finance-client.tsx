@@ -53,6 +53,7 @@ import {
   saveFinanceActionPlanTask,
   saveFinanceTermSettings,
   saveSponsor,
+  updateTermContributionTotal,
   updateFinancePayment,
 } from "@/app/admin/finance/actions";
 import { calculateContributionRate } from "@/lib/finance-rules";
@@ -1433,6 +1434,8 @@ function FinanceContributionsTab({
   const [annualModalOpen, setAnnualModalOpen] = useState(false);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [detailRow, setDetailRow] = useState<ContributionRow | null>(null);
+  const [detailTerm, setDetailTerm] = useState<number | null>(null);
+  const [editPayment, setEditPayment] = useState<Payment | null>(null);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -1563,6 +1566,36 @@ function FinanceContributionsTab({
         router.refresh();
       }
     });
+  }
+
+  function submitPaymentEdit(formData: FormData) {
+    setResult(null);
+    startTransition(async () => {
+      const response = await updateFinancePayment(formData);
+      setResult(response);
+      if (response.ok) {
+        setEditPayment(null);
+        router.refresh();
+      }
+    });
+  }
+
+  function submitTermTotalEdit(formData: FormData) {
+    setResult(null);
+    startTransition(async () => {
+      const response = await updateTermContributionTotal(formData);
+      setResult(response);
+      if (response.ok) {
+        setDetailRow(null);
+        setDetailTerm(null);
+        router.refresh();
+      }
+    });
+  }
+
+  function openTermPayments(row: ContributionRow, term: number) {
+    setDetailTerm(term);
+    setDetailRow(row);
   }
 
   function exportCsv() {
@@ -1727,7 +1760,12 @@ function FinanceContributionsTab({
                 </td>
                 {row.termRows.map((term) => (
                   <td key={term.term} className="min-w-[120px] px-3 py-2">
-                    <TermContributionProgress paid={term.paid} target={term.target} label={`Term ${term.term}`} />
+                    <TermContributionProgress
+                      paid={term.paid}
+                      target={term.target}
+                      label={`Term ${term.term}`}
+                      onEdit={term.paid > 0 ? () => openTermPayments(row, term.term) : undefined}
+                    />
                   </td>
                 ))}
                 <td className="min-w-[150px] px-3 py-2">
@@ -1737,7 +1775,7 @@ function FinanceContributionsTab({
                   <div className="flex gap-1">
                     <ContributionActionButton label="Edit annual amount" onClick={() => { setAnnualModalUser(row.user); setAnnualModalOpen(true); }} icon={Pencil} tone="blue" />
                     <ContributionActionButton label="Record payment" onClick={() => { setPaymentModalUser(row.user); setPaymentModalOpen(true); }} icon={HandCoins} tone="green" />
-                    <ContributionActionButton label="View details and history" onClick={() => setDetailRow(row)} icon={FileSpreadsheet} tone="amber" />
+                    <ContributionActionButton label="View and edit payment history" onClick={() => { setDetailTerm(null); setDetailRow(row); }} icon={FileSpreadsheet} tone="amber" />
                   </div>
                 </td>
               </tr>
@@ -1792,7 +1830,12 @@ function FinanceContributionsTab({
               {row.termRows.map((term) => (
                 <div key={term.term} className="grid grid-cols-[80px_1fr] items-center gap-2 px-3 py-2">
                   <span className="text-[11px] font-semibold uppercase text-gray-500">Term {term.term}</span>
-                  <TermContributionProgress paid={term.paid} target={term.target} label={`Term ${term.term}`} />
+                  <TermContributionProgress
+                    paid={term.paid}
+                    target={term.target}
+                    label={`Term ${term.term}`}
+                    onEdit={term.paid > 0 ? () => openTermPayments(row, term.term) : undefined}
+                  />
                 </div>
               ))}
               <div className="grid grid-cols-[80px_1fr] items-center gap-2 px-3 py-2">
@@ -1804,7 +1847,7 @@ function FinanceContributionsTab({
                 <div className="flex flex-wrap gap-1">
                   <ContributionActionButton label="Edit annual amount" onClick={() => { setAnnualModalUser(row.user); setAnnualModalOpen(true); }} icon={Pencil} tone="blue" />
                   <ContributionActionButton label="Record payment" onClick={() => { setPaymentModalUser(row.user); setPaymentModalOpen(true); }} icon={HandCoins} tone="green" />
-                  <ContributionActionButton label="View details and history" onClick={() => setDetailRow(row)} icon={FileSpreadsheet} tone="amber" />
+                  <ContributionActionButton label="View and edit payment history" onClick={() => { setDetailTerm(null); setDetailRow(row); }} icon={FileSpreadsheet} tone="amber" />
                 </div>
               </div>
             </div>
@@ -1842,7 +1885,27 @@ function FinanceContributionsTab({
       ) : null}
 
       {detailRow ? (
-        <DetailsModal row={detailRow} payments={paymentsForRange.filter((payment) => payment.userId === detailRow.user.id)} onClose={() => setDetailRow(null)} />
+        <DetailsModal
+          row={detailRow}
+          payments={paymentsForRange.filter((payment) => payment.userId === detailRow.user.id)}
+          term={detailTerm}
+          year={selectedYear}
+          pending={pending}
+          onUpdateTermTotal={submitTermTotalEdit}
+          onEditPayment={(payment) => { setDetailRow(null); setDetailTerm(null); setEditPayment(payment); }}
+          onClose={() => { setDetailRow(null); setDetailTerm(null); }}
+        />
+      ) : null}
+
+      {editPayment ? (
+        <EditPaymentModal
+          payment={editPayment}
+          users={users}
+          termNumbers={termNumbers}
+          pending={pending}
+          onClose={() => setEditPayment(null)}
+          onSubmit={submitPaymentEdit}
+        />
       ) : null}
     </div>
   );
@@ -2799,12 +2862,25 @@ function progressColor(progress: number, strong = false) {
   return strong ? "bg-purple-600" : "bg-yellow-500";
 }
 
-function TermContributionProgress({ paid, target, label }: { paid: number; target: number; label: string }) {
+function TermContributionProgress({ paid, target, label, onEdit }: { paid: number; target: number; label: string; onEdit?: () => void }) {
   const progress = target > 0 ? Math.min(100, (paid / target) * 100) : paid > 0 ? 100 : 0;
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center justify-between gap-2">
-        <span className="font-medium text-green-600">{formatCurrency(paid)}</span>
+        <span className="inline-flex items-center gap-1 font-medium text-green-600">
+          {formatCurrency(paid)}
+          {onEdit ? (
+            <button
+              type="button"
+              onClick={onEdit}
+              title={`Edit ${label} payments`}
+              aria-label={`Edit ${label} payments`}
+              className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-blue-600 transition hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+            >
+              <Pencil className="size-3.5" aria-hidden="true" />
+            </button>
+          ) : null}
+        </span>
         <span className="whitespace-nowrap text-xs text-gray-400">/ {formatCurrency(target)}</span>
       </div>
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200" role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100} aria-label={`${progress.toFixed(1)}% complete for ${label}`}>
@@ -3052,9 +3128,30 @@ function PaymentModal({
   );
 }
 
-function DetailsModal({ row, payments, onClose }: { row: ContributionRow; payments: Payment[]; onClose: () => void }) {
+function DetailsModal({
+  row,
+  payments,
+  term,
+  year,
+  pending,
+  onUpdateTermTotal,
+  onEditPayment,
+  onClose,
+}: {
+  row: ContributionRow;
+  payments: Payment[];
+  term: number | null;
+  year: number;
+  pending: boolean;
+  onUpdateTermTotal: (formData: FormData) => void;
+  onEditPayment: (payment: Payment) => void;
+  onClose: () => void;
+}) {
+  const displayedTerms = term ? row.termRows.filter((item) => item.term === term) : row.termRows;
+  const displayedPayments = term ? payments.filter((payment) => payment.term === term) : payments;
+
   return (
-    <Modal title="Contribution Details" onClose={onClose} width="max-w-3xl">
+    <Modal title={term ? `Edit Term ${term} Contributions` : "Contribution Details"} onClose={onClose} width="max-w-4xl">
       <div className="space-y-4">
         <div>
           <h3 className="font-semibold text-gray-900">{row.user.name}</h3>
@@ -3069,23 +3166,64 @@ function DetailsModal({ row, payments, onClose }: { row: ContributionRow; paymen
           <TotalContributionProgress paid={row.totalPaid} annualAmount={row.annualAmount} progress={row.progress} />
         </div>
         <SimpleTable title="Term Summary" headers={["Term", "Target", "Paid", "Balance"]} empty="No terms found">
-          {row.termRows.map((term) => (
-            <tr key={term.term} className="border-b border-gray-100">
-              <td className="px-4 py-3">Term {term.term}</td>
-              <td className="px-4 py-3">{formatCurrency(term.target)}</td>
-              <td className="px-4 py-3 font-semibold text-green-600">{formatCurrency(term.paid)}</td>
-              <td className="px-4 py-3">{formatCurrency(Math.max(term.target - term.paid, 0))}</td>
+          {displayedTerms.map((termRow) => (
+            <tr key={termRow.term} className="border-b border-gray-100">
+              <td className="px-4 py-3">Term {termRow.term}</td>
+              <td className="px-4 py-3">{formatCurrency(termRow.target)}</td>
+              <td className="px-4 py-3 font-semibold text-green-600">
+                {term === termRow.term ? (
+                  <form
+                    className="flex min-w-56 items-center gap-2"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      onUpdateTermTotal(new FormData(event.currentTarget));
+                    }}
+                  >
+                    <input type="hidden" name="user_id" value={row.user.id} />
+                    <input type="hidden" name="year" value={year} />
+                    <input type="hidden" name="term" value={termRow.term} />
+                    <input type="hidden" name="payment_ids" value={JSON.stringify(displayedPayments.map((payment) => payment.id))} />
+                    <label className="relative block min-w-0 flex-1">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-gray-500">RWF</span>
+                      <input
+                        name="amount"
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        required
+                        defaultValue={termRow.paid}
+                        aria-label={`Term ${termRow.term} paid amount`}
+                        className="h-9 w-full rounded-lg border border-green-300 bg-white pl-12 pr-3 text-sm font-semibold text-green-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </label>
+                    <button type="submit" disabled={pending} className="h-9 rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60">
+                      {pending ? "Saving..." : "Save"}
+                    </button>
+                  </form>
+                ) : formatCurrency(termRow.paid)}
+              </td>
+              <td className="px-4 py-3">{formatCurrency(Math.max(termRow.target - termRow.paid, 0))}</td>
             </tr>
           ))}
         </SimpleTable>
-        <SimpleTable title="Payment Records" headers={["Term", "Amount", "Date", "Method", "Recorded By"]} empty="No payment records found">
-          {payments.map((payment) => (
+        <SimpleTable title="Payment Records" headers={["Term", "Amount", "Date", "Method", "Recorded By", "Action"]} empty="No payment records found">
+          {displayedPayments.map((payment) => (
             <tr key={payment.id} className="border-b border-gray-100">
               <td className="px-4 py-3">Term {payment.term ?? "-"}</td>
               <td className="px-4 py-3 font-semibold text-green-600">{formatCurrency(payment.amount)}</td>
               <td className="px-4 py-3">{payment.paymentDate}</td>
               <td className="px-4 py-3 capitalize">{payment.paymentMethod.replaceAll("_", " ")}</td>
               <td className="px-4 py-3">{payment.createdByName}</td>
+              <td className="px-4 py-3">
+                <button
+                  type="button"
+                  onClick={() => onEditPayment(payment)}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+                >
+                  <Pencil className="size-3.5" aria-hidden="true" />
+                  Edit
+                </button>
+              </td>
             </tr>
           ))}
         </SimpleTable>

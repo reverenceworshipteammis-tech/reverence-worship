@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { canMemberCommitAnnualContribution, parseAnnualContributionAmount } from "../src/lib/annual-contribution-rules";
-import { calculateAvailableBalance, calculateContributionRate, calculateContributionTermTarget, canApproveExpense, validateContributionPaymentDate, validateExpenseRequest } from "../src/lib/finance-rules";
+import { calculateAvailableBalance, calculateContributionRate, calculateContributionTermTarget, canApproveExpense, reconcileContributionPaymentAmounts, validateContributionPaymentDate, validateExpenseRequest } from "../src/lib/finance-rules";
 
 test("member annual contribution commitments require a positive valid amount", () => {
   assert.equal(parseAnnualContributionAmount("250000"), 250000);
@@ -27,6 +27,13 @@ test("contribution rates preserve amounts above 100 percent", () => {
   assert.equal(calculateContributionRate(60000, 60000), 100);
   assert.equal(calculateContributionRate(80000, 60000), 133.3);
   assert.equal(calculateContributionRate(100, 0), 0);
+});
+
+test("editing a term total reconciles its payment records exactly", () => {
+  assert.deepEqual(reconcileContributionPaymentAmounts([300_500, 235_250, 235_250], 500_000), [300_500, 199_500, 0]);
+  assert.deepEqual(reconcileContributionPaymentAmounts([300_500, 235_250, 235_250], 900_000), [300_500, 235_250, 364_250]);
+  assert.deepEqual(reconcileContributionPaymentAmounts([300_500, 235_250], 0), [0, 0]);
+  assert.deepEqual(reconcileContributionPaymentAmounts([10.01, 10.02], 20.04), [10.01, 10.03]);
 });
 
 test("other contribution payments stay within the contribution window", () => {

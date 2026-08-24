@@ -6,7 +6,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Prisma } from "@/generated/prisma/client";
 import { requirePermission, requireUser } from "@/lib/auth";
-import { calculateAvailableBalance, canApproveExpense, validateContributionPaymentDate, validateExpenseRequest } from "@/lib/finance-rules";
+import { calculateAvailableBalance, canApproveExpense, reconcileContributionPaymentAmounts, validateContributionPaymentDate, validateExpenseRequest } from "@/lib/finance-rules";
 import { prisma } from "@/lib/prisma";
 import { notifyUsers } from "@/lib/notifications";
 
@@ -296,6 +296,66 @@ export async function updateFinancePayment(formData: FormData) {
   revalidatePath("/admin/finance");
   await logFinance(user.id, "finance.payment.updated", { paymentId, term, amount });
   return { ok: true, message: "Payment updated successfully." };
+}
+
+export async function updateTermContributionTotal(formData: FormData) {
+  const user = await requirePermission("finance", "manage-payments");
+  const userId = Number(readString(formData, "user_id"));
+  const year = Number(readString(formData, "year"));
+  const term = Number(readString(formData, "term"));
+  const amount = Number(readString(formData, "amount"));
+  const paymentIds = [...new Set(parseNumberList(readString(formData, "payment_ids")))]
+    .filter((id) => Number.isInteger(id) && id > 0);
+
+  if (!Number.isInteger(userId) || userId <= 0) return { ok: false, message: "Member not found." };
+  if (!Number.isInteger(year) || year < 2000 || year > 2100) return { ok: false, message: "Please select a valid year." };
+  if (!Number.isInteger(term) || term < 1) return { ok: false, message: "Please select a valid term." };
+  if (!Number.isFinite(amount) || amount < 0) return { ok: false, message: "Term amount must be zero or greater." };
+  if (paymentIds.length === 0) return { ok: false, message: "No payment records were selected for this term." };
+
+  const payments = await prisma.payment.findMany({
+    where: { id: { in: paymentIds }, userId, year, term, status: { not: "voided" } },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: { id: true, amount: true },
+  });
+  if (payments.length !== paymentIds.length) return { ok: false, message: "One or more payment records are no longer available. Refresh and try again." };
+
+  const previousTotal = payments.reduce((sum, payment) => sum + Number(payment.amount), 0);
+  const reconciledAmounts = reconcileContributionPaymentAmounts(payments.map((payment) => Number(payment.amount)), amount);
+  const updates = payments.flatMap((payment, index) => {
+    const reconciledAmount = reconciledAmounts[index] ?? 0;
+    if (reconciledAmount === 0) {
+      return [prisma.payment.update({ where: { id: payment.id }, data: { status: "voided" } })];
+    }
+    if (reconciledAmount !== Number(payment.amount)) {
+      return [prisma.payment.update({ where: { id: payment.id }, data: { amount: reconciledAmount } })];
+    }
+    return [];
+  });
+  if (updates.length > 0) await prisma.$transaction(updates);
+
+  await notifyUsers({
+    userIds: [userId],
+    type: "contribution",
+    title: `Term ${term} contribution updated`,
+    message: `Your term ${term}, ${year} contribution total was updated to RWF ${amount.toLocaleString()}.`,
+    link: "/admin/contributions",
+    sourceType: "payment",
+    sourceId: payments[payments.length - 1].id,
+    dedupeKey: `term-payment:${userId}:${year}:${term}:updated:${Date.now()}`,
+  });
+
+  revalidatePath("/admin/finance");
+  revalidatePath("/admin/contributions");
+  await logFinance(user.id, "finance.term-contribution.updated", {
+    userId,
+    year,
+    term,
+    previousTotal,
+    amount,
+    paymentIds: payments.map((payment) => payment.id),
+  });
+  return { ok: true, message: `Term ${term} contribution updated successfully.` };
 }
 
 export async function deleteFinancePayment(id: number) {

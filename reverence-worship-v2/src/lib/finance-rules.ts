@@ -10,6 +10,26 @@ export function calculateContributionRate(paidAmount: number, committedAmount: n
   return Math.round((paidAmount / committedAmount) * 1000) / 10;
 }
 
+export function reconcileContributionPaymentAmounts(existingAmounts: number[], desiredTotal: number) {
+  const desiredCents = Math.max(0, Math.round(desiredTotal * 100));
+  const existingCents = existingAmounts.map((amount) => Math.max(0, Math.round(amount * 100)));
+  const currentCents = existingCents.reduce((sum, amount) => sum + amount, 0);
+
+  if (existingCents.length === 0) return [];
+  if (desiredCents >= currentCents) {
+    const reconciled = [...existingCents];
+    reconciled[reconciled.length - 1] += desiredCents - currentCents;
+    return reconciled.map((amount) => amount / 100);
+  }
+
+  let remainingCents = desiredCents;
+  return existingCents.map((amount) => {
+    const reconciledAmount = Math.min(amount, remainingCents);
+    remainingCents -= reconciledAmount;
+    return reconciledAmount / 100;
+  });
+}
+
 export function validateContributionPaymentDate(input: { paymentDate: Date; startDate: Date; endDate: Date | null }) {
   if (input.paymentDate < input.startDate) return "Payment date cannot be before contributions open.";
   if (input.endDate && input.paymentDate > input.endDate) return "This contribution deadline has passed. Extend the deadline before recording another payment.";
