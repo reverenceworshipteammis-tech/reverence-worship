@@ -1,9 +1,9 @@
 export const bibleVersions = [
-  { key: "bysb", code: "BYSB", label: "Bibiliya YERA", localFile: "BY.xml" },
-  { key: "bir", code: "BIR", label: "Bibiliya Ijambo ry'Imana", localFile: "BIR.xml" },
-  { key: "niv", code: "NIV", label: "NIV", localFile: "NIV.xml" },
-  { key: "kjv", code: "KJV", label: "KJV", localFile: "KJV.xml" },
-  { key: "esv", code: "ESV", label: "ESV", localFile: "ESV.xml" },
+  { key: "bysb", code: "BYSB", label: "Bibiliya YERA", language: "rw", localFile: "BY.xml" },
+  { key: "bir", code: "BIR", label: "Bibiliya Ijambo ry'Imana", language: "rw", localFile: "BIR.xml" },
+  { key: "niv", code: "NIV", label: "NIV", language: "en", localFile: "NIV.xml" },
+  { key: "kjv", code: "KJV", label: "KJV", language: "en", localFile: "KJV.xml" },
+  { key: "esv", code: "ESV", label: "ESV", language: "en", localFile: "ESV.xml" },
 ];
 
 export const kinyarwandaBibleBookNames: Record<string, string> = {
@@ -148,3 +148,11 @@ export const bibleBooks = [
   nameRw: kinyarwandaBibleBookNames[String(code)] ?? String(name),
   chapters: Number(chapters),
 }));
+
+export function bibleBookName(bookCode: string, versionKey: string) {
+  const book = bibleBooks.find((item) => item.code === bookCode);
+  if (!book) return bookCode;
+  const normalizedVersion = versionKey.toLowerCase();
+  const version = bibleVersions.find((item) => item.key === normalizedVersion || item.code.toLowerCase() === normalizedVersion);
+  return version?.language === "rw" ? book.nameRw : book.name;
+}

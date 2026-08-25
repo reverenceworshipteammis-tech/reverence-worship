@@ -1,0 +1,14 @@
+{
+  "name": "reverence-worship-desktop-projector",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Native multi-display shell for Reverence Worship projection",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "node launch.cjs",
+    "check": "node --check main.cjs && node --check preload.cjs && node --check launch.cjs && node --check dev-launcher.cjs"
+  },
+  "devDependencies": {
+    "electron": "44.0.0"
+  }
+}

@@ -37,6 +37,7 @@ import {
   ListMusic,
   MicVocal,
   Music,
+  MonitorPlay,
   Pencil,
   Plus,
   PlusCircle,
@@ -83,6 +84,8 @@ import {
   uploadGalleryPhotos,
 } from "@/app/admin/music/actions";
 import { MobileTabScroller } from "@/components/mobile-tab-scroller";
+import { SongProjectionStudio } from "@/components/song-projection-studio";
+import type { ProjectionOverlayPreset } from "@/lib/projection-overlays";
 
 type Song = {
   id: number;
@@ -232,6 +235,7 @@ type MusicActionPlan = {
 
 type MusicClientProps = {
   canManage: boolean;
+  overlayPresets: ProjectionOverlayPreset[];
   playlists: Playlist[];
   songs: Song[];
   gallery: GalleryPhoto[];
@@ -1253,6 +1257,7 @@ async function downloadPlaylistImage(playlist: Playlist) {
 
 export function MusicClient({
   canManage,
+  overlayPresets,
   playlists,
   songs,
   gallery,
@@ -1265,7 +1270,7 @@ export function MusicClient({
 }: MusicClientProps) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("playlist");
-  const [libraryTab, setLibraryTab] = useState<"playlists" | "songs">("playlists");
+  const [libraryTab, setLibraryTab] = useState<"playlists" | "songs" | "projection">("playlists");
   const [boardTab, setBoardTab] = useState<"youtube" | "featured" | "events">("youtube");
   const [playlistSearch, setPlaylistSearch] = useState("");
   const [playlistPage, setPlaylistPage] = useState(1);
@@ -2216,6 +2221,16 @@ export function MusicClient({
                   <Music className="size-4" aria-hidden />
                   Songs
                 </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={libraryTab === "projection"}
+                  onClick={() => setLibraryTab("projection")}
+                  className={`inline-flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition sm:text-base ${libraryTab === "projection" ? "border-blue-600 text-blue-700" : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-800"}`}
+                >
+                  <MonitorPlay className="size-4" aria-hidden />
+                  Projection
+                </button>
               </div>
               {canManage && libraryTab === "playlists" ? (
                 <button type="button" onClick={() => { setPlaylistNotice(null); setModal("playlist"); }} className="mb-3 inline-flex h-9 w-fit shrink-0 items-center justify-center gap-1 self-end rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white hover:bg-blue-700 sm:self-auto sm:rounded-xl">
@@ -2235,7 +2250,10 @@ export function MusicClient({
                 </div>
               ) : null}
             </div>
-          <div className="flex flex-col gap-4 lg:flex-row lg:gap-5">
+          <div className={libraryTab === "projection" ? "block" : "hidden"} aria-hidden={libraryTab !== "projection"}>
+            <SongProjectionStudio songs={songs} playlists={playlists} initialOverlayPresets={overlayPresets} operatorActive={libraryTab === "projection"} />
+          </div>
+          <div className={libraryTab === "projection" ? "hidden" : "flex flex-col gap-4 lg:flex-row lg:gap-5"}>
             {libraryTab === "playlists" ? <section className="w-full">
               <div className="relative mb-2 sm:mb-3">
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" aria-hidden />

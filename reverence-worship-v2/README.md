@@ -16,6 +16,23 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Projection
+
+Open **Music → Playlist → Projection** to present song lyrics or Bible passages. The operator screen includes playlist selection, Bible translation comparison, slide previews, themes, overlays, blanking, keyboard controls, display detection, and a dedicated audience-only output.
+
+For the most reliable projector experience on Windows, connect HDMI, press **Windows + P**, and choose **Extend**. Chrome and Edge can place the web output on a selected display after permission is granted. In browser mode, confirm fullscreen by clicking once inside the audience output (or press **F**) to remove the browser title and address bars.
+
+An optional native desktop shell is included for a true frameless fullscreen output and native monitor selection, without Chrome headings:
+
+```bash
+npm run desktop:install
+npm run desktop:dev
+```
+
+`desktop:dev` starts the Next.js development server when it is not already running, then opens the native Reverence Worship shell. Use Projection from that shell—not a normal Chrome tab—for automatic frameless fullscreen.
+
+See [`desktop-projector/README.md`](desktop-projector/README.md) for deployed-URL configuration and operating instructions.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

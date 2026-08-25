@@ -17,7 +17,10 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "desktop:install": "npm install --prefix desktop-projector",
+    "desktop": "npm start --prefix desktop-projector",
+    "desktop:dev": "node desktop-projector/dev-launcher.cjs"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",

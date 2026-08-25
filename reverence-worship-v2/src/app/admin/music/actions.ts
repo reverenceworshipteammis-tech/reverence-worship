@@ -5,7 +5,7 @@ import { mkdir, unlink, writeFile } from "fs/promises";
 import path from "path";
 import { del as deleteBlob, put } from "@vercel/blob";
 import { Prisma } from "@/generated/prisma/client";
-import { requirePermission } from "@/lib/auth";
+import { requirePageAccess, requirePermission } from "@/lib/auth";
 import {
   parsePlaylistServiceCount,
   parsePlaylistSessions,
@@ -14,12 +14,70 @@ import {
 import { prisma } from "@/lib/prisma";
 import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
 import type { ImportedSong } from "@/lib/freeshow-import";
+import {
+  MAX_PROJECTION_OVERLAY_PRESETS,
+  parseProjectionOverlayPresets,
+  PROJECTION_OVERLAY_PRESETS_SETTING_KEY,
+  validateProjectionOverlayPresetInput,
+  type ProjectionOverlayPresetInput,
+} from "@/lib/projection-overlays";
 
 const MAX_FREESHOW_IMPORT_BATCH = 100;
 const MAX_FREESHOW_IMPORT_TEXT = 3_250_000;
 const MAX_FREESHOW_TITLE_LENGTH = 500;
 const MAX_FREESHOW_FILENAME_LENGTH = 500;
 const MAX_FREESHOW_LYRICS_LENGTH = 3_000_000;
+
+async function storedProjectionOverlayPresets() {
+  const setting = await prisma.systemSetting.findUnique({
+    where: { key: PROJECTION_OVERLAY_PRESETS_SETTING_KEY },
+    select: { value: true },
+  });
+  return parseProjectionOverlayPresets(setting?.value);
+}
+
+export async function saveProjectionOverlayPreset(input: ProjectionOverlayPresetInput) {
+  await requirePageAccess("music-ministry");
+  const parsed = validateProjectionOverlayPresetInput(input);
+  if (!parsed.ok) return parsed;
+  const presets = await storedProjectionOverlayPresets();
+  const duplicateName = presets.find((preset) => preset.name.toLowerCase() === parsed.value.name.toLowerCase() && preset.id !== parsed.value.id);
+  if (duplicateName) return { ok: false as const, message: `An overlay named “${duplicateName.name}” already exists.` };
+  const existingIndex = parsed.value.id ? presets.findIndex((preset) => preset.id === parsed.value.id) : -1;
+  if (existingIndex < 0 && presets.length >= MAX_PROJECTION_OVERLAY_PRESETS) {
+    return { ok: false as const, message: `You can save up to ${MAX_PROJECTION_OVERLAY_PRESETS} overlay presets.` };
+  }
+
+  const preset = {
+    ...parsed.value,
+    id: existingIndex >= 0 ? presets[existingIndex].id : crypto.randomUUID(),
+    updatedAt: new Date().toISOString(),
+  };
+  if (existingIndex >= 0) presets[existingIndex] = preset;
+  else presets.push(preset);
+  const normalized = parseProjectionOverlayPresets(presets);
+  await prisma.systemSetting.upsert({
+    where: { key: PROJECTION_OVERLAY_PRESETS_SETTING_KEY },
+    update: { value: normalized as unknown as Prisma.InputJsonValue, group: "music" },
+    create: { key: PROJECTION_OVERLAY_PRESETS_SETTING_KEY, value: normalized as unknown as Prisma.InputJsonValue, group: "music" },
+  });
+  return { ok: true as const, message: existingIndex >= 0 ? "Overlay preset updated." : "Overlay preset saved.", preset, presets: normalized };
+}
+
+export async function deleteProjectionOverlayPreset(id: string) {
+  await requirePageAccess("music-ministry");
+  const normalizedId = typeof id === "string" ? id.trim().slice(0, 100) : "";
+  if (!normalizedId) return { ok: false as const, message: "Select an overlay preset to delete." };
+  const presets = await storedProjectionOverlayPresets();
+  const nextPresets = presets.filter((preset) => preset.id !== normalizedId);
+  if (nextPresets.length === presets.length) return { ok: false as const, message: "That overlay preset no longer exists." };
+  await prisma.systemSetting.upsert({
+    where: { key: PROJECTION_OVERLAY_PRESETS_SETTING_KEY },
+    update: { value: nextPresets as unknown as Prisma.InputJsonValue, group: "music" },
+    create: { key: PROJECTION_OVERLAY_PRESETS_SETTING_KEY, value: nextPresets as unknown as Prisma.InputJsonValue, group: "music" },
+  });
+  return { ok: true as const, message: "Overlay preset deleted.", presets: nextPresets };
+}
 
 function readString(formData: FormData, key: string) {
   const value = formData.get(key);

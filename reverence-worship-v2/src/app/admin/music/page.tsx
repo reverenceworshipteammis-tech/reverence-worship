@@ -2,6 +2,7 @@ import { MusicClient } from "@/components/music-client";
 import { getUserPermissionSet, permissionSetHas, requirePageAccess } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
+import { parseProjectionOverlayPresets, PROJECTION_OVERLAY_PRESETS_SETTING_KEY } from "@/lib/projection-overlays";
 
 function formatDate(date: Date) {
   return new Intl.DateTimeFormat("en", {
@@ -30,7 +31,7 @@ export default async function MusicPage() {
   const permissions = await getUserPermissionSet(user);
   const canManage = permissionSetHas(permissions, "music-ministry", "view");
 
-  const [playlists, songs, gallery, singers, serviceTeams, boardItems, youtubeVideos, featuredImages, actionPlans] = await Promise.all([
+  const [playlists, songs, gallery, singers, serviceTeams, boardItems, youtubeVideos, featuredImages, actionPlans, overlayPresetSetting] = await Promise.all([
     prisma.playlist.findMany({
       orderBy: { createdAt: "desc" },
       include: {
@@ -115,11 +116,13 @@ export default async function MusicPage() {
         tasks: { orderBy: [{ deadline: "asc" }, { createdAt: "asc" }] },
       },
     }) : Promise.resolve([]),
+    prisma.systemSetting.findUnique({ where: { key: PROJECTION_OVERLAY_PRESETS_SETTING_KEY }, select: { value: true } }),
   ]);
 
   return (
     <MusicClient
       canManage={canManage}
+      overlayPresets={parseProjectionOverlayPresets(overlayPresetSetting?.value)}
       playlists={playlists.map((playlist) => ({
         id: playlist.id,
         title: playlist.title,
