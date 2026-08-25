@@ -27,6 +27,7 @@ import {
   UserCheck,
   User,
   Users,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -42,7 +43,7 @@ import {
   ProfileModalTrigger,
   type ProfileModalData,
 } from "@/components/profile-modal";
-import { ADMIN_NOTIFICATIONS_CHANGED_EVENT } from "@/lib/admin-notification-events";
+import { ADMIN_NOTIFICATION_NAVIGATION_EVENT, ADMIN_NOTIFICATIONS_CHANGED_EVENT } from "@/lib/admin-notification-events";
 import { hasSuperAdminRole } from "@/lib/system-account-rules";
 
 type AdminUser = {
@@ -298,14 +299,26 @@ export function AdminShell({
 
   async function handleNotificationClick(notification: AdminNotification) {
     setNotificationOpen(false);
-    setPending(true);
+    setNotifications((current) => current.filter((item) => item.id !== notification.id));
+    setUnreadCount((current) => Math.max(0, current - (notification.readAt ? 0 : 1)));
+    const markRead = markAdminNotificationRead(notification.type, notification.sourceId);
+    window.dispatchEvent(new CustomEvent(ADMIN_NOTIFICATION_NAVIGATION_EVENT, { detail: { link: notification.link } }));
+    router.push(notification.link);
+    try {
+      await markRead;
+    } catch {
+      setNotificationError("The notification opened, but it could not be marked as read.");
+    }
+  }
+
+  async function handleNotificationDismiss(notification: AdminNotification) {
+    setNotifications((current) => current.filter((item) => item.id !== notification.id));
+    setUnreadCount((current) => Math.max(0, current - (notification.readAt ? 0 : 1)));
     try {
       await markAdminNotificationRead(notification.type, notification.sourceId);
-      setNotifications((current) => current.filter((item) => item.id !== notification.id));
-      setUnreadCount((current) => Math.max(0, current - (notification.readAt ? 0 : 1)));
-      router.push(notification.link);
-    } finally {
-      setPending(false);
+    } catch {
+      setNotificationError("Could not dismiss the notification. Please try again.");
+      await loadNotifications({ silent: true });
     }
   }
 
@@ -493,22 +506,18 @@ export function AdminShell({
                         </div>
                       ) : (
                         notifications.map((notification) => (
-                          <button
-                            key={notification.id}
-                            type="button"
-                            className={`flex w-full items-start gap-3 border-b border-gray-100 px-4 py-3 text-left transition hover:bg-gray-50 ${
-                              notification.readAt ? "" : "bg-blue-50/60"
-                            }`}
-                            onClick={() => handleNotificationClick(notification)}
-                          >
-                            <NotificationTypeIcon type={notification.type} />
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate text-sm font-semibold text-gray-800">{notification.title}</span>
-                              <span className="mt-0.5 line-clamp-2 block text-xs leading-5 text-gray-500">{notification.message}</span>
-                              <span className="mt-1 block text-[11px] font-medium text-gray-400">{formatTimeAgo(notification.createdAt)}</span>
-                            </span>
-                            {!notification.readAt ? <span className="mt-2 size-2 rounded-full bg-blue-500" /> : null}
-                          </button>
+                          <div key={notification.id} className={`relative border-b border-gray-100 ${notification.readAt ? "" : "bg-blue-50/60"}`}>
+                            <button type="button" className="flex w-full items-start gap-3 py-3 pl-4 pr-12 text-left transition hover:bg-gray-50/80" onClick={() => void handleNotificationClick(notification)}>
+                              <NotificationTypeIcon type={notification.type} />
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-sm font-semibold text-gray-800">{notification.title}</span>
+                                <span className="mt-0.5 line-clamp-2 block text-xs leading-5 text-gray-500">{notification.message}</span>
+                                <span className="mt-1 block text-[11px] font-medium text-gray-400">{formatTimeAgo(notification.createdAt)}</span>
+                              </span>
+                              {!notification.readAt ? <span className="mt-2 size-2 shrink-0 rounded-full bg-blue-500" /> : null}
+                            </button>
+                            <button type="button" onClick={() => void handleNotificationDismiss(notification)} className="absolute right-2 top-2 inline-flex size-8 items-center justify-center rounded-lg text-gray-400 transition hover:bg-white hover:text-gray-700 hover:shadow-sm" aria-label={`Dismiss ${notification.title}`} title="Dismiss notification"><X className="size-4" aria-hidden="true" /></button>
+                          </div>
                         ))
                       )}
                     </div>

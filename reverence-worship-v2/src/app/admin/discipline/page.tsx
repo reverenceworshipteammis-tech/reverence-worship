@@ -66,6 +66,7 @@ export default async function DisciplinePage({
     attendance_end_date?: string;
     tab?: string;
     member?: string;
+    status?: string;
   }>;
 }) {
   const user = await requirePageAccess("discipline");
@@ -90,7 +91,9 @@ export default async function DisciplinePage({
 
     return (
       <DisciplineClient
+        key={`permission:${params.status ?? "all"}`}
         initialTab="permission"
+        initialPermissionStatus={["pending", "approved", "rejected"].includes(params.status ?? "") ? params.status! : "all"}
         initialMemberId={null}
         canManage={false}
         canViewProbation={false}
@@ -279,7 +282,9 @@ export default async function DisciplinePage({
 
   return (
     <DisciplineClient
+      key={`${params.tab ?? "overview"}:${params.status ?? "all"}:${params.member ?? "all"}`}
       initialTab={["overview", "attendance", "permission", "discipline-records", "action-plans"].includes(params.tab ?? "") ? params.tab! : "overview"}
+      initialPermissionStatus={["pending", "approved", "rejected"].includes(params.status ?? "") ? params.status! : "all"}
       initialMemberId={Number(params.member) || null}
       canManage
       canViewProbation={canViewProbation}

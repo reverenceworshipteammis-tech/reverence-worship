@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ActionNotice } from "@/components/action-notice";
 import { BookOpen, CalendarCheck, CheckCircle2, ClipboardList, Clock, Download, Edit, FileSearch2, FileText, FileUp, Filter, Gavel, Info, MailOpen, Play, Plus, Save, Search, Smile, Trash2, TriangleAlert, X, XCircle } from "lucide-react";
@@ -25,6 +25,7 @@ import {
 } from "@/app/admin/discipline/actions";
 import { useAppDialog } from "@/components/app-dialog-provider";
 import { DisciplineWorkspaceTabs } from "@/components/discipline-workspace-tabs";
+import { ADMIN_NOTIFICATION_NAVIGATION_EVENT } from "@/lib/admin-notification-events";
 
 type DisciplineStats = {
   permissionRequests: number;
@@ -179,6 +180,7 @@ type DisciplineDraft = {
 
 export function DisciplineClient({
   initialTab,
+  initialPermissionStatus,
   initialMemberId,
   canManage,
   canViewProbation,
@@ -198,6 +200,7 @@ export function DisciplineClient({
   actionPlans,
 }: {
   initialTab: string;
+  initialPermissionStatus: string;
   initialMemberId: number | null;
   canManage: boolean;
   canViewProbation: boolean;
@@ -243,9 +246,10 @@ export function DisciplineClient({
   const [sessionType, setSessionType] = useState("");
   const [attendanceDrafts, setAttendanceDrafts] = useState<AttendanceDraft[]>([]);
   const [sessionUserSearch, setSessionUserSearch] = useState("");
+  const [attendanceSaveNotice, setAttendanceSaveNotice] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [permissionSearch, setPermissionSearch] = useState(initialMember?.name ?? "");
-  const [permissionStatus, setPermissionStatus] = useState("all");
+  const [permissionStatus, setPermissionStatus] = useState(initialPermissionStatus);
   const [permissionFrom, setPermissionFrom] = useState("");
   const [permissionTo, setPermissionTo] = useState("");
   const [permissionPage, setPermissionPage] = useState(1);
@@ -275,6 +279,32 @@ export function DisciplineClient({
   const [editingActionPlan, setEditingActionPlan] = useState<DisciplineActionPlan | null>(null);
   const [editingActionTask, setEditingActionTask] = useState<DisciplineActionPlanTask | null>(null);
   const [taskPlan, setTaskPlan] = useState<DisciplineActionPlan | null>(null);
+
+  useEffect(() => {
+    const handleNotificationNavigation = (event: Event) => {
+      const link = (event as CustomEvent<{ link?: string }>).detail?.link;
+      if (!link) return;
+      const target = new URL(link, window.location.origin);
+      if (target.pathname !== "/admin/discipline") return;
+      const nextTab = target.searchParams.get("tab") ?? "overview";
+      setActiveTab(nextTab);
+      if (nextTab === "permission") {
+        const nextStatus = target.searchParams.get("status") ?? "all";
+        setPermissionStatus(["pending", "approved", "rejected"].includes(nextStatus) ? nextStatus : "all");
+        setPermissionPage(1);
+      }
+      setPermissionReviewModal(null);
+      setSessionModal(false);
+    };
+    window.addEventListener(ADMIN_NOTIFICATION_NAVIGATION_EVENT, handleNotificationNavigation);
+    return () => window.removeEventListener(ADMIN_NOTIFICATION_NAVIGATION_EVENT, handleNotificationNavigation);
+  }, []);
+
+  useEffect(() => {
+    if (!attendanceSaveNotice) return;
+    const timer = window.setTimeout(() => setAttendanceSaveNotice(null), 5_000);
+    return () => window.clearTimeout(timer);
+  }, [attendanceSaveNotice]);
 
   function applyRange() {
     const params = new URLSearchParams();
@@ -564,6 +594,7 @@ export function DisciplineClient({
     setSessionReadOnly(completed);
     setSessionImported(usesStoredRoster);
     setSessionUserSearch("");
+    setAttendanceSaveNotice(null);
     setAttendanceDrafts(
       sessionUsers.map((user) => {
         const record = existing.find((item) => item.userId === user.id);
@@ -587,11 +618,16 @@ export function DisciplineClient({
     );
     setSessionModal(true);
     setPermissionReviewModal(!completed && pendingPermissionsForDate.length > 0 ? "pending" : null);
-  
+  }
+
+  function closeAttendanceSession() {
+    setPermissionReviewModal(null);
+    setSessionModal(false);
   }
 
   function updateDraft(userId: number, patch: Partial<AttendanceDraft>) {
     if (sessionReadOnly) return;
+    setAttendanceSaveNotice(null);
     setAttendanceDrafts((current) => current.map((draft) => (draft.userId === userId ? { ...draft, ...patch } : draft)));
   }
 
@@ -612,7 +648,7 @@ export function DisciplineClient({
     return formData;
   }
 
-  async function submitAttendanceSession(closeAfterSave = false) {
+  async function submitAttendanceSession() {
     if (sessionReadOnly) {
       setNotice({ title: "Notice", message: "This session is completed and cannot be edited." });
       return;
@@ -626,12 +662,14 @@ export function DisciplineClient({
       const result = await saveAttendanceSession(buildAttendanceFormData());
       setMessage(result.message);
       if (result.ok) {
-        if (closeAfterSave) setSessionModal(false);
+        setAttendanceSaveNotice("Changes saved successfully.");
         router.refresh();
       } else {
+        setAttendanceSaveNotice(null);
         setNotice({ title: "Attendance Not Saved", message: result.message });
       }
     } catch (error) {
+      setAttendanceSaveNotice(null);
       setNotice({
         title: "Attendance Not Saved",
         message: error instanceof Error ? error.message : "Attendance could not be saved. Please retry.",
@@ -655,7 +693,7 @@ export function DisciplineClient({
       const result = await completeAttendanceSession(buildAttendanceFormData());
       setMessage(result.message);
       if (result.ok) {
-        setSessionModal(false);
+        closeAttendanceSession();
         router.refresh();
       } else {
         setNotice({ title: "Attendance Not Completed", message: result.message });
@@ -2249,7 +2287,7 @@ export function DisciplineClient({
                 </h2>
                 <p className="text-sm text-gray-500">{sessionType || "New Session"} • {sessionDate}</p>
               </div>
-              <button type="button" onClick={() => setSessionModal(false)} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700" aria-label="Close">
+              <button type="button" onClick={closeAttendanceSession} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700" aria-label="Close">
                 <X className="size-5" />
               </button>
             </div>
@@ -2260,6 +2298,7 @@ export function DisciplineClient({
                   This session is completed and cannot be edited.
                 </div>
               )}
+              {attendanceSaveNotice && !sessionReadOnly ? <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 sm:text-sm">{attendanceSaveNotice}</div> : null}
 
               <div className="grid grid-cols-4 gap-1 md:hidden">
                 <div className="rounded-lg bg-blue-50 px-1 py-1.5 text-center">
@@ -2283,11 +2322,11 @@ export function DisciplineClient({
               <div className="hidden gap-2 md:grid md:grid-cols-3 lg:grid-cols-[160px_1.5fr_repeat(4,1fr)]">
                 <div className="min-w-0">
                   <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">Session Date</label>
-                  <input value={sessionDate} disabled={sessionReadOnly} onChange={(event) => setSessionDate(event.target.value)} type="date" className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-50 disabled:text-gray-500" />
+                  <input value={sessionDate} disabled={sessionReadOnly} onChange={(event) => { setSessionDate(event.target.value); setAttendanceSaveNotice(null); }} type="date" className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-50 disabled:text-gray-500" />
                 </div>
                 <div className="min-w-0">
                   <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">Session Name</label>
-                  <input value={sessionType} disabled={sessionReadOnly} onChange={(event) => setSessionType(event.target.value)} className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-50 disabled:text-gray-500" />
+                  <input value={sessionType} disabled={sessionReadOnly} onChange={(event) => { setSessionType(event.target.value); setAttendanceSaveNotice(null); }} className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-50 disabled:text-gray-500" />
                 </div>
                 <div className="flex min-h-[55px] min-w-0 flex-col justify-center rounded-lg border border-blue-100 bg-blue-50 px-3 py-1.5">
                   <p className="truncate text-[10px] font-medium text-gray-600">Total Users</p>
@@ -2310,11 +2349,11 @@ export function DisciplineClient({
               <div className="grid grid-cols-2 gap-2 md:hidden">
                 <div>
                   <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Session Date</label>
-                  <input value={sessionDate} disabled={sessionReadOnly} onChange={(event) => setSessionDate(event.target.value)} type="date" className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:bg-gray-50 disabled:text-gray-500 sm:h-10 sm:px-3 sm:text-sm" />
+                  <input value={sessionDate} disabled={sessionReadOnly} onChange={(event) => { setSessionDate(event.target.value); setAttendanceSaveNotice(null); }} type="date" className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:bg-gray-50 disabled:text-gray-500 sm:h-10 sm:px-3 sm:text-sm" />
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Session Name</label>
-                  <input value={sessionType} disabled={sessionReadOnly} onChange={(event) => setSessionType(event.target.value)} className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:bg-gray-50 disabled:text-gray-500 sm:h-10 sm:px-3 sm:text-sm" />
+                  <input value={sessionType} disabled={sessionReadOnly} onChange={(event) => { setSessionType(event.target.value); setAttendanceSaveNotice(null); }} className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2 text-xs outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:bg-gray-50 disabled:text-gray-500 sm:h-10 sm:px-3 sm:text-sm" />
                 </div>
               </div>
 
@@ -2500,7 +2539,7 @@ export function DisciplineClient({
             </div>
 
             <div className={`${sessionReadOnly ? "grid-cols-1" : "grid-cols-[0.7fr_1.2fr_1fr]"} sticky bottom-0 z-20 grid gap-1.5 border-t bg-white px-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] sm:flex sm:justify-end sm:gap-3 sm:px-5 sm:py-3 sm:shadow-none`}>
-              <button type="button" onClick={() => setSessionModal(false)} className="rounded-lg border px-2 py-2 text-xs text-gray-700 sm:px-4 sm:text-sm">
+              <button type="button" onClick={closeAttendanceSession} className="rounded-lg border px-2 py-2 text-xs text-gray-700 sm:px-4 sm:text-sm">
                 Close
               </button>
               {!sessionReadOnly && (
@@ -2509,7 +2548,7 @@ export function DisciplineClient({
                     <CheckCircle2 className="size-4" />
                     {isSaving ? "Saving..." : "Complete Session"}
                   </button>
-                  <button type="button" disabled={isSaving} onClick={() => submitAttendanceSession(true)} className="inline-flex items-center justify-center gap-1 rounded-lg bg-blue-700 px-2 py-2 text-[11px] font-semibold text-white hover:bg-blue-800 disabled:opacity-60 sm:gap-2 sm:px-4 sm:text-sm">
+                  <button type="button" disabled={isSaving} onClick={() => void submitAttendanceSession()} className="inline-flex items-center justify-center gap-1 rounded-lg bg-blue-700 px-2 py-2 text-[11px] font-semibold text-white hover:bg-blue-800 disabled:opacity-60 sm:gap-2 sm:px-4 sm:text-sm">
                     <Save className="size-4" />
                     {isSaving ? "Saving..." : "Save Changes"}
                   </button>
@@ -2521,10 +2560,10 @@ export function DisciplineClient({
       )}
 
       {permissionReviewModal && (
-        <div className="fixed inset-0 z-[60] grid place-items-center bg-black/40 p-3 sm:p-6">
-          <div className="max-h-[80vh] w-full max-w-2xl overflow-hidden rounded-xl bg-white shadow-xl">
+        <div className="fixed inset-0 z-[100] grid place-items-center bg-black/55 p-3 backdrop-blur-[1px] sm:p-6" onMouseDown={(event) => { if (event.currentTarget === event.target) setPermissionReviewModal(null); }}>
+          <div className="max-h-[80vh] w-full max-w-2xl overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="permission-review-title">
             <div className={`flex items-center justify-between border-b px-6 py-4 ${permissionReviewModal === "pending" ? "bg-yellow-50" : "bg-red-50"}`}>
-              <h3 className={`text-lg font-semibold ${permissionReviewModal === "pending" ? "text-yellow-800" : "text-red-800"}`}>
+              <h3 id="permission-review-title" className={`text-lg font-semibold ${permissionReviewModal === "pending" ? "text-yellow-800" : "text-red-800"}`}>
                 {permissionReviewModal === "pending" ? "Pending Permission Requests" : "Rejected Permission Requests"}
               </h3>
               <button onClick={() => setPermissionReviewModal(null)} className="text-gray-400 hover:text-gray-600" aria-label="Close">
