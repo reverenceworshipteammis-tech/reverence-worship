@@ -5,7 +5,7 @@ import { chooseProjectionScreen, projectionScreenId, type ProjectionScreenLike }
 import { parseProjectionOverlayPresets, validateProjectionOverlayPresetInput } from "../src/lib/projection-overlays";
 import { clampProjectionTransitionDuration, isProjectionOutputState, projectionMediaBrightnessPercent, projectionOverlayPreviewTextSizePx, projectionOverlaySafeInsets, projectionOverlayTextSizePx, projectionOverlayWidthPercent, projectionPreviewTextSizePx, projectionTextSizePx, readProjectionState, sanitizeProjectionMediaUrl, writeProjectionState, type ProjectionOutputState } from "../src/lib/projection-runtime";
 import { projectionThemes } from "../src/lib/projection-themes";
-import { songProjectionSlides } from "../src/lib/song-projection";
+import { songProjectionSlides, validateProjectionSongLyrics } from "../src/lib/song-projection";
 
 test("song lyrics become labelled slides with no more than six lines", () => {
   const slides = songProjectionSlides("[Verse 1]\n\nOne\nTwo\nThree\nFour\nFive\nSix\nSeven\n\n[Chorus]\n\nPraise\nAgain");
@@ -16,6 +16,12 @@ test("song lyrics become labelled slides with no more than six lines", () => {
   assert.equal(slides[1].label, null);
   assert.equal(slides[1].text, "Seven");
   assert.equal(slides[2].label, "Chorus");
+});
+
+test("projection lyric editing validates and normalizes the complete song", () => {
+  assert.deepEqual(validateProjectionSongLyrics("  [Verse 1]\r\n\r\nPraise\r\nAgain  "), { ok: true, lyrics: "[Verse 1]\n\nPraise\nAgain" });
+  assert.equal(validateProjectionSongLyrics("   ").ok, false);
+  assert.equal(validateProjectionSongLyrics(null).ok, false);
 });
 
 test("Bible projection groups only consecutive selected verses and keeps translation columns", () => {

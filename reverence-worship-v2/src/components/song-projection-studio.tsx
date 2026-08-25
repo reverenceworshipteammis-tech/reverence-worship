@@ -2,7 +2,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
-import { deleteProjectionOverlayPreset, saveProjectionOverlayPreset } from "@/app/admin/music/actions";
+import { deleteProjectionOverlayPreset, saveProjectionOverlayPreset, updateProjectionSongLyrics } from "@/app/admin/music/actions";
 import { ProjectionAutoFitText } from "@/components/projection-auto-fit-text";
 import {
   BookOpen,
@@ -52,7 +52,7 @@ import {
   type ProjectionTransitionType,
   writeProjectionState,
 } from "@/lib/projection-runtime";
-import { songProjectionSlides, type SongProjectionSlide } from "@/lib/song-projection";
+import { MAX_EDITABLE_SONG_LYRICS_LENGTH, songProjectionSlides, type SongProjectionSlide } from "@/lib/song-projection";
 import type { ProjectionOverlayPreset } from "@/lib/projection-overlays";
 
 type ProjectionSong = {
@@ -93,6 +93,7 @@ type OverlayTone = "blue" | "dark" | "light" | "minimal";
 type OverlayPosition = "top" | "center" | "bottom";
 type ProjectionControlPanel = "looks" | "media" | "overlay";
 type SlideEditorState = { key: string; index: number; slide: SongProjectionSlide };
+type SongLyricsEditorState = { songId: number; title: string; lyrics: string; notice: string | null };
 
 function serviceLabel(serviceNumber: number) {
   return serviceNumber === 1 ? "First service" : serviceNumber === 2 ? "Second service" : `Service ${serviceNumber}`;
@@ -327,7 +328,9 @@ function BibleChapterPicker({ value, chapterCount, onChange }: { value: string; 
 }
 
 export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, operatorActive = true }: { songs: ProjectionSong[]; playlists: ProjectionPlaylist[]; initialOverlayPresets: ProjectionOverlayPreset[]; operatorActive?: boolean }) {
-  const activeSongs = useMemo(() => songs.filter((song) => !song.isArchived && song.lyrics?.trim()), [songs]);
+  const [songLyricsOverrides, setSongLyricsOverrides] = useState<Record<number, string>>({});
+  const projectionSongs = useMemo(() => songs.map((song) => ({ ...song, lyrics: songLyricsOverrides[song.id] ?? song.lyrics })), [songLyricsOverrides, songs]);
+  const activeSongs = useMemo(() => projectionSongs.filter((song) => !song.isArchived && song.lyrics?.trim()), [projectionSongs]);
   const [source, setSource] = useState<Source>("songs");
   const [playlistId, setPlaylistId] = useState("library");
   const [sessionId, setSessionId] = useState("");
@@ -351,6 +354,7 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
   const [liveState, setLiveState] = useState<ProjectionOutputState | null>(() => typeof window === "undefined" ? null : readProjectionState(window.localStorage));
   const [slideOverrides, setSlideOverrides] = useState<Record<string, SongProjectionSlide>>({});
   const [slideEditor, setSlideEditor] = useState<SlideEditorState | null>(null);
+  const [songLyricsEditor, setSongLyricsEditor] = useState<SongLyricsEditorState | null>(null);
 
   const [bibleVersion, setBibleVersion] = useState(bibleVersions[0].key);
   const [compareVersion, setCompareVersion] = useState("");
@@ -378,6 +382,7 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
   const [previewFrameHeight, setPreviewFrameHeight] = useState(0);
   const [previewOverlayHeight, setPreviewOverlayHeight] = useState(0);
   const [overlayPresetPending, startOverlayPresetTransition] = useTransition();
+  const [songLyricsPending, startSongLyricsTransition] = useTransition();
 
   const [screens, setScreens] = useState<ProjectionScreenLike[]>([]);
   const [selectedScreenId, setSelectedScreenId] = useState("");
@@ -397,7 +402,9 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
 
   const selectedPlaylist = playlists.find((playlist) => String(playlist.id) === playlistId) ?? null;
   const selectedSession = selectedPlaylist?.sessions.find((session) => String(session.id) === sessionId) ?? selectedPlaylist?.sessions[0] ?? null;
-  const sourceSongs = selectedSession ? selectedSession.songs.filter((song) => !song.isArchived && song.lyrics?.trim()) : activeSongs;
+  const sourceSongs = selectedSession
+    ? selectedSession.songs.map((song) => ({ ...song, lyrics: songLyricsOverrides[song.id] ?? song.lyrics })).filter((song) => !song.isArchived && song.lyrics?.trim())
+    : activeSongs;
   const selectedSong = sourceSongs.find((song) => song.id === selectedSongId) ?? sourceSongs[0] ?? null;
   const filteredSongs = sourceSongs.filter((song) => `${song.title} ${song.artist ?? ""} ${song.lyrics ?? ""}`.toLowerCase().includes(search.trim().toLowerCase())).slice(0, 100);
   const songSlides = songProjectionSlides(selectedSong?.lyrics);
@@ -537,6 +544,37 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
       key: slideOverrideKey(index),
       index,
       slide: { ...slide, sections: slide.sections?.map((section) => ({ ...section })) },
+    });
+  }
+
+  function openSongLyricsEditor() {
+    if (!selectedSong?.lyrics) return;
+    setSongLyricsEditor({
+      songId: selectedSong.id,
+      title: selectedSong.title,
+      lyrics: selectedSong.lyrics,
+      notice: null,
+    });
+  }
+
+  function saveSongLyrics() {
+    if (!songLyricsEditor || songLyricsPending) return;
+    const editor = songLyricsEditor;
+    startSongLyricsTransition(async () => {
+      try {
+        const result = await updateProjectionSongLyrics(editor.songId, editor.lyrics);
+        if (!result.ok) {
+          setSongLyricsEditor((current) => current?.songId === editor.songId ? { ...current, notice: result.message } : current);
+          return;
+        }
+        setSongLyricsOverrides((current) => ({ ...current, [editor.songId]: result.lyrics }));
+        setSlideOverrides((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`song:${editor.songId}:`))));
+        setSlideIndex(0);
+        setBlanked(false);
+        setSongLyricsEditor(null);
+      } catch {
+        setSongLyricsEditor((current) => current?.songId === editor.songId ? { ...current, notice: "Unable to save the lyrics right now. Check your permission or connection and try again." } : current);
+      }
     });
   }
 
@@ -821,16 +859,23 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
   }, [operatorActive]);
 
   useEffect(() => {
-    if (!slideEditor) return;
-    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setSlideEditor(null); };
+    if (!slideEditor && !songLyricsEditor) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setSlideEditor(null);
+      if (!songLyricsPending) setSongLyricsEditor(null);
+    };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [slideEditor]);
+  }, [slideEditor, songLyricsEditor, songLyricsPending]);
 
   const previewOverlayPosition = overlayPosition === "top" ? "top-4" : overlayPosition === "center" ? "top-1/2 -translate-y-1/2" : "bottom-4";
   const showPreviewOverlay = Boolean(overlayVisible && !blanked && (overlayTitle || overlayText));
   const previewSafeInsets = projectionOverlaySafeInsets(previewFrameHeight, previewOverlayHeight, overlayPosition, showPreviewOverlay);
   const slideEditorValid = Boolean(slideEditor && (slideEditor.slide.sections?.length ? slideEditor.slide.sections.every((section) => section.text.trim()) : slideEditor.slide.text.trim()));
+  const songLyricsEditorSlides = songProjectionSlides(songLyricsEditor?.lyrics);
+  const songLyricsEditorValid = Boolean(songLyricsEditor?.lyrics.trim() && songLyricsEditor.lyrics.length <= MAX_EDITABLE_SONG_LYRICS_LENGTH);
+  const songLyricsEditorHasTemporaryEdits = Boolean(songLyricsEditor && Object.keys(slideOverrides).some((key) => key.startsWith(`song:${songLyricsEditor.songId}:`)));
 
   useLayoutEffect(() => {
     const frame = previewFrameRef.current;
@@ -922,7 +967,7 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
         <div className="min-w-0 border-b border-slate-200 p-3 sm:p-4 xl:border-b-0 xl:border-r">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <div><div className="flex items-center gap-2"><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-blue-600">Preview</p>{hasPendingChanges && !autoTake ? <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">Not live yet</span> : <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">Matches audience</span>}</div><h4 className="truncate text-sm font-bold text-slate-900">{source === "songs" ? selectedSong?.title ?? "Choose a song" : loadedBible?.reference ?? "Load a Bible chapter"}</h4></div>
-            <div className="flex flex-wrap gap-2"><button type="button" onClick={() => openSlideEditor()} disabled={!currentSlide} className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-blue-700 hover:bg-blue-100 disabled:opacity-40"><Pencil className="size-3.5" /> Edit slide</button>{slideOverrides[slideOverrideKey(safeSlideIndex)] ? <button type="button" onClick={() => resetSlideEdit()} className="inline-flex size-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:text-red-600" aria-label="Reset current slide"><RotateCcw className="size-3.5" /></button> : null}<button type="button" onClick={takePreview} className="inline-flex h-9 items-center gap-2 rounded-lg bg-emerald-600 px-4 text-xs font-extrabold text-white shadow-sm hover:bg-emerald-700"><Send className="size-4" /> Take live</button><button type="button" onClick={toggleLiveBlank} className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-xs font-bold ${liveState?.blanked ? "bg-amber-100 text-amber-800" : "border border-slate-200 bg-white text-slate-600"}`}>{liveState?.blanked ? <Eye className="size-4" /> : <EyeOff className="size-4" />}{liveState?.blanked ? "Show output" : "Blank output"}</button></div>
+            <div className="flex flex-wrap gap-2"><button type="button" onClick={() => source === "songs" ? openSongLyricsEditor() : openSlideEditor()} disabled={source === "songs" ? !selectedSong?.lyrics : !currentSlide} className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-blue-700 hover:bg-blue-100 disabled:opacity-40"><Pencil className="size-3.5" /> {source === "songs" ? "Edit lyrics" : "Edit slide"}</button>{slideOverrides[slideOverrideKey(safeSlideIndex)] ? <button type="button" onClick={() => resetSlideEdit()} className="inline-flex size-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:text-red-600" aria-label="Reset current slide"><RotateCcw className="size-3.5" /></button> : null}<button type="button" onClick={takePreview} className="inline-flex h-9 items-center gap-2 rounded-lg bg-emerald-600 px-4 text-xs font-extrabold text-white shadow-sm hover:bg-emerald-700"><Send className="size-4" /> Take live</button><button type="button" onClick={toggleLiveBlank} className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-xs font-bold ${liveState?.blanked ? "bg-amber-100 text-amber-800" : "border border-slate-200 bg-white text-slate-600"}`}>{liveState?.blanked ? <Eye className="size-4" /> : <EyeOff className="size-4" />}{liveState?.blanked ? "Show output" : "Blank output"}</button></div>
           </div>
 
           <div ref={previewFrameRef} className="relative isolate aspect-video overflow-hidden rounded-xl border border-slate-700 bg-black shadow-inner" style={{ color: activeTheme.text }}>
@@ -1017,16 +1062,45 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
         </aside>
       </div>
 
+      {songLyricsEditor ? (
+        <div className="fixed inset-0 z-[85] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm sm:p-5" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target && !songLyricsPending) setSongLyricsEditor(null); }}>
+          <section className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="song-lyrics-editor-title">
+            <header className="flex items-start justify-between gap-4 border-b border-slate-200 bg-gradient-to-r from-blue-50 via-white to-white px-5 py-4">
+              <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 id="song-lyrics-editor-title" className="text-base font-extrabold text-slate-950">Edit complete song lyrics</h3><span className="rounded-full bg-blue-100 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-blue-700">Permanent library change</span></div><p className="mt-1 truncate text-xs font-semibold text-slate-600">{songLyricsEditor.title}</p><p className="mt-1 text-[10px] text-slate-400">Saving regenerates every projection slide. The audience output changes only after you press Take live.</p></div>
+              <button type="button" onClick={() => setSongLyricsEditor(null)} disabled={songLyricsPending} className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200 hover:text-slate-700 disabled:opacity-40" aria-label="Close lyrics editor"><X className="size-4" /></button>
+            </header>
+            <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_320px]">
+              <div className="flex min-h-0 flex-col border-b border-slate-200 p-5 lg:border-b-0 lg:border-r">
+                <div className="mb-2 flex items-end justify-between gap-3"><label htmlFor="complete-song-lyrics" className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Complete lyrics</label><span className="text-[10px] font-semibold text-slate-400">{songLyricsEditor.lyrics.length} / {MAX_EDITABLE_SONG_LYRICS_LENGTH} characters</span></div>
+                <textarea id="complete-song-lyrics" autoFocus value={songLyricsEditor.lyrics} maxLength={MAX_EDITABLE_SONG_LYRICS_LENGTH} onChange={(event) => setSongLyricsEditor((current) => current ? { ...current, lyrics: event.target.value, notice: null } : null)} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); saveSongLyrics(); } }} spellCheck className="min-h-[330px] flex-1 resize-none rounded-xl border border-slate-300 bg-white p-4 font-mono text-sm leading-6 text-slate-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+                <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] leading-4 text-slate-500"><strong className="text-slate-700">Formatting:</strong> use headings such as <code className="rounded bg-white px-1 text-blue-700">[Verse 1]</code> or <code className="rounded bg-white px-1 text-blue-700">[Chorus]</code> on their own block. Slides are automatically limited to six lyric lines.</div>
+                {songLyricsEditorHasTemporaryEdits ? <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-[10px] font-semibold text-amber-800 ring-1 ring-amber-200">Saving the complete song will replace temporary edits previously made to individual slides.</p> : null}
+              </div>
+              <aside className="min-h-0 bg-slate-50/70 p-4">
+                <div className="mb-3 flex items-center justify-between"><div><h4 className="text-xs font-extrabold text-slate-800">Generated slides</h4><p className="text-[10px] text-slate-400">Updates while you type</p></div><span className="rounded-full bg-blue-600 px-2.5 py-1 text-[10px] font-extrabold text-white">{songLyricsEditorSlides.length}</span></div>
+                <div className="max-h-[52vh] space-y-2 overflow-y-auto pr-1">
+                  {songLyricsEditorSlides.map((slide, index) => <div key={`${slide.label ?? "slide"}-${index}`} className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm"><div className="mb-1 flex items-center justify-between gap-2"><span className="truncate text-[9px] font-extrabold uppercase tracking-wider text-blue-600">{slide.label || `Slide ${index + 1}`}</span><span className="shrink-0 text-[9px] font-bold text-slate-300">{index + 1}</span></div><p className="whitespace-pre-line text-[10px] font-semibold leading-4 text-slate-600">{slide.text}</p></div>)}
+                  {!songLyricsEditorSlides.length ? <div className="rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center text-xs text-slate-400">Enter lyrics to generate slides.</div> : null}
+                </div>
+              </aside>
+            </div>
+            <footer className="flex flex-col gap-3 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0" aria-live="polite">{songLyricsEditor.notice ? <p className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 ring-1 ring-red-200">{songLyricsEditor.notice}</p> : <p className="text-[10px] text-slate-400">Tip: press Ctrl+Enter to save.</p>}</div>
+              <div className="flex shrink-0 justify-end gap-2"><button type="button" onClick={() => setSongLyricsEditor(null)} disabled={songLyricsPending} className="h-9 rounded-lg border border-slate-300 bg-white px-4 text-xs font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-40">Cancel</button><button type="button" onClick={saveSongLyrics} disabled={!songLyricsEditorValid || songLyricsPending} className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-4 text-xs font-extrabold text-white hover:bg-blue-700 disabled:opacity-40">{songLyricsPending ? <LoaderCircle className="size-4 animate-spin" /> : <Save className="size-4" />}{songLyricsPending ? "Saving…" : "Save complete lyrics"}</button></div>
+            </footer>
+          </section>
+        </div>
+      ) : null}
+
       {slideEditor ? (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) setSlideEditor(null); }}>
           <section className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="slide-editor-title">
-            <header className="flex items-start justify-between border-b border-slate-200 bg-slate-50 px-5 py-4"><div><h3 id="slide-editor-title" className="text-base font-extrabold text-slate-950">Edit slide {slideEditor.index + 1}</h3><p className="mt-1 text-xs text-slate-500">This changes only this presentation slide; the saved song or Bible text remains unchanged.</p></div><button type="button" onClick={() => setSlideEditor(null)} className="inline-flex size-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200 hover:text-slate-700" aria-label="Close slide editor"><X className="size-4" /></button></header>
+            <header className="flex items-start justify-between border-b border-slate-200 bg-slate-50 px-5 py-4"><div><h3 id="slide-editor-title" className="text-base font-extrabold text-slate-950">Edit slide {slideEditor.index + 1}</h3><p className="mt-1 text-xs text-slate-500"></p></div><button type="button" onClick={() => setSlideEditor(null)} className="inline-flex size-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200 hover:text-slate-700" aria-label="Close slide editor"><X className="size-4" /></button></header>
             <div className="max-h-[65vh] space-y-4 overflow-y-auto p-5">
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Slide heading<input autoFocus value={slideEditor.slide.label ?? ""} onChange={(event) => setSlideEditor((current) => current ? { ...current, slide: { ...current.slide, label: event.target.value } } : null)} placeholder="Optional heading, for example Chorus" maxLength={160} className="mt-1.5 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm font-semibold normal-case tracking-normal outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" /></label>
               {slideEditor.slide.sections?.length ? (
                 <div className="grid gap-3 sm:grid-cols-2">{slideEditor.slide.sections.map((section, sectionIndex) => <div key={sectionIndex} className="rounded-xl border border-slate-200 bg-slate-50 p-3"><label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Column heading<input value={section.label} onChange={(event) => setSlideEditor((current) => current ? { ...current, slide: { ...current.slide, sections: current.slide.sections?.map((item, index) => index === sectionIndex ? { ...item, label: event.target.value } : item) } } : null)} maxLength={160} className="mt-1.5 h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-xs font-semibold normal-case tracking-normal outline-none focus:border-blue-500" /></label><label className="mt-3 block text-[10px] font-bold uppercase tracking-wider text-slate-500">Text<textarea value={section.text} onChange={(event) => setSlideEditor((current) => current ? { ...current, slide: { ...current.slide, sections: current.slide.sections?.map((item, index) => index === sectionIndex ? { ...item, text: event.target.value } : item) } } : null)} rows={7} className="mt-1.5 w-full resize-y rounded-md border border-slate-300 bg-white p-2 text-sm font-semibold leading-6 normal-case tracking-normal outline-none focus:border-blue-500" /></label></div>)}</div>
               ) : (
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Slide text<textarea value={slideEditor.slide.text} onChange={(event) => setSlideEditor((current) => current ? { ...current, slide: { ...current.slide, text: event.target.value } } : null)} rows={9} className="mt-1.5 w-full resize-y rounded-lg border border-slate-300 p-3 text-base font-semibold leading-7 normal-case tracking-normal outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" /></label>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Slide text<textarea autoFocus value={slideEditor.slide.text} onChange={(event) => setSlideEditor((current) => current ? { ...current, slide: { ...current.slide, text: event.target.value } } : null)} rows={9} className="mt-1.5 w-full resize-y rounded-lg border border-slate-300 p-3 text-base font-semibold leading-7 normal-case tracking-normal outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" /></label>
               )}
             </div>
             <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4"><div>{slideOverrides[slideEditor.key] ? <button type="button" onClick={() => resetSlideEdit(slideEditor.index)} className="inline-flex h-9 items-center gap-2 rounded-lg px-3 text-xs font-bold text-red-600 hover:bg-red-50"><RotateCcw className="size-3.5" /> Reset original</button> : <span className="text-[10px] text-slate-400">Apply, review in Preview, then Take live.</span>}</div><div className="flex gap-2"><button type="button" onClick={() => setSlideEditor(null)} className="h-9 rounded-lg border border-slate-300 bg-white px-4 text-xs font-bold text-slate-600 hover:bg-slate-100">Cancel</button><button type="button" onClick={applySlideEdit} disabled={!slideEditorValid} className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-4 text-xs font-extrabold text-white hover:bg-blue-700 disabled:opacity-40"><Check className="size-4" /> Apply to preview</button></div></footer>

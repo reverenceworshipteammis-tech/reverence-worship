@@ -13,6 +13,7 @@ import {
 } from "@/lib/playlist-rules";
 import { prisma } from "@/lib/prisma";
 import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
+import { validateProjectionSongLyrics } from "@/lib/song-projection";
 import type { ImportedSong } from "@/lib/freeshow-import";
 import {
   MAX_PROJECTION_OVERLAY_PRESETS,
@@ -608,6 +609,22 @@ export async function updateSong(songId: number, formData: FormData) {
   revalidatePath("/admin/music");
 
   return { ok: true, message: "Song updated successfully." };
+}
+
+export async function updateProjectionSongLyrics(songId: number, input: unknown) {
+  await requirePermission("music-ministry", "manage-songs");
+  if (!Number.isInteger(songId) || songId <= 0) return { ok: false as const, message: "Select a valid song." };
+  const parsed = validateProjectionSongLyrics(input);
+  if (!parsed.ok) return parsed;
+
+  const result = await prisma.song.updateMany({
+    where: { id: songId, isArchived: false },
+    data: { lyrics: parsed.lyrics },
+  });
+  if (result.count === 0) return { ok: false as const, message: "That song no longer exists or has been archived." };
+
+  revalidatePath("/admin/music");
+  return { ok: true as const, message: "Song lyrics saved and projection slides regenerated.", lyrics: parsed.lyrics };
 }
 
 export async function createPlaylist(formData: FormData) {

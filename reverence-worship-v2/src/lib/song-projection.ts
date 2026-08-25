@@ -6,6 +6,17 @@ export type SongProjectionSlide = {
 
 const MAX_LINES_PER_SLIDE = 6;
 const SECTION_LABEL = /^\[([^\]\n]{1,80})\]$/;
+export const MAX_EDITABLE_SONG_LYRICS_LENGTH = 200_000;
+
+export function validateProjectionSongLyrics(input: unknown) {
+  if (typeof input !== "string") return { ok: false as const, message: "Enter the song lyrics." };
+  const lyrics = input.replace(/\r\n?/g, "\n").trim();
+  if (!lyrics) return { ok: false as const, message: "Song lyrics cannot be empty." };
+  if (lyrics.length > MAX_EDITABLE_SONG_LYRICS_LENGTH) {
+    return { ok: false as const, message: `Lyrics must be ${MAX_EDITABLE_SONG_LYRICS_LENGTH.toLocaleString()} characters or fewer.` };
+  }
+  return { ok: true as const, lyrics };
+}
 
 export function songProjectionSlides(lyrics: string | null | undefined): SongProjectionSlide[] {
   const normalized = lyrics?.replace(/\r\n?/g, "\n").trim();
