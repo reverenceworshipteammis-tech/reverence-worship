@@ -66,7 +66,7 @@ export function projectionOverlaySafeInsets(
   visible: boolean,
 ) {
   const height = Math.max(0, Number.isFinite(frameHeight) ? frameHeight : 0);
-  const baseInset = height * 0.06;
+  const baseInset = height * 0.035;
   if (!visible || height === 0 || overlayHeight <= 0) {
     return { paddingTop: baseInset, paddingBottom: baseInset };
   }
@@ -130,6 +130,23 @@ export type ProjectionOutputState = {
   overlay: ProjectionOverlayState;
 };
 
+/**
+ * Moving through a deck is a live action, but it must not accidentally publish
+ * appearance or edit controls that are still being previewed by the operator.
+ */
+export function projectionNavigationState(
+  liveState: ProjectionOutputState | null,
+  draftState: ProjectionOutputState,
+): ProjectionOutputState {
+  const presentation = liveState ?? draftState;
+  return {
+    ...presentation,
+    blanked: false,
+    slide: draftState.slide,
+    footer: draftState.footer,
+  };
+}
+
 export type ProjectionControlKey =
   | "ArrowRight"
   | "ArrowLeft"
@@ -137,6 +154,7 @@ export type ProjectionControlKey =
   | "PageUp"
   | "Home"
   | "End"
+  | "Enter"
   | " "
   | "b"
   | "o";

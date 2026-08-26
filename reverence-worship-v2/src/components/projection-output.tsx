@@ -14,7 +14,7 @@ import {
   readProjectionState,
 } from "@/lib/projection-runtime";
 
-const OUTPUT_KEYS = new Set(["ArrowRight", "ArrowLeft", "PageDown", "PageUp", "Home", "End", " ", "b", "o"]);
+const OUTPUT_KEYS = new Set(["ArrowRight", "ArrowLeft", "PageDown", "PageUp", "Home", "End", "Enter", " ", "b", "o"]);
 
 function ProjectionFrame({ state, animate }: { state: ProjectionOutputState; animate: boolean }) {
   const frameRef = useRef<HTMLDivElement | null>(null);
@@ -58,23 +58,23 @@ function ProjectionFrame({ state, animate }: { state: ProjectionOutputState; ani
       ) : null}
 
       {!state.blanked ? (
-        <section className="relative z-0 flex h-full min-h-0 flex-col items-center px-[7vw] text-center" style={safeInsets}>
-          {state.slide?.label ? <p className="mb-[2.5vh] text-[clamp(16px,1.8vw,30px)] font-bold uppercase tracking-[0.12em]" style={{ color: state.mutedTextColor }}>{state.slide.label}</p> : null}
+        <section className="relative z-0 flex h-full min-h-0 flex-col items-center px-[3.5vw] text-center" style={safeInsets}>
+          {state.slide?.label ? <p className="mb-[1vh] text-[clamp(16px,1.8vw,30px)] font-bold uppercase tracking-[0.12em]" style={{ color: state.mutedTextColor }}>{state.slide.label}</p> : null}
           {state.slide?.sections?.length ? (
-            <div className="grid min-h-0 w-full max-w-[1700px] flex-1 items-stretch" style={{ gridTemplateColumns: `repeat(${state.slide.sections.length}, minmax(0, 1fr))` }}>
+            <div className="grid min-h-0 w-full flex-1 items-stretch" style={{ gridTemplateColumns: `repeat(${state.slide.sections.length}, minmax(0, 1fr))` }}>
               {state.slide.sections.map((section, index) => (
-                <section key={`${section.label}-${index}`} className="flex min-h-0 min-w-0 flex-col px-[3vw] py-[1vh]" style={{ borderLeft: index ? `1px solid ${state.mutedTextColor}` : undefined }}>
-                  <h2 className="mb-[1.5vh] text-[clamp(16px,1.7vw,28px)] font-extrabold uppercase tracking-[0.14em]" style={{ color: state.mutedTextColor }}>{section.label}</h2>
-                  <ProjectionAutoFitText text={section.text} maximumFontSize={maximumFontSize} className="font-bold leading-[1.24] tracking-[0.003em]" style={{ color: state.textColor, textShadow: state.textShadow }} />
+                <section key={`${section.label}-${index}`} className="flex min-h-0 min-w-0 flex-col px-[2vw] py-[0.5vh]" style={{ borderLeft: index ? `1px solid ${state.mutedTextColor}` : undefined }}>
+                  <h2 className="mb-[0.75vh] text-[clamp(16px,1.7vw,28px)] font-extrabold uppercase tracking-[0.14em]" style={{ color: state.mutedTextColor }}>{section.label}</h2>
+                  <ProjectionAutoFitText text={section.text} maximumFontSize={maximumFontSize} className="font-bold leading-[1.08] tracking-[0.003em]" style={{ color: state.textColor, textShadow: state.textShadow }} />
                 </section>
               ))}
             </div>
           ) : (
-            <div className="min-h-0 w-full max-w-[1500px] flex-1">
-              <ProjectionAutoFitText text={state.slide?.text ?? state.emptyMessage} maximumFontSize={maximumFontSize} className="font-bold leading-[1.25] tracking-[0.005em]" style={{ color: state.textColor, textShadow: state.textShadow }} />
+            <div className="min-h-0 w-full flex-1">
+              <ProjectionAutoFitText text={state.slide?.text ?? ""} maximumFontSize={maximumFontSize} className="font-bold leading-[1.08] tracking-[0.003em]" style={{ color: state.textColor, textShadow: state.textShadow }} />
             </div>
           )}
-          <p className="mt-[1.5vh] w-full shrink-0 truncate text-center text-[clamp(12px,1.15vw,20px)]" style={{ color: state.mutedTextColor }}>{state.footer}</p>
+          <p className="mt-[0.75vh] w-full shrink-0 truncate text-center text-[clamp(12px,1.15vw,20px)]" style={{ color: state.mutedTextColor }}>{state.footer}</p>
         </section>
       ) : null}
 
@@ -87,8 +87,8 @@ function ProjectionFrame({ state, animate }: { state: ProjectionOutputState; ani
           background: state.overlay.background, color: state.overlay.color, borderColor: state.overlay.borderColor,
           boxShadow: state.overlay.boxShadow, textShadow: state.overlay.textShadow, padding: state.overlay.padding,
         }}>
-          {state.overlay.title ? <h2 className="mb-[0.65em] font-extrabold uppercase tracking-[0.1em] opacity-70" style={{ fontSize: `${Math.max(10, Math.round(overlayFontSize * 0.5))}px` }}>{state.overlay.title}</h2> : null}
-          {state.overlay.text ? <p style={{ fontSize: `${overlayFontSize}px` }}>{state.overlay.text}</p> : null}
+          {state.overlay.title ? <h2 className="mb-[0.65em] [overflow-wrap:anywhere] font-extrabold uppercase tracking-[0.1em] opacity-70" style={{ fontSize: `${Math.max(10, Math.round(overlayFontSize * 0.5))}px` }}>{state.overlay.title}</h2> : null}
+          {state.overlay.text ? <ProjectionAutoFitText text={state.overlay.text} maximumFontSize={overlayFontSize} minimumFontSize={10} fit="width" className="font-bold leading-[1.22]" /> : null}
         </aside>
       ) : null}
     </div>

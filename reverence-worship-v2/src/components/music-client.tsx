@@ -2199,7 +2199,7 @@ export function MusicClient({
         </div>
       ) : (
         <div className="rounded-xl border border-gray-100 bg-white p-2 shadow-sm sm:rounded-2xl sm:p-6">
-          <div className="mb-4 flex flex-col gap-3 border-b border-gray-200 sm:flex-row sm:items-center sm:justify-between">
+          <div className={`${libraryTab === "projection" ? "sticky top-[72px] z-30 mb-0 bg-white shadow-sm" : "mb-4"} flex flex-col gap-3 border-b border-gray-200 sm:flex-row sm:items-center sm:justify-between`}>
               <div className="flex" role="tablist" aria-label="Music library sections">
                 <button
                   type="button"

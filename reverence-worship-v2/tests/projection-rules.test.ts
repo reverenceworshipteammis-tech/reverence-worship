@@ -3,7 +3,7 @@ import test from "node:test";
 import { multiVersionBibleProjectionSlides } from "../src/lib/bible-projection";
 import { chooseProjectionScreen, projectionScreenId, type ProjectionScreenLike } from "../src/lib/projection-display";
 import { parseProjectionOverlayPresets, validateProjectionOverlayPresetInput } from "../src/lib/projection-overlays";
-import { clampProjectionTransitionDuration, isProjectionOutputState, projectionMediaBrightnessPercent, projectionOverlayPreviewTextSizePx, projectionOverlaySafeInsets, projectionOverlayTextSizePx, projectionOverlayWidthPercent, projectionPreviewTextSizePx, projectionTextSizePx, readProjectionState, sanitizeProjectionMediaUrl, writeProjectionState, type ProjectionOutputState } from "../src/lib/projection-runtime";
+import { clampProjectionTransitionDuration, isProjectionOutputState, projectionMediaBrightnessPercent, projectionNavigationState, projectionOverlayPreviewTextSizePx, projectionOverlaySafeInsets, projectionOverlayTextSizePx, projectionOverlayWidthPercent, projectionPreviewTextSizePx, projectionTextSizePx, readProjectionState, sanitizeProjectionMediaUrl, writeProjectionState, type ProjectionOutputState } from "../src/lib/projection-runtime";
 import { projectionThemes } from "../src/lib/projection-themes";
 import { songProjectionSlides, validateProjectionSongLyrics } from "../src/lib/song-projection";
 
@@ -78,10 +78,10 @@ test("projection overlay size changes text and box dimensions from 5 to 100 perc
 });
 
 test("visible overlays reserve a safe lyric area instead of covering content", () => {
-  assert.deepEqual(projectionOverlaySafeInsets(1000, 100, "top", true), { paddingTop: 185, paddingBottom: 60 });
-  assert.deepEqual(projectionOverlaySafeInsets(1000, 100, "bottom", true), { paddingTop: 60, paddingBottom: 195 });
+  assert.deepEqual(projectionOverlaySafeInsets(1000, 100, "top", true), { paddingTop: 185, paddingBottom: 35 });
+  assert.deepEqual(projectionOverlaySafeInsets(1000, 100, "bottom", true), { paddingTop: 35, paddingBottom: 195 });
   assert.deepEqual(projectionOverlaySafeInsets(1000, 100, "center", true), { paddingTop: 35, paddingBottom: 575 });
-  assert.deepEqual(projectionOverlaySafeInsets(1000, 100, "bottom", false), { paddingTop: 60, paddingBottom: 60 });
+  assert.deepEqual(projectionOverlaySafeInsets(1000, 100, "bottom", false), { paddingTop: 35, paddingBottom: 35 });
 });
 
 test("projection state storage validates restored output", () => {
@@ -107,6 +107,34 @@ test("projection state storage validates restored output", () => {
   assert.equal(isProjectionOutputState(JSON.parse(stored)), true);
   assert.deepEqual(readProjectionState({ getItem: () => stored }), state);
   assert.equal(readProjectionState({ getItem: () => "not json" }), null);
+});
+
+test("slide navigation goes live without publishing pending appearance changes", () => {
+  const live: ProjectionOutputState = {
+    version: 3,
+    updatedAt: 10,
+    blanked: true,
+    slide: { label: "Verse", text: "Old slide" },
+    emptyMessage: "Choose content",
+    footer: "Song — 1/2",
+    fontSize: 60,
+    background: "#000",
+    textColor: "#fff",
+    mutedTextColor: "#aaa",
+    textShadow: "none",
+    media: { type: "none", url: "", fit: "cover", brightness: 55, name: "" },
+    transition: { type: "fade", durationMs: 350 },
+    overlay: { visible: false, title: "", text: "", position: "bottom", alignment: "center", fontSize: 34, width: 76, opacity: 96, background: "#000", color: "#fff", borderColor: "transparent", boxShadow: "none", textShadow: "none", padding: "1rem" },
+  };
+  const draft: ProjectionOutputState = { ...live, blanked: false, slide: { label: "Chorus", text: "New slide" }, footer: "Song — 2/2", fontSize: 100, background: "royalblue" };
+
+  const navigated = projectionNavigationState(live, draft);
+
+  assert.equal(navigated.blanked, false);
+  assert.deepEqual(navigated.slide, draft.slide);
+  assert.equal(navigated.footer, draft.footer);
+  assert.equal(navigated.fontSize, live.fontSize);
+  assert.equal(navigated.background, live.background);
 });
 
 test("projection media URLs allow hosted and session-local assets but reject unsafe protocols", () => {

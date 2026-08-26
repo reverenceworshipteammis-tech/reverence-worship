@@ -2,6 +2,8 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
+import type { CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { deleteProjectionOverlayPreset, saveProjectionOverlayPreset, updateProjectionSongLyrics } from "@/app/admin/music/actions";
 import { ProjectionAutoFitText } from "@/components/projection-auto-fit-text";
 import {
@@ -16,10 +18,14 @@ import {
   Fullscreen,
   Hash,
   ImageIcon,
+  ListPlus,
   LoaderCircle,
   MonitorCog,
   MonitorPlay,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pencil,
+  Plus,
   RotateCcw,
   Search,
   Save,
@@ -39,6 +45,7 @@ import {
   PROJECTION_TEXT_SIZE_MIN_PERCENT,
   clampProjectionTransitionDuration,
   projectionMediaBrightnessPercent,
+  projectionNavigationState,
   projectionOverlayPreviewTextSizePx,
   projectionOverlaySafeInsets,
   projectionOverlayWidthPercent,
@@ -91,12 +98,67 @@ type DesktopBridge = {
 type Source = "songs" | "bible";
 type OverlayTone = "blue" | "dark" | "light" | "minimal";
 type OverlayPosition = "top" | "center" | "bottom";
-type ProjectionControlPanel = "looks" | "media" | "overlay";
-type SlideEditorState = { key: string; index: number; slide: SongProjectionSlide };
+type ProjectionControlPanel = "songs" | "bible" | "looks" | "media" | "overlay";
+type SlideEditorState = { key: string; index: number; slide: SongProjectionSlide; fontSize: number | null };
 type SongLyricsEditorState = { songId: number; title: string; lyrics: string; notice: string | null };
+type LiveSelection = { source: Source; songId: number | null; slideIndex: number };
+
+const RECENT_PROJECTION_SONGS_KEY = "reverence-projection-recent-songs-v1";
+const PROJECTION_WORKSPACE_SETTINGS_KEY = "reverence-projection-workspace-v1";
+const projectionControlPanels: ProjectionControlPanel[] = ["songs", "bible", "overlay", "media", "looks"];
 
 function serviceLabel(serviceNumber: number) {
   return serviceNumber === 1 ? "First service" : serviceNumber === 2 ? "Second service" : `Service ${serviceNumber}`;
+}
+
+function projectionSlidesMatch(left: SongProjectionSlide | null, right: SongProjectionSlide | null) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function songFooterForSlide(song: ProjectionSong, index: number, slideCount: number) {
+  return `${song.title}${song.artist ? ` · ${song.artist}` : ""} — ${slideCount ? `${index + 1}/${slideCount}` : "No lyrics"}`;
+}
+
+function ProjectionLiveMonitor({ state }: { state: ProjectionOutputState | null }) {
+  const frameRef = useRef<HTMLDivElement | null>(null);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+  const [frameHeight, setFrameHeight] = useState(0);
+  const [overlayHeight, setOverlayHeight] = useState(0);
+  const showOverlay = Boolean(state?.overlay.visible && !state.blanked && (state.overlay.title || state.overlay.text));
+  const safeInsets = state ? projectionOverlaySafeInsets(frameHeight, overlayHeight, state.overlay.position, showOverlay) : undefined;
+  const overlayPosition = state?.overlay.position === "top" ? "top-3" : state?.overlay.position === "center" ? "top-1/2 -translate-y-1/2" : "bottom-3";
+
+  useLayoutEffect(() => {
+    const frame = frameRef.current;
+    if (!frame) return;
+    const measure = () => {
+      setFrameHeight(frame.clientHeight);
+      setOverlayHeight(showOverlay ? overlayRef.current?.offsetHeight ?? 0 : 0);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(frame);
+    if (showOverlay && overlayRef.current) observer.observe(overlayRef.current);
+    return () => observer.disconnect();
+  }, [showOverlay, state?.overlay.position, state?.overlay.fontSize, state?.overlay.title, state?.overlay.text]);
+
+  return (
+    <div ref={frameRef} className="relative isolate aspect-video overflow-hidden rounded-lg border border-slate-700 bg-black shadow-inner" style={{ color: state?.textColor ?? "#fff" }}>
+      {!state ? <div className="flex size-full items-center justify-center px-6 text-center text-xs font-semibold text-white/45">Nothing has been presented yet.</div> : state.blanked ? <div className="flex size-full items-center justify-center text-center"><div><EyeOff className="mx-auto size-7 text-white/35" /><p className="mt-2 text-xs font-bold text-white/50">Output blanked</p></div></div> : (
+        <>
+          <div className="absolute inset-0 -z-10 overflow-hidden bg-black" style={{ background: state.background, filter: `brightness(${state.media.brightness}%)` }} aria-hidden>
+            {state.media.type !== "none" && state.media.url ? state.media.type === "video" ? <video key={state.media.url} src={state.media.url} autoPlay muted loop playsInline preload="metadata" className="size-full bg-black" style={{ objectFit: state.media.fit }} /> : <img src={state.media.url} alt="" className="size-full bg-black" style={{ objectFit: state.media.fit }} /> : null}
+          </div>
+          <div className="flex h-full min-h-0 flex-col items-center px-[4%] text-center" style={safeInsets}>
+            {state.slide?.label ? <p className="mb-1 text-[8px] font-bold uppercase tracking-[0.12em]" style={{ color: state.mutedTextColor }}>{state.slide.label}</p> : null}
+            {state.slide?.sections?.length ? <div className="grid min-h-0 w-full flex-1" style={{ gridTemplateColumns: `repeat(${state.slide.sections.length},minmax(0,1fr))` }}>{state.slide.sections.map((section, index) => <div key={`${section.label}-${index}`} className="flex min-h-0 min-w-0 flex-col px-1.5" style={{ borderLeft: index ? `1px solid ${state.mutedTextColor}` : undefined }}><strong className="mb-0.5 block text-[7px] uppercase tracking-widest" style={{ color: state.mutedTextColor }}>{section.label}</strong><ProjectionAutoFitText text={section.text} maximumFontSize={Math.max(8, projectionPreviewTextSizePx(state.fontSize) * 0.82)} minimumFontSize={5} className="font-bold leading-[1.08]" style={{ textShadow: state.textShadow }} /></div>)}</div> : <div className="min-h-0 w-full flex-1"><ProjectionAutoFitText text={state.slide?.text ?? ""} maximumFontSize={projectionPreviewTextSizePx(state.fontSize)} minimumFontSize={5} className="font-bold leading-[1.08]" style={{ textShadow: state.textShadow }} /></div>}
+            <p className="mt-0.5 w-full shrink-0 truncate text-[7px]" style={{ color: state.mutedTextColor }}>{state.footer}</p>
+          </div>
+          {showOverlay ? <div ref={overlayRef} className={`absolute left-1/2 max-w-[calc(100%_-_16px)] -translate-x-1/2 overflow-hidden rounded-md border text-center ${overlayPosition}`} style={{ width: `${state.overlay.width}%`, padding: `${Math.max(4, state.overlay.fontSize * 0.08)}px ${Math.max(7, state.overlay.fontSize * 0.12)}px`, background: state.overlay.background, color: state.overlay.color, borderColor: state.overlay.borderColor, boxShadow: state.overlay.boxShadow, textShadow: state.overlay.textShadow }}><strong className="block [overflow-wrap:anywhere] uppercase tracking-widest opacity-70" style={{ fontSize: `${Math.max(5, Math.round(projectionOverlayPreviewTextSizePx(state.overlay.fontSize) * 0.45))}px` }}>{state.overlay.title}</strong>{state.overlay.text ? <ProjectionAutoFitText text={state.overlay.text} maximumFontSize={projectionOverlayPreviewTextSizePx(state.overlay.fontSize)} minimumFontSize={5} fit="width" className="font-bold" /> : null}</div> : null}
+        </>
+      )}
+    </div>
+  );
 }
 
 function desktopBridge() {
@@ -110,13 +172,75 @@ function overlayAppearance(tone: OverlayTone) {
   return { background: "linear-gradient(135deg,rgba(37,99,235,.97),rgba(8,145,178,.97))", color: "#fff", border: "rgba(255,255,255,.22)", shadow: "0 18px 60px rgba(0,0,0,.36)", textShadow: "none", padding: "2.2vh 3.2vw" };
 }
 
+function ProjectionOverlayPreview({ title, text, tone, position, fontSize, className = "" }: {
+  title: string;
+  text: string;
+  tone: OverlayTone;
+  position: OverlayPosition;
+  fontSize: number;
+  className?: string;
+}) {
+  const frameRef = useRef<HTMLDivElement | null>(null);
+  const [frameWidth, setFrameWidth] = useState(320);
+  const appearance = overlayAppearance(tone);
+  const scale = Math.max(0.25, frameWidth / 320);
+  const messageFontSize = Math.max(4, projectionOverlayPreviewTextSizePx(fontSize) * scale);
+  const titleFontSize = Math.max(3, messageFontSize * 0.45);
+  const paddingY = Math.max(2, frameWidth * 0.012);
+  const paddingX = Math.max(3, frameWidth * 0.018);
+
+  useLayoutEffect(() => {
+    const frame = frameRef.current;
+    if (!frame) return;
+    const measure = () => setFrameWidth(frame.clientWidth || 320);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(frame);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div
+      ref={frameRef}
+      className={`relative isolate aspect-video min-w-0 overflow-hidden rounded-lg border border-slate-700 bg-slate-950 ${className}`}
+      style={{
+        backgroundImage: "linear-gradient(45deg,rgba(255,255,255,.035) 25%,transparent 25%),linear-gradient(-45deg,rgba(255,255,255,.035) 25%,transparent 25%),linear-gradient(45deg,transparent 75%,rgba(255,255,255,.035) 75%),linear-gradient(-45deg,transparent 75%,rgba(255,255,255,.035) 75%)",
+        backgroundPosition: "0 0,0 8px,8px -8px,-8px 0",
+        backgroundSize: "16px 16px",
+      }}
+    >
+      {title || text ? (
+        <div
+          className="absolute left-1/2 max-w-[94%] overflow-hidden rounded-md border text-center"
+          style={{
+            top: position === "top" ? "7%" : position === "center" ? "50%" : "auto",
+            bottom: position === "bottom" ? "7%" : "auto",
+            transform: position === "center" ? "translate(-50%, -50%)" : "translateX(-50%)",
+            width: `${projectionOverlayWidthPercent(fontSize)}%`,
+            padding: `${paddingY}px ${paddingX}px`,
+            background: appearance.background,
+            color: appearance.color,
+            borderColor: appearance.border,
+            boxShadow: appearance.shadow,
+            textShadow: appearance.textShadow,
+          }}
+        >
+          {title ? <strong className="block [overflow-wrap:anywhere] uppercase tracking-widest opacity-70" style={{ fontSize: `${titleFontSize}px` }}>{title}</strong> : null}
+          {text ? <ProjectionAutoFitText text={text} maximumFontSize={messageFontSize} minimumFontSize={Math.max(3, messageFontSize * 0.45)} fit="width" className="font-bold leading-[1.15]" /> : null}
+        </div>
+      ) : (
+        <div className="flex size-full items-center justify-center px-4 text-center text-[9px] font-semibold text-white/35">Select or create an overlay</div>
+      )}
+    </div>
+  );
+}
+
 function BibleBookPicker({ value, version, onChange }: { value: string; version: string; onChange: (bookCode: string) => void }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const rootRef = useRef<HTMLDivElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const normalizedQuery = query.trim().toLowerCase();
-  const matchingBooks = bibleBooks.filter((book) => !normalizedQuery || `${book.code} ${book.name} ${book.nameRw}`.toLowerCase().includes(normalizedQuery));
+  const matchingBooks = bibleBooks.filter((book) => !normalizedQuery || (book.code + " " + book.name + " " + book.nameRw).toLowerCase().includes(normalizedQuery));
   const groups = [
     { label: "Old Testament", books: matchingBooks.filter((book) => bibleBooks.indexOf(book) < 39) },
     { label: "New Testament", books: matchingBooks.filter((book) => bibleBooks.indexOf(book) >= 39) },
@@ -125,89 +249,106 @@ function BibleBookPicker({ value, version, onChange }: { value: string; version:
   useEffect(() => {
     if (!open) return;
     searchRef.current?.focus();
-    const closeOnOutsideClick = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-        setQuery("");
-      }
-    };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setOpen(false);
         setQuery("");
       }
     };
-    document.addEventListener("pointerdown", closeOnOutsideClick);
     document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeOnOutsideClick);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
+    return () => document.removeEventListener("keydown", closeOnEscape);
   }, [open]);
 
-  function chooseBook(bookCode: string) {
-    onChange(bookCode);
+  function closePicker() {
     setOpen(false);
     setQuery("");
   }
 
+  function chooseBook(bookCode: string) {
+    onChange(bookCode);
+    closePicker();
+  }
+
   return (
-    <div ref={rootRef} className="relative mt-1 normal-case">
+    <div className="relative mt-1 normal-case">
       <button
         type="button"
-        onClick={() => setOpen((current) => !current)}
-        aria-haspopup="listbox"
+        onClick={() => setOpen(true)}
+        aria-haspopup="dialog"
         aria-expanded={open}
-        className="flex h-10 w-full items-center gap-2 rounded-md border border-slate-300 bg-white px-2.5 text-left text-xs font-semibold text-slate-800 outline-none hover:border-blue-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+        className="flex h-12 w-full items-center gap-3 rounded-lg border border-slate-300 bg-white px-3 text-left text-sm font-bold text-slate-800 shadow-sm outline-none hover:border-blue-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
       >
-        <BookOpen className="size-4 shrink-0 text-blue-600" aria-hidden />
+        <BookOpen className="size-5 shrink-0 text-blue-600" aria-hidden />
         <span className="min-w-0 flex-1 truncate">{bibleBookName(value, version)}</span>
-        <ChevronDown className={`size-4 shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden />
+        <ChevronDown className={open ? "size-4 shrink-0 rotate-180 text-blue-500 transition-transform" : "size-4 shrink-0 text-slate-400 transition-transform"} aria-hidden />
       </button>
 
-      {open ? (
-        <div className="absolute inset-x-0 top-full z-50 mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/20">
-          <div className="border-b border-slate-100 bg-slate-50 p-2">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" aria-hidden />
-              <input
-                ref={searchRef}
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search a Bible book…"
-                aria-label="Search Bible books"
-                className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-8 pr-2 text-xs outline-none focus:border-blue-500"
-              />
-            </div>
-          </div>
-          <div role="listbox" aria-label="Bible books" className="max-h-64 overflow-y-auto p-2">
-            {groups.map((group) => group.books.length ? (
-              <section key={group.label} className="mb-2 last:mb-0">
-                <h5 className="sticky top-0 z-10 bg-white/95 px-1 py-1 text-[9px] font-extrabold uppercase tracking-[0.14em] text-slate-400 backdrop-blur">{group.label}</h5>
-                <div className="grid grid-cols-2 gap-1">
-                  {group.books.map((book) => {
-                    const selected = book.code === value;
-                    return (
-                      <button
-                        key={book.code}
-                        type="button"
-                        role="option"
-                        aria-selected={selected}
-                        title={bibleBookName(book.code, version)}
-                        onClick={() => chooseBook(book.code)}
-                        className={`flex min-w-0 items-center gap-1.5 rounded-md px-2 py-2 text-left text-[11px] font-semibold ${selected ? "bg-blue-600 text-white" : "text-slate-700 hover:bg-blue-50 hover:text-blue-800"}`}
-                      >
-                        <span className="min-w-0 flex-1 truncate">{bibleBookName(book.code, version)}</span>
-                        {selected ? <Check className="size-3.5 shrink-0" aria-hidden /> : null}
-                      </button>
-                    );
-                  })}
+      {open ? createPortal(
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm sm:p-6" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) closePicker(); }}>
+          <section className="flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-white/20 bg-white shadow-2xl shadow-slate-950/40" role="dialog" aria-modal="true" aria-label="Choose a Bible book">
+            <header className="flex items-center justify-between gap-4 border-b border-blue-100 bg-gradient-to-r from-blue-600 to-blue-500 px-5 py-4 text-white">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/20"><BookOpen className="size-6" /></span>
+                <div className="min-w-0">
+                  <h3 className="text-base font-extrabold">Choose a Bible book</h3>
+                  <p className="mt-0.5 text-[10px] text-blue-100">Search or browse the Old and New Testaments</p>
                 </div>
-              </section>
-            ) : null)}
-            {matchingBooks.length === 0 ? <p className="px-2 py-8 text-center text-xs text-slate-500">No Bible book matches “{query.trim()}”.</p> : null}
-          </div>
-        </div>
+              </div>
+              <button type="button" onClick={closePicker} className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg bg-white/10 text-white hover:bg-white/20" aria-label="Close Bible book picker"><X className="size-5" /></button>
+            </header>
+
+            <div className="border-b border-slate-200 bg-slate-50 p-4">
+              <div className="relative">
+                <Search className="absolute left-4 top-1/2 size-5 -translate-y-1/2 text-blue-500" aria-hidden />
+                <input
+                  ref={searchRef}
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search by Bible book name…"
+                  aria-label="Search Bible books"
+                  className="h-12 w-full rounded-xl border border-blue-200 bg-white pl-12 pr-4 text-sm font-semibold text-slate-800 shadow-sm outline-none placeholder:font-normal placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+              </div>
+            </div>
+
+            <div role="listbox" aria-label="Bible books" className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+              {groups.map((group) => group.books.length ? (
+                <section key={group.label} className="mb-5 last:mb-0">
+                  <div className="mb-2 flex items-center gap-2">
+                    <h4 className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-slate-500">{group.label}</h4>
+                    <span className="h-px flex-1 bg-slate-200" />
+                    <span className="text-[9px] font-bold text-slate-400">{group.books.length}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                    {group.books.map((book) => {
+                      const selected = book.code === value;
+                      return (
+                        <button
+                          key={book.code}
+                          type="button"
+                          role="option"
+                          aria-selected={selected}
+                          onClick={() => chooseBook(book.code)}
+                          className={selected
+                            ? "flex min-h-12 min-w-0 items-center gap-2 rounded-xl border border-blue-600 bg-blue-600 px-3 py-2.5 text-left text-white shadow-md shadow-blue-600/20"
+                            : "flex min-h-12 min-w-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-800"}
+                        >
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-xs font-bold">{bibleBookName(book.code, version)}</span>
+                            <span className={selected ? "mt-0.5 block text-[8px] font-semibold uppercase text-blue-100" : "mt-0.5 block text-[8px] font-semibold uppercase text-slate-400"}>{book.code}</span>
+                          </span>
+                          {selected ? <Check className="size-4 shrink-0" aria-hidden /> : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              ) : null)}
+              {matchingBooks.length === 0 ? <div className="flex flex-col items-center justify-center px-4 py-12 text-center"><Search className="size-8 text-slate-300" /><p className="mt-3 text-sm font-bold text-slate-600">No Bible book found</p><p className="mt-1 text-xs text-slate-400">Try a different spelling for “{query.trim()}”.</p></div> : null}
+            </div>
+          </section>
+        </div>,
+        document.body,
       ) : null}
     </div>
   );
@@ -217,7 +358,6 @@ function BibleChapterPicker({ value, chapterCount, onChange }: { value: string; 
   const [open, setOpen] = useState(false);
   const [rangeIndex, setRangeIndex] = useState(Math.floor((Math.max(1, Number(value)) - 1) / 25));
   const [jumpValue, setJumpValue] = useState(value);
-  const rootRef = useRef<HTMLDivElement | null>(null);
   const jumpRef = useRef<HTMLInputElement | null>(null);
   const rangeCount = Math.ceil(chapterCount / 25);
   const rangeStart = rangeIndex * 25 + 1;
@@ -230,26 +370,17 @@ function BibleChapterPicker({ value, chapterCount, onChange }: { value: string; 
     if (!open) return;
     jumpRef.current?.focus();
     jumpRef.current?.select();
-    const closeOnOutsideClick = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
     };
-    document.addEventListener("pointerdown", closeOnOutsideClick);
     document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeOnOutsideClick);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
+    return () => document.removeEventListener("keydown", closeOnEscape);
   }, [open]);
 
-  function togglePicker() {
-    if (!open) {
-      setRangeIndex(Math.floor((Math.max(1, Number(value)) - 1) / 25));
-      setJumpValue(value);
-    }
-    setOpen((current) => !current);
+  function openPicker() {
+    setRangeIndex(Math.floor((Math.max(1, Number(value)) - 1) / 25));
+    setJumpValue(value);
+    setOpen(true);
   }
 
   function chooseChapter(chapter: number) {
@@ -259,69 +390,91 @@ function BibleChapterPicker({ value, chapterCount, onChange }: { value: string; 
   }
 
   return (
-    <div ref={rootRef} className="relative mt-1 normal-case">
+    <div className="relative mt-1 normal-case">
       <button
         type="button"
-        onClick={togglePicker}
-        aria-haspopup="listbox"
+        onClick={openPicker}
+        aria-haspopup="dialog"
         aria-expanded={open}
-        className="flex h-10 w-full items-center gap-2 rounded-md border border-slate-300 bg-white px-2.5 text-left text-xs font-semibold text-slate-800 outline-none hover:border-blue-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+        className="flex h-12 w-full items-center gap-3 rounded-lg border border-slate-300 bg-white px-3 text-left text-sm font-bold text-slate-800 shadow-sm outline-none hover:border-blue-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
       >
-        <Hash className="size-3.5 shrink-0 text-blue-600" aria-hidden />
-        <span className="flex-1">{value}</span>
-        <ChevronDown className={`size-4 shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden />
+        <Hash className="size-5 shrink-0 text-blue-600" aria-hidden />
+        <span className="flex-1">Chapter {value}</span>
+        <ChevronDown className={open ? "size-4 shrink-0 rotate-180 text-blue-500 transition-transform" : "size-4 shrink-0 text-slate-400 transition-transform"} aria-hidden />
       </button>
 
-      {open ? (
-        <div className="absolute left-0 top-full z-50 mt-1 w-64 max-w-[80vw] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/20">
-          <div className="border-b border-slate-100 bg-slate-50 p-2">
-            <p className="mb-1.5 text-[9px] font-extrabold uppercase tracking-[0.14em] text-slate-400">Jump to chapter</p>
-            <div className="flex gap-1.5">
-              <input
-                ref={jumpRef}
-                type="number"
-                min={1}
-                max={chapterCount}
-                value={jumpValue}
-                onChange={(event) => setJumpValue(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && jumpIsValid) chooseChapter(parsedJump);
-                }}
-                aria-label={`Chapter number, 1 to ${chapterCount}`}
-                className="h-8 min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2 text-xs font-semibold outline-none focus:border-blue-500"
-              />
-              <button type="button" onClick={() => chooseChapter(parsedJump)} disabled={!jumpIsValid} className="h-8 rounded-md bg-blue-600 px-3 text-[10px] font-bold text-white disabled:opacity-40">Go</button>
-            </div>
-          </div>
+      {open ? createPortal(
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm sm:p-6" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) setOpen(false); }}>
+          <section className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-white/20 bg-white shadow-2xl shadow-slate-950/40" role="dialog" aria-modal="true" aria-label="Choose a Bible chapter">
+            <header className="flex items-center justify-between gap-4 border-b border-blue-100 bg-gradient-to-r from-blue-600 to-indigo-500 px-5 py-4 text-white">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/20"><Hash className="size-6" /></span>
+                <div>
+                  <h3 className="text-base font-extrabold">Choose a chapter</h3>
+                  <p className="mt-0.5 text-[10px] text-blue-100">{chapterCount} chapters available · currently chapter {value}</p>
+                </div>
+              </div>
+              <button type="button" onClick={() => setOpen(false)} className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg bg-white/10 text-white hover:bg-white/20" aria-label="Close Bible chapter picker"><X className="size-5" /></button>
+            </header>
 
-          {rangeCount > 1 ? (
-            <div className="flex flex-wrap gap-1 border-b border-slate-100 px-2 py-2">
-              {Array.from({ length: rangeCount }, (_, index) => {
-                const start = index * 25 + 1;
-                const end = Math.min(chapterCount, start + 24);
-                return <button key={start} type="button" onClick={() => setRangeIndex(index)} className={`rounded-md px-2 py-1 text-[9px] font-bold ${rangeIndex === index ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>{start}–{end}</button>;
-              })}
+            <div className="border-b border-slate-200 bg-slate-50 p-4">
+              <p className="mb-2 text-[9px] font-extrabold uppercase tracking-[0.14em] text-slate-500">Jump directly to a chapter</p>
+              <div className="flex gap-2">
+                <input
+                  ref={jumpRef}
+                  type="number"
+                  min={1}
+                  max={chapterCount}
+                  value={jumpValue}
+                  onChange={(event) => setJumpValue(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && jumpIsValid) chooseChapter(parsedJump);
+                  }}
+                  aria-label={"Chapter number, 1 to " + chapterCount}
+                  className="h-12 min-w-0 flex-1 rounded-xl border border-blue-200 bg-white px-4 text-sm font-bold text-slate-800 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+                <button type="button" onClick={() => chooseChapter(parsedJump)} disabled={!jumpIsValid} className="h-12 rounded-xl bg-blue-600 px-6 text-xs font-extrabold text-white shadow-sm hover:bg-blue-700 disabled:opacity-40">Go to chapter</button>
+              </div>
             </div>
-          ) : null}
 
-          <div role="listbox" aria-label="Bible chapters" className="grid grid-cols-5 gap-1 p-2">
-            {visibleChapters.map((chapter) => {
-              const selected = String(chapter) === value;
-              return (
-                <button
-                  key={chapter}
-                  type="button"
-                  role="option"
-                  aria-selected={selected}
-                  onClick={() => chooseChapter(chapter)}
-                  className={`flex aspect-square items-center justify-center rounded-md text-xs font-bold ${selected ? "bg-blue-600 text-white shadow-sm" : "text-slate-700 hover:bg-blue-50 hover:text-blue-800"}`}
-                >
-                  {chapter}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+            {rangeCount > 1 ? (
+              <div className="flex flex-wrap gap-2 border-b border-slate-200 bg-white px-4 py-3">
+                {Array.from({ length: rangeCount }, (_, index) => {
+                  const start = index * 25 + 1;
+                  const end = Math.min(chapterCount, start + 24);
+                  return <button key={start} type="button" onClick={() => setRangeIndex(index)} className={rangeIndex === index ? "rounded-lg bg-blue-600 px-3 py-2 text-[10px] font-extrabold text-white shadow-sm" : "rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] font-bold text-slate-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"}>{start}–{end}</button>;
+                })}
+              </div>
+            ) : null}
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+              <div className="mb-3 flex items-center justify-between">
+                <h4 className="text-[10px] font-extrabold uppercase tracking-[0.15em] text-slate-500">Chapters {rangeStart}–{rangeEnd}</h4>
+                <span className="text-[9px] font-semibold text-slate-400">Select one to continue</span>
+              </div>
+              <div role="listbox" aria-label="Bible chapters" className="grid grid-cols-5 gap-2 sm:grid-cols-8">
+                {visibleChapters.map((chapter) => {
+                  const selected = String(chapter) === value;
+                  return (
+                    <button
+                      key={chapter}
+                      type="button"
+                      role="option"
+                      aria-selected={selected}
+                      onClick={() => chooseChapter(chapter)}
+                      className={selected
+                        ? "flex h-12 items-center justify-center rounded-xl bg-blue-600 text-sm font-extrabold text-white shadow-md shadow-blue-600/20 ring-2 ring-blue-100"
+                        : "flex h-12 items-center justify-center rounded-xl border border-slate-200 bg-white text-sm font-bold text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-800"}
+                    >
+                      {chapter}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+        </div>,
+        document.body,
       ) : null}
     </div>
   );
@@ -336,7 +489,10 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
   const [sessionId, setSessionId] = useState("");
   const [selectedSongId, setSelectedSongId] = useState<number | null>(activeSongs[0]?.id ?? null);
   const [search, setSearch] = useState("");
+  const [recentSongIds, setRecentSongIds] = useState<number[]>(() => activeSongs.slice(0, 10).map((song) => song.id));
   const [slideIndex, setSlideIndex] = useState(0);
+  const [liveSelection, setLiveSelection] = useState<LiveSelection | null>(null);
+  const [queuedSongId, setQueuedSongId] = useState<number | null>(null);
   const [blanked, setBlanked] = useState(false);
   const [themeKey, setThemeKey] = useState<ProjectionThemeKey>("black");
   const [themeCategory, setThemeCategory] = useState<"all" | ProjectionThemeCategory>("all");
@@ -349,10 +505,16 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
   const [mediaNotice, setMediaNotice] = useState<string | null>(null);
   const [transitionType, setTransitionType] = useState<ProjectionTransitionType>("fade");
   const [transitionDuration, setTransitionDuration] = useState(350);
-  const [autoTake] = useState(false);
-  const [controlPanel, setControlPanel] = useState<ProjectionControlPanel>("overlay");
+  const [controlPanel, setControlPanel] = useState<ProjectionControlPanel>("songs");
+  const [drawerOpen, setDrawerOpen] = useState(true);
+  const [drawerHeight, setDrawerHeight] = useState(420);
+  const [showOrderOpen, setShowOrderOpen] = useState(false);
+  const [livePanelWidth, setLivePanelWidth] = useState(330);
+  const [workspaceSettingsReady, setWorkspaceSettingsReady] = useState(false);
   const [liveState, setLiveState] = useState<ProjectionOutputState | null>(() => typeof window === "undefined" ? null : readProjectionState(window.localStorage));
+  const [clearedLiveState, setClearedLiveState] = useState<ProjectionOutputState | null>(null);
   const [slideOverrides, setSlideOverrides] = useState<Record<string, SongProjectionSlide>>({});
+  const [slideTextSizeOverrides, setSlideTextSizeOverrides] = useState<Record<string, number>>({});
   const [slideEditor, setSlideEditor] = useState<SlideEditorState | null>(null);
   const [songLyricsEditor, setSongLyricsEditor] = useState<SongLyricsEditorState | null>(null);
 
@@ -362,7 +524,6 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
   const [bibleChapter, setBibleChapter] = useState("3");
   const [loadedBible, setLoadedBible] = useState<LoadedBibleChapter | null>(null);
   const [loadedComparison, setLoadedComparison] = useState<LoadedBibleChapter | null>(null);
-  const [selectedVerses, setSelectedVerses] = useState<number[]>([]);
   const [versesPerSlide, setVersesPerSlide] = useState(1);
   const [bibleLoading, setBibleLoading] = useState(false);
   const [bibleError, setBibleError] = useState<string | null>(null);
@@ -377,58 +538,65 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
   const [selectedOverlayPresetId, setSelectedOverlayPresetId] = useState("");
   const [overlayPresetName, setOverlayPresetName] = useState("");
   const [overlayPresetNotice, setOverlayPresetNotice] = useState<string | null>(null);
-  const previewFrameRef = useRef<HTMLDivElement | null>(null);
-  const previewOverlayRef = useRef<HTMLDivElement | null>(null);
-  const [previewFrameHeight, setPreviewFrameHeight] = useState(0);
-  const [previewOverlayHeight, setPreviewOverlayHeight] = useState(0);
   const [overlayPresetPending, startOverlayPresetTransition] = useTransition();
   const [songLyricsPending, startSongLyricsTransition] = useTransition();
 
   const [screens, setScreens] = useState<ProjectionScreenLike[]>([]);
   const [selectedScreenId, setSelectedScreenId] = useState("");
   const [detectingScreens, setDetectingScreens] = useState(false);
-  const [displayMessage, setDisplayMessage] = useState("");
   const [projectorConnected, setProjectorConnected] = useState(false);
-  const [projectorFullscreen, setProjectorFullscreen] = useState(false);
   const [outputError, setOutputError] = useState<string | null>(null);
+  const studioRef = useRef<HTMLElement | null>(null);
   const projectorWindowRef = useRef<Window | null>(null);
   const channelRef = useRef<BroadcastChannel | null>(null);
   const latestStateRef = useRef<ProjectionOutputState | null>(null);
   const lastHeartbeatRef = useRef(0);
   const controlHandlerRef = useRef<(key: ProjectionControlKey) => void>(() => undefined);
-  const takeHandlerRef = useRef<() => void>(() => undefined);
   const localMediaUrlRef = useRef("");
-  const lastAutoTakenRef = useRef("");
 
   const selectedPlaylist = playlists.find((playlist) => String(playlist.id) === playlistId) ?? null;
   const selectedSession = selectedPlaylist?.sessions.find((session) => String(session.id) === sessionId) ?? selectedPlaylist?.sessions[0] ?? null;
   const sourceSongs = selectedSession
     ? selectedSession.songs.map((song) => ({ ...song, lyrics: songLyricsOverrides[song.id] ?? song.lyrics })).filter((song) => !song.isArchived && song.lyrics?.trim())
     : activeSongs;
-  const selectedSong = sourceSongs.find((song) => song.id === selectedSongId) ?? sourceSongs[0] ?? null;
-  const filteredSongs = sourceSongs.filter((song) => `${song.title} ${song.artist ?? ""} ${song.lyrics ?? ""}`.toLowerCase().includes(search.trim().toLowerCase())).slice(0, 100);
+  const queuedSong = activeSongs.find((song) => song.id === queuedSongId) ?? null;
+  const selectedSong = activeSongs.find((song) => song.id === selectedSongId) ?? sourceSongs[0] ?? activeSongs[0] ?? null;
+  const filteredSongs = activeSongs.filter((song) => `${song.title} ${song.artist ?? ""} ${song.lyrics ?? ""}`.toLowerCase().includes(search.trim().toLowerCase())).slice(0, 150);
+  const recentSongs = [...recentSongIds.flatMap((id) => { const song = activeSongs.find((item) => item.id === id); return song ? [song] : []; }), ...activeSongs.filter((song) => !recentSongIds.includes(song.id))].slice(0, 10);
+  const drawerSongs = search.trim() ? filteredSongs.slice(0, 10) : recentSongs;
   const songSlides = songProjectionSlides(selectedSong?.lyrics);
   const bibleTranslations = [loadedBible, loadedComparison].filter((chapter): chapter is LoadedBibleChapter => chapter !== null);
-  const bibleSlides = multiVersionBibleProjectionSlides(bibleTranslations.map((chapter) => ({ reference: chapter.reference, versionCode: chapter.version.code, verses: chapter.verses })), selectedVerses, versesPerSlide);
+  const bibleVerseNumbers = loadedBible?.verses.map((verse) => verse.number) ?? [];
+  const bibleSlides = multiVersionBibleProjectionSlides(bibleTranslations.map((chapter) => ({ reference: chapter.reference, versionCode: chapter.version.code, verses: chapter.verses })), bibleVerseNumbers, versesPerSlide);
   const baseSlides = source === "bible" ? bibleSlides : songSlides;
   const slideDeckKey = source === "songs"
     ? `song:${selectedSong?.id ?? "none"}`
-    : `bible:${loadedBible?.version.key ?? "none"}:${loadedBible?.reference ?? "none"}:${loadedComparison?.version.key ?? "none"}:${selectedVerses.join(",")}:${versesPerSlide}`;
+    : `bible:${loadedBible?.version.key ?? "none"}:${loadedBible?.reference ?? "none"}:${loadedComparison?.version.key ?? "none"}:${versesPerSlide}`;
   const slideOverrideKey = (index: number) => `${slideDeckKey}:${index}`;
   const slides = baseSlides.map((slide, index) => slideOverrides[slideOverrideKey(index)] ?? slide);
   const safeSlideIndex = Math.min(slideIndex, Math.max(0, slides.length - 1));
   const currentSlide = slides[safeSlideIndex] ?? null;
-  const previewFontSize = projectionPreviewTextSizePx(fontSize);
-  const comparisonPreviewFontSize = Math.max(9, Math.round(previewFontSize * 0.82));
-  const nextSlide = slides[safeSlideIndex + 1] ?? null;
+  const textSizeForSlide = (index: number) => slideTextSizeOverrides[slideOverrideKey(index)] ?? fontSize;
+  const currentSlideTextSize = textSizeForSlide(safeSlideIndex);
   const activeTheme = projectionThemes[themeKey];
   const visibleThemes = (Object.entries(projectionThemes) as Array<[ProjectionThemeKey, ProjectionTheme]>).filter(([, theme]) => themeCategory === "all" || theme.category === themeCategory);
   const selectedScreen = screens.find((screen) => projectionScreenId(screen) === selectedScreenId) ?? null;
-  const footer = source === "bible"
-    ? loadedBible ? `${loadedBible.reference} · ${bibleTranslations.map((item) => item.version.code).join(" / ")} — ${slides.length ? `${safeSlideIndex + 1}/${slides.length}` : "No verses"}` : "Bible presentation"
-    : selectedSong ? `${selectedSong.title}${selectedSong.artist ? ` · ${selectedSong.artist}` : ""} — ${slides.length ? `${safeSlideIndex + 1}/${slides.length}` : "No lyrics"}` : "Reverence Worship";
+  const footerForSlide = (index: number) => source === "bible"
+    ? loadedBible ? `${loadedBible.reference} · ${bibleTranslations.map((item) => item.version.code).join(" / ")} — ${slides.length ? `${index + 1}/${slides.length}` : "No verses"}` : "Bible presentation"
+    : selectedSong ? songFooterForSlide(selectedSong, index, slides.length) : "Reverence Worship";
+  const footer = footerForSlide(safeSlideIndex);
+  const detectedLiveSongSelection = liveSelection ? null : (() => {
+    if (!liveState?.slide) return null;
+    for (const song of activeSongs) {
+      const deckKey = `song:${song.id}`;
+      const deck = songProjectionSlides(song.lyrics).map((slide, index) => slideOverrides[`${deckKey}:${index}`] ?? slide);
+      const matchingIndex = deck.findIndex((slide, index) => songFooterForSlide(song, index, deck.length) === liveState.footer && projectionSlidesMatch(slide, liveState.slide));
+      if (matchingIndex >= 0) return { source: "songs", songId: song.id, slideIndex: matchingIndex } satisfies LiveSelection;
+    }
+    return null;
+  })();
+  const returnableLiveSelection = liveSelection ?? detectedLiveSongSelection;
   const overlayStyle = overlayAppearance(overlayTone);
-  const overlayPreviewFontSize = projectionOverlayPreviewTextSizePx(overlayFontSize);
   const overlayWidth = projectionOverlayWidthPercent(overlayFontSize);
   const overlayPadding = `${(0.8 + overlayFontSize * 0.014).toFixed(2)}vh ${(1.2 + overlayFontSize * 0.02).toFixed(2)}vw`;
 
@@ -437,9 +605,9 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
     updatedAt: 0,
     blanked,
     slide: currentSlide,
-    emptyMessage: source === "bible" ? "" : "Select a song in the operator window",
+    emptyMessage: source === "bible" ? "" : "",
     footer,
-    fontSize,
+    fontSize: currentSlideTextSize,
     background: activeTheme.background,
     textColor: activeTheme.text,
     mutedTextColor: activeTheme.muted,
@@ -475,6 +643,86 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
   const draftFingerprint = JSON.stringify({ ...outputState, updatedAt: 0 });
   const liveFingerprint = liveState ? JSON.stringify({ ...liveState, updatedAt: 0 }) : "";
   const hasPendingChanges = draftFingerprint !== liveFingerprint;
+  const selectedOverlayIsLive = Boolean(
+    liveState?.overlay.visible
+      && JSON.stringify({ ...liveState.overlay, visible: true }) === JSON.stringify({ ...outputState.overlay, visible: true }),
+  );
+  const appearanceIsLive = Boolean(
+    liveState
+      && liveState.background === outputState.background
+      && liveState.textColor === outputState.textColor
+      && liveState.mutedTextColor === outputState.mutedTextColor
+      && liveState.textShadow === outputState.textShadow
+      && liveState.fontSize === fontSize
+      && liveState.media.brightness === outputState.media.brightness
+      && liveState.transition.type === outputState.transition.type
+      && liveState.transition.durationMs === outputState.transition.durationMs,
+  );
+  const textSizeIsLive = Boolean(liveState && liveState.fontSize === fontSize);
+
+  useEffect(() => {
+    const loadHistory = window.setTimeout(() => {
+      try {
+        const stored = JSON.parse(window.localStorage.getItem(RECENT_PROJECTION_SONGS_KEY) ?? "[]") as unknown;
+        if (!Array.isArray(stored)) return;
+        const validIds = stored.filter((id): id is number => typeof id === "number" && activeSongs.some((song) => song.id === id)).slice(0, 10);
+        if (validIds.length) setRecentSongIds(validIds);
+      } catch {
+        // Ignore invalid device-local history and keep the library fallback.
+      }
+    }, 0);
+    return () => window.clearTimeout(loadHistory);
+  }, [activeSongs]);
+
+  useEffect(() => {
+    const loadSettings = window.setTimeout(() => {
+      try {
+        const stored = JSON.parse(window.localStorage.getItem(PROJECTION_WORKSPACE_SETTINGS_KEY) ?? "null") as unknown;
+        if (stored && typeof stored === "object" && !Array.isArray(stored)) {
+          const settings = stored as Record<string, unknown>;
+          if (typeof settings.controlPanel === "string" && projectionControlPanels.includes(settings.controlPanel as ProjectionControlPanel)) setControlPanel(settings.controlPanel as ProjectionControlPanel);
+          if (typeof settings.drawerOpen === "boolean") setDrawerOpen(settings.drawerOpen);
+          if (typeof settings.drawerHeight === "number" && Number.isFinite(settings.drawerHeight)) {
+            const maximumDrawerHeight = Math.max(420, (studioRef.current?.clientHeight ?? 900) - 420);
+            setDrawerHeight(Math.max(300, Math.min(maximumDrawerHeight, settings.drawerHeight)));
+          }
+          if (typeof settings.livePanelWidth === "number" && Number.isFinite(settings.livePanelWidth)) {
+            const maximumLivePanelWidth = Math.max(360, Math.min(520, (studioRef.current?.clientWidth ?? 1200) * 0.48));
+            setLivePanelWidth(Math.max(280, Math.min(maximumLivePanelWidth, settings.livePanelWidth)));
+          }
+          if (typeof settings.themeKey === "string" && settings.themeKey in projectionThemes) setThemeKey(settings.themeKey as ProjectionThemeKey);
+          if (typeof settings.fontSize === "number" && Number.isFinite(settings.fontSize)) setFontSize(Math.max(PROJECTION_TEXT_SIZE_MIN_PERCENT, Math.min(PROJECTION_TEXT_SIZE_MAX_PERCENT, settings.fontSize)));
+          if (typeof settings.mediaBrightness === "number" && Number.isFinite(settings.mediaBrightness)) setMediaBrightness(Math.max(0, Math.min(100, settings.mediaBrightness)));
+          if (settings.transitionType === "cut" || settings.transitionType === "fade" || settings.transitionType === "dissolve") setTransitionType(settings.transitionType);
+          if (typeof settings.transitionDuration === "number" && Number.isFinite(settings.transitionDuration)) setTransitionDuration(clampProjectionTransitionDuration(settings.transitionDuration));
+        }
+      } catch {
+        window.localStorage.removeItem(PROJECTION_WORKSPACE_SETTINGS_KEY);
+      } finally {
+        setWorkspaceSettingsReady(true);
+      }
+    }, 0);
+    return () => window.clearTimeout(loadSettings);
+  }, []);
+
+  useEffect(() => {
+    if (!workspaceSettingsReady) return;
+    try {
+      window.localStorage.setItem(PROJECTION_WORKSPACE_SETTINGS_KEY, JSON.stringify({
+        controlPanel,
+        drawerOpen,
+        drawerHeight,
+        livePanelWidth,
+        themeKey,
+        fontSize,
+        mediaBrightness,
+        transitionType,
+        transitionDuration,
+      }));
+    } catch {
+      return;
+    }
+  }, [controlPanel, drawerHeight, drawerOpen, fontSize, livePanelWidth, mediaBrightness, themeKey, transitionDuration, transitionType, workspaceSettingsReady]);
 
   const commitOutputState = useCallback((draft: ProjectionOutputState) => {
     const state = { ...draft, updatedAt: Math.max(Date.now(), (latestStateRef.current?.updatedAt ?? 0) + 1) };
@@ -493,8 +741,64 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
   }
 
   function takePreview() {
-    lastAutoTakenRef.current = draftFingerprint;
+    if (currentSlide) setLiveSelection({ source, songId: source === "songs" ? selectedSong?.id ?? null : null, slideIndex: safeSlideIndex });
+    setClearedLiveState(null);
     commitOutputState(outputState);
+  }
+
+  function applyAppearanceLive() {
+    const base = latestStateRef.current ?? liveState;
+    if (!base) return;
+    commitOutputState({
+      ...base,
+      fontSize,
+      background: outputState.background,
+      textColor: outputState.textColor,
+      mutedTextColor: outputState.mutedTextColor,
+      textShadow: outputState.textShadow,
+      media: { ...base.media, brightness: outputState.media.brightness },
+      transition: outputState.transition,
+    });
+  }
+
+  function applyTextSizeLive() {
+    const base = latestStateRef.current ?? liveState;
+    if (!base) return;
+    commitOutputState({ ...base, fontSize });
+  }
+
+  function presentSlide(slide: SongProjectionSlide, slideFooter: string, slideFontSize: number) {
+    const navigationDraft: ProjectionOutputState = {
+      ...outputState,
+      blanked: false,
+      slide,
+      footer: slideFooter,
+    };
+    commitOutputState({
+      ...projectionNavigationState(latestStateRef.current, navigationDraft),
+      fontSize: slideFontSize,
+    });
+  }
+
+  function selectPreviewSlide(index: number) {
+    if (!slides.length) return;
+    const nextIndex = Math.min(Math.max(0, index), slides.length - 1);
+    setBlanked(false);
+    setSlideIndex(nextIndex);
+  }
+
+  function presentSlideAtIndex(index: number) {
+    if (!slides.length) return;
+    const nextIndex = Math.min(Math.max(0, index), slides.length - 1);
+    setBlanked(false);
+    setSlideIndex(nextIndex);
+    setLiveSelection({ source, songId: source === "songs" ? selectedSong?.id ?? null : null, slideIndex: nextIndex });
+    setClearedLiveState(null);
+    presentSlide(slides[nextIndex], footerForSlide(nextIndex), textSizeForSlide(nextIndex));
+  }
+
+  function slideIsLive(index: number) {
+    return Boolean(liveState?.slide && footerForSlide(index) === liveState.footer && projectionSlidesMatch(slides[index] ?? null, liveState.slide));
   }
 
   function toggleLiveBlank() {
@@ -506,9 +810,85 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
 
   function toggleLiveOverlay() {
     const base = latestStateRef.current ?? outputState;
-    const visible = !base.overlay.visible && Boolean(overlayTitle.trim() || overlayText.trim());
+    const visible = !selectedOverlayIsLive && Boolean(overlayTitle.trim() || overlayText.trim());
     setOverlayVisible(visible);
     commitOutputState({ ...base, overlay: visible ? { ...outputState.overlay, visible: true } : { ...base.overlay, visible: false } });
+  }
+
+  function toggleLiveBackgroundLayer() {
+    const base = latestStateRef.current ?? outputState;
+    const active = base.media.type !== "none" && Boolean(base.media.url);
+    commitOutputState({ ...base, media: active ? { ...base.media, type: "none", url: "" } : outputState.media });
+  }
+
+  function toggleLiveSlideLayer() {
+    const base = latestStateRef.current ?? outputState;
+    if (base.slide) {
+      commitOutputState({ ...base, slide: null, footer: "" });
+      return;
+    }
+    if (currentSlide) presentSlideAtIndex(safeSlideIndex);
+  }
+
+  function clearAllLiveLayers() {
+    const base = latestStateRef.current ?? outputState;
+    setClearedLiveState(base);
+    commitOutputState({
+      ...base,
+      blanked: false,
+      slide: null,
+      footer: "",
+      media: { ...base.media, type: "none", url: "" },
+      overlay: { ...base.overlay, visible: false },
+    });
+  }
+
+  function restoreLiveLayers() {
+    if (!clearedLiveState) return;
+    commitOutputState({ ...clearedLiveState, blanked: false });
+    setClearedLiveState(null);
+  }
+
+  function chooseDrawerPanel(panel: ProjectionControlPanel) {
+    if (panel === controlPanel) {
+      setDrawerOpen((current) => !current);
+      return;
+    }
+    setControlPanel(panel);
+    setDrawerOpen(true);
+  }
+
+  function beginDrawerResize(event: { clientY: number; preventDefault: () => void }) {
+    event.preventDefault();
+    const startY = event.clientY;
+    const startHeight = drawerHeight;
+    const studioHeight = studioRef.current?.clientHeight ?? window.innerHeight;
+    const maximumHeight = Math.max(420, studioHeight - 420);
+    const resize = (moveEvent: PointerEvent) => setDrawerHeight(Math.max(300, Math.min(maximumHeight, startHeight + startY - moveEvent.clientY)));
+    const finish = () => {
+      window.removeEventListener("pointermove", resize);
+      window.removeEventListener("pointerup", finish);
+    };
+    window.addEventListener("pointermove", resize);
+    window.addEventListener("pointerup", finish);
+  }
+
+  function beginLivePanelResize(event: { clientX: number; preventDefault: () => void }) {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = livePanelWidth;
+    const maximumWidth = Math.max(360, Math.min(520, (studioRef.current?.clientWidth ?? 1200) * 0.48));
+    const resize = (moveEvent: PointerEvent) => setLivePanelWidth(Math.max(280, Math.min(maximumWidth, startWidth + startX - moveEvent.clientX)));
+    const finish = () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("pointermove", resize);
+      window.removeEventListener("pointerup", finish);
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("pointermove", resize);
+    window.addEventListener("pointerup", finish);
   }
 
   function selectLocalBackground(file: File | undefined) {
@@ -544,6 +924,7 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
       key: slideOverrideKey(index),
       index,
       slide: { ...slide, sections: slide.sections?.map((section) => ({ ...section })) },
+      fontSize: slideTextSizeOverrides[slideOverrideKey(index)] ?? null,
     });
   }
 
@@ -569,6 +950,7 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
         }
         setSongLyricsOverrides((current) => ({ ...current, [editor.songId]: result.lyrics }));
         setSlideOverrides((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`song:${editor.songId}:`))));
+        setSlideTextSizeOverrides((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`song:${editor.songId}:`))));
         setSlideIndex(0);
         setBlanked(false);
         setSongLyricsEditor(null);
@@ -588,6 +970,12 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
     };
     if ((!editedSlide.sections?.length && !editedSlide.text) || editedSlide.sections?.some((section) => !section.text)) return;
     setSlideOverrides((current) => ({ ...current, [slideEditor.key]: editedSlide }));
+    setSlideTextSizeOverrides((current) => {
+      const next = { ...current };
+      if (slideEditor.fontSize === null) delete next[slideEditor.key];
+      else next[slideEditor.key] = Math.min(PROJECTION_TEXT_SIZE_MAX_PERCENT, Math.max(PROJECTION_TEXT_SIZE_MIN_PERCENT, slideEditor.fontSize));
+      return next;
+    });
     setSlideIndex(slideEditor.index);
     setBlanked(false);
     setSlideEditor(null);
@@ -601,13 +989,49 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
       delete next[key];
       return next;
     });
+    setSlideTextSizeOverrides((current) => {
+      if (current[key] === undefined) return current;
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
     setSlideEditor(null);
   }
 
   function chooseSong(songId: number) {
+    setRecentSongIds((current) => {
+      const next = [songId, ...current.filter((id) => id !== songId)].slice(0, 10);
+      window.localStorage.setItem(RECENT_PROJECTION_SONGS_KEY, JSON.stringify(next));
+      return next;
+    });
+    setSource("songs");
     setSelectedSongId(songId);
     setSlideIndex(0);
     setBlanked(false);
+    if (queuedSongId === songId) setQueuedSongId(null);
+  }
+
+  function openQueuedSong() {
+    if (!queuedSong) return;
+    const songId = queuedSong.id;
+    setQueuedSongId(null);
+    chooseSong(songId);
+  }
+
+  function returnToLivePreview() {
+    if (!liveState || !returnableLiveSelection) return;
+    if (returnableLiveSelection.source === "songs" && returnableLiveSelection.songId !== null) {
+      if (!activeSongs.some((song) => song.id === returnableLiveSelection.songId)) return;
+      setSource("songs");
+      setPlaylistId("library");
+      setSessionId("");
+      setSelectedSongId(returnableLiveSelection.songId);
+      setSearch("");
+    } else {
+      setSource("bible");
+    }
+    setSlideIndex(returnableLiveSelection.slideIndex);
+    setBlanked(liveState.blanked);
   }
 
   function choosePlaylist(value: string) {
@@ -615,6 +1039,7 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
     setSlideIndex(0);
     setBlanked(false);
     const playlist = playlists.find((item) => String(item.id) === value);
+    setShowOrderOpen(Boolean(playlist));
     const session = playlist?.sessions[0];
     setSessionId(session ? String(session.id) : "");
     setSelectedSongId((session?.songs ?? activeSongs).find((song) => !song.isArchived && song.lyrics?.trim())?.id ?? null);
@@ -629,21 +1054,20 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
 
   function runControl(key: ProjectionControlKey) {
     if (["ArrowRight", "PageDown", " "].includes(key)) {
-      setBlanked(false);
-      setSlideIndex((value) => Math.min(Math.max(0, slides.length - 1), value + 1));
+      selectPreviewSlide(safeSlideIndex + 1);
     } else if (["ArrowLeft", "PageUp"].includes(key)) {
-      setBlanked(false);
-      setSlideIndex((value) => Math.max(0, value - 1));
+      selectPreviewSlide(safeSlideIndex - 1);
     } else if (key === "Home") {
-      setBlanked(false);
-      setSlideIndex(0);
+      selectPreviewSlide(0);
     } else if (key === "End") {
-      setBlanked(false);
-      setSlideIndex(Math.max(0, slides.length - 1));
+      selectPreviewSlide(slides.length - 1);
+    } else if (key === "Enter") {
+      presentSlideAtIndex(safeSlideIndex);
     } else if (key === "b") toggleLiveBlank();
     else if (key === "o") toggleLiveOverlay();
   }
   async function loadBibleChapter() {
+    setSource("bible");
     setBibleLoading(true);
     setBibleError(null);
     try {
@@ -654,7 +1078,6 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
       if (!response.ok || !data.ok || !data.primary) throw new Error(data.message ?? "Unable to load this Bible chapter.");
       setLoadedBible(data.primary);
       setLoadedComparison(data.compare ?? null);
-      setSelectedVerses(data.primary.verses.map((verse) => verse.number));
       setSlideIndex(0);
       setBlanked(false);
     } catch (error) {
@@ -664,17 +1087,28 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
     }
   }
 
-  function useOverlayPreset() {
-    const preset = overlayPresets.find((item) => item.id === selectedOverlayPresetId);
-    if (!preset) return;
+  function selectOverlayPreset(preset: ProjectionOverlayPreset) {
+    setSelectedOverlayPresetId(preset.id);
     setOverlayPresetName(preset.name);
+    setOverlayPresetNotice(null);
     setOverlayTitle(preset.title);
     setOverlayText(preset.text);
     setOverlayTone(preset.tone);
     setOverlayPosition(preset.position);
     setOverlayFontSize(preset.fontSize);
     setOverlayVisible(true);
-   
+  }
+
+  function startNewOverlay() {
+    setSelectedOverlayPresetId("");
+    setOverlayPresetName("");
+    setOverlayPresetNotice(null);
+    setOverlayTitle("");
+    setOverlayText("");
+    setOverlayTone("blue");
+    setOverlayPosition("bottom");
+    setOverlayFontSize(35);
+    setOverlayVisible(false);
   }
 
   function saveCurrentOverlayPreset() {
@@ -723,13 +1157,11 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
         setScreens(detected);
         const target = chooseProjectionScreen(detected, detected.find((screen) => screen.isPrimary) ?? null, selectedScreenId);
         if (target) setSelectedScreenId(projectionScreenId(target));
-        setDisplayMessage(detected.length > 1 ? `${detected.length} displays detected by the desktop projector.` : "Only one display was detected. Connect HDMI and choose Extend.");
         return target;
       }
 
       const browser = window as BrowserWithScreens;
       if (typeof browser.getScreenDetails !== "function") {
-        setDisplayMessage("This browser cannot select displays automatically. The output will open as a clean window; move it to the projector and press F.");
         return null;
       }
 
@@ -738,11 +1170,9 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
       setScreens(detected);
       const target = chooseProjectionScreen(detected, details.currentScreen, selectedScreenId);
       if (target) setSelectedScreenId(projectionScreenId(target));
-      const external = target && projectionScreenId(target) !== projectionScreenId(details.currentScreen);
-      setDisplayMessage(external ? `${target.label || "External display"} is ready for projection.` : "Only one display is available. Connect HDMI and use Windows + P → Extend.");
       return target;
     } catch {
-      setDisplayMessage("Display permission was not granted. Allow window management for this site and try again.");
+      setOutputError("Display permission was not granted. Allow window management for this site and try again.");
       return null;
     } finally {
       setDetectingScreens(false);
@@ -751,7 +1181,7 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
 
   async function openProjector() {
     if (latestStateRef.current) publishOutputState();
-    else commitOutputState(outputState);
+    else takePreview();
     setOutputError(null);
     let target = selectedScreen;
     if (!target) target = await detectDisplays();
@@ -760,10 +1190,6 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
     if (bridge) {
       const result = await bridge.openProjector({ url, displayId: target ? projectionScreenId(target) : undefined });
       if (!result.ok) setOutputError(result.message ?? "The desktop projector could not be opened.");
-      else {
-        setProjectorFullscreen(true);
-        setDisplayMessage(`${target?.label || "Projector output"} opened as a native frameless fullscreen window.`);
-      }
       return;
     }
 
@@ -777,9 +1203,6 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
     }
     projectorWindowRef.current = projector;
     projector.focus();
-    setDisplayMessage(target
-      ? `Output opened on ${target.label || "the selected display"}.`
-      : "Output opened. Move it to the projector, then click the fullscreen confirmation inside it.");
   }
 
   async function closeProjector() {
@@ -788,13 +1211,11 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
     projectorWindowRef.current = null;
     if (desktopBridge()) await desktopBridge()?.closeProjector();
     setProjectorConnected(false);
-    setProjectorFullscreen(false);
   }
 
   function requestProjectorFullscreen() {
     channelRef.current?.postMessage({ type: "command", command: "fullscreen" } satisfies ProjectionChannelMessage);
     projectorWindowRef.current?.focus();
-    setDisplayMessage("Fullscreen requested. Chrome may require a click inside the output window; press F there if its bars remain.");
   }
 
   useEffect(() => {
@@ -810,10 +1231,8 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
       } else if (message.type === "heartbeat") {
         lastHeartbeatRef.current = Date.now();
         setProjectorConnected(true);
-        setProjectorFullscreen(message.fullscreen || Boolean(desktopBridge()));
       } else if (message.type === "closed") {
         setProjectorConnected(false);
-        setProjectorFullscreen(false);
       } else if (message.type === "control") {
         controlHandlerRef.current(message.key);
       }
@@ -822,7 +1241,6 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
     const connectionCheck = window.setInterval(() => {
       if (lastHeartbeatRef.current && Date.now() - lastHeartbeatRef.current > 3500) {
         setProjectorConnected(false);
-        setProjectorFullscreen(false);
       }
     }, 1500);
     return () => {
@@ -835,11 +1253,6 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
   useEffect(() => {
     if (liveState && !latestStateRef.current) latestStateRef.current = liveState;
     controlHandlerRef.current = runControl;
-    takeHandlerRef.current = takePreview;
-    if (autoTake && lastAutoTakenRef.current !== draftFingerprint) {
-      lastAutoTakenRef.current = draftFingerprint;
-      commitOutputState(outputState);
-    }
   });
 
   useEffect(() => {
@@ -849,8 +1262,7 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
       if (target instanceof HTMLElement && ["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(target.tagName)) return;
       const normalized = event.key.toLowerCase();
       const key = normalized === "b" || normalized === "o" ? normalized : event.key;
-      if (event.key === "Enter") { event.preventDefault(); takeHandlerRef.current(); return; }
-      if (!["ArrowRight", "ArrowLeft", "PageDown", "PageUp", "Home", "End", " ", "b", "o"].includes(key)) return;
+      if (!["ArrowRight", "ArrowLeft", "PageDown", "PageUp", "Home", "End", "Enter", " ", "b", "o"].includes(key)) return;
       event.preventDefault();
       controlHandlerRef.current(key as ProjectionControlKey);
     };
@@ -869,38 +1281,30 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [slideEditor, songLyricsEditor, songLyricsPending]);
 
-  const previewOverlayPosition = overlayPosition === "top" ? "top-4" : overlayPosition === "center" ? "top-1/2 -translate-y-1/2" : "bottom-4";
-  const showPreviewOverlay = Boolean(overlayVisible && !blanked && (overlayTitle || overlayText));
-  const previewSafeInsets = projectionOverlaySafeInsets(previewFrameHeight, previewOverlayHeight, overlayPosition, showPreviewOverlay);
   const slideEditorValid = Boolean(slideEditor && (slideEditor.slide.sections?.length ? slideEditor.slide.sections.every((section) => section.text.trim()) : slideEditor.slide.text.trim()));
   const songLyricsEditorSlides = songProjectionSlides(songLyricsEditor?.lyrics);
   const songLyricsEditorValid = Boolean(songLyricsEditor?.lyrics.trim() && songLyricsEditor.lyrics.length <= MAX_EDITABLE_SONG_LYRICS_LENGTH);
-  const songLyricsEditorHasTemporaryEdits = Boolean(songLyricsEditor && Object.keys(slideOverrides).some((key) => key.startsWith(`song:${songLyricsEditor.songId}:`)));
-
-  useLayoutEffect(() => {
-    const frame = previewFrameRef.current;
-    if (!frame) return;
-    const measure = () => {
-      setPreviewFrameHeight(frame.clientHeight);
-      setPreviewOverlayHeight(showPreviewOverlay ? previewOverlayRef.current?.offsetHeight ?? 0 : 0);
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(frame);
-    if (showPreviewOverlay && previewOverlayRef.current) observer.observe(previewOverlayRef.current);
-    return () => observer.disconnect();
-  }, [showPreviewOverlay, overlayPosition, overlayFontSize, overlayTitle, overlayText, overlayWidth]);
+  const songLyricsEditorHasTemporaryEdits = Boolean(songLyricsEditor && (
+    Object.keys(slideOverrides).some((key) => key.startsWith(`song:${songLyricsEditor.songId}:`))
+    || Object.keys(slideTextSizeOverrides).some((key) => key.startsWith(`song:${songLyricsEditor.songId}:`))
+  ));
 
   return (
-    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-800 shadow-lg shadow-slate-200/60" aria-label="Projection controls">
-      <header className="flex flex-col gap-3 border-b border-sky-100 bg-gradient-to-r from-white via-sky-50 to-cyan-50/60 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+    <section ref={studioRef} className="rounded-xl border border-slate-200 bg-white text-slate-800 shadow-lg shadow-slate-200/60 xl:flex xl:h-[calc(100dvh-120px)] xl:min-h-[900px] xl:max-h-[1180px] xl:flex-col" aria-label="Projection controls">
+      <header className="sticky top-[117px] z-30 flex flex-col gap-3 rounded-t-xl border-b border-sky-100 bg-gradient-to-r from-white via-sky-50 to-cyan-50 px-4 py-3 shadow-sm sm:top-[121px] lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-3">
           <span className="flex size-10 items-center justify-center rounded-xl bg-blue-600 text-white shadow-lg shadow-blue-200"><MonitorPlay className="size-5" aria-hidden /></span>
-          <div><h3 className="font-bold text-slate-950">Projection Studio</h3><p className="text-xs text-slate-500"></p></div>
-          <span className={`hidden rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 sm:inline ${projectorFullscreen ? "bg-emerald-50 text-emerald-700 ring-emerald-200" : projectorConnected ? "bg-amber-50 text-amber-700 ring-amber-200" : "bg-slate-100 text-slate-500 ring-slate-200"}`}>{projectorFullscreen ? "OUTPUT FULLSCREEN" : projectorConnected ? "FULLSCREEN NEEDED" : "OUTPUT CLOSED"}</span>
-          {hasPendingChanges && !autoTake ? <span className="hidden rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold text-amber-800 ring-1 ring-amber-200 md:inline">PREVIEW WAITING</span> : null}
+          <button type="button" onClick={() => setShowOrderOpen((current) => !current)} className="inline-flex size-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-blue-300 hover:text-blue-700" aria-label={showOrderOpen ? "Hide show order" : "Open show order"} title={showOrderOpen ? "Hide show order" : "Open show order"}>
+            {showOrderOpen ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}
+          </button>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={takePreview} disabled={!hasPendingChanges} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-emerald-600 px-4 text-xs font-extrabold text-white shadow-sm transition hover:bg-emerald-700 disabled:bg-emerald-100 disabled:text-emerald-700 disabled:shadow-none">
+            <Send className="size-4" /> Take live
+          </button>
+          <button type="button" onClick={returnToLivePreview} disabled={!liveState || !returnableLiveSelection} className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-emerald-300 bg-white px-3 text-xs font-bold text-emerald-700 shadow-sm hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400 disabled:shadow-none" title={!liveState ? "Nothing has been presented yet." : !returnableLiveSelection ? "The current live content is no longer available in this library." : "Restore Preview to the slide currently on the projector."}>
+            <RotateCcw className="size-3.5" /> Return to live
+          </button>
           <button type="button" onClick={() => void detectDisplays()} disabled={detectingScreens} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 hover:border-blue-200 hover:text-blue-700 disabled:opacity-50">
             {detectingScreens ? <LoaderCircle className="size-4 animate-spin" /> : <MonitorCog className="size-4" />} Detect displays
           </button>
@@ -909,158 +1313,302 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
           {projectorConnected ? <button type="button" onClick={() => void closeProjector()} className="inline-flex size-9 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100" aria-label="Close output"><CircleStop className="size-4" /></button> : null}
         </div>
       </header>
-      <div className="border-b border-blue-100 bg-blue-50 px-4 py-2 text-xs text-blue-800">{displayMessage}</div>
       {outputError ? <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900" role="alert">{outputError}</div> : null}
 
-      <div className="grid xl:min-h-[680px] xl:grid-cols-[260px_minmax(0,1fr)_300px]">
-        <aside className="border-b border-slate-200 bg-slate-50/80 p-3 xl:border-b-0 xl:border-r">
-          <div className="mb-3 grid grid-cols-2 rounded-lg border border-slate-200 bg-white p-1">
-            <button type="button" onClick={() => { setSource("songs"); setSlideIndex(0); }} className={`rounded-md px-2 py-2 text-xs font-bold ${source === "songs" ? "bg-blue-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}>♪ Songs</button>
-            <button type="button" onClick={() => { setSource("bible"); setSlideIndex(0); }} className={`inline-flex items-center justify-center gap-1.5 rounded-md px-2 py-2 text-xs font-bold ${source === "bible" ? "bg-blue-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}><BookOpen className="size-3.5" /> Bible</button>
+      <div className={`grid min-h-[360px] flex-1 border-b border-slate-200 ${showOrderOpen ? "xl:grid-cols-[240px_minmax(0,1fr)_6px_var(--live-panel-width)]" : "xl:grid-cols-[minmax(0,1fr)_6px_var(--live-panel-width)]"}`} style={{ "--live-panel-width": `${livePanelWidth}px` } as CSSProperties}>
+        {showOrderOpen ? <aside className="flex min-h-0 flex-col border-b border-slate-200 bg-slate-50/90 p-3 xl:border-b-0 xl:border-r">
+          <select value={playlistId} onChange={(event) => choosePlaylist(event.target.value)} className="h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-xs font-semibold" aria-label="Service playlist"><option value="library">No service playlist</option>{playlists.map((playlist) => <option key={playlist.id} value={playlist.id}>{playlist.title}</option>)}</select>
+          {selectedPlaylist ? <select value={selectedSession ? String(selectedSession.id) : ""} onChange={(event) => chooseSession(event.target.value)} className="mt-2 h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-xs font-semibold" aria-label="Playlist session">{selectedPlaylist.sessions.map((session) => <option key={session.id} value={session.id}>{serviceLabel(session.serviceNumber)} · {session.name || "Default"}</option>)}</select> : null}
+          {queuedSong ? <div className="mt-3 rounded-lg border border-violet-200 bg-violet-50 p-2"><div className="flex items-start gap-2"><ListPlus className="mt-0.5 size-4 shrink-0 text-violet-600" /><div className="min-w-0 flex-1"><p className="text-[9px] font-extrabold uppercase tracking-wide text-violet-600">Next song</p><p className="truncate text-xs font-bold text-slate-900">{queuedSong.title}</p></div><button type="button" onClick={() => setQueuedSongId(null)} className="inline-flex size-6 items-center justify-center rounded text-slate-400 hover:bg-white hover:text-red-600" aria-label="Clear next song"><X className="size-3.5" /></button></div><button type="button" onClick={openQueuedSong} className="mt-2 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md bg-violet-600 text-[10px] font-extrabold text-white hover:bg-violet-700"><ChevronRight className="size-3.5" /> Open next slides</button></div> : null}
+          <div className="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
+            {selectedSession ? sourceSongs.map((song, index) => <div key={song.id} className={`group flex items-stretch overflow-hidden rounded-md border ${selectedSong?.id === song.id && source === "songs" ? "border-blue-300 bg-blue-50" : "border-transparent hover:bg-white"}`}><button type="button" onClick={(event) => { chooseSong(song.id); event.currentTarget.blur(); }} className="flex min-w-0 flex-1 items-center gap-2 px-2 py-2 text-left"><span className="flex size-6 shrink-0 items-center justify-center rounded bg-slate-200 text-[9px] font-extrabold text-slate-500">{index + 1}</span><span className="min-w-0"><span className="block truncate text-xs font-bold text-slate-800">{song.title}</span>{song.artist ? <span className="block truncate text-[9px] text-slate-400">{song.artist}</span> : null}</span></button><button type="button" onClick={() => setQueuedSongId(song.id)} className="inline-flex w-8 items-center justify-center text-violet-500 opacity-60 hover:bg-violet-50 group-hover:opacity-100" aria-label={`Queue ${song.title}`}><ListPlus className="size-3.5" /></button></div>) : null}
           </div>
+        </aside> : null}
 
-          {source === "songs" ? (
-            <div>
-              <select value={playlistId} onChange={(event) => choosePlaylist(event.target.value)} className="mb-2 h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-xs font-semibold" aria-label="Song source">
-                <option value="library">All songs</option>
-                {playlists.map((playlist) => <option key={playlist.id} value={playlist.id}>{playlist.title}</option>)}
-              </select>
-              {selectedPlaylist ? (
-                <select value={selectedSession ? String(selectedSession.id) : ""} onChange={(event) => chooseSession(event.target.value)} className="mb-2 h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-xs font-semibold" aria-label="Playlist session">
-                  {selectedPlaylist.sessions.map((session) => <option key={session.id} value={session.id}>{serviceLabel(session.serviceNumber)} · {session.name || "Default"}</option>)}
-                </select>
-              ) : null}
-              <div className="relative mb-2"><Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search songs or lyrics…" className="h-9 w-full rounded-md border border-slate-300 bg-white pl-8 pr-2 text-xs outline-none focus:border-blue-500" /></div>
-              <div className="max-h-[505px] space-y-1 overflow-y-auto pr-1">
-                {filteredSongs.map((song) => (
-                  <button key={song.id} type="button" onClick={() => chooseSong(song.id)} className={`flex w-full items-center gap-2 rounded-md border-l-2 px-2.5 py-2 text-left ${selectedSong?.id === song.id ? "border-blue-600 bg-blue-100 text-blue-950" : "border-transparent text-slate-700 hover:bg-white"}`}>
-                    <span className={`flex size-6 shrink-0 items-center justify-center rounded text-[10px] font-bold ${selectedSong?.id === song.id ? "bg-blue-600 text-white" : "bg-slate-200 text-slate-500"}`}>♪</span>
-                    <span className="min-w-0"><span className="block truncate text-xs font-semibold">{song.title}</span>{song.artist ? <span className="block truncate text-[10px] text-slate-500">{song.artist}</span> : null}</span>
-                  </button>
-                ))}
-                {filteredSongs.length === 0 ? <p className="py-8 text-center text-xs text-slate-500">No songs with lyrics found.</p> : null}
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-2.5">
-              <label className="block text-[10px] font-bold uppercase tracking-wide text-slate-500">Primary translation<select value={bibleVersion} onChange={(event) => { setBibleVersion(event.target.value); if (compareVersion === event.target.value) setCompareVersion(""); }} className="mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-xs font-semibold normal-case text-slate-800">{bibleVersions.map((version) => <option key={version.key} value={version.key}>{version.code} · {version.label}</option>)}</select></label>
-              <label className="block text-[10px] font-bold uppercase tracking-wide text-slate-500">Comparison<select value={compareVersion} onChange={(event) => setCompareVersion(event.target.value)} className="mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-xs font-semibold normal-case text-slate-800"><option value="">None</option>{bibleVersions.filter((version) => version.key !== bibleVersion).map((version) => <option key={version.key} value={version.key}>{version.code} · {version.label}</option>)}</select></label>
-              <div className="block text-[10px] font-bold uppercase tracking-wide text-slate-500">Book<BibleBookPicker value={bibleBook} version={bibleVersion} onChange={(bookCode) => { setBibleBook(bookCode); setBibleChapter("1"); }} /></div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="block text-[10px] font-bold uppercase tracking-wide text-slate-500">Chapter<BibleChapterPicker value={bibleChapter} chapterCount={bibleBooks.find((book) => book.code === bibleBook)?.chapters ?? 1} onChange={setBibleChapter} /></div>
-                <label className="block text-[10px] font-bold uppercase tracking-wide text-slate-500">Verses/slide<select value={versesPerSlide} onChange={(event) => setVersesPerSlide(Number(event.target.value))} className="mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-xs font-semibold normal-case text-slate-800"><option value={1}>1 verse</option><option value={2}>2 verses</option><option value={3}>3 verses</option></select></label>
-              </div>
-              <button type="button" onClick={() => void loadBibleChapter()} disabled={bibleLoading} className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md bg-blue-600 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-60">{bibleLoading ? <LoaderCircle className="size-4 animate-spin" /> : <BookOpen className="size-4" />} Load chapter</button>
-              {bibleError ? <p className="rounded-md bg-red-50 p-2 text-xs text-red-700">{bibleError}</p> : null}
-              {loadedBible ? (
-                <div>
-                  <div className="mb-1 flex items-center justify-between text-[10px] font-bold text-slate-500"><span>{loadedBible.reference} · {loadedBible.version.code}</span><span><button type="button" onClick={() => setSelectedVerses(loadedBible.verses.map((verse) => verse.number))} className="text-blue-600">All</button> · <button type="button" onClick={() => setSelectedVerses([])} className="text-blue-600">None</button></span></div>
-                  <div className="max-h-[285px] space-y-1 overflow-y-auto rounded-md border border-slate-200 bg-white p-1.5">
-                    {loadedBible.verses.map((verse) => <label key={verse.number} className={`flex cursor-pointer gap-2 rounded px-2 py-1.5 text-xs ${selectedVerses.includes(verse.number) ? "bg-blue-50 text-blue-950" : "hover:bg-slate-50"}`}><input type="checkbox" checked={selectedVerses.includes(verse.number)} onChange={() => setSelectedVerses((current) => current.includes(verse.number) ? current.filter((item) => item !== verse.number) : [...current, verse.number].sort((a, b) => a - b))} className="mt-0.5 size-3.5" /><span><strong>{verse.number}</strong> {verse.text}</span></label>)}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          )}
-        </aside>
-
-        <div className="min-w-0 border-b border-slate-200 p-3 sm:p-4 xl:border-b-0 xl:border-r">
+        <div className="flex min-h-0 min-w-0 flex-col border-b border-slate-200 bg-slate-100/40 p-3 xl:border-b-0 xl:border-r">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <div><div className="flex items-center gap-2"><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-blue-600">Preview</p>{hasPendingChanges && !autoTake ? <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">Not live yet</span> : <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">Matches audience</span>}</div><h4 className="truncate text-sm font-bold text-slate-900">{source === "songs" ? selectedSong?.title ?? "Choose a song" : loadedBible?.reference ?? "Load a Bible chapter"}</h4></div>
-            <div className="flex flex-wrap gap-2"><button type="button" onClick={() => source === "songs" ? openSongLyricsEditor() : openSlideEditor()} disabled={source === "songs" ? !selectedSong?.lyrics : !currentSlide} className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-blue-700 hover:bg-blue-100 disabled:opacity-40"><Pencil className="size-3.5" /> {source === "songs" ? "Edit lyrics" : "Edit slide"}</button>{slideOverrides[slideOverrideKey(safeSlideIndex)] ? <button type="button" onClick={() => resetSlideEdit()} className="inline-flex size-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:text-red-600" aria-label="Reset current slide"><RotateCcw className="size-3.5" /></button> : null}<button type="button" onClick={takePreview} className="inline-flex h-9 items-center gap-2 rounded-lg bg-emerald-600 px-4 text-xs font-extrabold text-white shadow-sm hover:bg-emerald-700"><Send className="size-4" /> Take live</button><button type="button" onClick={toggleLiveBlank} className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-xs font-bold ${liveState?.blanked ? "bg-amber-100 text-amber-800" : "border border-slate-200 bg-white text-slate-600"}`}>{liveState?.blanked ? <Eye className="size-4" /> : <EyeOff className="size-4" />}{liveState?.blanked ? "Show output" : "Blank output"}</button></div>
+            <h4 className="min-w-0 truncate text-base font-extrabold text-slate-950">{source === "songs" ? selectedSong?.title ?? "Choose a song" : loadedBible?.reference ?? "Load a Bible chapter"}</h4>
+            <div className="flex flex-wrap gap-2"><button type="button" onClick={() => source === "songs" ? openSongLyricsEditor() : openSlideEditor()} disabled={source === "songs" ? !selectedSong?.lyrics : !currentSlide} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-blue-200 bg-white px-2.5 text-[10px] font-bold text-blue-700 hover:bg-blue-50 disabled:opacity-40"><Pencil className="size-3.5" /> Edit</button>{slideOverrides[slideOverrideKey(safeSlideIndex)] || slideTextSizeOverrides[slideOverrideKey(safeSlideIndex)] !== undefined ? <button type="button" onClick={() => resetSlideEdit()} className="inline-flex size-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:text-red-600" aria-label="Reset current slide"><RotateCcw className="size-3.5" /></button> : null}</div>
           </div>
-
-          <div ref={previewFrameRef} className="relative isolate aspect-video overflow-hidden rounded-xl border border-slate-700 bg-black shadow-inner" style={{ color: activeTheme.text }}>
-            {!blanked ? <div className="absolute inset-0 -z-10 overflow-hidden bg-black" style={{ background: activeTheme.background, filter: `brightness(${outputState.media.brightness}%)`, transition: "filter 120ms linear" }} aria-hidden>{outputState.media.type !== "none" && outputState.media.url ? outputState.media.type === "video" ? <video key={outputState.media.url} src={outputState.media.url} autoPlay muted loop playsInline preload="metadata" className="size-full bg-black" style={{ objectFit: outputState.media.fit }} /> : <img src={outputState.media.url} alt="" className="size-full bg-black" style={{ objectFit: outputState.media.fit }} /> : null}</div> : null}
-            {!blanked ? <div className="flex h-full min-h-0 flex-col items-center px-[7%] text-center" style={previewSafeInsets}>{currentSlide?.label ? <p className="mb-3 text-[clamp(8px,1.2vw,15px)] font-bold uppercase tracking-[0.12em]" style={{ color: activeTheme.muted }}>{currentSlide.label}</p> : null}{currentSlide?.sections?.length ? <div className="grid min-h-0 w-full flex-1" style={{ gridTemplateColumns: `repeat(${currentSlide.sections.length},minmax(0,1fr))` }}>{currentSlide.sections.map((section, index) => <div key={`${section.label}-${index}`} className="flex min-h-0 min-w-0 flex-col px-3" style={{ borderLeft: index ? `1px solid ${activeTheme.muted}` : undefined }}><strong className="mb-1 block text-[9px] uppercase tracking-widest" style={{ color: activeTheme.muted }}>{section.label}</strong><ProjectionAutoFitText text={section.text} maximumFontSize={comparisonPreviewFontSize} minimumFontSize={6} className="font-bold leading-tight" style={{ textShadow: activeTheme.shadow }} /></div>)}</div> : <div className="min-h-0 w-full flex-1"><ProjectionAutoFitText text={currentSlide?.text ?? outputState.emptyMessage} maximumFontSize={previewFontSize} minimumFontSize={6} className="font-bold leading-tight" style={{ textShadow: activeTheme.shadow }} /></div>}<p className="mt-1.5 w-full shrink-0 truncate text-[9px]" style={{ color: activeTheme.muted }}>{footer}</p></div> : null}
-            {showPreviewOverlay ? <div ref={previewOverlayRef} className={`absolute left-1/2 -translate-x-1/2 rounded-lg border text-center ${previewOverlayPosition}`} style={{ width: `${overlayWidth}%`, padding: `${Math.max(5, overlayFontSize * 0.11)}px ${Math.max(8, overlayFontSize * 0.16)}px`, background: overlayStyle.background, color: overlayStyle.color, borderColor: overlayStyle.border, boxShadow: overlayStyle.shadow, textShadow: overlayStyle.textShadow }}><strong className="block uppercase tracking-widest opacity-70" style={{ fontSize: `${Math.max(5, Math.round(overlayPreviewFontSize * 0.5))}px` }}>{overlayTitle}</strong><p className="font-bold" style={{ fontSize: `${overlayPreviewFontSize}px` }}>{overlayText}</p></div> : null}
-          </div>
-
-          <div className="mt-3 grid grid-cols-[auto_1fr_auto] items-center gap-3"><button type="button" onClick={() => runControl("ArrowLeft")} disabled={safeSlideIndex === 0} className="inline-flex size-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 disabled:opacity-35"><ChevronLeft className="size-5" /></button><div className="text-center"><p className="text-sm font-bold text-slate-800">{slides.length ? `Slide ${safeSlideIndex + 1} of ${slides.length}` : "No slides ready"}</p><p className="text-[10px] text-slate-400">← → navigate · B blank · O overlay</p></div><button type="button" onClick={() => runControl("ArrowRight")} disabled={!slides.length || safeSlideIndex >= slides.length - 1} className="inline-flex size-10 items-center justify-center rounded-lg bg-blue-600 text-white disabled:opacity-35"><ChevronRight className="size-5" /></button></div>
-
-          <div className="mt-4">
-            <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">Slides</p>
-            <div className="grid max-h-[230px] grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3">
-              {slides.map((slide, index) => {
-                const edited = Boolean(slideOverrides[slideOverrideKey(index)]);
-                return (
-                  <div key={`${slide.label}-${index}`} className="group relative aspect-video">
-                    <button type="button" onClick={() => { setSlideIndex(index); setBlanked(false); }} className={`size-full overflow-hidden rounded-lg border p-2 pr-8 text-left ${index === safeSlideIndex ? "border-blue-500 bg-blue-50 ring-2 ring-blue-100" : "border-slate-200 bg-white hover:border-blue-200"}`}>
-                      <span className="flex items-center gap-1 truncate text-[8px] font-bold uppercase text-blue-600">{slide.label || `Slide ${index + 1}`}{edited ? <span className="rounded bg-amber-100 px-1 py-0.5 text-[7px] text-amber-700">Edited</span> : null}</span>
-                      <span className="mt-1 line-clamp-4 whitespace-pre-line text-[9px] leading-tight text-slate-600">{slide.text}</span>
-                    </button>
-                    <button type="button" onClick={() => openSlideEditor(index)} className="absolute right-1.5 top-1.5 inline-flex size-6 items-center justify-center rounded-md border border-blue-100 bg-white/95 text-blue-600 opacity-80 shadow-sm hover:bg-blue-600 hover:text-white group-hover:opacity-100" aria-label={`Edit slide ${index + 1}`}><Pencil className="size-3" /></button>
+          <div className="grid min-h-0 flex-1 auto-rows-max content-start items-start grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-2.5 overflow-y-auto p-0.5 pr-2">
+            {slides.map((slide, index) => {
+              const edited = Boolean(slideOverrides[slideOverrideKey(index)] || slideTextSizeOverrides[slideOverrideKey(index)] !== undefined);
+              const slideTextSize = textSizeForSlide(index);
+              const isLive = slideIsLive(index);
+              const isPreview = index === safeSlideIndex;
+              return <article key={`${slide.label}-${index}`} className={`group relative h-fit min-h-[145px] self-start overflow-hidden rounded-lg border bg-white shadow-sm transition ${isLive ? "border-emerald-500 ring-2 ring-emerald-200" : isPreview ? "border-blue-500 ring-2 ring-blue-200" : "border-slate-300 hover:border-blue-300 hover:shadow-md"}`}>
+                <button type="button" onClick={(event) => { presentSlideAtIndex(index); event.currentTarget.blur(); }} className="flex min-h-[145px] w-full flex-col text-left" aria-label={`Present slide ${index + 1}`} title="Click to present this slide">
+                  <div className="relative isolate w-full shrink-0 overflow-hidden bg-black px-[5%] py-[4%] text-center" style={{ aspectRatio: "16 / 9", minHeight: 108, color: activeTheme.text }}>
+                    <span className="absolute inset-0 -z-20" style={{ background: activeTheme.background, filter: `brightness(${projectionMediaBrightnessPercent(mediaBrightness)}%)` }} aria-hidden />
+                    {mediaType === "image" && sanitizeProjectionMediaUrl(mediaUrl) ? <img src={sanitizeProjectionMediaUrl(mediaUrl)} alt="" className="absolute inset-0 -z-10 size-full" style={{ objectFit: mediaFit, filter: `brightness(${projectionMediaBrightnessPercent(mediaBrightness)}%)` }} /> : null}
+                    {slide.sections?.length ? <div className="grid size-full min-h-0" style={{ gridTemplateColumns: `repeat(${slide.sections.length},minmax(0,1fr))` }}>{slide.sections.map((section, sectionIndex) => <div key={`${section.label}-${sectionIndex}`} className="flex min-h-0 min-w-0 flex-col px-1" style={{ borderLeft: sectionIndex ? `1px solid ${activeTheme.muted}` : undefined }}><span className="text-[6px] font-bold uppercase tracking-wider" style={{ color: activeTheme.muted }}>{section.label}</span><ProjectionAutoFitText text={section.text} maximumFontSize={Math.max(8, projectionPreviewTextSizePx(slideTextSize) * 0.82)} minimumFontSize={5} className="font-bold leading-[1.08]" style={{ textShadow: activeTheme.shadow }} /></div>)}</div> : <ProjectionAutoFitText text={slide.text} maximumFontSize={projectionPreviewTextSizePx(slideTextSize)} minimumFontSize={6} className="font-bold leading-[1.08]" style={{ textShadow: activeTheme.shadow }} />}
+                    {isLive ? <span className={`absolute left-1.5 top-1.5 rounded px-1.5 py-0.5 text-[7px] font-extrabold uppercase tracking-wide text-white ${liveState?.blanked ? "bg-amber-600" : "bg-emerald-600"}`}>{liveState?.blanked ? "Live · blanked" : "Live"}</span> : isPreview ? <span className="absolute left-1.5 top-1.5 rounded bg-blue-600 px-1.5 py-0.5 text-[7px] font-extrabold uppercase tracking-wide text-white">Preview</span> : null}
                   </div>
-                );
-              })}
-              {!slides.length ? <p className="col-span-full rounded-lg border border-dashed border-slate-300 py-8 text-center text-xs text-slate-400">Select content to prepare slides.</p> : null}
-            </div>
+                  <div className={`flex h-9 w-full shrink-0 items-center justify-between gap-2 border-t px-2 ${isLive ? "border-emerald-400 bg-emerald-50" : isPreview ? "border-blue-400 bg-blue-50" : "border-slate-200 bg-slate-50"}`}><span className="text-[10px] font-extrabold text-slate-500">{index + 1}</span><span className={`min-w-0 flex-1 truncate text-right text-[10px] font-extrabold ${isLive ? "text-emerald-700" : "text-blue-700"}`}>{slide.label || `Slide ${index + 1}`}{edited ? " · Edited" : ""}</span></div>
+                </button>
+                <button type="button" onClick={() => openSlideEditor(index)} className="absolute right-1.5 top-1.5 inline-flex size-6 items-center justify-center rounded-md border border-white/70 bg-white/95 text-blue-600 opacity-80 shadow-sm hover:bg-blue-600 hover:text-white group-hover:opacity-100" aria-label={`Edit slide ${index + 1}`}><Pencil className="size-3" /></button>
+              </article>;
+            })}
+            {!slides.length ? <div className="col-span-full flex min-h-48 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white text-center"><div><MonitorPlay className="mx-auto size-7 text-slate-300" /><p className="mt-2 text-xs font-bold text-slate-500">No slides prepared</p><p className="mt-1 text-[10px] text-slate-400">Open a song or Bible passage from the drawer below.</p></div></div> : null}
           </div>
-          {nextSlide ? <p className="mt-2 truncate text-[10px] text-slate-400"><strong>Next:</strong> {nextSlide.text.replaceAll("\n", " / ")}</p> : null}
+          <div className="mt-3 grid shrink-0 grid-cols-[auto_1fr_auto] items-center gap-3"><button type="button" onClick={() => selectPreviewSlide(safeSlideIndex - 1)} disabled={safeSlideIndex === 0} className="inline-flex size-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 disabled:opacity-35" aria-label="Previous preview slide"><ChevronLeft className="size-4" /></button><p className="min-w-0 text-center text-xs font-bold text-slate-800">{slides.length ? `Preview · ${safeSlideIndex + 1}/${slides.length}` : "No slides"}</p><button type="button" onClick={() => selectPreviewSlide(safeSlideIndex + 1)} disabled={!slides.length || safeSlideIndex >= slides.length - 1} className="inline-flex size-9 items-center justify-center rounded-lg bg-blue-600 text-white disabled:opacity-35" aria-label="Next preview slide"><ChevronRight className="size-4" /></button></div>
         </div>
 
-        <aside className="bg-slate-50/60 p-4">
-          <nav className="sticky top-0 z-20 mb-4 grid grid-cols-3 gap-1 rounded-xl border border-slate-200 bg-white/95 p-1 shadow-sm backdrop-blur" aria-label="Projection tools">
-            {(["looks", "media", "overlay"] as ProjectionControlPanel[]).map((panel) => <button key={panel} type="button" onClick={() => setControlPanel(panel)} className={`relative h-9 rounded-lg text-[10px] font-extrabold capitalize transition ${controlPanel === panel ? "bg-blue-600 text-white shadow-sm" : "text-slate-500 hover:bg-slate-100 hover:text-blue-700"}`}>{panel}{panel === "overlay" && overlayVisible ? <span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-emerald-400 ring-2 ring-white/70" aria-label="Overlay live" /> : null}</button>)}
-          </nav>
+        <button
+          type="button"
+          role="separator"
+          aria-label="Resize Preview and Live panels"
+          aria-orientation="vertical"
+          aria-valuemin={280}
+          aria-valuemax={520}
+          aria-valuenow={Math.round(livePanelWidth)}
+          onPointerDown={beginLivePanelResize}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowLeft") {
+              event.preventDefault();
+              setLivePanelWidth((width) => Math.min(520, width + 20));
+            }
+            if (event.key === "ArrowRight") {
+              event.preventDefault();
+              setLivePanelWidth((width) => Math.max(280, width - 20));
+            }
+          }}
+          className="group hidden min-h-0 cursor-col-resize touch-none items-center justify-center bg-slate-200 outline-none hover:bg-blue-200 focus-visible:bg-blue-300 xl:flex"
+          title="Drag to resize Preview and Live"
+        >
+          <span className="h-14 w-1 rounded-full bg-slate-400 transition group-hover:bg-blue-500" />
+        </button>
 
-          <section className={controlPanel === "looks" ? "" : "hidden"}>
-            <div className="mb-1.5 flex items-center justify-between"><h4 className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Church themes</h4><span className="text-[9px] font-bold text-blue-600">{Object.keys(projectionThemes).length} built in</span></div>
-            
-            <div className="mb-2 flex flex-wrap gap-1">{projectionThemeCategories.map((category) => <button key={category.key} type="button" onClick={() => setThemeCategory(category.key)} className={`rounded-full px-2 py-1 text-[9px] font-bold ${themeCategory === category.key ? "bg-blue-600 text-white" : "bg-white text-slate-500 ring-1 ring-slate-200 hover:text-blue-600"}`}>{category.label}</button>)}</div>
-            <div className="grid max-h-[330px] grid-cols-2 gap-2 overflow-y-auto pr-1">
-              {visibleThemes.map(([key, theme]) => <button key={key} type="button" onClick={() => setThemeKey(key)} className={`overflow-hidden rounded-lg border-2 bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${themeKey === key ? "border-blue-500 ring-2 ring-blue-100" : "border-white"}`} title={theme.label}><span className="relative block aspect-video" style={{ background: theme.background }}>{themeKey === key ? <span className="absolute right-1.5 top-1.5 inline-flex size-4 items-center justify-center rounded-full bg-blue-600 text-white shadow"><Check className="size-2.5" /></span> : null}</span><span className="block truncate px-1.5 py-1 text-[9px] font-bold text-slate-600">{theme.label}</span></button>)}
+        <aside className="flex h-fit min-h-0 self-start flex-col overflow-hidden bg-white shadow-sm">
+          <div className="bg-slate-950 p-3 text-white">
+            <ProjectionLiveMonitor state={liveState} />
+          <button type="button" onClick={toggleLiveBlank} className={`mt-2 inline-flex h-8 w-full shrink-0 items-center justify-center gap-1.5 rounded-md text-[9px] font-bold ${liveState?.blanked ? "bg-amber-500 text-slate-950" : "bg-white/10 text-white hover:bg-white/15"}`}>{liveState?.blanked ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}{liveState?.blanked ? "Show output" : "Blank output"}</button>
+          <section className="mt-2 shrink-0 rounded-lg border border-white/10 bg-white/[0.04] p-2" aria-label="Output layers">
+            <div className="mb-1 flex justify-end gap-1"><button type="button" onClick={restoreLiveLayers} disabled={!clearedLiveState} className="h-7 rounded px-2 text-[8px] font-bold text-white/60 hover:bg-white/10 disabled:opacity-25">Restore</button><button type="button" onClick={clearAllLiveLayers} disabled={!liveState} className="h-7 rounded bg-red-500/15 px-2 text-[8px] font-bold text-red-300 hover:bg-red-500/25 disabled:opacity-25">Clear all</button></div>
+            <div className="grid grid-cols-3 gap-1.5">
+              <button type="button" onClick={toggleLiveBackgroundLayer} aria-label="Toggle live background" aria-pressed={liveState?.media.type !== "none" && Boolean(liveState?.media.url)} title="Background" className={`inline-flex h-9 items-center justify-center rounded-md ${liveState?.media.type !== "none" && liveState?.media.url ? "bg-red-500/25 text-red-200 ring-1 ring-red-400/30" : "bg-white/5 text-white/35"}`}><ImageIcon className="size-4" /></button>
+              <button type="button" onClick={toggleLiveSlideLayer} aria-label="Toggle live slide" aria-pressed={Boolean(liveState?.slide)} title="Slide" className={`inline-flex h-9 items-center justify-center rounded-md ${liveState?.slide ? "bg-red-500/25 text-red-200 ring-1 ring-red-400/30" : "bg-white/5 text-white/35"}`}><MonitorPlay className="size-4" /></button>
+              <button type="button" onClick={toggleLiveOverlay} aria-label="Toggle live overlay" aria-pressed={Boolean(liveState?.overlay.visible)} title="Overlay" className={`inline-flex h-9 items-center justify-center rounded-md ${liveState?.overlay.visible ? "bg-red-500/25 text-red-200 ring-1 ring-red-400/30" : "bg-white/5 text-white/35"}`}><Eye className="size-4" /></button>
             </div>
-            <label className="mt-3 block text-[10px] font-semibold text-slate-500"><span className="flex justify-between"><span>Background brightness</span><strong className="text-slate-700">{mediaBrightness}%</strong></span><input type="range" min={0} max={100} step={1} value={mediaBrightness} onChange={(event) => setMediaBrightness(Number(event.target.value))} className="mt-2 w-full accent-blue-600" /></label>
-            {!autoTake ? <p className="mt-1.5 text-[9px] leading-4 text-blue-600"></p> : null}
+            </section>
+          </div>
+          <section className="border-x border-b border-slate-200 bg-white p-3 text-slate-700" aria-label="Default projection text size">
+            <div className="flex items-center justify-between text-[10px] font-extrabold"><span>Default text size</span><span className="rounded bg-blue-50 px-1.5 py-0.5 text-blue-700">{fontSize}%</span></div>
+            <input type="range" min={PROJECTION_TEXT_SIZE_MIN_PERCENT} max={PROJECTION_TEXT_SIZE_MAX_PERCENT} step={1} value={fontSize} onChange={(event) => setFontSize(Number(event.target.value))} aria-label="Default projection text size" className="mt-2 w-full accent-blue-600" />
+            <button type="button" onClick={applyTextSizeLive} disabled={!liveState || textSizeIsLive} className="mt-2 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md bg-emerald-600 px-2 text-[9px] font-extrabold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none"><Send className="size-3.5" />{textSizeIsLive ? "Default size live" : "Apply default size live"}</button>
           </section>
-
-          <section className={controlPanel === "media" ? "rounded-xl border border-slate-200 bg-white p-3" : "hidden"}>
-            <div className="mb-2 flex items-center justify-between"><div><h4 className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Media background</h4><p className="mt-0.5 text-[9px] text-emerald-600"></p></div>{mediaType !== "none" ? <button type="button" onClick={clearBackgroundMedia} className="text-[9px] font-bold text-red-500">Remove</button> : null}</div>
-            <label className="flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-blue-300 bg-blue-50 text-[10px] font-bold text-blue-700 hover:bg-blue-100"><Upload className="size-3.5" /> Choose local image/video<input type="file" accept="image/*,video/mp4,video/webm,video/ogg" className="sr-only" onChange={(event) => { selectLocalBackground(event.target.files?.[0]); event.target.value = ""; }} /></label>
-            <div className="my-2 flex items-center gap-2 text-[9px] text-slate-400"><span className="h-px flex-1 bg-slate-200" />or use hosted URL<span className="h-px flex-1 bg-slate-200" /></div>
-            <div className="grid grid-cols-[82px_1fr] gap-1.5"><select value={mediaType} onChange={(event) => setMediaType(event.target.value as ProjectionMediaType)} className="h-8 rounded-md border border-slate-300 bg-white px-1 text-[10px] font-semibold"><option value="none">None</option><option value="image">Image</option><option value="video">Video</option></select><input value={mediaUrl.startsWith("blob:") ? "" : mediaUrl} onChange={(event) => { setMediaUrl(event.target.value); setMediaName(event.target.value ? "Hosted media" : ""); setMediaNotice(null); }} onBlur={() => { if (mediaUrl && !sanitizeProjectionMediaUrl(mediaUrl)) setMediaNotice("Use a valid http:// or https:// media URL."); }} placeholder="https://cdn…/background.mp4" className="h-8 min-w-0 rounded-md border border-slate-300 px-2 text-[10px]" /></div>
-            {mediaName ? <p className="mt-1.5 truncate text-[9px] font-semibold text-slate-600">{mediaType === "video" ? <Video className="mr-1 inline size-3" /> : <ImageIcon className="mr-1 inline size-3" />}{mediaName}</p> : null}
-            {mediaType !== "none" && Boolean(sanitizeProjectionMediaUrl(mediaUrl)) ? <label className="mt-2 block text-[9px] font-semibold text-slate-500">Media fit<select value={mediaFit} onChange={(event) => setMediaFit(event.target.value as "cover" | "contain")} className="mt-1 h-8 w-full rounded border border-slate-300 bg-white px-2 text-[10px]"><option value="cover">Fill screen</option><option value="contain">Show all</option></select></label> : null}
-            {mediaNotice ? <p className="mt-2 rounded bg-slate-50 px-2 py-1.5 text-[9px] leading-4 text-slate-500">{mediaNotice}</p> : null}
-          </section>
-
-          <section className={controlPanel === "looks" ? "mt-5 rounded-xl border border-slate-200 bg-white p-3" : "hidden"}>
-            <div className="mb-2 flex items-center justify-between"><h4 className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Transition</h4><span className="text-[10px] font-bold text-slate-700">{transitionType === "cut" ? "Instant" : `${transitionDuration} ms`}</span></div>
-            <div className="grid grid-cols-3 gap-1">{(["cut", "fade", "dissolve"] as ProjectionTransitionType[]).map((type) => <button key={type} type="button" onClick={() => setTransitionType(type)} className={`h-8 rounded-md text-[10px] font-bold capitalize ${transitionType === type ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>{type}</button>)}</div>
-            {transitionType !== "cut" ? <input type="range" min={100} max={1500} step={50} value={transitionDuration} onChange={(event) => setTransitionDuration(Number(event.target.value))} className="mt-2 w-full accent-blue-600" aria-label="Transition duration" /> : null}
-          </section>
-
-          <section className={controlPanel === "looks" ? "mt-5" : "hidden"}>
-            <div className="mb-2 flex items-center justify-between"><h4 className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Maximum text size</h4><span className="text-xs font-bold text-slate-700">{fontSize}%</span></div>
-            <input type="range" min={PROJECTION_TEXT_SIZE_MIN_PERCENT} max={PROJECTION_TEXT_SIZE_MAX_PERCENT} step={1} value={fontSize} onChange={(event) => setFontSize(Number(event.target.value))} className="w-full accent-blue-600" />
-            <p className="mt-1.5 text-[10px] leading-4 text-slate-400"></p>
-          </section>
-
-          <section className={controlPanel === "overlay" ? "rounded-xl border border-blue-200 bg-white p-3 shadow-sm shadow-blue-100" : "hidden"}>
-            <div className="mb-3 flex items-center justify-between"><div><h4 className="text-xs font-bold text-slate-800">Overlay</h4><p className="text-[10px] text-slate-400"></p></div><button type="button" onClick={() => setOverlayVisible((value) => !value)} disabled={!overlayTitle.trim() && !overlayText.trim()} className={`inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[10px] font-bold ${overlayVisible ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"} disabled:opacity-35`}>{overlayVisible ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}{overlayVisible ? "LIVE" : "HIDDEN"}</button></div>
-            <div className="mb-3 rounded-lg border border-blue-100 bg-blue-50/70 p-2">
-              <div className="mb-1.5 flex items-center justify-between"><span className="text-[9px] font-extrabold uppercase tracking-[0.12em] text-blue-700">Saved overlays</span><span className="text-[9px] font-bold text-blue-400">{overlayPresets.length}/50</span></div>
-              <div className="flex gap-1.5">
-                <select value={selectedOverlayPresetId} onChange={(event) => { const id = event.target.value; setSelectedOverlayPresetId(id); const preset = overlayPresets.find((item) => item.id === id); setOverlayPresetName(preset?.name ?? ""); setOverlayPresetNotice(null); }} className="h-8 min-w-0 flex-1 rounded-md border border-blue-200 bg-white px-2 text-[10px] font-semibold text-slate-700"><option value="">Choose saved overlay…</option>{overlayPresets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}</select>
-                <button type="button" onClick={useOverlayPreset} disabled={!selectedOverlayPresetId || overlayPresetPending} className="h-8 rounded-md bg-blue-600 px-2.5 text-[10px] font-bold text-white disabled:opacity-40">Use</button>
-              </div>
-              <div className="mt-1.5 flex gap-1.5">
-                <input value={overlayPresetName} onChange={(event) => setOverlayPresetName(event.target.value)} placeholder="Preset name" maxLength={80} className="h-8 min-w-0 flex-1 rounded-md border border-blue-200 bg-white px-2 text-[10px] outline-none focus:border-blue-500" />
-                <button type="button" onClick={saveCurrentOverlayPreset} disabled={overlayPresetPending || !overlayPresetName.trim() || (!overlayTitle.trim() && !overlayText.trim())} className="inline-flex h-8 items-center gap-1 rounded-md border border-blue-200 bg-white px-2 text-[10px] font-bold text-blue-700 hover:bg-blue-100 disabled:opacity-40"><Save className="size-3" />{selectedOverlayPresetId ? "Update" : "Save"}</button>
-              </div>
-              <div className="mt-1.5 flex items-center justify-between">
-                <button type="button" onClick={() => { setSelectedOverlayPresetId(""); setOverlayPresetName(""); setOverlayPresetNotice(null); }} className="text-[9px] font-bold text-blue-600 hover:text-blue-800">+ New preset</button>
-                <button type="button" onClick={deleteSelectedOverlayPreset} disabled={!selectedOverlayPresetId || overlayPresetPending} className="inline-flex items-center gap-1 text-[9px] font-bold text-red-500 hover:text-red-700 disabled:opacity-35"><Trash2 className="size-3" /> Delete</button>
-              </div>
-              {overlayPresetNotice ? <p className="mt-1.5 rounded bg-white/80 px-2 py-1 text-[9px] font-medium text-slate-600">{overlayPresetNotice}</p> : null}
-            </div>
-            <div className="space-y-2"><input value={overlayTitle} onChange={(event) => setOverlayTitle(event.target.value)} placeholder="Overlay title" className="h-9 w-full rounded-md border border-slate-300 px-2 text-xs" /><textarea value={overlayText} onChange={(event) => setOverlayText(event.target.value)} placeholder="Overlay message" rows={3} className="w-full resize-none rounded-md border border-slate-300 p-2 text-xs" /><div className="grid grid-cols-2 gap-2"><select value={overlayTone} onChange={(event) => setOverlayTone(event.target.value as OverlayTone)} className="h-8 rounded-md border border-slate-300 bg-white px-1.5 text-[10px] font-semibold"><option value="blue">Blue</option><option value="dark">Dark</option><option value="light">Light</option><option value="minimal">Minimal</option></select><select value={overlayPosition} onChange={(event) => setOverlayPosition(event.target.value as OverlayPosition)} className="h-8 rounded-md border border-slate-300 bg-white px-1.5 text-[10px] font-semibold"><option value="top">Top</option><option value="center">Center</option><option value="bottom">Bottom</option></select></div><label className="block text-[10px] font-semibold text-slate-500"><span className="mb-1 flex items-center justify-between"><span>Overlay size</span><strong className="text-slate-700">{overlayFontSize}%</strong></span><input type="range" min={PROJECTION_TEXT_SIZE_MIN_PERCENT} max={PROJECTION_TEXT_SIZE_MAX_PERCENT} step={1} value={overlayFontSize} onChange={(event) => setOverlayFontSize(Number(event.target.value))} className="w-full accent-blue-600" /></label></div>
-          </section>
-
-         
         </aside>
       </div>
+
+      <section className="relative shrink-0 bg-white" style={{ height: drawerOpen ? drawerHeight : 45 }} aria-label="Projection content drawer">
+        {drawerOpen ? <div onPointerDown={beginDrawerResize} className="absolute inset-x-0 top-0 z-20 h-2 -translate-y-1 cursor-row-resize touch-none" aria-label="Resize content drawer"><span className="absolute left-1/2 top-1 h-1 w-14 -translate-x-1/2 rounded-full bg-slate-300" /></div> : null}
+        <nav className="flex h-11 items-center gap-1 overflow-x-auto border-b border-slate-200 bg-slate-50 px-2" aria-label="Projection libraries">
+          {(["songs", "bible", "overlay", "media", "looks"] as ProjectionControlPanel[]).map((panel) => <button key={panel} type="button" onClick={() => chooseDrawerPanel(panel)} className={`relative inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md px-3 text-[10px] font-extrabold capitalize ${drawerOpen && controlPanel === panel ? "bg-blue-600 text-white shadow-sm" : "text-slate-600 hover:bg-white hover:text-blue-700"}`}>{panel === "songs" ? "♪" : panel === "bible" ? <BookOpen className="size-3.5" /> : panel === "overlay" ? <Eye className="size-3.5" /> : panel === "media" ? <ImageIcon className="size-3.5" /> : <Check className="size-3.5" />}{panel === "looks" ? "Themes" : panel === "overlay" ? "Overlays" : panel}</button>)}
+          <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2">{controlPanel === "songs" && drawerOpen ? <div className="relative hidden w-full max-w-2xl sm:block"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-blue-500" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search all songs by title or lyrics…" aria-label="Search all songs by title or lyrics" className="h-10 w-full rounded-lg border border-blue-300 bg-white pl-9 pr-3 text-xs font-semibold text-slate-800 shadow-sm outline-none placeholder:font-normal placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100" /></div> : null}<button type="button" onClick={() => setDrawerOpen((current) => !current)} className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-slate-500 hover:bg-white hover:text-blue-700" aria-label={drawerOpen ? "Close content drawer" : "Open content drawer"}><ChevronDown className={`size-4 transition ${drawerOpen ? "" : "rotate-180"}`} /></button></div>
+        </nav>
+        {drawerOpen ? <div className="h-[calc(100%-44px)] min-h-0 overflow-auto p-3">
+          {controlPanel === "songs" ? (
+            <div className="flex h-full min-h-0 flex-col">
+              <div className="mb-2 flex shrink-0 items-center justify-between">
+                <h4 className="text-xs font-extrabold text-slate-900">{search.trim() ? "Song search results" : "Recent songs"}</h4>
+                <span className="rounded bg-slate-100 px-2 py-1 text-[9px] font-bold text-slate-500">{drawerSongs.length}/10</span>
+              </div>
+              <div className="grid min-h-0 flex-1 auto-rows-max content-start items-start gap-2 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-3">
+                {drawerSongs.map((song, index) => (
+                  <div key={song.id} className={"flex min-h-12 min-w-0 items-stretch overflow-hidden rounded-lg border bg-white shadow-sm " + (selectedSong?.id === song.id && source === "songs" ? "border-blue-400 ring-1 ring-blue-100" : "border-slate-200 hover:border-blue-300")}>
+                    <span className="flex w-9 shrink-0 items-center justify-center bg-slate-50 text-[10px] font-extrabold text-slate-400">{index + 1}</span>
+                    <button type="button" onClick={(event) => { chooseSong(song.id); event.currentTarget.blur(); }} className="flex min-w-0 flex-1 items-center px-3 py-2 text-left">
+                      <span className="min-w-0"><span className="block truncate text-xs font-bold text-slate-900">{song.title}</span><span className="block truncate text-[9px] text-slate-400">{song.artist || "Song"}</span></span>
+                    </button>
+                    <button type="button" onClick={() => setQueuedSongId(song.id)} className={"inline-flex w-9 shrink-0 items-center justify-center border-l text-violet-600 hover:bg-violet-100 " + (queuedSongId === song.id ? "border-violet-200 bg-violet-100" : "border-slate-200")} aria-label={"Queue " + song.title + " as next"} title="Queue as next song"><ListPlus className="size-3.5" /></button>
+                  </div>
+                ))}
+                {!drawerSongs.length ? <p className="col-span-full py-8 text-center text-xs text-slate-400">{search.trim() ? "No matching songs." : "Open a song to begin your recent list."}</p> : null}
+              </div>
+            </div>
+          ) : null}
+
+          {controlPanel === "bible" ? (
+            <div className="grid h-full min-h-0 gap-3 lg:grid-cols-[minmax(0,1fr)_300px]">
+              <section className="min-h-0 overflow-y-auto rounded-xl border border-blue-100 bg-gradient-to-br from-blue-50/80 via-white to-white p-4">
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <label className="block text-[10px] font-extrabold uppercase tracking-wide text-slate-500">
+                    Translation
+                    <select value={bibleVersion} onChange={(event) => { setBibleVersion(event.target.value); if (compareVersion === event.target.value) setCompareVersion(""); }} className="mt-1.5 h-12 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold normal-case text-slate-800 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
+                      {bibleVersions.map((version) => <option key={version.key} value={version.key}>{version.code}</option>)}
+                    </select>
+                  </label>
+                  <label className="block text-[10px] font-extrabold uppercase tracking-wide text-slate-500">
+                    Compare
+                    <select value={compareVersion} onChange={(event) => setCompareVersion(event.target.value)} className="mt-1.5 h-12 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold normal-case text-slate-800 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
+                      <option value="">None</option>
+                      {bibleVersions.filter((version) => version.key !== bibleVersion).map((version) => <option key={version.key} value={version.key}>{version.code}</option>)}
+                    </select>
+                  </label>
+                  <div className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500">
+                    Book
+                    <BibleBookPicker value={bibleBook} version={bibleVersion} onChange={(bookCode) => { setBibleBook(bookCode); setBibleChapter("1"); }} />
+                  </div>
+                  <div className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500">
+                    Chapter
+                    <BibleChapterPicker value={bibleChapter} chapterCount={bibleBooks.find((book) => book.code === bibleBook)?.chapters ?? 1} onChange={setBibleChapter} />
+                  </div>
+                </div>
+
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <button type="button" onClick={() => void loadBibleChapter()} disabled={bibleLoading} className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-lg bg-blue-600 px-6 text-xs font-extrabold text-white shadow-md shadow-blue-600/20 hover:bg-blue-700 disabled:opacity-50">
+                    {bibleLoading ? <LoaderCircle className="size-4 animate-spin" /> : <BookOpen className="size-4" />}
+                    {bibleLoading ? "Loading chapter…" : "Load chapter into preview"}
+                  </button>
+                  {loadedBible ? (
+                    <div className="flex h-12 min-w-0 flex-1 items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-emerald-800">
+                      <Check className="size-4 shrink-0" />
+                      <p className="min-w-0 truncate text-[10px] font-semibold"><strong>{loadedBible.reference} · {loadedBible.version.code}</strong> — all {loadedBible.verses.length} verses included automatically</p>
+                    </div>
+                  ) : null}
+                </div>
+                {bibleError ? <p className="mt-3 rounded-lg bg-red-50 p-2 text-[10px] font-semibold text-red-700">{bibleError}</p> : null}
+              </section>
+
+              <aside className="min-h-0 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-4" aria-label="Bible slide arrangement">
+                <label className="block text-[10px] font-extrabold uppercase tracking-wide text-slate-500">
+                  Verses per slide
+                  <select value={versesPerSlide} onChange={(event) => setVersesPerSlide(Number(event.target.value))} className="mt-1.5 h-12 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold normal-case text-slate-800 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
+                    <option value={1}>1 verse per slide</option>
+                    <option value={2}>Up to 2 verses per slide</option>
+                    <option value={3}>Up to 3 verses per slide</option>
+                  </select>
+                </label>
+                <div className="mt-4 rounded-lg border border-blue-100 bg-white p-3">
+                  <p className="text-[10px] font-bold text-slate-700">{bibleVerseNumbers.length} verses · {bibleSlides.length} slides</p>
+                </div>
+                <button type="button" onClick={() => { setSource("bible"); setSlideIndex(0); }} disabled={!bibleSlides.length} className="mt-4 h-11 w-full rounded-lg bg-blue-600 text-[10px] font-extrabold text-white shadow-sm hover:bg-blue-700 disabled:opacity-35">Open Bible slides</button>
+              </aside>
+            </div>
+          ) : null}
+
+          {controlPanel === "overlay" ? (
+            <div className="grid h-full min-h-0 gap-3 lg:grid-cols-[340px_minmax(0,1fr)_220px]">
+              <aside className="min-h-0 overflow-y-auto rounded-lg border border-blue-100 bg-blue-50/60 p-3" aria-label="Saved overlays">
+                <div className="grid grid-cols-2 gap-2">
+                  {overlayPresets.map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      aria-label={"Select overlay " + preset.name}
+                      aria-pressed={selectedOverlayPresetId === preset.id}
+                      onClick={() => selectOverlayPreset(preset)}
+                      className={selectedOverlayPresetId === preset.id
+                        ? "min-w-0 overflow-hidden rounded-lg border-2 border-blue-500 bg-white text-left shadow-sm ring-2 ring-blue-100"
+                        : "min-w-0 overflow-hidden rounded-lg border-2 border-white bg-white/80 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300"}
+                    >
+                      <ProjectionOverlayPreview title={preset.title} text={preset.text} tone={preset.tone} position={preset.position} fontSize={preset.fontSize} className="rounded-b-none border-0 border-b border-slate-700" />
+                      <span className="flex h-8 items-center justify-between gap-1.5 px-2">
+                        <span className="truncate text-[9px] font-extrabold text-slate-700">{preset.name}</span>
+                        {selectedOverlayPresetId === preset.id ? <span className="shrink-0 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[7px] font-extrabold uppercase text-emerald-700">Ready</span> : null}
+                      </span>
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={startNewOverlay}
+                    className="group flex min-h-[118px] flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-blue-300 bg-white/70 text-blue-700 transition hover:-translate-y-0.5 hover:border-blue-500 hover:bg-white hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                    aria-label="Create a new overlay"
+                  >
+                    <span className="inline-flex size-9 items-center justify-center rounded-full bg-blue-100 transition group-hover:bg-blue-600 group-hover:text-white">
+                      <Plus className="size-5" />
+                    </span>
+                    <span className="text-[10px] font-extrabold">New overlay</span>
+                  </button>
+                </div>
+              </aside>
+
+              <section className="grid min-h-0 gap-3 rounded-lg border border-slate-200 bg-white p-3 xl:grid-cols-[minmax(260px,1.1fr)_minmax(230px,.9fr)]" aria-label="Overlay preview">
+                <div className="min-w-0">
+                  <div className="mb-2 flex justify-end">
+                    <span className={selectedOverlayIsLive ? "rounded-full bg-emerald-100 px-2 py-1 text-[7px] font-extrabold uppercase text-emerald-700" : "rounded-full bg-amber-100 px-2 py-1 text-[7px] font-extrabold uppercase text-amber-700"}>
+                      {selectedOverlayIsLive ? "Live" : "Ready"}
+                    </span>
+                  </div>
+                  <ProjectionOverlayPreview title={overlayTitle.trim()} text={overlayText.trim()} tone={overlayTone} position={overlayPosition} fontSize={overlayFontSize} className="shadow-inner" />
+                  <p className="mt-2 truncate text-[9px] font-semibold text-slate-500">{overlayPresetName || "Unsaved overlay"}</p>
+                </div>
+
+                <div className="min-h-0 space-y-2 overflow-y-auto pr-1">
+                  <input value={overlayTitle} onChange={(event) => setOverlayTitle(event.target.value)} placeholder="Overlay title" className="h-9 w-full rounded-md border border-slate-300 px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                  <textarea value={overlayText} onChange={(event) => setOverlayText(event.target.value)} placeholder="Overlay message" rows={3} className="w-full resize-none rounded-md border border-slate-300 p-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                  <div className="grid grid-cols-2 gap-2">
+                    <select value={overlayTone} onChange={(event) => setOverlayTone(event.target.value as OverlayTone)} className="h-8 rounded-md border border-slate-300 bg-white px-1.5 text-[10px] font-semibold">
+                      <option value="blue">Blue</option>
+                      <option value="dark">Dark</option>
+                      <option value="light">Light</option>
+                      <option value="minimal">Minimal</option>
+                    </select>
+                    <select value={overlayPosition} onChange={(event) => setOverlayPosition(event.target.value as OverlayPosition)} className="h-8 rounded-md border border-slate-300 bg-white px-1.5 text-[10px] font-semibold">
+                      <option value="top">Top</option>
+                      <option value="center">Center</option>
+                      <option value="bottom">Bottom</option>
+                    </select>
+                  </div>
+                  <label className="block text-[9px] font-semibold text-slate-500">
+                    <span className="flex justify-between"><span>Overlay size</span><strong>{overlayFontSize}%</strong></span>
+                    <input type="range" min={PROJECTION_TEXT_SIZE_MIN_PERCENT} max={PROJECTION_TEXT_SIZE_MAX_PERCENT} step={1} value={overlayFontSize} onChange={(event) => setOverlayFontSize(Number(event.target.value))} className="mt-2 w-full accent-blue-600" />
+                  </label>
+                </div>
+              </section>
+
+              <aside className="min-h-0 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-3" aria-label="Overlay presentation">
+                <button
+                  type="button"
+                  onClick={toggleLiveOverlay}
+                  disabled={!overlayTitle.trim() && !overlayText.trim()}
+                  className={selectedOverlayIsLive
+                    ? "h-10 w-full rounded-md bg-red-600 text-[9px] font-extrabold text-white shadow-sm hover:bg-red-700 disabled:opacity-35"
+                    : "h-10 w-full rounded-md bg-emerald-600 text-[9px] font-extrabold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-35"}
+                >
+                  {selectedOverlayIsLive ? "Hide live overlay" : "Show overlay live"}
+                </button>
+                <div className="my-3 border-t border-slate-200" />
+                <input value={overlayPresetName} onChange={(event) => setOverlayPresetName(event.target.value)} placeholder="Preset name" maxLength={80} className="h-8 w-full rounded border border-slate-300 bg-white px-2 text-[9px]" />
+                <button type="button" onClick={saveCurrentOverlayPreset} disabled={overlayPresetPending || !overlayPresetName.trim() || (!overlayTitle.trim() && !overlayText.trim())} className="mt-2 inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-md bg-blue-600 text-[10px] font-extrabold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-35">
+                  <Save className="size-3.5" /> Save
+                </button>
+                <div className="mt-2 flex justify-end">
+                  <button type="button" onClick={deleteSelectedOverlayPreset} disabled={!selectedOverlayPresetId || overlayPresetPending} className="inline-flex items-center gap-1 text-[8px] font-bold text-red-500 disabled:opacity-35"><Trash2 className="size-3" /> Delete</button>
+                </div>
+                {overlayPresetNotice ? <p className="mt-2 rounded bg-white px-2 py-1 text-[8px] text-slate-500">{overlayPresetNotice}</p> : null}
+              </aside>
+            </div>
+          ) : null}
+
+          {controlPanel === "media" ? <div className="grid h-full min-h-0 gap-3 lg:grid-cols-3"><section className="rounded-lg border border-slate-200 bg-slate-50 p-3"><div className="mb-2 flex items-center justify-between"><h4 className="text-[9px] font-extrabold uppercase tracking-wide text-slate-500">Local media</h4>{mediaType !== "none" ? <button type="button" onClick={clearBackgroundMedia} className="text-[8px] font-bold text-red-500">Remove</button> : null}</div><label className="flex h-24 cursor-pointer flex-col items-center justify-center gap-2 rounded-md border border-dashed border-blue-300 bg-blue-50 text-[9px] font-bold text-blue-700 hover:bg-blue-100"><Upload className="size-5" /> Choose image or video<input type="file" accept="image/*,video/mp4,video/webm,video/ogg" className="sr-only" onChange={(event) => { selectLocalBackground(event.target.files?.[0]); event.target.value = ""; }} /></label>{mediaName ? <p className="mt-2 truncate text-[9px] font-semibold text-slate-600">{mediaType === "video" ? <Video className="mr-1 inline size-3" /> : <ImageIcon className="mr-1 inline size-3" />}{mediaName}</p> : null}</section><section className="rounded-lg border border-slate-200 bg-white p-3"><h4 className="mb-2 text-[9px] font-extrabold uppercase tracking-wide text-slate-500">Hosted media</h4><div className="grid grid-cols-[85px_1fr] gap-2"><select value={mediaType} onChange={(event) => setMediaType(event.target.value as ProjectionMediaType)} className="h-8 rounded border border-slate-300 bg-white px-1 text-[9px] font-semibold"><option value="none">None</option><option value="image">Image</option><option value="video">Video</option></select><input value={mediaUrl.startsWith("blob:") ? "" : mediaUrl} onChange={(event) => { setMediaUrl(event.target.value); setMediaName(event.target.value ? "Hosted media" : ""); setMediaNotice(null); }} onBlur={() => { if (mediaUrl && !sanitizeProjectionMediaUrl(mediaUrl)) setMediaNotice("Use a valid http:// or https:// media URL."); }} placeholder="https://cdn…/background.mp4" className="h-8 min-w-0 rounded border border-slate-300 px-2 text-[9px]" /></div>{mediaNotice ? <p className="mt-2 rounded bg-slate-50 px-2 py-1 text-[8px] text-slate-500">{mediaNotice}</p> : null}</section><section className="rounded-lg border border-slate-200 bg-slate-50 p-3"><label className="block text-[9px] font-semibold text-slate-500">Media fit<select value={mediaFit} onChange={(event) => setMediaFit(event.target.value as "cover" | "contain")} className="mt-1 h-8 w-full rounded border border-slate-300 bg-white px-2 text-[9px]"><option value="cover">Fill screen</option><option value="contain">Show all</option></select></label><label className="mt-3 block text-[9px] font-semibold text-slate-500"><span className="flex justify-between"><span>Brightness</span><strong>{mediaBrightness}%</strong></span><input type="range" min={0} max={100} step={1} value={mediaBrightness} onChange={(event) => setMediaBrightness(Number(event.target.value))} className="mt-2 w-full accent-blue-600" /></label><button type="button" onClick={takePreview} disabled={!hasPendingChanges} className="mt-3 h-8 w-full rounded bg-emerald-600 text-[9px] font-bold text-white disabled:opacity-35">Apply Preview live</button></section></div> : null}
+
+          {controlPanel === "looks" ? (
+            <div className="grid h-full min-h-0 gap-3 lg:grid-cols-[220px_minmax(0,1fr)]">
+              <aside className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div className="flex flex-wrap gap-1">
+                  {projectionThemeCategories.map((category) => <button key={category.key} type="button" onClick={() => setThemeCategory(category.key)} className={`rounded-full px-2 py-1 text-[8px] font-bold ${themeCategory === category.key ? "bg-blue-600 text-white" : "bg-white text-slate-500 ring-1 ring-slate-200"}`}>{category.label}</button>)}
+                </div>
+                <div className="mt-3">
+                  <div className="flex justify-between text-[9px] font-bold text-slate-500"><span>Transition</span><span>{transitionType === "cut" ? "Instant" : `${transitionDuration} ms`}</span></div>
+                  <div className="mt-1 grid grid-cols-3 gap-1">{(["cut", "fade", "dissolve"] as ProjectionTransitionType[]).map((type) => <button key={type} type="button" onClick={() => setTransitionType(type)} className={`h-7 rounded text-[8px] font-bold capitalize ${transitionType === type ? "bg-blue-600 text-white" : "bg-white text-slate-500 ring-1 ring-slate-200"}`}>{type}</button>)}</div>
+                  {transitionType !== "cut" ? <input type="range" min={100} max={1500} step={50} value={transitionDuration} onChange={(event) => setTransitionDuration(Number(event.target.value))} className="mt-2 w-full accent-blue-600" /> : null}
+                </div>
+                <div className="mt-4 rounded-lg border border-blue-100 bg-white p-3 shadow-sm">
+                  <div className="flex items-center justify-between text-[10px] font-extrabold text-slate-600"><span>Theme brightness</span><span className="rounded bg-blue-50 px-1.5 py-0.5 text-blue-700">{mediaBrightness}%</span></div>
+                  <input type="range" min={0} max={100} step={1} value={mediaBrightness} onChange={(event) => setMediaBrightness(Number(event.target.value))} aria-label="Theme brightness" className="mt-2 w-full accent-blue-600" />
+                </div>
+                <button type="button" onClick={applyAppearanceLive} disabled={!liveState || appearanceIsLive} className="mt-3 inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-md bg-emerald-600 px-2 text-[9px] font-extrabold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none">
+                  <Send className="size-3.5" />{appearanceIsLive ? "Appearance live" : "Apply appearance live"}
+                </button>
+              </aside>
+              <div className="grid min-h-0 content-start grid-cols-[repeat(auto-fill,minmax(130px,1fr))] gap-2 overflow-y-auto pr-1">
+                {visibleThemes.map(([key, theme]) => <button key={key} type="button" onClick={() => setThemeKey(key)} className={`overflow-hidden rounded-lg border-2 bg-white text-left shadow-sm transition hover:-translate-y-0.5 ${themeKey === key ? "border-blue-500 ring-2 ring-blue-100" : "border-white"}`}><span className="relative block aspect-video overflow-hidden bg-black"><span className="absolute inset-0" style={{ background: theme.background, filter: `brightness(${projectionMediaBrightnessPercent(mediaBrightness)}%)` }} aria-hidden />{themeKey === key ? <span className="absolute right-1.5 top-1.5 inline-flex size-4 items-center justify-center rounded-full bg-blue-600 text-white"><Check className="size-2.5" /></span> : null}</span><span className="block truncate px-2 py-1 text-[9px] font-bold text-slate-600">{theme.label}</span></button>)}
+              </div>
+            </div>
+          ) : null}
+        </div> : null}
+      </section>
 
       {songLyricsEditor ? (
         <div className="fixed inset-0 z-[85] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm sm:p-5" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target && !songLyricsPending) setSongLyricsEditor(null); }}>
@@ -1097,13 +1645,24 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
           <section className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="slide-editor-title">
             <header className="flex items-start justify-between border-b border-slate-200 bg-slate-50 px-5 py-4"><div><h3 id="slide-editor-title" className="text-base font-extrabold text-slate-950">Edit slide {slideEditor.index + 1}</h3><p className="mt-1 text-xs text-slate-500"></p></div><button type="button" onClick={() => setSlideEditor(null)} className="inline-flex size-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200 hover:text-slate-700" aria-label="Close slide editor"><X className="size-4" /></button></header>
             <div className="max-h-[65vh] space-y-4 overflow-y-auto p-5">
+              <section className="rounded-xl border border-blue-200 bg-blue-50/60 p-4" aria-label="Text size for this slide">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div><h4 className="text-xs font-extrabold text-slate-900">Text size for this slide</h4></div>
+                  <span className="rounded-md bg-white px-2 py-1 text-xs font-extrabold text-blue-700 shadow-sm">{slideEditor.fontSize ?? fontSize}%</span>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-white p-1 shadow-sm ring-1 ring-slate-200">
+                  <button type="button" aria-pressed={slideEditor.fontSize === null} onClick={() => setSlideEditor((current) => current ? { ...current, fontSize: null } : null)} className={`h-9 rounded-md px-3 text-[10px] font-extrabold transition ${slideEditor.fontSize === null ? "bg-blue-600 text-white shadow-sm" : "text-slate-600 hover:bg-slate-100"}`}>Use default ({fontSize}%)</button>
+                  <button type="button" aria-pressed={slideEditor.fontSize !== null} onClick={() => setSlideEditor((current) => current ? { ...current, fontSize: current.fontSize ?? fontSize } : null)} className={`h-9 rounded-md px-3 text-[10px] font-extrabold transition ${slideEditor.fontSize !== null ? "bg-blue-600 text-white shadow-sm" : "text-slate-600 hover:bg-slate-100"}`}>Custom size</button>
+                </div>
+                <input type="range" min={PROJECTION_TEXT_SIZE_MIN_PERCENT} max={PROJECTION_TEXT_SIZE_MAX_PERCENT} step={1} value={slideEditor.fontSize ?? fontSize} disabled={slideEditor.fontSize === null} onChange={(event) => setSlideEditor((current) => current ? { ...current, fontSize: Number(event.target.value) } : null)} aria-label="Text size for this slide" className="mt-3 w-full accent-blue-600 disabled:cursor-not-allowed disabled:opacity-40" />
+              </section>
               {slideEditor.slide.sections?.length ? (
                 <div className="grid gap-3 sm:grid-cols-2">{slideEditor.slide.sections.map((section, sectionIndex) => <div key={sectionIndex} className="rounded-xl border border-slate-200 bg-slate-50 p-3"><label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Column heading<input value={section.label} onChange={(event) => setSlideEditor((current) => current ? { ...current, slide: { ...current.slide, sections: current.slide.sections?.map((item, index) => index === sectionIndex ? { ...item, label: event.target.value } : item) } } : null)} maxLength={160} className="mt-1.5 h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-xs font-semibold normal-case tracking-normal outline-none focus:border-blue-500" /></label><label className="mt-3 block text-[10px] font-bold uppercase tracking-wider text-slate-500">Text<textarea value={section.text} onChange={(event) => setSlideEditor((current) => current ? { ...current, slide: { ...current.slide, sections: current.slide.sections?.map((item, index) => index === sectionIndex ? { ...item, text: event.target.value } : item) } } : null)} rows={7} className="mt-1.5 w-full resize-y rounded-md border border-slate-300 bg-white p-2 text-sm font-semibold leading-6 normal-case tracking-normal outline-none focus:border-blue-500" /></label></div>)}</div>
               ) : (
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Slide text<textarea autoFocus value={slideEditor.slide.text} onChange={(event) => setSlideEditor((current) => current ? { ...current, slide: { ...current.slide, text: event.target.value } } : null)} rows={9} className="mt-1.5 w-full resize-y rounded-lg border border-slate-300 p-3 text-base font-semibold leading-7 normal-case tracking-normal outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" /></label>
               )}
             </div>
-            <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4"><div>{slideOverrides[slideEditor.key] ? <button type="button" onClick={() => resetSlideEdit(slideEditor.index)} className="inline-flex h-9 items-center gap-2 rounded-lg px-3 text-xs font-bold text-red-600 hover:bg-red-50"><RotateCcw className="size-3.5" /> Reset original</button> : <span className="text-[10px] text-slate-400">Apply, review in Preview, then Take live.</span>}</div><div className="flex gap-2"><button type="button" onClick={() => setSlideEditor(null)} className="h-9 rounded-lg border border-slate-300 bg-white px-4 text-xs font-bold text-slate-600 hover:bg-slate-100">Cancel</button><button type="button" onClick={applySlideEdit} disabled={!slideEditorValid} className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-4 text-xs font-extrabold text-white hover:bg-blue-700 disabled:opacity-40"><Check className="size-4" /> Apply to preview</button></div></footer>
+            <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4"><div>{slideOverrides[slideEditor.key] || slideTextSizeOverrides[slideEditor.key] !== undefined ? <button type="button" onClick={() => resetSlideEdit(slideEditor.index)} className="inline-flex h-9 items-center gap-2 rounded-lg px-3 text-xs font-bold text-red-600 hover:bg-red-50"><RotateCcw className="size-3.5" /> Reset original</button> : null}</div><div className="flex gap-2"><button type="button" onClick={() => setSlideEditor(null)} className="h-9 rounded-lg border border-slate-300 bg-white px-4 text-xs font-bold text-slate-600 hover:bg-slate-100">Cancel</button><button type="button" onClick={applySlideEdit} disabled={!slideEditorValid} className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-4 text-xs font-extrabold text-white hover:bg-blue-700 disabled:opacity-40"><Check className="size-4" /> Apply to preview</button></div></footer>
           </section>
         </div>
       ) : null}
