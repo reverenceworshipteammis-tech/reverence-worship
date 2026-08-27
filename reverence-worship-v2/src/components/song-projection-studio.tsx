@@ -1,11 +1,11 @@
 "use client";
-/* eslint-disable @next/next/no-img-element */
-
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { deleteProjectionOverlayPreset, saveProjectionOverlayPreset, updateProjectionSongLyrics } from "@/app/admin/music/actions";
 import { ProjectionAutoFitText } from "@/components/projection-auto-fit-text";
+import { ProjectionBackgroundLayer } from "@/components/projection-background-layer";
+import { ProjectionSlideEditor, type ProjectionSlideEditorItem } from "@/components/projection-slide-editor";
 import {
   BookOpen,
   Check,
@@ -41,18 +41,25 @@ import { chooseProjectionScreen, projectionScreenId, type ProjectionScreenLike }
 import { projectionThemeCategories, projectionThemes, type ProjectionTheme, type ProjectionThemeCategory, type ProjectionThemeKey } from "@/lib/projection-themes";
 import {
   PROJECTION_CHANNEL_NAME,
+  DEFAULT_PROJECTION_BACKGROUND_EFFECTS,
+  DEFAULT_PROJECTION_MEDIA,
   PROJECTION_TEXT_SIZE_MAX_PERCENT,
   PROJECTION_TEXT_SIZE_MIN_PERCENT,
   clampProjectionTransitionDuration,
+  normalizeProjectionBackgroundEffects,
   projectionMediaBrightnessPercent,
   projectionNavigationState,
   projectionOverlayPreviewTextSizePx,
   projectionOverlaySafeInsets,
+  projectionOverlayTextSizePx,
   projectionOverlayWidthPercent,
   projectionPreviewTextSizePx,
+  projectionTextSizePx,
   readProjectionState,
   sanitizeProjectionMediaUrl,
   type ProjectionChannelMessage,
+  type ProjectionBackgroundAmbience,
+  type ProjectionBackgroundMotion,
   type ProjectionControlKey,
   type ProjectionMediaType,
   type ProjectionOutputState,
@@ -99,13 +106,83 @@ type Source = "songs" | "bible";
 type OverlayTone = "blue" | "dark" | "light" | "minimal";
 type OverlayPosition = "top" | "center" | "bottom";
 type ProjectionControlPanel = "songs" | "bible" | "looks" | "media" | "overlay";
-type SlideEditorState = { key: string; index: number; slide: SongProjectionSlide; fontSize: number | null };
 type SongLyricsEditorState = { songId: number; title: string; lyrics: string; notice: string | null };
 type LiveSelection = { source: Source; songId: number | null; slideIndex: number };
+type ProjectionViewport = { width: number; height: number };
+type FitAllRequest = ProjectionViewport & { deckKey: string; scale: number };
 
 const RECENT_PROJECTION_SONGS_KEY = "reverence-projection-recent-songs-v1";
 const PROJECTION_WORKSPACE_SETTINGS_KEY = "reverence-projection-workspace-v1";
 const projectionControlPanels: ProjectionControlPanel[] = ["songs", "bible", "overlay", "media", "looks"];
+
+function projectionPercentForOutputFontSize(measuredFontSize: number) {
+  const progress = (measuredFontSize - projectionTextSizePx(PROJECTION_TEXT_SIZE_MIN_PERCENT))
+    / (projectionTextSizePx(PROJECTION_TEXT_SIZE_MAX_PERCENT) - projectionTextSizePx(PROJECTION_TEXT_SIZE_MIN_PERCENT));
+  return Math.min(PROJECTION_TEXT_SIZE_MAX_PERCENT, Math.max(PROJECTION_TEXT_SIZE_MIN_PERCENT, Math.floor(PROJECTION_TEXT_SIZE_MIN_PERCENT + progress * (PROJECTION_TEXT_SIZE_MAX_PERCENT - PROJECTION_TEXT_SIZE_MIN_PERCENT))));
+}
+
+function ProjectionEffectRange({ label, value, minimum, maximum, unit = "%", onChange }: {
+  label: string;
+  value: number;
+  minimum: number;
+  maximum: number;
+  unit?: string;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="flex items-center justify-between text-[9px] font-bold text-slate-500"><span>{label}</span><strong className="text-slate-700">{value}{unit}</strong></span>
+      <input type="range" min={minimum} max={maximum} step={1} value={value} onChange={(event) => onChange(Number(event.target.value))} className="mt-1 w-full accent-blue-600" />
+    </label>
+  );
+}
+
+function ProjectionOutputFitMeasurement({ slide, footer, viewport, scale, overlay, onFit }: {
+  slide: SongProjectionSlide;
+  footer: string;
+  viewport: ProjectionViewport;
+  scale: number;
+  overlay: ProjectionOutputState["overlay"];
+  onFit: (sectionIndex: number | null, fittedFontSize: number) => void;
+}) {
+  const overlayRef = useRef<HTMLElement | null>(null);
+  const [overlayHeight, setOverlayHeight] = useState(0);
+  const width = Math.max(1, Math.round(viewport.width * scale));
+  const height = Math.max(1, Math.round(viewport.height * scale));
+  const overlayVisible = Boolean(overlay.visible && (overlay.title || overlay.text));
+  const safeInsets = projectionOverlaySafeInsets(height, overlayHeight, overlay.position, overlayVisible);
+  const maximumFontSize = projectionTextSizePx(PROJECTION_TEXT_SIZE_MAX_PERCENT) * scale;
+  const minimumFontSize = Math.max(1, projectionTextSizePx(PROJECTION_TEXT_SIZE_MIN_PERCENT) * scale);
+  const labelFontSize = Math.min(30, Math.max(16, viewport.width * 0.018)) * scale;
+  const sectionLabelFontSize = Math.min(28, Math.max(16, viewport.width * 0.017)) * scale;
+  const footerFontSize = Math.min(20, Math.max(12, viewport.width * 0.0115)) * scale;
+  const overlayFontSize = projectionOverlayTextSizePx(overlay.fontSize) * scale;
+  const [overlayPaddingYVh = 0, overlayPaddingXVw = 0] = overlay.padding.match(/[\d.]+/g)?.map(Number) ?? [];
+  const readyToMeasure = !overlayVisible || overlayHeight > 0;
+
+  useLayoutEffect(() => {
+    const element = overlayRef.current;
+    if (!overlayVisible || !element) { setOverlayHeight(0); return; }
+    const measure = () => setOverlayHeight(element.offsetHeight);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [overlay.text, overlay.title, overlayVisible, width]);
+
+  return (
+    <div className="relative isolate flex flex-col items-center overflow-hidden bg-black text-center" style={{ width, height, paddingLeft: width * 0.035, paddingRight: width * 0.035, ...safeInsets }}>
+      {slide.label ? <p className="shrink-0 font-bold uppercase tracking-[0.12em]" style={{ marginBottom: height * 0.01, fontSize: labelFontSize }}>{slide.label}</p> : null}
+      {slide.sections?.length ? (
+        <div className="grid min-h-0 w-full flex-1 items-stretch" style={{ gridTemplateColumns: `repeat(${slide.sections.length},minmax(0,1fr))` }}>
+          {slide.sections.map((section, index) => <section key={index} className="flex min-h-0 min-w-0 flex-col" style={{ padding: `${height * 0.005}px ${width * 0.02}px` }}><h2 className="shrink-0 font-extrabold uppercase tracking-[0.14em]" style={{ marginBottom: height * 0.0075, fontSize: sectionLabelFontSize }}>{section.label}</h2><ProjectionAutoFitText text={section.text} maximumFontSize={maximumFontSize} minimumFontSize={minimumFontSize} onFontSizeFit={readyToMeasure ? (fittedFontSize) => onFit(index, fittedFontSize / scale) : undefined} className="font-bold leading-[1.08] tracking-[0.003em]" /></section>)}
+        </div>
+      ) : <div className="min-h-0 w-full flex-1"><ProjectionAutoFitText text={slide.text} maximumFontSize={maximumFontSize} minimumFontSize={minimumFontSize} onFontSizeFit={readyToMeasure ? (fittedFontSize) => onFit(null, fittedFontSize / scale) : undefined} className="font-bold leading-[1.08] tracking-[0.003em]" /></div>}
+      <p className="w-full shrink-0 truncate" style={{ marginTop: height * 0.0075, fontSize: footerFontSize }}>{footer}</p>
+      {overlayVisible ? <aside ref={overlayRef} className="absolute left-1/2 max-w-[94%] whitespace-pre-line rounded-lg border font-bold leading-[1.22]" style={{ top: overlay.position === "top" ? height * 0.06 : overlay.position === "center" ? "50%" : "auto", bottom: overlay.position === "bottom" ? height * 0.07 : "auto", transform: overlay.position === "center" ? "translate(-50%,-50%)" : "translateX(-50%)", width: width * overlay.width / 100, padding: `${height * overlayPaddingYVh / 100}px ${width * overlayPaddingXVw / 100}px` }}>{overlay.title ? <strong className="block uppercase opacity-70" style={{ fontSize: Math.max(1, overlayFontSize * 0.5) }}>{overlay.title}</strong> : null}{overlay.text ? <ProjectionAutoFitText text={overlay.text} maximumFontSize={overlayFontSize} minimumFontSize={Math.max(1, 10 * scale)} fit="width" className="font-bold leading-[1.22]" /> : null}</aside> : null}
+    </div>
+  );
+}
 
 function serviceLabel(serviceNumber: number) {
   return serviceNumber === 1 ? "First service" : serviceNumber === 2 ? "Second service" : `Service ${serviceNumber}`;
@@ -115,6 +192,11 @@ function projectionSlidesMatch(left: SongProjectionSlide | null, right: SongProj
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+function projectionSlideContentLength(slide: SongProjectionSlide | null) {
+  if (!slide) return 0;
+  return slide.sections?.reduce((total, section) => total + section.text.length, 0) ?? slide.text.length;
+}
+
 function songFooterForSlide(song: ProjectionSong, index: number, slideCount: number) {
   return `${song.title}${song.artist ? ` · ${song.artist}` : ""} — ${slideCount ? `${index + 1}/${slideCount}` : "No lyrics"}`;
 }
@@ -122,16 +204,21 @@ function songFooterForSlide(song: ProjectionSong, index: number, slideCount: num
 function ProjectionLiveMonitor({ state }: { state: ProjectionOutputState | null }) {
   const frameRef = useRef<HTMLDivElement | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
+  const [frameWidth, setFrameWidth] = useState(0);
   const [frameHeight, setFrameHeight] = useState(0);
   const [overlayHeight, setOverlayHeight] = useState(0);
   const showOverlay = Boolean(state?.overlay.visible && !state.blanked && (state.overlay.title || state.overlay.text));
   const safeInsets = state ? projectionOverlaySafeInsets(frameHeight, overlayHeight, state.overlay.position, showOverlay) : undefined;
   const overlayPosition = state?.overlay.position === "top" ? "top-3" : state?.overlay.position === "center" ? "top-1/2 -translate-y-1/2" : "bottom-3";
+  const uniformMonitorFontSize = state?.uniformTextSize && state.uniformTextViewport
+    ? projectionTextSizePx(state.fontSize) * frameWidth / state.uniformTextViewport.width
+    : 0;
 
   useLayoutEffect(() => {
     const frame = frameRef.current;
     if (!frame) return;
     const measure = () => {
+      setFrameWidth(frame.clientWidth);
       setFrameHeight(frame.clientHeight);
       setOverlayHeight(showOverlay ? overlayRef.current?.offsetHeight ?? 0 : 0);
     };
@@ -143,15 +230,13 @@ function ProjectionLiveMonitor({ state }: { state: ProjectionOutputState | null 
   }, [showOverlay, state?.overlay.position, state?.overlay.fontSize, state?.overlay.title, state?.overlay.text]);
 
   return (
-    <div ref={frameRef} className="relative isolate aspect-video overflow-hidden rounded-lg border border-slate-700 bg-black shadow-inner" style={{ color: state?.textColor ?? "#fff" }}>
+    <div ref={frameRef} className="relative isolate overflow-hidden rounded-lg border border-slate-700 bg-black shadow-inner" style={{ color: state?.textColor ?? "#fff", aspectRatio: state?.uniformTextViewport ? `${state.uniformTextViewport.width} / ${state.uniformTextViewport.height}` : "16 / 9" }}>
       {!state ? <div className="flex size-full items-center justify-center px-6 text-center text-xs font-semibold text-white/45">Nothing has been presented yet.</div> : state.blanked ? <div className="flex size-full items-center justify-center text-center"><div><EyeOff className="mx-auto size-7 text-white/35" /><p className="mt-2 text-xs font-bold text-white/50">Output blanked</p></div></div> : (
         <>
-          <div className="absolute inset-0 -z-10 overflow-hidden bg-black" style={{ background: state.background, filter: `brightness(${state.media.brightness}%)` }} aria-hidden>
-            {state.media.type !== "none" && state.media.url ? state.media.type === "video" ? <video key={state.media.url} src={state.media.url} autoPlay muted loop playsInline preload="metadata" className="size-full bg-black" style={{ objectFit: state.media.fit }} /> : <img src={state.media.url} alt="" className="size-full bg-black" style={{ objectFit: state.media.fit }} /> : null}
-          </div>
+          <ProjectionBackgroundLayer background={state.background} media={state.media} effects={state.effects} contentLength={projectionSlideContentLength(state.slide)} className="-z-10" />
           <div className="flex h-full min-h-0 flex-col items-center px-[4%] text-center" style={safeInsets}>
             {state.slide?.label ? <p className="mb-1 text-[8px] font-bold uppercase tracking-[0.12em]" style={{ color: state.mutedTextColor }}>{state.slide.label}</p> : null}
-            {state.slide?.sections?.length ? <div className="grid min-h-0 w-full flex-1" style={{ gridTemplateColumns: `repeat(${state.slide.sections.length},minmax(0,1fr))` }}>{state.slide.sections.map((section, index) => <div key={`${section.label}-${index}`} className="flex min-h-0 min-w-0 flex-col px-1.5" style={{ borderLeft: index ? `1px solid ${state.mutedTextColor}` : undefined }}><strong className="mb-0.5 block text-[7px] uppercase tracking-widest" style={{ color: state.mutedTextColor }}>{section.label}</strong><ProjectionAutoFitText text={section.text} maximumFontSize={Math.max(8, projectionPreviewTextSizePx(state.fontSize) * 0.82)} minimumFontSize={5} className="font-bold leading-[1.08]" style={{ textShadow: state.textShadow }} /></div>)}</div> : <div className="min-h-0 w-full flex-1"><ProjectionAutoFitText text={state.slide?.text ?? ""} maximumFontSize={projectionPreviewTextSizePx(state.fontSize)} minimumFontSize={5} className="font-bold leading-[1.08]" style={{ textShadow: state.textShadow }} /></div>}
+            {state.slide?.sections?.length ? <div className="grid min-h-0 w-full flex-1" style={{ gridTemplateColumns: `repeat(${state.slide.sections.length},minmax(0,1fr))` }}>{state.slide.sections.map((section, index) => <div key={`${section.label}-${index}`} className="flex min-h-0 min-w-0 flex-col px-1.5" style={{ borderLeft: index ? `1px solid ${state.mutedTextColor}` : undefined }}><strong className="mb-0.5 block text-[7px] uppercase tracking-widest" style={{ color: state.mutedTextColor }}>{section.label}</strong>{uniformMonitorFontSize ? <p className="flex min-h-0 flex-1 items-center justify-center whitespace-pre-line font-bold leading-[1.08] [text-wrap:balance]" style={{ fontSize: uniformMonitorFontSize, textShadow: state.textShadow }}>{section.text}</p> : <ProjectionAutoFitText text={section.text} maximumFontSize={Math.max(8, projectionPreviewTextSizePx(state.fontSize) * 0.82)} minimumFontSize={5} className="font-bold leading-[1.08]" style={{ textShadow: state.textShadow }} />}</div>)}</div> : <div className="min-h-0 w-full flex-1">{uniformMonitorFontSize ? <p className="flex size-full items-center justify-center whitespace-pre-line font-bold leading-[1.08] [text-wrap:balance]" style={{ fontSize: uniformMonitorFontSize, textShadow: state.textShadow }}>{state.slide?.text ?? ""}</p> : <ProjectionAutoFitText text={state.slide?.text ?? ""} maximumFontSize={projectionPreviewTextSizePx(state.fontSize)} minimumFontSize={5} className="font-bold leading-[1.08]" style={{ textShadow: state.textShadow }} />}</div>}
             <p className="mt-0.5 w-full shrink-0 truncate text-[7px]" style={{ color: state.mutedTextColor }}>{state.footer}</p>
           </div>
           {showOverlay ? <div ref={overlayRef} className={`absolute left-1/2 max-w-[calc(100%_-_16px)] -translate-x-1/2 overflow-hidden rounded-md border text-center ${overlayPosition}`} style={{ width: `${state.overlay.width}%`, padding: `${Math.max(4, state.overlay.fontSize * 0.08)}px ${Math.max(7, state.overlay.fontSize * 0.12)}px`, background: state.overlay.background, color: state.overlay.color, borderColor: state.overlay.borderColor, boxShadow: state.overlay.boxShadow, textShadow: state.overlay.textShadow }}><strong className="block [overflow-wrap:anywhere] uppercase tracking-widest opacity-70" style={{ fontSize: `${Math.max(5, Math.round(projectionOverlayPreviewTextSizePx(state.overlay.fontSize) * 0.45))}px` }}>{state.overlay.title}</strong>{state.overlay.text ? <ProjectionAutoFitText text={state.overlay.text} maximumFontSize={projectionOverlayPreviewTextSizePx(state.overlay.fontSize)} minimumFontSize={5} fit="width" className="font-bold" /> : null}</div> : null}
@@ -502,6 +587,16 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
   const [mediaName, setMediaName] = useState("");
   const [mediaFit, setMediaFit] = useState<"cover" | "contain">("cover");
   const [mediaBrightness, setMediaBrightness] = useState(55);
+  const [backgroundMotion, setBackgroundMotion] = useState<ProjectionBackgroundMotion>(DEFAULT_PROJECTION_BACKGROUND_EFFECTS.motion);
+  const [motionSpeed, setMotionSpeed] = useState(DEFAULT_PROJECTION_BACKGROUND_EFFECTS.motionSpeed);
+  const [backgroundBlur, setBackgroundBlur] = useState(DEFAULT_PROJECTION_BACKGROUND_EFFECTS.blur);
+  const [backgroundVignette, setBackgroundVignette] = useState(DEFAULT_PROJECTION_BACKGROUND_EFFECTS.vignette);
+  const [backgroundSaturation, setBackgroundSaturation] = useState(DEFAULT_PROJECTION_BACKGROUND_EFFECTS.saturation);
+  const [backgroundDimming, setBackgroundDimming] = useState(DEFAULT_PROJECTION_BACKGROUND_EFFECTS.dimming);
+  const [backgroundAutoDimming, setBackgroundAutoDimming] = useState(DEFAULT_PROJECTION_BACKGROUND_EFFECTS.autoDimming);
+  const [backgroundTintColor, setBackgroundTintColor] = useState(DEFAULT_PROJECTION_BACKGROUND_EFFECTS.tintColor);
+  const [backgroundTintStrength, setBackgroundTintStrength] = useState(DEFAULT_PROJECTION_BACKGROUND_EFFECTS.tintStrength);
+  const [backgroundAmbience, setBackgroundAmbience] = useState<ProjectionBackgroundAmbience>(DEFAULT_PROJECTION_BACKGROUND_EFFECTS.ambience);
   const [mediaNotice, setMediaNotice] = useState<string | null>(null);
   const [transitionType, setTransitionType] = useState<ProjectionTransitionType>("fade");
   const [transitionDuration, setTransitionDuration] = useState(350);
@@ -513,9 +608,10 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
   const [workspaceSettingsReady, setWorkspaceSettingsReady] = useState(false);
   const [liveState, setLiveState] = useState<ProjectionOutputState | null>(() => typeof window === "undefined" ? null : readProjectionState(window.localStorage));
   const [clearedLiveState, setClearedLiveState] = useState<ProjectionOutputState | null>(null);
+  const [deckOverrides, setDeckOverrides] = useState<Record<string, SongProjectionSlide[]>>({});
   const [slideOverrides, setSlideOverrides] = useState<Record<string, SongProjectionSlide>>({});
   const [slideTextSizeOverrides, setSlideTextSizeOverrides] = useState<Record<string, number>>({});
-  const [slideEditor, setSlideEditor] = useState<SlideEditorState | null>(null);
+  const [deckEditorOpen, setDeckEditorOpen] = useState(false);
   const [songLyricsEditor, setSongLyricsEditor] = useState<SongLyricsEditorState | null>(null);
 
   const [bibleVersion, setBibleVersion] = useState(bibleVersions[0].key);
@@ -550,6 +646,11 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
   const projectorWindowRef = useRef<Window | null>(null);
   const channelRef = useRef<BroadcastChannel | null>(null);
   const latestStateRef = useRef<ProjectionOutputState | null>(null);
+  const outputFitMeasurementsRef = useRef<Record<string, number>>({});
+  const fitAllRequestRef = useRef<FitAllRequest | null>(null);
+  const [fitAllRequest, setFitAllRequest] = useState<FitAllRequest | null>(null);
+  const [projectorViewport, setProjectorViewport] = useState<ProjectionViewport | null>(null);
+  const [uniformTextDecks, setUniformTextDecks] = useState<Record<string, ProjectionViewport | null>>({});
   const lastHeartbeatRef = useRef(0);
   const controlHandlerRef = useRef<(key: ProjectionControlKey) => void>(() => undefined);
   const localMediaUrlRef = useRef("");
@@ -568,17 +669,35 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
   const bibleTranslations = [loadedBible, loadedComparison].filter((chapter): chapter is LoadedBibleChapter => chapter !== null);
   const bibleVerseNumbers = loadedBible?.verses.map((verse) => verse.number) ?? [];
   const bibleSlides = multiVersionBibleProjectionSlides(bibleTranslations.map((chapter) => ({ reference: chapter.reference, versionCode: chapter.version.code, verses: chapter.verses })), bibleVerseNumbers, versesPerSlide);
-  const baseSlides = source === "bible" ? bibleSlides : songSlides;
+  const generatedSlides = source === "bible" ? bibleSlides : songSlides;
   const slideDeckKey = source === "songs"
     ? `song:${selectedSong?.id ?? "none"}`
     : `bible:${loadedBible?.version.key ?? "none"}:${loadedBible?.reference ?? "none"}:${loadedComparison?.version.key ?? "none"}:${versesPerSlide}`;
+  const baseSlides = deckOverrides[slideDeckKey] ?? generatedSlides;
   const slideOverrideKey = (index: number) => `${slideDeckKey}:${index}`;
   const slides = baseSlides.map((slide, index) => slideOverrides[slideOverrideKey(index)] ?? slide);
   const safeSlideIndex = Math.min(slideIndex, Math.max(0, slides.length - 1));
   const currentSlide = slides[safeSlideIndex] ?? null;
+  const uniformTextViewport = uniformTextDecks[slideDeckKey] ?? null;
+  const uniformTextSize = Boolean(uniformTextViewport);
+  const fitAllMeasurementKeys = fitAllRequest?.deckKey === slideDeckKey ? slides.flatMap((slide, index) => slide.sections?.length
+    ? slide.sections.map((_, sectionIndex) => `${slideOverrideKey(index)}:output:${fitAllRequest.width}x${fitAllRequest.height}:section:${sectionIndex}`)
+    : [`${slideOverrideKey(index)}:output:${fitAllRequest.width}x${fitAllRequest.height}:text`]) : [];
   const textSizeForSlide = (index: number) => slideTextSizeOverrides[slideOverrideKey(index)] ?? fontSize;
   const currentSlideTextSize = textSizeForSlide(safeSlideIndex);
   const activeTheme = projectionThemes[themeKey];
+  const backgroundEffects = {
+    motion: backgroundMotion,
+    motionSpeed,
+    blur: backgroundBlur,
+    vignette: backgroundVignette,
+    saturation: backgroundSaturation,
+    dimming: backgroundDimming,
+    autoDimming: backgroundAutoDimming,
+    tintColor: backgroundTintColor,
+    tintStrength: backgroundTintStrength,
+    ambience: backgroundAmbience,
+  };
   const visibleThemes = (Object.entries(projectionThemes) as Array<[ProjectionThemeKey, ProjectionTheme]>).filter(([, theme]) => themeCategory === "all" || theme.category === themeCategory);
   const selectedScreen = screens.find((screen) => projectionScreenId(screen) === selectedScreenId) ?? null;
   const footerForSlide = (index: number) => source === "bible"
@@ -589,7 +708,8 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
     if (!liveState?.slide) return null;
     for (const song of activeSongs) {
       const deckKey = `song:${song.id}`;
-      const deck = songProjectionSlides(song.lyrics).map((slide, index) => slideOverrides[`${deckKey}:${index}`] ?? slide);
+      const generatedDeck = songProjectionSlides(song.lyrics);
+      const deck = (deckOverrides[deckKey] ?? generatedDeck).map((slide, index) => slideOverrides[`${deckKey}:${index}`] ?? slide);
       const matchingIndex = deck.findIndex((slide, index) => songFooterForSlide(song, index, deck.length) === liveState.footer && projectionSlidesMatch(slide, liveState.slide));
       if (matchingIndex >= 0) return { source: "songs", songId: song.id, slideIndex: matchingIndex } satisfies LiveSelection;
     }
@@ -608,6 +728,8 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
     emptyMessage: source === "bible" ? "" : "",
     footer,
     fontSize: currentSlideTextSize,
+    uniformTextSize,
+    uniformTextViewport: uniformTextViewport ?? undefined,
     background: activeTheme.background,
     textColor: activeTheme.text,
     mutedTextColor: activeTheme.muted,
@@ -623,6 +745,7 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
       type: transitionType,
       durationMs: transitionType === "cut" ? 0 : clampProjectionTransitionDuration(transitionDuration),
     },
+    effects: backgroundEffects,
     overlay: {
       visible: overlayVisible,
       title: overlayTitle.trim(),
@@ -656,9 +779,13 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
       && liveState.fontSize === fontSize
       && liveState.media.brightness === outputState.media.brightness
       && liveState.transition.type === outputState.transition.type
-      && liveState.transition.durationMs === outputState.transition.durationMs,
+      && liveState.transition.durationMs === outputState.transition.durationMs
+      && JSON.stringify(liveState.effects ?? DEFAULT_PROJECTION_BACKGROUND_EFFECTS) === JSON.stringify(outputState.effects),
   );
-  const textSizeIsLive = Boolean(liveState && liveState.fontSize === fontSize);
+  const textSizeIsLive = Boolean(liveState
+    && liveState.fontSize === fontSize
+    && Boolean(liveState.uniformTextSize) === uniformTextSize
+    && JSON.stringify(liveState.uniformTextViewport ?? null) === JSON.stringify(uniformTextViewport));
 
   useEffect(() => {
     const loadHistory = window.setTimeout(() => {
@@ -693,6 +820,16 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
           if (typeof settings.themeKey === "string" && settings.themeKey in projectionThemes) setThemeKey(settings.themeKey as ProjectionThemeKey);
           if (typeof settings.fontSize === "number" && Number.isFinite(settings.fontSize)) setFontSize(Math.max(PROJECTION_TEXT_SIZE_MIN_PERCENT, Math.min(PROJECTION_TEXT_SIZE_MAX_PERCENT, settings.fontSize)));
           if (typeof settings.mediaBrightness === "number" && Number.isFinite(settings.mediaBrightness)) setMediaBrightness(Math.max(0, Math.min(100, settings.mediaBrightness)));
+          if (settings.backgroundMotion === "none" || settings.backgroundMotion === "drift" || settings.backgroundMotion === "zoom") setBackgroundMotion(settings.backgroundMotion);
+          if (typeof settings.motionSpeed === "number" && Number.isFinite(settings.motionSpeed)) setMotionSpeed(Math.max(0, Math.min(100, settings.motionSpeed)));
+          if (typeof settings.backgroundBlur === "number" && Number.isFinite(settings.backgroundBlur)) setBackgroundBlur(Math.max(0, Math.min(20, settings.backgroundBlur)));
+          if (typeof settings.backgroundVignette === "number" && Number.isFinite(settings.backgroundVignette)) setBackgroundVignette(Math.max(0, Math.min(100, settings.backgroundVignette)));
+          if (typeof settings.backgroundSaturation === "number" && Number.isFinite(settings.backgroundSaturation)) setBackgroundSaturation(Math.max(0, Math.min(180, settings.backgroundSaturation)));
+          if (typeof settings.backgroundDimming === "number" && Number.isFinite(settings.backgroundDimming)) setBackgroundDimming(Math.max(0, Math.min(80, settings.backgroundDimming)));
+          if (typeof settings.backgroundAutoDimming === "boolean") setBackgroundAutoDimming(settings.backgroundAutoDimming);
+          if (typeof settings.backgroundTintColor === "string" && /^#[0-9a-f]{6}$/i.test(settings.backgroundTintColor)) setBackgroundTintColor(settings.backgroundTintColor);
+          if (typeof settings.backgroundTintStrength === "number" && Number.isFinite(settings.backgroundTintStrength)) setBackgroundTintStrength(Math.max(0, Math.min(70, settings.backgroundTintStrength)));
+          if (settings.backgroundAmbience === "none" || settings.backgroundAmbience === "particles" || settings.backgroundAmbience === "rays") setBackgroundAmbience(settings.backgroundAmbience);
           if (settings.transitionType === "cut" || settings.transitionType === "fade" || settings.transitionType === "dissolve") setTransitionType(settings.transitionType);
           if (typeof settings.transitionDuration === "number" && Number.isFinite(settings.transitionDuration)) setTransitionDuration(clampProjectionTransitionDuration(settings.transitionDuration));
         }
@@ -716,13 +853,23 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
         themeKey,
         fontSize,
         mediaBrightness,
+        backgroundMotion,
+        motionSpeed,
+        backgroundBlur,
+        backgroundVignette,
+        backgroundSaturation,
+        backgroundDimming,
+        backgroundAutoDimming,
+        backgroundTintColor,
+        backgroundTintStrength,
+        backgroundAmbience,
         transitionType,
         transitionDuration,
       }));
     } catch {
       return;
     }
-  }, [controlPanel, drawerHeight, drawerOpen, fontSize, livePanelWidth, mediaBrightness, themeKey, transitionDuration, transitionType, workspaceSettingsReady]);
+  }, [backgroundAmbience, backgroundAutoDimming, backgroundBlur, backgroundDimming, backgroundMotion, backgroundSaturation, backgroundTintColor, backgroundTintStrength, backgroundVignette, controlPanel, drawerHeight, drawerOpen, fontSize, livePanelWidth, mediaBrightness, motionSpeed, themeKey, transitionDuration, transitionType, workspaceSettingsReady]);
 
   const commitOutputState = useCallback((draft: ProjectionOutputState) => {
     const state = { ...draft, updatedAt: Math.max(Date.now(), (latestStateRef.current?.updatedAt ?? 0) + 1) };
@@ -752,19 +899,92 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
     commitOutputState({
       ...base,
       fontSize,
+      uniformTextSize,
+      uniformTextViewport: uniformTextViewport ?? undefined,
       background: outputState.background,
       textColor: outputState.textColor,
       mutedTextColor: outputState.mutedTextColor,
       textShadow: outputState.textShadow,
       media: { ...base.media, brightness: outputState.media.brightness },
       transition: outputState.transition,
+      effects: outputState.effects,
     });
   }
 
   function applyTextSizeLive() {
     const base = latestStateRef.current ?? liveState;
     if (!base) return;
-    commitOutputState({ ...base, fontSize });
+    commitOutputState({ ...base, fontSize, uniformTextSize, uniformTextViewport: uniformTextViewport ?? undefined });
+  }
+
+  function recordOutputFitMeasurement(key: string, fittedFontSize: number) {
+    outputFitMeasurementsRef.current[key] = fittedFontSize;
+    const request = fitAllRequestRef.current;
+    if (!request || request.deckKey !== slideDeckKey) return;
+    if (!fitAllMeasurementKeys.every((measurementKey) => outputFitMeasurementsRef.current[measurementKey] !== undefined)) return;
+    const smallestFittedFontSize = Math.min(...fitAllMeasurementKeys.map((measurementKey) => outputFitMeasurementsRef.current[measurementKey]));
+    fitAllRequestRef.current = null;
+    setFitAllRequest(null);
+    setFontSize(projectionPercentForOutputFontSize(Math.max(projectionTextSizePx(PROJECTION_TEXT_SIZE_MIN_PERCENT), smallestFittedFontSize - 2)));
+    setUniformTextDecks((current) => ({ ...current, [slideDeckKey]: { width: request.width, height: request.height } }));
+  }
+
+  function fitAllSlidesToDensest() {
+    if (!slides.length || fitAllRequest?.deckKey === slideDeckKey) return;
+    const viewport = projectorViewport ?? { width: 1920, height: 1080 };
+    const width = Math.max(320, Math.round(viewport.width));
+    const height = Math.max(180, Math.round(viewport.height));
+    const request: FitAllRequest = {
+      deckKey: slideDeckKey,
+      width,
+      height,
+      scale: Math.min(1, 640 / width, 360 / height),
+    };
+    outputFitMeasurementsRef.current = {};
+    fitAllRequestRef.current = request;
+    setFitAllRequest(request);
+    setSlideTextSizeOverrides((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`${slideDeckKey}:`))));
+    setSlideOverrides((current) => {
+      const next = { ...current };
+      baseSlides.forEach((slide, index) => {
+        const key = slideOverrideKey(index);
+        if (projectionSlidesMatch(next[key] ?? null, slide)) delete next[key];
+      });
+      return next;
+    });
+  }
+
+  function chooseTheme(key: ProjectionThemeKey) {
+    setThemeKey(key);
+    const preset = (projectionThemes[key] as ProjectionTheme).effects;
+    if (!preset) return;
+    const effects = normalizeProjectionBackgroundEffects(preset);
+    setBackgroundMotion(effects.motion);
+    setMotionSpeed(effects.motionSpeed);
+    setBackgroundBlur(effects.blur);
+    setBackgroundVignette(effects.vignette);
+    setBackgroundSaturation(effects.saturation);
+    setBackgroundDimming(effects.dimming);
+    setBackgroundAutoDimming(effects.autoDimming);
+    setBackgroundTintColor(effects.tintColor);
+    setBackgroundTintStrength(effects.tintStrength);
+    setBackgroundAmbience(effects.ambience);
+    if (transitionType === "cut") setTransitionType("fade");
+    if (transitionDuration < 500) setTransitionDuration(650);
+  }
+
+  function resetBackgroundEffects() {
+    const effects = DEFAULT_PROJECTION_BACKGROUND_EFFECTS;
+    setBackgroundMotion(effects.motion);
+    setMotionSpeed(effects.motionSpeed);
+    setBackgroundBlur(effects.blur);
+    setBackgroundVignette(effects.vignette);
+    setBackgroundSaturation(effects.saturation);
+    setBackgroundDimming(effects.dimming);
+    setBackgroundAutoDimming(effects.autoDimming);
+    setBackgroundTintColor(effects.tintColor);
+    setBackgroundTintStrength(effects.tintStrength);
+    setBackgroundAmbience(effects.ambience);
   }
 
   function presentSlide(slide: SongProjectionSlide, slideFooter: string, slideFontSize: number) {
@@ -777,6 +997,8 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
     commitOutputState({
       ...projectionNavigationState(latestStateRef.current, navigationDraft),
       fontSize: slideFontSize,
+      uniformTextSize,
+      uniformTextViewport: uniformTextViewport ?? undefined,
     });
   }
 
@@ -915,27 +1137,11 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
     setMediaNotice("");
   }
 
-  function openSlideEditor(index = safeSlideIndex) {
-    const slide = slides[index];
-    if (!slide) return;
+  function openDeckEditor(index = safeSlideIndex) {
+    if (source !== "songs" || !slides.length) return;
     setSlideIndex(index);
     setBlanked(false);
-    setSlideEditor({
-      key: slideOverrideKey(index),
-      index,
-      slide: { ...slide, sections: slide.sections?.map((section) => ({ ...section })) },
-      fontSize: slideTextSizeOverrides[slideOverrideKey(index)] ?? null,
-    });
-  }
-
-  function openSongLyricsEditor() {
-    if (!selectedSong?.lyrics) return;
-    setSongLyricsEditor({
-      songId: selectedSong.id,
-      title: selectedSong.title,
-      lyrics: selectedSong.lyrics,
-      notice: null,
-    });
+    setDeckEditorOpen(true);
   }
 
   function saveSongLyrics() {
@@ -949,8 +1155,14 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
           return;
         }
         setSongLyricsOverrides((current) => ({ ...current, [editor.songId]: result.lyrics }));
+        setDeckOverrides((current) => {
+          const next = { ...current };
+          delete next[`song:${editor.songId}`];
+          return next;
+        });
         setSlideOverrides((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`song:${editor.songId}:`))));
         setSlideTextSizeOverrides((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`song:${editor.songId}:`))));
+        setUniformTextDecks((current) => ({ ...current, [`song:${editor.songId}`]: null }));
         setSlideIndex(0);
         setBlanked(false);
         setSongLyricsEditor(null);
@@ -960,42 +1172,73 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
     });
   }
 
-  function applySlideEdit() {
-    if (!slideEditor) return;
-    const sections = slideEditor.slide.sections?.map((section) => ({ label: section.label.trim(), text: section.text.trim() }));
-    const editedSlide: SongProjectionSlide = {
-      label: slideEditor.slide.label?.trim() || null,
-      text: sections?.length ? sections.map((section) => section.text).join("\n\n") : slideEditor.slide.text.trim(),
-      ...(sections?.length ? { sections } : {}),
-    };
-    if ((!editedSlide.sections?.length && !editedSlide.text) || editedSlide.sections?.some((section) => !section.text)) return;
-    setSlideOverrides((current) => ({ ...current, [slideEditor.key]: editedSlide }));
-    setSlideTextSizeOverrides((current) => {
+  function applyDeckEdits(items: ProjectionSlideEditorItem[], nextActiveIndex: number) {
+    const editedSlides = items.map((item) => item.slide);
+    setDeckOverrides((current) => {
       const next = { ...current };
-      if (slideEditor.fontSize === null) delete next[slideEditor.key];
-      else next[slideEditor.key] = Math.min(PROJECTION_TEXT_SIZE_MAX_PERCENT, Math.max(PROJECTION_TEXT_SIZE_MIN_PERCENT, slideEditor.fontSize));
+      if (JSON.stringify(editedSlides) === JSON.stringify(generatedSlides)) delete next[slideDeckKey];
+      else next[slideDeckKey] = editedSlides;
       return next;
     });
-    setSlideIndex(slideEditor.index);
+    setSlideOverrides((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`${slideDeckKey}:`))));
+    setSlideTextSizeOverrides((current) => {
+      const next = Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`${slideDeckKey}:`)));
+      items.forEach((item, index) => {
+        if (item.fontSize !== null) next[`${slideDeckKey}:${index}`] = item.fontSize;
+      });
+      return next;
+    });
+    setUniformTextDecks((current) => ({ ...current, [slideDeckKey]: null }));
+    setSlideIndex(Math.min(nextActiveIndex, Math.max(0, items.length - 1)));
     setBlanked(false);
-    setSlideEditor(null);
+    setDeckEditorOpen(false);
   }
 
-  function resetSlideEdit(index = safeSlideIndex) {
-    const key = slideOverrideKey(index);
-    setSlideOverrides((current) => {
-      if (!current[key]) return current;
+  async function saveEditedDeckToSong(items: ProjectionSlideEditorItem[]) {
+    if (source !== "songs" || !selectedSong) return { ok: false, message: "Only song slides can be saved permanently." };
+    const lyrics = items.map((item) => {
+      const text = item.slide.sections?.length ? item.slide.sections.map((section) => section.text.trim()).join("\n") : item.slide.text.trim();
+      return item.slide.label?.trim() ? `[${item.slide.label.trim()}]\n${text}` : text;
+    }).filter(Boolean).join("\n\n");
+    if (!lyrics || lyrics.length > MAX_EDITABLE_SONG_LYRICS_LENGTH) return { ok: false, message: "The edited lyrics are empty or too long to save." };
+    try {
+      const result = await updateProjectionSongLyrics(selectedSong.id, lyrics);
+      if (!result.ok) return result;
+      setSongLyricsOverrides((current) => ({ ...current, [selectedSong.id]: result.lyrics }));
+      setDeckOverrides((current) => {
+        const next = { ...current };
+        delete next[slideDeckKey];
+        return next;
+      });
+      setSlideOverrides((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`${slideDeckKey}:`))));
+      setSlideTextSizeOverrides((current) => {
+        const next = Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`${slideDeckKey}:`)));
+        items.forEach((item, index) => {
+          if (item.fontSize !== null) next[`${slideDeckKey}:${index}`] = item.fontSize;
+        });
+        return next;
+      });
+      setUniformTextDecks((current) => ({ ...current, [slideDeckKey]: null }));
+      setSlideIndex(0);
+      setBlanked(false);
+      setDeckEditorOpen(false);
+      return { ok: true };
+    } catch {
+      return { ok: false, message: "Unable to save the song right now. Check your permission or connection and try again." };
+    }
+  }
+
+  function resetDeckEdits() {
+    setDeckOverrides((current) => {
       const next = { ...current };
-      delete next[key];
+      delete next[slideDeckKey];
       return next;
     });
-    setSlideTextSizeOverrides((current) => {
-      if (current[key] === undefined) return current;
-      const next = { ...current };
-      delete next[key];
-      return next;
-    });
-    setSlideEditor(null);
+    setSlideOverrides((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`${slideDeckKey}:`))));
+    setSlideTextSizeOverrides((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`${slideDeckKey}:`))));
+    setUniformTextDecks((current) => ({ ...current, [slideDeckKey]: null }));
+    setSlideIndex(0);
+    setDeckEditorOpen(false);
   }
 
   function chooseSong(songId: number) {
@@ -1211,6 +1454,7 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
     projectorWindowRef.current = null;
     if (desktopBridge()) await desktopBridge()?.closeProjector();
     setProjectorConnected(false);
+    setProjectorViewport(null);
   }
 
   function requestProjectorFullscreen() {
@@ -1231,8 +1475,15 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
       } else if (message.type === "heartbeat") {
         lastHeartbeatRef.current = Date.now();
         setProjectorConnected(true);
+        if (message.viewport) {
+          setProjectorViewport({
+            width: Math.max(1, Math.round(message.viewport.width)),
+            height: Math.max(1, Math.round(message.viewport.height)),
+          });
+        }
       } else if (message.type === "closed") {
         setProjectorConnected(false);
+        setProjectorViewport(null);
       } else if (message.type === "control") {
         controlHandlerRef.current(message.key);
       }
@@ -1241,6 +1492,7 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
     const connectionCheck = window.setInterval(() => {
       if (lastHeartbeatRef.current && Date.now() - lastHeartbeatRef.current > 3500) {
         setProjectorConnected(false);
+        setProjectorViewport(null);
       }
     }, 1500);
     return () => {
@@ -1271,26 +1523,46 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
   }, [operatorActive]);
 
   useEffect(() => {
-    if (!slideEditor && !songLyricsEditor) return;
+    if (!deckEditorOpen && !songLyricsEditor) return;
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      setSlideEditor(null);
+      setDeckEditorOpen(false);
       if (!songLyricsPending) setSongLyricsEditor(null);
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [slideEditor, songLyricsEditor, songLyricsPending]);
+  }, [deckEditorOpen, songLyricsEditor, songLyricsPending]);
 
-  const slideEditorValid = Boolean(slideEditor && (slideEditor.slide.sections?.length ? slideEditor.slide.sections.every((section) => section.text.trim()) : slideEditor.slide.text.trim()));
+  const deckEditorItems: ProjectionSlideEditorItem[] = slides.map((slide, index) => ({ id: `${slideDeckKey}:editor:${index}`, slide, fontSize: slideTextSizeOverrides[slideOverrideKey(index)] ?? null }));
+  const deckHasEdits = Boolean(deckOverrides[slideDeckKey] || slides.some((_, index) => slideOverrides[slideOverrideKey(index)] || slideTextSizeOverrides[slideOverrideKey(index)] !== undefined));
   const songLyricsEditorSlides = songProjectionSlides(songLyricsEditor?.lyrics);
   const songLyricsEditorValid = Boolean(songLyricsEditor?.lyrics.trim() && songLyricsEditor.lyrics.length <= MAX_EDITABLE_SONG_LYRICS_LENGTH);
   const songLyricsEditorHasTemporaryEdits = Boolean(songLyricsEditor && (
     Object.keys(slideOverrides).some((key) => key.startsWith(`song:${songLyricsEditor.songId}:`))
     || Object.keys(slideTextSizeOverrides).some((key) => key.startsWith(`song:${songLyricsEditor.songId}:`))
+    || Boolean(deckOverrides[`song:${songLyricsEditor.songId}`])
   ));
 
   return (
     <section ref={studioRef} className="rounded-xl border border-slate-200 bg-white text-slate-800 shadow-lg shadow-slate-200/60 xl:flex xl:h-[calc(100dvh-120px)] xl:min-h-[900px] xl:max-h-[1180px] xl:flex-col" aria-label="Projection controls">
+      {fitAllRequest?.deckKey === slideDeckKey ? (
+        <div className="pointer-events-none fixed left-[-10000px] top-0 opacity-0" aria-hidden="true">
+          {slides.map((slide, index) => (
+            <ProjectionOutputFitMeasurement
+              key={`${slideOverrideKey(index)}:${fitAllRequest.width}x${fitAllRequest.height}`}
+              slide={slide}
+              footer={footerForSlide(index)}
+              viewport={fitAllRequest}
+              scale={fitAllRequest.scale}
+              overlay={outputState.overlay}
+              onFit={(sectionIndex, fittedFontSize) => recordOutputFitMeasurement(
+                `${slideOverrideKey(index)}:output:${fitAllRequest.width}x${fitAllRequest.height}:${sectionIndex === null ? "text" : `section:${sectionIndex}`}`,
+                fittedFontSize,
+              )}
+            />
+          ))}
+        </div>
+      ) : null}
       <header className="sticky top-[117px] z-30 flex flex-col gap-3 rounded-t-xl border-b border-sky-100 bg-gradient-to-r from-white via-sky-50 to-cyan-50 px-4 py-3 shadow-sm sm:top-[121px] lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-3">
           <span className="flex size-10 items-center justify-center rounded-xl bg-blue-600 text-white shadow-lg shadow-blue-200"><MonitorPlay className="size-5" aria-hidden /></span>
@@ -1328,25 +1600,25 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
         <div className="flex min-h-0 min-w-0 flex-col border-b border-slate-200 bg-slate-100/40 p-3 xl:border-b-0 xl:border-r">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <h4 className="min-w-0 truncate text-base font-extrabold text-slate-950">{source === "songs" ? selectedSong?.title ?? "Choose a song" : loadedBible?.reference ?? "Load a Bible chapter"}</h4>
-            <div className="flex flex-wrap gap-2"><button type="button" onClick={() => source === "songs" ? openSongLyricsEditor() : openSlideEditor()} disabled={source === "songs" ? !selectedSong?.lyrics : !currentSlide} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-blue-200 bg-white px-2.5 text-[10px] font-bold text-blue-700 hover:bg-blue-50 disabled:opacity-40"><Pencil className="size-3.5" /> Edit</button>{slideOverrides[slideOverrideKey(safeSlideIndex)] || slideTextSizeOverrides[slideOverrideKey(safeSlideIndex)] !== undefined ? <button type="button" onClick={() => resetSlideEdit()} className="inline-flex size-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:text-red-600" aria-label="Reset current slide"><RotateCcw className="size-3.5" /></button> : null}</div>
+            {source === "songs" ? <div className="flex flex-wrap gap-2"><button type="button" onClick={() => openDeckEditor()} disabled={!currentSlide} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-blue-200 bg-white px-2.5 text-[10px] font-bold text-blue-700 hover:bg-blue-50 disabled:opacity-40"><Pencil className="size-3.5" /> Edit slides</button>{deckHasEdits ? <button type="button" onClick={resetDeckEdits} className="inline-flex size-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:text-red-600" aria-label="Reset all slide edits" title="Reset all slide edits"><RotateCcw className="size-3.5" /></button> : null}</div> : null}
           </div>
           <div className="grid min-h-0 flex-1 auto-rows-max content-start items-start grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-2.5 overflow-y-auto p-0.5 pr-2">
             {slides.map((slide, index) => {
-              const edited = Boolean(slideOverrides[slideOverrideKey(index)] || slideTextSizeOverrides[slideOverrideKey(index)] !== undefined);
+              const edited = Boolean(deckOverrides[slideDeckKey] || slideOverrides[slideOverrideKey(index)] || slideTextSizeOverrides[slideOverrideKey(index)] !== undefined);
               const slideTextSize = textSizeForSlide(index);
               const isLive = slideIsLive(index);
               const isPreview = index === safeSlideIndex;
+              const uniformPreviewFontSize = `${projectionTextSizePx(slideTextSize) / (uniformTextViewport?.width ?? projectorViewport?.width ?? 1920) * 100}cqw`;
               return <article key={`${slide.label}-${index}`} className={`group relative h-fit min-h-[145px] self-start overflow-hidden rounded-lg border bg-white shadow-sm transition ${isLive ? "border-emerald-500 ring-2 ring-emerald-200" : isPreview ? "border-blue-500 ring-2 ring-blue-200" : "border-slate-300 hover:border-blue-300 hover:shadow-md"}`}>
                 <button type="button" onClick={(event) => { presentSlideAtIndex(index); event.currentTarget.blur(); }} className="flex min-h-[145px] w-full flex-col text-left" aria-label={`Present slide ${index + 1}`} title="Click to present this slide">
-                  <div className="relative isolate w-full shrink-0 overflow-hidden bg-black px-[5%] py-[4%] text-center" style={{ aspectRatio: "16 / 9", minHeight: 108, color: activeTheme.text }}>
-                    <span className="absolute inset-0 -z-20" style={{ background: activeTheme.background, filter: `brightness(${projectionMediaBrightnessPercent(mediaBrightness)}%)` }} aria-hidden />
-                    {mediaType === "image" && sanitizeProjectionMediaUrl(mediaUrl) ? <img src={sanitizeProjectionMediaUrl(mediaUrl)} alt="" className="absolute inset-0 -z-10 size-full" style={{ objectFit: mediaFit, filter: `brightness(${projectionMediaBrightnessPercent(mediaBrightness)}%)` }} /> : null}
-                    {slide.sections?.length ? <div className="grid size-full min-h-0" style={{ gridTemplateColumns: `repeat(${slide.sections.length},minmax(0,1fr))` }}>{slide.sections.map((section, sectionIndex) => <div key={`${section.label}-${sectionIndex}`} className="flex min-h-0 min-w-0 flex-col px-1" style={{ borderLeft: sectionIndex ? `1px solid ${activeTheme.muted}` : undefined }}><span className="text-[6px] font-bold uppercase tracking-wider" style={{ color: activeTheme.muted }}>{section.label}</span><ProjectionAutoFitText text={section.text} maximumFontSize={Math.max(8, projectionPreviewTextSizePx(slideTextSize) * 0.82)} minimumFontSize={5} className="font-bold leading-[1.08]" style={{ textShadow: activeTheme.shadow }} /></div>)}</div> : <ProjectionAutoFitText text={slide.text} maximumFontSize={projectionPreviewTextSizePx(slideTextSize)} minimumFontSize={6} className="font-bold leading-[1.08]" style={{ textShadow: activeTheme.shadow }} />}
+                  <div className="relative isolate w-full shrink-0 overflow-hidden bg-black px-[3.5%] py-[3.5%] text-center [container-type:inline-size]" style={{ aspectRatio: uniformTextViewport ? `${uniformTextViewport.width} / ${uniformTextViewport.height}` : projectorViewport ? `${projectorViewport.width} / ${projectorViewport.height}` : "16 / 9", minHeight: 108, color: activeTheme.text }}>
+                    <ProjectionBackgroundLayer background={activeTheme.background} media={outputState.media} effects={backgroundEffects} playVideo={isPreview} animate={isPreview} contentLength={projectionSlideContentLength(slide)} className="-z-20" />
+                    {slide.sections?.length ? <div className="grid size-full min-h-0" style={{ gridTemplateColumns: `repeat(${slide.sections.length},minmax(0,1fr))` }}>{slide.sections.map((section, sectionIndex) => <div key={`${section.label}-${sectionIndex}`} className="flex min-h-0 min-w-0 flex-col px-1" style={{ borderLeft: sectionIndex ? `1px solid ${activeTheme.muted}` : undefined }}><span className="text-[6px] font-bold uppercase tracking-wider" style={{ color: activeTheme.muted }}>{section.label}</span>{uniformTextSize ? <p className="flex min-h-0 flex-1 items-center justify-center whitespace-pre-line font-bold leading-[1.08] [text-wrap:balance]" style={{ fontSize: uniformPreviewFontSize, textShadow: activeTheme.shadow }}>{section.text}</p> : <ProjectionAutoFitText text={section.text} maximumFontSize={Math.max(8, projectionPreviewTextSizePx(slideTextSize) * 0.82)} minimumFontSize={5} className="font-bold leading-[1.08]" style={{ textShadow: activeTheme.shadow }} />}</div>)}</div> : uniformTextSize ? <p className="flex size-full items-center justify-center whitespace-pre-line font-bold leading-[1.08] [text-wrap:balance]" style={{ fontSize: uniformPreviewFontSize, textShadow: activeTheme.shadow }}>{slide.text}</p> : <ProjectionAutoFitText text={slide.text} maximumFontSize={projectionPreviewTextSizePx(slideTextSize)} minimumFontSize={6} className="font-bold leading-[1.08]" style={{ textShadow: activeTheme.shadow }} />}
                     {isLive ? <span className={`absolute left-1.5 top-1.5 rounded px-1.5 py-0.5 text-[7px] font-extrabold uppercase tracking-wide text-white ${liveState?.blanked ? "bg-amber-600" : "bg-emerald-600"}`}>{liveState?.blanked ? "Live · blanked" : "Live"}</span> : isPreview ? <span className="absolute left-1.5 top-1.5 rounded bg-blue-600 px-1.5 py-0.5 text-[7px] font-extrabold uppercase tracking-wide text-white">Preview</span> : null}
                   </div>
                   <div className={`flex h-9 w-full shrink-0 items-center justify-between gap-2 border-t px-2 ${isLive ? "border-emerald-400 bg-emerald-50" : isPreview ? "border-blue-400 bg-blue-50" : "border-slate-200 bg-slate-50"}`}><span className="text-[10px] font-extrabold text-slate-500">{index + 1}</span><span className={`min-w-0 flex-1 truncate text-right text-[10px] font-extrabold ${isLive ? "text-emerald-700" : "text-blue-700"}`}>{slide.label || `Slide ${index + 1}`}{edited ? " · Edited" : ""}</span></div>
                 </button>
-                <button type="button" onClick={() => openSlideEditor(index)} className="absolute right-1.5 top-1.5 inline-flex size-6 items-center justify-center rounded-md border border-white/70 bg-white/95 text-blue-600 opacity-80 shadow-sm hover:bg-blue-600 hover:text-white group-hover:opacity-100" aria-label={`Edit slide ${index + 1}`}><Pencil className="size-3" /></button>
+                {source === "songs" ? <button type="button" onClick={() => openDeckEditor(index)} className="absolute right-1.5 top-1.5 inline-flex size-6 items-center justify-center rounded-md border border-white/70 bg-white/95 text-blue-600 opacity-80 shadow-sm hover:bg-blue-600 hover:text-white group-hover:opacity-100" aria-label={`Edit slide ${index + 1}`}><Pencil className="size-3" /></button> : null}
               </article>;
             })}
             {!slides.length ? <div className="col-span-full flex min-h-48 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white text-center"><div><MonitorPlay className="mx-auto size-7 text-slate-300" /><p className="mt-2 text-xs font-bold text-slate-500">No slides prepared</p><p className="mt-1 text-[10px] text-slate-400">Open a song or Bible passage from the drawer below.</p></div></div> : null}
@@ -1394,8 +1666,11 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
           </div>
           <section className="border-x border-b border-slate-200 bg-white p-3 text-slate-700" aria-label="Default projection text size">
             <div className="flex items-center justify-between text-[10px] font-extrabold"><span>Default text size</span><span className="rounded bg-blue-50 px-1.5 py-0.5 text-blue-700">{fontSize}%</span></div>
-            <input type="range" min={PROJECTION_TEXT_SIZE_MIN_PERCENT} max={PROJECTION_TEXT_SIZE_MAX_PERCENT} step={1} value={fontSize} onChange={(event) => setFontSize(Number(event.target.value))} aria-label="Default projection text size" className="mt-2 w-full accent-blue-600" />
-            <button type="button" onClick={applyTextSizeLive} disabled={!liveState || textSizeIsLive} className="mt-2 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md bg-emerald-600 px-2 text-[9px] font-extrabold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none"><Send className="size-3.5" />{textSizeIsLive ? "Default size live" : "Apply default size live"}</button>
+            <input type="range" min={PROJECTION_TEXT_SIZE_MIN_PERCENT} max={PROJECTION_TEXT_SIZE_MAX_PERCENT} step={1} value={fontSize} onChange={(event) => { setFontSize(Number(event.target.value)); setUniformTextDecks((current) => ({ ...current, [slideDeckKey]: null })); }} aria-label="Default projection text size" className="mt-2 w-full accent-blue-600" />
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <button type="button" onClick={fitAllSlidesToDensest} disabled={!slides.length || fitAllRequest?.deckKey === slideDeckKey} title={`Measure every slide against ${projectorViewport ? `the connected ${projectorViewport.width}×${projectorViewport.height} output` : "a 1920×1080 projector fallback"} and use the largest common text size`} className="h-9 min-w-0 rounded-md border border-blue-200 bg-blue-50 px-1.5 text-[8px] font-extrabold leading-tight text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40">{fitAllRequest?.deckKey === slideDeckKey ? "Measuring output…" : "Fit all text equally"}</button>
+              <button type="button" onClick={applyTextSizeLive} disabled={!liveState || textSizeIsLive} className="inline-flex h-9 min-w-0 items-center justify-center gap-1 rounded-md bg-emerald-600 px-1.5 text-[8px] font-extrabold leading-tight text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none"><Send className="size-3 shrink-0" />{textSizeIsLive ? "Default size live" : "Apply size live"}</button>
+            </div>
           </section>
         </aside>
       </div>
@@ -1584,26 +1859,42 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
           {controlPanel === "media" ? <div className="grid h-full min-h-0 gap-3 lg:grid-cols-3"><section className="rounded-lg border border-slate-200 bg-slate-50 p-3"><div className="mb-2 flex items-center justify-between"><h4 className="text-[9px] font-extrabold uppercase tracking-wide text-slate-500">Local media</h4>{mediaType !== "none" ? <button type="button" onClick={clearBackgroundMedia} className="text-[8px] font-bold text-red-500">Remove</button> : null}</div><label className="flex h-24 cursor-pointer flex-col items-center justify-center gap-2 rounded-md border border-dashed border-blue-300 bg-blue-50 text-[9px] font-bold text-blue-700 hover:bg-blue-100"><Upload className="size-5" /> Choose image or video<input type="file" accept="image/*,video/mp4,video/webm,video/ogg" className="sr-only" onChange={(event) => { selectLocalBackground(event.target.files?.[0]); event.target.value = ""; }} /></label>{mediaName ? <p className="mt-2 truncate text-[9px] font-semibold text-slate-600">{mediaType === "video" ? <Video className="mr-1 inline size-3" /> : <ImageIcon className="mr-1 inline size-3" />}{mediaName}</p> : null}</section><section className="rounded-lg border border-slate-200 bg-white p-3"><h4 className="mb-2 text-[9px] font-extrabold uppercase tracking-wide text-slate-500">Hosted media</h4><div className="grid grid-cols-[85px_1fr] gap-2"><select value={mediaType} onChange={(event) => setMediaType(event.target.value as ProjectionMediaType)} className="h-8 rounded border border-slate-300 bg-white px-1 text-[9px] font-semibold"><option value="none">None</option><option value="image">Image</option><option value="video">Video</option></select><input value={mediaUrl.startsWith("blob:") ? "" : mediaUrl} onChange={(event) => { setMediaUrl(event.target.value); setMediaName(event.target.value ? "Hosted media" : ""); setMediaNotice(null); }} onBlur={() => { if (mediaUrl && !sanitizeProjectionMediaUrl(mediaUrl)) setMediaNotice("Use a valid http:// or https:// media URL."); }} placeholder="https://cdn…/background.mp4" className="h-8 min-w-0 rounded border border-slate-300 px-2 text-[9px]" /></div>{mediaNotice ? <p className="mt-2 rounded bg-slate-50 px-2 py-1 text-[8px] text-slate-500">{mediaNotice}</p> : null}</section><section className="rounded-lg border border-slate-200 bg-slate-50 p-3"><label className="block text-[9px] font-semibold text-slate-500">Media fit<select value={mediaFit} onChange={(event) => setMediaFit(event.target.value as "cover" | "contain")} className="mt-1 h-8 w-full rounded border border-slate-300 bg-white px-2 text-[9px]"><option value="cover">Fill screen</option><option value="contain">Show all</option></select></label><label className="mt-3 block text-[9px] font-semibold text-slate-500"><span className="flex justify-between"><span>Brightness</span><strong>{mediaBrightness}%</strong></span><input type="range" min={0} max={100} step={1} value={mediaBrightness} onChange={(event) => setMediaBrightness(Number(event.target.value))} className="mt-2 w-full accent-blue-600" /></label><button type="button" onClick={takePreview} disabled={!hasPendingChanges} className="mt-3 h-8 w-full rounded bg-emerald-600 text-[9px] font-bold text-white disabled:opacity-35">Apply Preview live</button></section></div> : null}
 
           {controlPanel === "looks" ? (
-            <div className="grid h-full min-h-0 gap-3 lg:grid-cols-[220px_minmax(0,1fr)]">
-              <aside className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <div className="grid h-full min-h-0 gap-3 lg:grid-cols-[300px_minmax(0,1fr)]">
+              <aside className="min-h-0 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-3 pr-2">
                 <div className="flex flex-wrap gap-1">
                   {projectionThemeCategories.map((category) => <button key={category.key} type="button" onClick={() => setThemeCategory(category.key)} className={`rounded-full px-2 py-1 text-[8px] font-bold ${themeCategory === category.key ? "bg-blue-600 text-white" : "bg-white text-slate-500 ring-1 ring-slate-200"}`}>{category.label}</button>)}
                 </div>
-                <div className="mt-3">
+                <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
                   <div className="flex justify-between text-[9px] font-bold text-slate-500"><span>Transition</span><span>{transitionType === "cut" ? "Instant" : `${transitionDuration} ms`}</span></div>
                   <div className="mt-1 grid grid-cols-3 gap-1">{(["cut", "fade", "dissolve"] as ProjectionTransitionType[]).map((type) => <button key={type} type="button" onClick={() => setTransitionType(type)} className={`h-7 rounded text-[8px] font-bold capitalize ${transitionType === type ? "bg-blue-600 text-white" : "bg-white text-slate-500 ring-1 ring-slate-200"}`}>{type}</button>)}</div>
                   {transitionType !== "cut" ? <input type="range" min={100} max={1500} step={50} value={transitionDuration} onChange={(event) => setTransitionDuration(Number(event.target.value))} className="mt-2 w-full accent-blue-600" /> : null}
                 </div>
-                <div className="mt-4 rounded-lg border border-blue-100 bg-white p-3 shadow-sm">
-                  <div className="flex items-center justify-between text-[10px] font-extrabold text-slate-600"><span>Theme brightness</span><span className="rounded bg-blue-50 px-1.5 py-0.5 text-blue-700">{mediaBrightness}%</span></div>
-                  <input type="range" min={0} max={100} step={1} value={mediaBrightness} onChange={(event) => setMediaBrightness(Number(event.target.value))} aria-label="Theme brightness" className="mt-2 w-full accent-blue-600" />
+                <div className="mt-3 space-y-3 rounded-lg border border-blue-100 bg-white p-3 shadow-sm">
+                  <ProjectionEffectRange label="Brightness" value={mediaBrightness} minimum={0} maximum={100} onChange={setMediaBrightness} />
+                  <ProjectionEffectRange label="Readable dimming" value={backgroundDimming} minimum={0} maximum={80} onChange={setBackgroundDimming} />
+                  <button type="button" onClick={() => setBackgroundAutoDimming((current) => !current)} aria-pressed={backgroundAutoDimming} className={`flex h-8 w-full items-center justify-between rounded-md px-2 text-[8px] font-bold ${backgroundAutoDimming ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200" : "bg-slate-100 text-slate-500"}`}><span>Auto readability</span><span>{backgroundAutoDimming ? "On" : "Off"}</span></button>
+                  <ProjectionEffectRange label="Vignette" value={backgroundVignette} minimum={0} maximum={100} onChange={setBackgroundVignette} />
+                  <ProjectionEffectRange label="Blur" value={backgroundBlur} minimum={0} maximum={20} unit="px" onChange={setBackgroundBlur} />
+                  <ProjectionEffectRange label="Saturation" value={backgroundSaturation} minimum={0} maximum={180} onChange={setBackgroundSaturation} />
+                </div>
+                <div className="mt-3 rounded-lg border border-violet-100 bg-white p-3">
+                  <div className="flex items-center justify-between text-[9px] font-bold text-slate-500"><span>Background motion</span><span>{motionSpeed}%</span></div>
+                  <div className="mt-1 grid grid-cols-3 gap-1">{(["none", "drift", "zoom"] as ProjectionBackgroundMotion[]).map((motion) => <button key={motion} type="button" onClick={() => setBackgroundMotion(motion)} className={`h-7 rounded text-[8px] font-bold capitalize ${backgroundMotion === motion ? "bg-violet-600 text-white" : "bg-slate-50 text-slate-500 ring-1 ring-slate-200"}`}>{motion}</button>)}</div>
+                  {backgroundMotion !== "none" ? <input type="range" min={0} max={100} step={1} value={motionSpeed} onChange={(event) => setMotionSpeed(Number(event.target.value))} aria-label="Background motion speed" className="mt-2 w-full accent-violet-600" /> : null}
+                  <div className="mt-3 text-[9px] font-bold text-slate-500">Atmosphere</div>
+                  <div className="mt-1 grid grid-cols-3 gap-1">{(["none", "particles", "rays"] as ProjectionBackgroundAmbience[]).map((ambience) => <button key={ambience} type="button" onClick={() => setBackgroundAmbience(ambience)} className={`h-7 rounded text-[8px] font-bold capitalize ${backgroundAmbience === ambience ? "bg-violet-600 text-white" : "bg-slate-50 text-slate-500 ring-1 ring-slate-200"}`}>{ambience}</button>)}</div>
+                </div>
+                <div className="mt-3 rounded-lg border border-cyan-100 bg-white p-3">
+                  <div className="flex items-center justify-between gap-2"><label className="text-[9px] font-bold text-slate-500">Colour tint</label><input type="color" value={backgroundTintColor} onChange={(event) => setBackgroundTintColor(event.target.value)} aria-label="Background tint colour" className="h-7 w-10 cursor-pointer rounded border border-slate-200 bg-white p-0.5" /></div>
+                  <div className="mt-2"><ProjectionEffectRange label="Tint strength" value={backgroundTintStrength} minimum={0} maximum={70} onChange={setBackgroundTintStrength} /></div>
+                  <button type="button" onClick={resetBackgroundEffects} className="mt-2 h-7 w-full rounded bg-slate-100 text-[8px] font-bold text-slate-500 hover:bg-slate-200">Reset effects</button>
                 </div>
                 <button type="button" onClick={applyAppearanceLive} disabled={!liveState || appearanceIsLive} className="mt-3 inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-md bg-emerald-600 px-2 text-[9px] font-extrabold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none">
                   <Send className="size-3.5" />{appearanceIsLive ? "Appearance live" : "Apply appearance live"}
                 </button>
               </aside>
               <div className="grid min-h-0 content-start grid-cols-[repeat(auto-fill,minmax(130px,1fr))] gap-2 overflow-y-auto pr-1">
-                {visibleThemes.map(([key, theme]) => <button key={key} type="button" onClick={() => setThemeKey(key)} className={`overflow-hidden rounded-lg border-2 bg-white text-left shadow-sm transition hover:-translate-y-0.5 ${themeKey === key ? "border-blue-500 ring-2 ring-blue-100" : "border-white"}`}><span className="relative block aspect-video overflow-hidden bg-black"><span className="absolute inset-0" style={{ background: theme.background, filter: `brightness(${projectionMediaBrightnessPercent(mediaBrightness)}%)` }} aria-hidden />{themeKey === key ? <span className="absolute right-1.5 top-1.5 inline-flex size-4 items-center justify-center rounded-full bg-blue-600 text-white"><Check className="size-2.5" /></span> : null}</span><span className="block truncate px-2 py-1 text-[9px] font-bold text-slate-600">{theme.label}</span></button>)}
+                {visibleThemes.map(([key, theme]) => <button key={key} type="button" onClick={() => chooseTheme(key)} className={`overflow-hidden rounded-lg border-2 bg-white text-left shadow-sm transition hover:-translate-y-0.5 ${themeKey === key ? "border-blue-500 ring-2 ring-blue-100" : "border-white"}`}><span className="relative block aspect-video overflow-hidden bg-black"><ProjectionBackgroundLayer background={theme.background} media={{ ...DEFAULT_PROJECTION_MEDIA, brightness: mediaBrightness }} effects={themeKey === key ? backgroundEffects : theme.effects} animate={themeKey === key} />{themeKey === key ? <span className="absolute right-1.5 top-1.5 inline-flex size-4 items-center justify-center rounded-full bg-blue-600 text-white"><Check className="size-2.5" /></span> : null}</span><span className="block truncate px-2 py-1 text-[9px] font-bold text-slate-600">{theme.label}</span></button>)}
               </div>
             </div>
           ) : null}
@@ -1640,31 +1931,19 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
         </div>
       ) : null}
 
-      {slideEditor ? (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) setSlideEditor(null); }}>
-          <section className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="slide-editor-title">
-            <header className="flex items-start justify-between border-b border-slate-200 bg-slate-50 px-5 py-4"><div><h3 id="slide-editor-title" className="text-base font-extrabold text-slate-950">Edit slide {slideEditor.index + 1}</h3><p className="mt-1 text-xs text-slate-500"></p></div><button type="button" onClick={() => setSlideEditor(null)} className="inline-flex size-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200 hover:text-slate-700" aria-label="Close slide editor"><X className="size-4" /></button></header>
-            <div className="max-h-[65vh] space-y-4 overflow-y-auto p-5">
-              <section className="rounded-xl border border-blue-200 bg-blue-50/60 p-4" aria-label="Text size for this slide">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div><h4 className="text-xs font-extrabold text-slate-900">Text size for this slide</h4></div>
-                  <span className="rounded-md bg-white px-2 py-1 text-xs font-extrabold text-blue-700 shadow-sm">{slideEditor.fontSize ?? fontSize}%</span>
-                </div>
-                <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-white p-1 shadow-sm ring-1 ring-slate-200">
-                  <button type="button" aria-pressed={slideEditor.fontSize === null} onClick={() => setSlideEditor((current) => current ? { ...current, fontSize: null } : null)} className={`h-9 rounded-md px-3 text-[10px] font-extrabold transition ${slideEditor.fontSize === null ? "bg-blue-600 text-white shadow-sm" : "text-slate-600 hover:bg-slate-100"}`}>Use default ({fontSize}%)</button>
-                  <button type="button" aria-pressed={slideEditor.fontSize !== null} onClick={() => setSlideEditor((current) => current ? { ...current, fontSize: current.fontSize ?? fontSize } : null)} className={`h-9 rounded-md px-3 text-[10px] font-extrabold transition ${slideEditor.fontSize !== null ? "bg-blue-600 text-white shadow-sm" : "text-slate-600 hover:bg-slate-100"}`}>Custom size</button>
-                </div>
-                <input type="range" min={PROJECTION_TEXT_SIZE_MIN_PERCENT} max={PROJECTION_TEXT_SIZE_MAX_PERCENT} step={1} value={slideEditor.fontSize ?? fontSize} disabled={slideEditor.fontSize === null} onChange={(event) => setSlideEditor((current) => current ? { ...current, fontSize: Number(event.target.value) } : null)} aria-label="Text size for this slide" className="mt-3 w-full accent-blue-600 disabled:cursor-not-allowed disabled:opacity-40" />
-              </section>
-              {slideEditor.slide.sections?.length ? (
-                <div className="grid gap-3 sm:grid-cols-2">{slideEditor.slide.sections.map((section, sectionIndex) => <div key={sectionIndex} className="rounded-xl border border-slate-200 bg-slate-50 p-3"><label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Column heading<input value={section.label} onChange={(event) => setSlideEditor((current) => current ? { ...current, slide: { ...current.slide, sections: current.slide.sections?.map((item, index) => index === sectionIndex ? { ...item, label: event.target.value } : item) } } : null)} maxLength={160} className="mt-1.5 h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-xs font-semibold normal-case tracking-normal outline-none focus:border-blue-500" /></label><label className="mt-3 block text-[10px] font-bold uppercase tracking-wider text-slate-500">Text<textarea value={section.text} onChange={(event) => setSlideEditor((current) => current ? { ...current, slide: { ...current.slide, sections: current.slide.sections?.map((item, index) => index === sectionIndex ? { ...item, text: event.target.value } : item) } } : null)} rows={7} className="mt-1.5 w-full resize-y rounded-md border border-slate-300 bg-white p-2 text-sm font-semibold leading-6 normal-case tracking-normal outline-none focus:border-blue-500" /></label></div>)}</div>
-              ) : (
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Slide text<textarea autoFocus value={slideEditor.slide.text} onChange={(event) => setSlideEditor((current) => current ? { ...current, slide: { ...current.slide, text: event.target.value } } : null)} rows={9} className="mt-1.5 w-full resize-y rounded-lg border border-slate-300 p-3 text-base font-semibold leading-7 normal-case tracking-normal outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" /></label>
-              )}
-            </div>
-            <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4"><div>{slideOverrides[slideEditor.key] || slideTextSizeOverrides[slideEditor.key] !== undefined ? <button type="button" onClick={() => resetSlideEdit(slideEditor.index)} className="inline-flex h-9 items-center gap-2 rounded-lg px-3 text-xs font-bold text-red-600 hover:bg-red-50"><RotateCcw className="size-3.5" /> Reset original</button> : null}</div><div className="flex gap-2"><button type="button" onClick={() => setSlideEditor(null)} className="h-9 rounded-lg border border-slate-300 bg-white px-4 text-xs font-bold text-slate-600 hover:bg-slate-100">Cancel</button><button type="button" onClick={applySlideEdit} disabled={!slideEditorValid} className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-4 text-xs font-extrabold text-white hover:bg-blue-700 disabled:opacity-40"><Check className="size-4" /> Apply to preview</button></div></footer>
-          </section>
-        </div>
+      {deckEditorOpen && source === "songs" && typeof document !== "undefined" ? createPortal(
+        <ProjectionSlideEditor
+          title={source === "songs" ? selectedSong?.title ?? "Song" : loadedBible?.reference ?? "Bible slides"}
+          initialItems={deckEditorItems}
+          initialActiveIndex={safeSlideIndex}
+          defaultFontSize={fontSize}
+          theme={activeTheme}
+          canSaveToSong={source === "songs" && Boolean(selectedSong)}
+          onClose={() => setDeckEditorOpen(false)}
+          onApply={applyDeckEdits}
+          onSaveToSong={saveEditedDeckToSong}
+        />,
+        document.body,
       ) : null}
     </section>
   );

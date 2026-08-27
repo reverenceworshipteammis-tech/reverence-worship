@@ -3,7 +3,7 @@ import test from "node:test";
 import { multiVersionBibleProjectionSlides } from "../src/lib/bible-projection";
 import { chooseProjectionScreen, projectionScreenId, type ProjectionScreenLike } from "../src/lib/projection-display";
 import { parseProjectionOverlayPresets, validateProjectionOverlayPresetInput } from "../src/lib/projection-overlays";
-import { clampProjectionTransitionDuration, isProjectionOutputState, projectionMediaBrightnessPercent, projectionNavigationState, projectionOverlayPreviewTextSizePx, projectionOverlaySafeInsets, projectionOverlayTextSizePx, projectionOverlayWidthPercent, projectionPreviewTextSizePx, projectionTextSizePx, readProjectionState, sanitizeProjectionMediaUrl, writeProjectionState, type ProjectionOutputState } from "../src/lib/projection-runtime";
+import { clampProjectionTransitionDuration, isProjectionOutputState, normalizeProjectionBackgroundEffects, projectionMediaBrightnessPercent, projectionNavigationState, projectionOverlayPreviewTextSizePx, projectionOverlaySafeInsets, projectionOverlayTextSizePx, projectionOverlayWidthPercent, projectionPreviewTextSizePx, projectionTextSizePx, readProjectionState, sanitizeProjectionMediaUrl, writeProjectionState, type ProjectionOutputState } from "../src/lib/projection-runtime";
 import { projectionThemes } from "../src/lib/projection-themes";
 import { songProjectionSlides, validateProjectionSongLyrics } from "../src/lib/song-projection";
 
@@ -157,11 +157,26 @@ test("projection transition duration stays within a live-friendly range", () => 
   assert.equal(clampProjectionTransitionDuration(4000), 1500);
 });
 
+test("cinematic background effects are normalized to projector-safe values", () => {
+  assert.deepEqual(normalizeProjectionBackgroundEffects({ motion: "drift", ambience: "rays", blur: 99, dimming: -5, saturation: 240, tintColor: "unsafe" }), {
+    motion: "drift",
+    motionSpeed: 45,
+    blur: 20,
+    vignette: 24,
+    saturation: 180,
+    dimming: 0,
+    autoDimming: true,
+    tintColor: "#1d4ed8",
+    tintStrength: 0,
+    ambience: "rays",
+  });
+});
+
 test("built-in projection themes provide a substantial church-ready library without media assets", () => {
   const themes = Object.values(projectionThemes);
-  assert.equal(themes.length, 30);
+  assert.equal(themes.length, 38);
   assert.equal(new Set(themes.map((theme) => theme.label)).size, themes.length);
-  for (const category of ["classic", "worship", "nature", "seasons"]) {
+  for (const category of ["classic", "worship", "cinematic", "nature", "seasons"]) {
     assert.ok(themes.filter((theme) => theme.category === category).length >= 6);
   }
   assert.ok(themes.every((theme) => theme.background.length > 3 && theme.text.length > 3 && theme.muted.length > 3));

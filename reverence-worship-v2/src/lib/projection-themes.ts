@@ -1,4 +1,6 @@
-export type ProjectionThemeCategory = "classic" | "worship" | "nature" | "seasons";
+import type { ProjectionBackgroundEffects } from "@/lib/projection-runtime";
+
+export type ProjectionThemeCategory = "classic" | "worship" | "cinematic" | "nature" | "seasons";
 
 export type ProjectionTheme = {
   label: string;
@@ -7,12 +9,14 @@ export type ProjectionTheme = {
   text: string;
   muted: string;
   shadow: string;
+  effects?: Partial<ProjectionBackgroundEffects>;
 };
 
 export const projectionThemeCategories: Array<{ key: "all" | ProjectionThemeCategory; label: string }> = [
   { key: "all", label: "All" },
   { key: "classic", label: "Classic" },
   { key: "worship", label: "Worship" },
+  { key: "cinematic", label: "Cinematic" },
   { key: "nature", label: "Nature" },
   { key: "seasons", label: "Seasons" },
 ];
@@ -40,6 +44,15 @@ export const projectionThemes = {
   praiseCelebration: { label: "Praise Celebration", category: "worship", background: "radial-gradient(circle at 15% 15%,rgba(250,204,21,.55),transparent 24%),radial-gradient(circle at 88% 20%,rgba(34,211,238,.5),transparent 25%),radial-gradient(circle at 70% 95%,rgba(236,72,153,.5),transparent 31%),linear-gradient(135deg,#312e81,#6d28d9 48%,#9d174d)", text: whiteText, muted: "rgba(255,255,255,.76)", shadow: darkShadow },
   communion: { label: "Communion", category: "worship", background: "radial-gradient(ellipse at 50% 105%,rgba(251,191,36,.22),transparent 42%),radial-gradient(circle at 50% 16%,rgba(255,255,255,.1),transparent 28%),linear-gradient(145deg,#2a0711,#701a36 55%,#290812)", text: "#fffaf2", muted: "rgba(255,237,213,.68)", shadow: darkShadow },
   promise: { label: "Promise", category: "worship", background: "radial-gradient(ellipse at 50% 110%,transparent 40%,rgba(244,114,182,.28) 41% 44%,rgba(250,204,21,.24) 45% 48%,rgba(34,211,238,.24) 49% 52%,transparent 53%),linear-gradient(180deg,#172554,#075985 62%,#164e63)", text: whiteText, muted: "rgba(224,242,254,.72)", shadow: darkShadow },
+
+  celestialHaze: { label: "Celestial Haze", category: "cinematic", background: "radial-gradient(ellipse at 72% 20%,rgba(186,230,253,.48),transparent 28%),radial-gradient(ellipse at 18% 76%,rgba(124,58,237,.34),transparent 36%),linear-gradient(145deg,#020617,#172554 45%,#312e81 72%,#0f172a)", text: whiteText, muted: "rgba(224,231,255,.76)", shadow: darkShadow, effects: { motion: "drift", motionSpeed: 38, blur: 2, vignette: 52, saturation: 118, dimming: 18, tintColor: "#312e81", tintStrength: 12, ambience: "particles" } },
+  goldenBokeh: { label: "Golden Bokeh", category: "cinematic", background: "radial-gradient(circle at 78% 18%,rgba(254,240,138,.78) 0 2%,rgba(245,158,11,.18) 8%,transparent 23%),radial-gradient(circle at 20% 72%,rgba(251,191,36,.34) 0 3%,transparent 18%),radial-gradient(circle at 60% 85%,rgba(255,255,255,.18) 0 2%,transparent 12%),linear-gradient(150deg,#120d08,#4a2b0b 52%,#160d08)", text: "#fffdf5", muted: "rgba(254,243,199,.75)", shadow: darkShadow, effects: { motion: "zoom", motionSpeed: 28, blur: 3, vignette: 58, saturation: 112, dimming: 17, tintColor: "#92400e", tintStrength: 10, ambience: "particles" } },
+  oceanLight: { label: "Ocean Light", category: "cinematic", background: "radial-gradient(ellipse at 52% -8%,rgba(224,242,254,.76),rgba(56,189,248,.26) 22%,transparent 48%),radial-gradient(ellipse at 18% 88%,rgba(14,165,233,.3),transparent 36%),linear-gradient(180deg,#082f49,#075985 48%,#020617)", text: whiteText, muted: "rgba(207,250,254,.76)", shadow: darkShadow, effects: { motion: "drift", motionSpeed: 24, blur: 1, vignette: 48, saturation: 115, dimming: 20, tintColor: "#0369a1", tintStrength: 9, ambience: "rays" } },
+  emberPrayer: { label: "Ember Prayer", category: "cinematic", background: "radial-gradient(ellipse at 50% 112%,rgba(251,146,60,.82),rgba(190,24,93,.3) 24%,transparent 52%),radial-gradient(circle at 82% 28%,rgba(251,191,36,.18),transparent 28%),linear-gradient(150deg,#17070b,#4c0519 55%,#1c0a12)", text: whiteText, muted: "rgba(255,228,230,.72)", shadow: darkShadow, effects: { motion: "zoom", motionSpeed: 32, blur: 2, vignette: 62, saturation: 122, dimming: 22, tintColor: "#9f1239", tintStrength: 8, ambience: "particles" } },
+  violetClouds: { label: "Violet Clouds", category: "cinematic", background: "radial-gradient(ellipse at 18% 24%,rgba(216,180,254,.38),transparent 34%),radial-gradient(ellipse at 86% 72%,rgba(59,130,246,.34),transparent 38%),radial-gradient(ellipse at 50% 102%,rgba(244,114,182,.22),transparent 42%),linear-gradient(135deg,#16072d,#4c1d95 48%,#172554)", text: whiteText, muted: "rgba(243,232,255,.76)", shadow: darkShadow, effects: { motion: "drift", motionSpeed: 34, blur: 4, vignette: 50, saturation: 126, dimming: 18, tintColor: "#6d28d9", tintStrength: 12, ambience: "particles" } },
+  sanctuaryRays: { label: "Sanctuary Rays", category: "cinematic", background: "radial-gradient(ellipse at 50% -5%,rgba(255,255,255,.72),rgba(250,204,21,.2) 20%,transparent 47%),linear-gradient(155deg,#080b13,#293240 48%,#0c1019)", text: "#fffdf5", muted: "rgba(255,247,214,.74)", shadow: darkShadow, effects: { motion: "zoom", motionSpeed: 20, blur: 1, vignette: 55, saturation: 92, dimming: 21, tintColor: "#ca8a04", tintStrength: 7, ambience: "rays" } },
+  auroraWorship: { label: "Aurora Worship", category: "cinematic", background: "radial-gradient(ellipse at 25% 84%,rgba(45,212,191,.4),transparent 38%),radial-gradient(ellipse at 78% 18%,rgba(168,85,247,.42),transparent 34%),radial-gradient(ellipse at 70% 82%,rgba(37,99,235,.34),transparent 35%),linear-gradient(145deg,#020617,#13243d 52%,#1e1b4b)", text: whiteText, muted: "rgba(204,251,241,.72)", shadow: darkShadow, effects: { motion: "drift", motionSpeed: 42, blur: 3, vignette: 54, saturation: 132, dimming: 19, tintColor: "#0f766e", tintStrength: 10, ambience: "particles" } },
+  dawnMistCinema: { label: "Dawn Mist", category: "cinematic", background: "radial-gradient(ellipse at 72% 28%,rgba(254,240,138,.55),transparent 24%),radial-gradient(ellipse at 18% 78%,rgba(251,146,60,.28),transparent 35%),linear-gradient(180deg,#334155,#8b5d66 50%,#432c3d)", text: whiteText, muted: "rgba(255,247,237,.78)", shadow: darkShadow, effects: { motion: "drift", motionSpeed: 22, blur: 5, vignette: 44, saturation: 94, dimming: 22, tintColor: "#be123c", tintStrength: 8, ambience: "rays" } },
 
   oceanDepth: { label: "Ocean Depth", category: "nature", background: "radial-gradient(circle at 78% 12%,rgba(34,211,238,.25),transparent 28%),linear-gradient(160deg,#042f49,#075985 50%,#083344)", text: whiteText, muted: "rgba(207,250,254,.72)", shadow: darkShadow },
   oliveGarden: { label: "Olive Garden", category: "nature", background: "radial-gradient(circle at 18% 20%,rgba(190,242,100,.18),transparent 34%),radial-gradient(circle at 90% 80%,rgba(234,179,8,.14),transparent 35%),linear-gradient(145deg,#142313,#365314 52%,#1a2e16)", text: whiteText, muted: "rgba(236,252,203,.7)", shadow: darkShadow },

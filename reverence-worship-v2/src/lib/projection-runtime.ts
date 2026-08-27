@@ -7,6 +7,21 @@ export const PROJECTION_TEXT_SIZE_MAX_PERCENT = 100;
 
 export type ProjectionMediaType = "none" | "image" | "video";
 export type ProjectionTransitionType = "cut" | "fade" | "dissolve";
+export type ProjectionBackgroundMotion = "none" | "drift" | "zoom";
+export type ProjectionBackgroundAmbience = "none" | "particles" | "rays";
+
+export type ProjectionBackgroundEffects = {
+  motion: ProjectionBackgroundMotion;
+  motionSpeed: number;
+  blur: number;
+  vignette: number;
+  saturation: number;
+  dimming: number;
+  autoDimming: boolean;
+  tintColor: string;
+  tintStrength: number;
+  ambience: ProjectionBackgroundAmbience;
+};
 
 export type ProjectionBackgroundMedia = {
   type: ProjectionMediaType;
@@ -33,6 +48,38 @@ export const DEFAULT_PROJECTION_TRANSITION: ProjectionTransition = {
   type: "fade",
   durationMs: 350,
 };
+
+export const DEFAULT_PROJECTION_BACKGROUND_EFFECTS: ProjectionBackgroundEffects = {
+  motion: "none",
+  motionSpeed: 45,
+  blur: 0,
+  vignette: 24,
+  saturation: 100,
+  dimming: 12,
+  autoDimming: true,
+  tintColor: "#1d4ed8",
+  tintStrength: 0,
+  ambience: "none",
+};
+
+export function normalizeProjectionBackgroundEffects(value?: Partial<ProjectionBackgroundEffects> | null): ProjectionBackgroundEffects {
+  const motion = value?.motion === "drift" || value?.motion === "zoom" ? value.motion : "none";
+  const ambience = value?.ambience === "particles" || value?.ambience === "rays" ? value.ambience : "none";
+  const tintColor = typeof value?.tintColor === "string" && /^#[0-9a-f]{6}$/i.test(value.tintColor) ? value.tintColor : DEFAULT_PROJECTION_BACKGROUND_EFFECTS.tintColor;
+  const clamp = (input: number | undefined, minimum: number, maximum: number, fallback: number) => Math.round(Math.min(maximum, Math.max(minimum, Number.isFinite(input) ? input as number : fallback)));
+  return {
+    motion,
+    motionSpeed: clamp(value?.motionSpeed, 0, 100, DEFAULT_PROJECTION_BACKGROUND_EFFECTS.motionSpeed),
+    blur: clamp(value?.blur, 0, 20, DEFAULT_PROJECTION_BACKGROUND_EFFECTS.blur),
+    vignette: clamp(value?.vignette, 0, 100, DEFAULT_PROJECTION_BACKGROUND_EFFECTS.vignette),
+    saturation: clamp(value?.saturation, 0, 180, DEFAULT_PROJECTION_BACKGROUND_EFFECTS.saturation),
+    dimming: clamp(value?.dimming, 0, 80, DEFAULT_PROJECTION_BACKGROUND_EFFECTS.dimming),
+    autoDimming: typeof value?.autoDimming === "boolean" ? value.autoDimming : DEFAULT_PROJECTION_BACKGROUND_EFFECTS.autoDimming,
+    tintColor,
+    tintStrength: clamp(value?.tintStrength, 0, 70, DEFAULT_PROJECTION_BACKGROUND_EFFECTS.tintStrength),
+    ambience,
+  };
+}
 
 function projectionTextSizeProgress(percent: number) {
   const clamped = Math.min(PROJECTION_TEXT_SIZE_MAX_PERCENT, Math.max(PROJECTION_TEXT_SIZE_MIN_PERCENT, percent));
@@ -121,12 +168,15 @@ export type ProjectionOutputState = {
   emptyMessage: string;
   footer: string;
   fontSize: number;
+  uniformTextSize?: boolean;
+  uniformTextViewport?: { width: number; height: number };
   background: string;
   textColor: string;
   mutedTextColor: string;
   textShadow: string;
   media: ProjectionBackgroundMedia;
   transition: ProjectionTransition;
+  effects?: ProjectionBackgroundEffects;
   overlay: ProjectionOverlayState;
 };
 
@@ -163,7 +213,7 @@ export type ProjectionChannelMessage =
   | { type: "state"; state: ProjectionOutputState }
   | { type: "request-state"; outputId: string }
   | { type: "ready"; outputId: string }
-  | { type: "heartbeat"; outputId: string; fullscreen: boolean }
+  | { type: "heartbeat"; outputId: string; fullscreen: boolean; viewport?: { width: number; height: number } }
   | { type: "closed"; outputId: string }
   | { type: "control"; key: ProjectionControlKey }
   | { type: "command"; command: "fullscreen" | "close" };

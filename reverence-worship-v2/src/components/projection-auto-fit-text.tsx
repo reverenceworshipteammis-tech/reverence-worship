@@ -9,6 +9,7 @@ export function ProjectionAutoFitText({
   fit = "box",
   className = "",
   style,
+  onFontSizeFit,
 }: {
   text: string;
   maximumFontSize: number;
@@ -16,6 +17,7 @@ export function ProjectionAutoFitText({
   fit?: "box" | "width";
   className?: string;
   style?: CSSProperties;
+  onFontSizeFit?: (fontSize: number) => void;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const textRef = useRef<HTMLParagraphElement | null>(null);
@@ -46,11 +48,13 @@ export function ProjectionAutoFitText({
       }
     }
 
-    textElement.style.fontSize = `${Math.floor(best)}px`;
+    const fittedFontSize = Math.floor(best);
+    textElement.style.fontSize = `${fittedFontSize}px`;
     if (fit === "width" && textElement.scrollWidth > container.clientWidth + 1) {
       textElement.style.overflowWrap = "anywhere";
     }
-  }, [fit, maximumFontSize, minimumFontSize, text]);
+    onFontSizeFit?.(fittedFontSize);
+  }, [fit, maximumFontSize, minimumFontSize, onFontSizeFit, text]);
 
   useLayoutEffect(() => {
     let active = true;

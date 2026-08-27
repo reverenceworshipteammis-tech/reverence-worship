@@ -939,3 +939,52 @@ input {
     font-size: 1.2rem;
   }
 }
+
+@keyframes projection-background-drift {
+  0% { transform: scale(1.08) translate3d(-1.8%, -1%, 0); }
+  50% { transform: scale(1.12) translate3d(1.2%, 1.4%, 0); }
+  100% { transform: scale(1.09) translate3d(2%, -1.2%, 0); }
+}
+
+@keyframes projection-background-zoom {
+  from { transform: scale(1.05); }
+  to { transform: scale(1.18); }
+}
+
+@keyframes projection-particles-float {
+  from { transform: translate3d(-1%, 2%, 0) scale(1); opacity: 0.4; }
+  50% { opacity: 0.78; }
+  to { transform: translate3d(2%, -3%, 0) scale(1.06); opacity: 0.48; }
+}
+
+@keyframes projection-rays-breathe {
+  from { transform: rotate(-7deg) scale(1); opacity: 0.28; }
+  to { transform: rotate(7deg) scale(1.08); opacity: 0.62; }
+}
+
+.projection-background-particles {
+  background-image:
+    radial-gradient(circle at 12% 72%, rgba(255,255,255,.72) 0 1px, transparent 2px),
+    radial-gradient(circle at 28% 28%, rgba(255,255,255,.44) 0 1.5px, transparent 3px),
+    radial-gradient(circle at 48% 78%, rgba(255,244,190,.52) 0 1px, transparent 2.5px),
+    radial-gradient(circle at 67% 35%, rgba(255,255,255,.58) 0 1px, transparent 2.5px),
+    radial-gradient(circle at 84% 68%, rgba(186,230,253,.62) 0 1.5px, transparent 3px),
+    radial-gradient(circle at 92% 18%, rgba(255,255,255,.4) 0 1px, transparent 2px);
+  background-size: 31% 37%, 43% 39%, 37% 47%, 41% 31%, 47% 43%, 29% 41%;
+  animation: projection-particles-float 18s ease-in-out infinite alternate;
+}
+
+.projection-background-rays {
+  background: conic-gradient(from 203deg at 50% 3%, transparent 0deg, rgba(255,255,255,.19) 7deg, transparent 15deg, transparent 29deg, rgba(255,244,194,.14) 37deg, transparent 48deg, transparent 72deg, rgba(255,255,255,.11) 82deg, transparent 92deg);
+  filter: blur(10px);
+  transform-origin: 50% 0;
+  animation: projection-rays-breathe 12s ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .projection-background-particles,
+  .projection-background-rays,
+  [style*="projection-background-"] {
+    animation: none !important;
+  }
+}

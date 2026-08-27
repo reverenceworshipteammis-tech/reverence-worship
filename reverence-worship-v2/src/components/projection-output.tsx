@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { ProjectionAutoFitText } from "@/components/projection-auto-fit-text";
+import { ProjectionBackgroundLayer } from "@/components/projection-background-layer";
 import {
   PROJECTION_CHANNEL_NAME,
-  projectionMediaBrightnessPercent,
   projectionOverlaySafeInsets,
   projectionOverlayTextSizePx,
   projectionTextSizePx,
@@ -16,6 +16,11 @@ import {
 
 const OUTPUT_KEYS = new Set(["ArrowRight", "ArrowLeft", "PageDown", "PageUp", "Home", "End", "Enter", " ", "b", "o"]);
 
+function slideContentLength(state: ProjectionOutputState) {
+  if (!state.slide) return 0;
+  return state.slide.sections?.reduce((total, section) => total + section.text.length, 0) ?? state.slide.text.length;
+}
+
 function ProjectionFrame({ state, animate }: { state: ProjectionOutputState; animate: boolean }) {
   const frameRef = useRef<HTMLDivElement | null>(null);
   const overlayRef = useRef<HTMLElement | null>(null);
@@ -24,7 +29,6 @@ function ProjectionFrame({ state, animate }: { state: ProjectionOutputState; ani
   const maximumFontSize = projectionTextSizePx(state.fontSize);
   const overlayFontSize = projectionOverlayTextSizePx(state.overlay.fontSize);
   const showOverlay = Boolean(state.overlay.visible && !state.blanked && (state.overlay.title || state.overlay.text));
-  const backgroundFilter = `brightness(${projectionMediaBrightnessPercent(state.media.brightness)}%)`;
   const transitionName = state.transition.type === "dissolve" ? "projection-dissolve-in" : "projection-fade-in";
   const animation = animate && state.transition.type !== "cut" ? `${transitionName} ${state.transition.durationMs}ms ease-out both` : undefined;
   const safeInsets = projectionOverlaySafeInsets(frameHeight, overlayHeight, state.overlay.position, showOverlay);
@@ -45,17 +49,7 @@ function ProjectionFrame({ state, animate }: { state: ProjectionOutputState; ani
 
   return (
     <div ref={frameRef} className="absolute inset-0 isolate overflow-hidden bg-black" style={{ color: state.textColor, animation }}>
-      {!state.blanked ? (
-        <div className="absolute inset-0 -z-10 overflow-hidden bg-black" style={{ background: state.background, filter: backgroundFilter }} aria-hidden>
-          {state.media.type !== "none" && state.media.url ? state.media.type === "video" ? (
-            <video key={state.media.url} src={state.media.url} autoPlay muted loop playsInline preload="auto" className="size-full bg-black" style={{ objectFit: state.media.fit }} />
-          ) : (
-            // A plain image supports session-only blob URLs and external CDN URLs without bundling the asset.
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={state.media.url} alt="" className="size-full bg-black" style={{ objectFit: state.media.fit }} />
-          ) : null}
-        </div>
-      ) : null}
+      {!state.blanked ? <ProjectionBackgroundLayer background={state.background} media={state.media} effects={state.effects} contentLength={slideContentLength(state)} className="-z-10" /> : null}
 
       {!state.blanked ? (
         <section className="relative z-0 flex h-full min-h-0 flex-col items-center px-[3.5vw] text-center" style={safeInsets}>
@@ -65,13 +59,13 @@ function ProjectionFrame({ state, animate }: { state: ProjectionOutputState; ani
               {state.slide.sections.map((section, index) => (
                 <section key={`${section.label}-${index}`} className="flex min-h-0 min-w-0 flex-col px-[2vw] py-[0.5vh]" style={{ borderLeft: index ? `1px solid ${state.mutedTextColor}` : undefined }}>
                   <h2 className="mb-[0.75vh] text-[clamp(16px,1.7vw,28px)] font-extrabold uppercase tracking-[0.14em]" style={{ color: state.mutedTextColor }}>{section.label}</h2>
-                  <ProjectionAutoFitText text={section.text} maximumFontSize={maximumFontSize} className="font-bold leading-[1.08] tracking-[0.003em]" style={{ color: state.textColor, textShadow: state.textShadow }} />
+                  {state.uniformTextSize ? <p className="flex min-h-0 flex-1 items-center justify-center whitespace-pre-line font-bold leading-[1.08] tracking-[0.003em] [text-wrap:balance]" style={{ color: state.textColor, fontSize: maximumFontSize, textShadow: state.textShadow }}>{section.text}</p> : <ProjectionAutoFitText text={section.text} maximumFontSize={maximumFontSize} className="font-bold leading-[1.08] tracking-[0.003em]" style={{ color: state.textColor, textShadow: state.textShadow }} />}
                 </section>
               ))}
             </div>
           ) : (
             <div className="min-h-0 w-full flex-1">
-              <ProjectionAutoFitText text={state.slide?.text ?? ""} maximumFontSize={maximumFontSize} className="font-bold leading-[1.08] tracking-[0.003em]" style={{ color: state.textColor, textShadow: state.textShadow }} />
+              {state.uniformTextSize ? <p className="flex size-full items-center justify-center whitespace-pre-line font-bold leading-[1.08] tracking-[0.003em] [text-wrap:balance]" style={{ color: state.textColor, fontSize: maximumFontSize, textShadow: state.textShadow }}>{state.slide?.text ?? ""}</p> : <ProjectionAutoFitText text={state.slide?.text ?? ""} maximumFontSize={maximumFontSize} className="font-bold leading-[1.08] tracking-[0.003em]" style={{ color: state.textColor, textShadow: state.textShadow }} />}
             </div>
           )}
           <p className="mt-[0.75vh] w-full shrink-0 truncate text-center text-[clamp(12px,1.15vw,20px)]" style={{ color: state.mutedTextColor }}>{state.footer}</p>
@@ -141,7 +135,12 @@ export function ProjectionOutput({ nativeFullscreen = false }: { nativeFullscree
       }
     };
 
-    const report = () => send({ type: "heartbeat", outputId: id, fullscreen: nativeFullscreen || Boolean(document.fullscreenElement) });
+    const report = () => send({
+      type: "heartbeat",
+      outputId: id,
+      fullscreen: nativeFullscreen || Boolean(document.fullscreenElement),
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+    });
     const onFullscreenChange = () => { setIsFullscreen(nativeFullscreen || Boolean(document.fullscreenElement)); report(); };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key.toLowerCase() === "f") { event.preventDefault(); void enterFullscreen(); return; }
@@ -156,6 +155,7 @@ export function ProjectionOutput({ nativeFullscreen = false }: { nativeFullscree
     document.addEventListener("fullscreenchange", onFullscreenChange);
     document.addEventListener("visibilitychange", keepDisplayAwake);
     window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", report);
     window.addEventListener("beforeunload", onBeforeUnload);
     send({ type: "ready", outputId: id });
     send({ type: "request-state", outputId: id });
@@ -172,6 +172,7 @@ export function ProjectionOutput({ nativeFullscreen = false }: { nativeFullscree
       document.removeEventListener("fullscreenchange", onFullscreenChange);
       document.removeEventListener("visibilitychange", keepDisplayAwake);
       window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", report);
       window.removeEventListener("beforeunload", onBeforeUnload);
     };
   }, [displayState, enterFullscreen, id, nativeFullscreen]);
