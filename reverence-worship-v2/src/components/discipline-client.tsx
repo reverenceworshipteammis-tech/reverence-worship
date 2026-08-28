@@ -3,6 +3,8 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ActionNotice } from "@/components/action-notice";
+import { ActionPlanTaskTemplateButtons } from "@/components/action-plan-task-template-buttons";
+import { DepartmentActionPlanManager } from "@/components/department-action-plan-manager";
 import { BookOpen, CalendarCheck, CheckCircle2, ClipboardList, Clock, Download, Edit, FileSearch2, FileText, FileUp, Filter, Gavel, Info, MailOpen, Play, Plus, Save, Search, Smile, Trash2, TriangleAlert, X, XCircle } from "lucide-react";
 import {
   approvePermissionRequest,
@@ -183,6 +185,7 @@ export function DisciplineClient({
   initialPermissionStatus,
   initialMemberId,
   canManage,
+  canManageActionPlans,
   canViewProbation,
   startDate,
   endDate,
@@ -203,6 +206,7 @@ export function DisciplineClient({
   initialPermissionStatus: string;
   initialMemberId: number | null;
   canManage: boolean;
+  canManageActionPlans: boolean;
   canViewProbation: boolean;
   startDate: string;
   endDate: string;
@@ -1916,6 +1920,14 @@ export function DisciplineClient({
               )}
             </div>
           ) : activeTab === "action-plans" ? (
+            <DepartmentActionPlanManager
+              department="discipline"
+              departmentLabel="Discipline"
+              currentYear={new Date().getFullYear()}
+              actionPlans={actionPlans}
+              canManage={canManageActionPlans}
+            />
+          ) : activeTab === "__legacy-action-plans" ? (
             <div className="space-y-3 sm:space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <h3 className="text-lg font-semibold text-gray-800">Action Plans</h3>
@@ -1965,6 +1977,11 @@ export function DisciplineClient({
                           <button type="button" onClick={() => openTaskModal(plan)} className="inline-flex justify-center rounded-lg bg-green-50 px-2 py-1.5 text-green-700 hover:bg-green-100 sm:px-3 sm:py-2" title="Create task">
                             <Plus className="size-4" />
                           </button>
+                          <ActionPlanTaskTemplateButtons
+                            planId={plan.id}
+                            onResult={(result) => setNotice({ title: result.ok ? "Tasks Imported" : "Task Import Failed", message: result.message })}
+                            buttonClassName="rounded-lg border border-emerald-100 bg-emerald-50 px-2 py-1.5 hover:bg-emerald-100 sm:px-3 sm:py-2"
+                          />
                           <button type="button" onClick={() => exportActionPlanTasks(plan)} className="inline-flex justify-center rounded-lg bg-indigo-50 px-2 py-1.5 text-indigo-700 hover:bg-indigo-100 sm:px-3 sm:py-2" title="Export tasks">
                             <FileText className="size-4" />
                           </button>

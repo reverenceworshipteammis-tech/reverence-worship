@@ -16,6 +16,10 @@ test("database retry recognizes transient errors nested in a cause", () => {
   assert.equal(isTransientDatabaseError(error), true);
 });
 
+test("database retry recognizes Neon WebSocket error events", () => {
+  assert.equal(isTransientDatabaseError({ type: "error" }), true);
+});
+
 test("database retry does not retry permanent Prisma errors", () => {
   assert.equal(isTransientDatabaseError({ code: "P2002", message: "Unique constraint failed" }), false);
   assert.equal(isTransientDatabaseError({ code: "P2025", message: "Record not found" }), false);

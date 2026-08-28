@@ -55,7 +55,7 @@ export function IntercessionSubmissionsClient({
   form,
   submissions,
 }: {
-  form: ResponseManagementForm & { generatedAtIso: string; createdAtIso: string; version: number; title: string; description: string | null; isQuiz: boolean; releaseGrade: string; canDeleteSubmissions: boolean; canGradeSubmissions: boolean; includeTimestamps: boolean; exportQuestions: Array<{ questionId: string; questionIndex: number; question: string }>; analyticsQuestions: IntercessionAnalyticsQuestion[]; responseActivity: Array<{ id: number; action: string; actor: string; createdAt: string }> };
+  form: ResponseManagementForm & { version: number; title: string; description: string | null; isQuiz: boolean; releaseGrade: string; canDeleteSubmissions: boolean; canGradeSubmissions: boolean; includeTimestamps: boolean; exportQuestions: Array<{ questionId: string; questionIndex: number; question: string }>; analyticsQuestions: IntercessionAnalyticsQuestion[]; responseActivity: Array<{ id: number; action: string; actor: string; createdAt: string }> };
   submissions: SubmissionRow[];
 }) {
   const { confirm } = useAppDialog();
@@ -250,7 +250,6 @@ export function IntercessionSubmissionsClient({
 
         {activeView === "summary" ? (
           <div className="space-y-4 bg-slate-50 p-3 sm:p-5">
-            <ResponseOverview submissions={activeSubmissions} generatedAtIso={form.generatedAtIso} formCreatedAtIso={form.createdAtIso} />
             {responseSummaries.length ? responseSummaries.map((summary) => (
               <IntercessionResponseSummaryCard key={summary.questionId} summary={summary} fullExcelHref={form.allowExport ? `/admin/intercession/forms/${form.id}/submissions/export` : undefined} onSeriesSelect={setAnswerDrilldown} />
             )) : <ResponseAnalyticsEmpty />}
@@ -561,41 +560,6 @@ function FilterSelect({ label, value, onChange, options }: { label: string; valu
 
 function BulkButton({ label, onClick, tone = "default" }: { label: string; onClick: () => void; tone?: "default" | "danger" }) {
   return <button type="button" onClick={onClick} className={`rounded-lg border px-3 py-1.5 font-semibold ${tone === "danger" ? "border-red-200 bg-white text-red-700" : "border-blue-200 bg-white text-blue-700"}`}>{label}</button>;
-}
-
-function ResponseOverview({ submissions, generatedAtIso, formCreatedAtIso }: { submissions: SubmissionRow[]; generatedAtIso: string; formCreatedAtIso: string }) {
-  const todayKey = kigaliDateKey(generatedAtIso);
-  const createdKey = kigaliDateKey(formCreatedAtIso);
-  const createdDay = kigaliCalendarDay(createdKey);
-  const today = kigaliCalendarDay(todayKey);
-  const trendStart = createdDay <= today ? createdDay : today;
-  const dayCount = Math.max(1, Math.floor((today.getTime() - trendStart.getTime()) / 86_400_000) + 1);
-  const responsesByDay = new Map<string, number>();
-  submissions.forEach((submission) => {
-    const key = kigaliDateKey(submission.submittedAtIso);
-    responsesByDay.set(key, (responsesByDay.get(key) ?? 0) + 1);
-  });
-  const showYear = trendStart.getUTCFullYear() !== today.getUTCFullYear();
-  const trend = Array.from({ length: dayCount }, (_, index) => {
-    const date = new Date(trendStart.getTime() + index * 86_400_000);
-    const key = kigaliDateKey(date.toISOString());
-    return { key, label: date.toLocaleDateString(undefined, { month: "short", day: "numeric", ...(showYear ? { year: "2-digit" as const } : {}), timeZone: "Africa/Kigali" }), count: responsesByDay.get(key) ?? 0 };
-  });
-  const max = Math.max(1, ...trend.map((item) => item.count));
-  const createdLabel = new Date(formCreatedAtIso).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric", timeZone: "Africa/Kigali" });
-  return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div><h2 className="text-sm font-bold text-slate-900">Responses since form creation</h2><p className="mt-0.5 text-xs text-slate-500">Daily responses from {createdLabel}</p><div className="mt-3 overflow-x-auto pb-2"><div className="flex h-40 items-end gap-1.5" role="img" aria-label={`Daily response trend from ${createdLabel}`} style={{ minWidth: "100%", width: trend.length > 21 ? `${trend.length * 54}px` : "100%" }}>{trend.map((item) => <div key={item.key} className="flex min-w-0 flex-1 flex-col items-center justify-end gap-1" aria-label={`${item.label}: ${item.count} responses`} title={`${item.label}: ${item.count} responses`}><span className="text-[10px] font-semibold text-slate-500">{item.count || ""}</span><div className="w-full rounded-t bg-blue-500" style={{ height: `${Math.max(item.count ? 8 : 2, item.count / max * 104)}px` }} /><span className="text-[9px] text-slate-400">{item.label}</span></div>)}</div></div></div>
-    </section>
-  );
-}
-
-function kigaliDateKey(value: string) {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Kigali", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(value));
-}
-
-function kigaliCalendarDay(key: string) {
-  return new Date(`${key}T12:00:00+02:00`);
 }
 
 function IndividualResponseView({ submissions, selectedId, onSelectedId, onReview }: { submissions: SubmissionRow[]; selectedId: number | null; onSelectedId: (id: number | null) => void; onReview: (submission: SubmissionRow) => void }) {

@@ -22,6 +22,7 @@ const TRANSIENT_DATABASE_CODES = new Set([
   "P1017",
   "P2024",
   "P2037",
+  "WEBSOCKET_ERROR_EVENT",
 ]);
 
 function errorDetails(error: unknown) {
@@ -35,8 +36,9 @@ function errorDetails(error: unknown) {
       break;
     }
 
-    const candidate = current as { code?: unknown; message?: unknown; cause?: unknown };
+    const candidate = current as { code?: unknown; message?: unknown; cause?: unknown; type?: unknown };
     if (typeof candidate.code === "string") codes.push(candidate.code.toUpperCase());
+    if (candidate.type === "error" && typeof candidate.code !== "string" && (typeof candidate.message !== "string" || !candidate.message)) codes.push("WEBSOCKET_ERROR_EVENT");
     if (typeof candidate.message === "string") messages.push(candidate.message);
     current = candidate.cause;
   }

@@ -3,6 +3,8 @@
 import { FormEvent, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ActionNotice } from "@/components/action-notice";
+import { ActionPlanTaskTemplateButtons } from "@/components/action-plan-task-template-buttons";
+import { DepartmentActionPlanManager } from "@/components/department-action-plan-manager";
 import {
   AlertTriangle,
   Calendar,
@@ -133,6 +135,7 @@ type SocialActionPlan = {
   status: string;
   priority: string;
   progress: number;
+  createdByName: string;
   createdAt: string;
   tasks: SocialActionPlanTask[];
 };
@@ -178,6 +181,7 @@ function emptyActionPlanTask(): ActionPlanTaskDraft {
 
 export function SocialFellowshipClient({
   selectedYear,
+  canManageActionPlans,
   families,
   availableUsers,
   users,
@@ -185,6 +189,7 @@ export function SocialFellowshipClient({
   actionPlans,
 }: {
   selectedYear: number;
+  canManageActionPlans: boolean;
   families: SocialFamily[];
   availableUsers: AvailableUser[];
   users: SocialUser[];
@@ -659,6 +664,14 @@ export function SocialFellowshipClient({
           </div>
         </section>
       ) : activeTab === "actionPlans" ? (
+        <DepartmentActionPlanManager
+          department="social-fellowship"
+          departmentLabel="Social Fellowship"
+          currentYear={selectedYear}
+          actionPlans={actionPlans}
+          canManage={canManageActionPlans}
+        />
+      ) : activeTab === "__legacy-action-plans" ? (
         <section className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm sm:p-6">
           <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -784,6 +797,7 @@ export function SocialFellowshipClient({
                         </div>
                       </div>
                       <div className="flex gap-2">
+                        <ActionPlanTaskTemplateButtons planId={plan.id} onResult={setNotice} />
                         <button type="button" onClick={() => { setViewingActionPlan(plan); setModal("viewActionPlan"); }} className="rounded-lg border border-gray-200 px-3 py-2 text-gray-600 hover:text-gray-900" title="View">
                           <FileSearch2 className="size-4" />
                         </button>

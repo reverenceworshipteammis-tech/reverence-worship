@@ -96,6 +96,7 @@ export default async function DisciplinePage({
         initialPermissionStatus={["pending", "approved", "rejected"].includes(params.status ?? "") ? params.status! : "all"}
         initialMemberId={null}
         canManage={false}
+        canManageActionPlans={false}
         canViewProbation={false}
         startDate={dateValue(startDate)}
         endDate={dateValue(endDate)}
@@ -263,7 +264,7 @@ export default async function DisciplinePage({
         include: {
           creator: { select: { id: true, name: true, email: true } },
           tasks: {
-            orderBy: { createdAt: "asc" },
+            orderBy: [{ deadline: "asc" }, { createdAt: "asc" }],
           },
         },
       }),
@@ -287,6 +288,7 @@ export default async function DisciplinePage({
       initialPermissionStatus={["pending", "approved", "rejected"].includes(params.status ?? "") ? params.status! : "all"}
       initialMemberId={Number(params.member) || null}
       canManage
+      canManageActionPlans={permissionSetHas(permissions, "discipline", "manage-action-plans")}
       canViewProbation={canViewProbation}
       startDate={dateValue(startDate)}
       endDate={dateValue(endDate)}

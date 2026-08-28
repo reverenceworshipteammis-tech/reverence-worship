@@ -129,8 +129,6 @@ export default async function IntercessionFormSubmissionsPage({
     <IntercessionSubmissionsClient
       form={{
         id: form.id,
-        generatedAtIso: new Date().toISOString(),
-        createdAtIso: form.createdAt.toISOString(),
         title: form.title,
         description: form.description,
         version: form.version,

@@ -86,6 +86,7 @@ const navGroups: Array<{ label: string; items: NavItem[] }> = [
       { label: "Social Fellowship DPT", href: "/admin/social-fellowship", page: "social-fellowship", feature: "view", icon: ClipboardList },
       { label: "Discipline DPT", href: "/admin/discipline", page: "discipline", feature: "view", icon: Gavel },
       { label: "Financial DPT", href: "/admin/finance", page: "finance", feature: "view", icon: ChartLine },
+      { label: "All Action Plans", href: "/admin/action-plans", page: "reports", feature: "view", icon: ClipboardList },
       { label: "Permission Manager", href: "/admin/permissions", page: "permissions", icon: Lock },
       { label: "Settings", href: "/admin/settings", page: "settings", icon: Settings },
     ],

@@ -152,7 +152,7 @@ export default async function FinancePage() {
         orderBy: { createdAt: "desc" },
         include: {
           tasks: {
-            orderBy: { createdAt: "desc" },
+            orderBy: [{ deadline: "asc" }, { createdAt: "asc" }],
             include: { assignee: { select: { id: true, name: true } } },
           },
           creator: { select: { id: true, name: true } },
@@ -178,6 +178,7 @@ export default async function FinancePage() {
         export: permissionSetHas(permissionSet, "finance", "export"),
         reconcile: permissionSetHas(permissionSet, "finance", "reconcile"),
         viewReports: permissionSetHas(permissionSet, "finance", "view-reports"),
+        manageActionPlans: permissionSetHas(permissionSet, "finance", "manage-action-plans"),
       }}
       users={users.map((item) => ({
         id: item.id,

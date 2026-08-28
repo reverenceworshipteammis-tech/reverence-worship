@@ -14,7 +14,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!Number.isInteger(formId) || formId <= 0) return new Response("Invalid form.", { status: 400 });
   const form = await prisma.spiritualForm.findUnique({
     where: { id: formId },
-    include: { submissions: { orderBy: { submittedAt: "desc" }, include: { user: { select: { name: true } } } } },
+    include: { submissions: { orderBy: [{ submittedAt: "asc" }, { id: "asc" }], include: { user: { select: { name: true } } } } },
   });
   if (!form) return new Response("Form not found.", { status: 404 });
   const settings = parseIntercessionFormSettings(form.settings);
@@ -70,9 +70,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   });
 
   const visitorColumns = Array.from(new Map(prepared.flatMap((row) => row.visitorDetails.map((detail) => [detail.fieldId, detail.label] as const))).entries());
-  const responseHeader: XlsxCell[] = ["Response ID", "Responder", "Type", ...visitorColumns.map(([, label]) => label), ...(settings.include_timestamps ? ["Submitted"] : []), ...catalog.map((question, index) => `Q${index + 1}: ${plain(question.label)}`), ...(settings.is_quiz ? ["Score"] : [])];
-  const responseRows: XlsxCell[][] = prepared.map((row) => [
-    row.submission.id,
+  const responseHeader: XlsxCell[] = ["No.", "Responder", "Type", ...visitorColumns.map(([, label]) => label), ...(settings.include_timestamps ? ["Submitted"] : []), ...catalog.map((question, index) => `Q${index + 1}: ${plain(question.label)}`), ...(settings.is_quiz ? ["Score"] : [])];
+  const responseRows: XlsxCell[][] = prepared.map((row, index) => [
+    index + 1,
     row.name,
     row.type,
     ...visitorColumns.map(([fieldId]) => {

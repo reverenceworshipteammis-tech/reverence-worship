@@ -5,6 +5,8 @@ import type { FormEvent, ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useAppDialog } from "@/components/app-dialog-provider";
 import { ActionNotice } from "@/components/action-notice";
+import { ActionPlanTaskTemplateButtons } from "@/components/action-plan-task-template-buttons";
+import { DepartmentActionPlanManager } from "@/components/department-action-plan-manager";
 import { EventContributionsClient, type FinanceContributionEvent } from "@/components/event-contributions-client";
 import {
   AlertTriangle,
@@ -146,6 +148,7 @@ type FinancePermissions = {
   export: boolean;
   reconcile: boolean;
   viewReports: boolean;
+  manageActionPlans: boolean;
 };
 
 type Sponsor = {
@@ -498,6 +501,14 @@ export function FinanceClient({
               onEndDateChange={setEndDate}
             />
           ) : activeTab === "action-plans" ? (
+            <DepartmentActionPlanManager
+              department="finance"
+              departmentLabel="Finance"
+              currentYear={year}
+              actionPlans={actionPlans}
+              canManage={permissions.manageActionPlans}
+            />
+          ) : activeTab === "__legacy-action-plans" ? (
             <FinanceActionPlansTab currentYear={year} actionPlans={actionPlans} />
           ) : (
             <FinanceSettingsTab currentYear={year} settings={termSettings} />
@@ -760,6 +771,7 @@ function FinanceActionPlansTab({ currentYear, actionPlans }: { currentYear: numb
                   <button type="button" onClick={() => setTaskModal({ plan })} className="text-green-600 hover:text-green-700" title="Create task">
                     <PlusCircle className="size-4" />
                   </button>
+                  <ActionPlanTaskTemplateButtons planId={plan.id} onResult={setMessage} buttonClassName="rounded-lg border border-gray-200 p-2 hover:bg-gray-50" />
                   <button type="button" onClick={() => exportTasks(plan)} className="text-indigo-600 hover:text-indigo-700" title="Export tasks">
                     <FileUp className="size-4" />
                   </button>

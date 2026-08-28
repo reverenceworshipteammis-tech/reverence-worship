@@ -1,4 +1,4 @@
-import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaNeon } from "@prisma/adapter-neon";
 import { PrismaClient } from "@/generated/prisma/client";
 
 const globalForPrisma = globalThis as unknown as {
@@ -6,7 +6,7 @@ const globalForPrisma = globalThis as unknown as {
   prismaSchemaVersion?: string;
 };
 
-const PRISMA_SCHEMA_VERSION = "2026-08-19-database-pool-resilience";
+const PRISMA_SCHEMA_VERSION = "2026-08-28-neon-websocket-transport";
 
 function databaseUrl() {
   const value = process.env.DATABASE_URL;
@@ -29,15 +29,13 @@ function databasePoolMax() {
   return Math.min(10, Math.max(1, configured));
 }
 
-const adapter = new PrismaPg({
+const adapter = new PrismaNeon({
   connectionString: databaseUrl(),
-  // Leave enough local capacity for the parallel queries used by authenticated
-  // layouts while keeping the Neon pooled endpoint's connection usage bounded.
+  // Neon WebSockets use port 443, avoiding networks that block PostgreSQL's
+  // port 5432 while retaining sessions and interactive transaction support.
   max: databasePoolMax(),
   connectionTimeoutMillis: 30_000,
   idleTimeoutMillis: 60_000,
-  keepAlive: true,
-  keepAliveInitialDelayMillis: 5_000,
 });
 
 const existingPrisma = globalForPrisma.prisma;

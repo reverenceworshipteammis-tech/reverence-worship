@@ -4,6 +4,8 @@ import { FormEvent, TouchEvent as ReactTouchEvent, useEffect, useMemo, useRef, u
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ActionNotice } from "@/components/action-notice";
+import { ActionPlanTaskTemplateButtons } from "@/components/action-plan-task-template-buttons";
+import { DepartmentActionPlanManager } from "@/components/department-action-plan-manager";
 import { IntercessionRichText } from "@/components/intercession-rich-text";
 import { intercessionRichTextToPlainText } from "@/lib/intercession-rich-text";
 import {
@@ -599,6 +601,14 @@ export function IntercessionClient({
       {notice ? <IntercessionNoticeBanner notice={notice} onClose={() => setNotice(null)} /> : null}
 
       {activeTab === "actions" ? (
+        <DepartmentActionPlanManager
+          department="intercession"
+          departmentLabel="Intercession & Spiritual"
+          currentYear={new Date().getFullYear()}
+          actionPlans={actionPlans}
+          canManage={permissions.canManageActionPlans}
+        />
+      ) : activeTab === "__legacy-actions" ? (
         <div className="space-y-5 rounded-xl bg-white p-4 shadow-md sm:p-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -659,6 +669,7 @@ export function IntercessionClient({
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <button type="button" onClick={() => setTaskModal({ plan })} className="rounded-lg bg-green-50 px-3 py-2 text-green-700 hover:bg-green-100" title="Create task"><Plus className="size-4" /></button>
+                      <ActionPlanTaskTemplateButtons planId={plan.id} onResult={setNotice} />
                       <button type="button" onClick={() => exportActionPlanTasks(plan)} className="rounded-lg border border-gray-200 px-3 py-2 text-indigo-600 hover:bg-indigo-50" title="Export tasks"><Download className="size-4" /></button>
                       <button type="button" onClick={() => setViewPlan(plan)} className="rounded-lg border border-gray-200 px-3 py-2 text-purple-600 hover:bg-purple-50" title="View advanced plan"><FileText className="size-4" /></button>
                       <button type="button" onClick={() => setPlanModal(plan)} className="rounded-lg border border-gray-200 px-3 py-2 text-blue-600 hover:bg-blue-50" title="Edit"><Pencil className="size-4" /></button>

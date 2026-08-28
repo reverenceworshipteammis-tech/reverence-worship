@@ -1,8 +1,8 @@
 import "dotenv/config";
-import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaNeon } from "@prisma/adapter-neon";
 import { PrismaClient } from "../src/generated/prisma/client";
 
-const adapter = new PrismaPg({
+const adapter = new PrismaNeon({
   connectionString: process.env.DATABASE_URL,
 });
 
@@ -86,7 +86,7 @@ const modules = [
   ["performance", "My Performance", "/performance", "BarChart3"],
   ["parent", "Parent Dashboard", "/parent", "Home"],
   ["announcements", "Announcements", "/announcements", "Megaphone"],
-  ["reports", "Reports", "/reports", "BarChart3"],
+  ["reports", "All Action Plans", "/admin/action-plans", "ClipboardList"],
   ["settings", "Settings", "/settings", "Settings"],
   ["permissions", "Permission Manager", "/permissions", "Lock"],
 ] as const;

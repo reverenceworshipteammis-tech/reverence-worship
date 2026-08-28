@@ -1,5 +1,5 @@
 import { SocialFellowshipClient } from "@/components/social-fellowship-client";
-import { requirePageAccess } from "@/lib/auth";
+import { getUserPermissionSet, permissionSetHas, requirePageAccess } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
 
@@ -20,7 +20,8 @@ export default async function SocialFellowshipPage({
 }: {
   searchParams: Promise<{ year?: string }>;
 }) {
-  await requirePageAccess("social-fellowship");
+  const user = await requirePageAccess("social-fellowship");
+  const permissions = await getUserPermissionSet(user);
   const params = await searchParams;
   const selectedYear = Number(params.year) || new Date().getFullYear();
 
@@ -82,8 +83,9 @@ export default async function SocialFellowshipPage({
       orderBy: { createdAt: "desc" },
       include: {
         family: { select: { name: true } },
+        creator: { select: { name: true } },
         tasks: {
-          orderBy: { createdAt: "asc" },
+          orderBy: [{ deadline: "asc" }, { createdAt: "asc" }],
           include: {
             assignee: { select: { id: true, name: true, email: true } },
           },
@@ -95,6 +97,7 @@ export default async function SocialFellowshipPage({
   return (
     <SocialFellowshipClient
       selectedYear={selectedYear}
+      canManageActionPlans={permissionSetHas(permissions, "social-fellowship", "manage-action-plans")}
       families={families.map((family) => ({
         id: family.id,
         name: family.name,
@@ -163,6 +166,7 @@ export default async function SocialFellowshipPage({
         status: plan.status,
         priority: plan.priority,
         progress: plan.progress,
+        createdByName: plan.creator?.name ?? "System",
         createdAt: formatDate(plan.createdAt),
         tasks: plan.tasks.map((task) => ({
           id: task.id,

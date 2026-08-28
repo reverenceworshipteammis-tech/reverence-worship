@@ -4,6 +4,8 @@ import { FormEvent, useMemo, useRef, useState, useTransition } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ActionNotice } from "@/components/action-notice";
+import { ActionPlanTaskTemplateButtons } from "@/components/action-plan-task-template-buttons";
+import { DepartmentActionPlanManager } from "@/components/department-action-plan-manager";
 import {
   compactPlaylistSessions,
   groupPlaylistSessionsByService,
@@ -235,6 +237,7 @@ type MusicActionPlan = {
 
 type MusicClientProps = {
   canManage: boolean;
+  canManageActionPlans: boolean;
   overlayPresets: ProjectionOverlayPreset[];
   playlists: Playlist[];
   songs: Song[];
@@ -1257,6 +1260,7 @@ async function downloadPlaylistImage(playlist: Playlist) {
 
 export function MusicClient({
   canManage,
+  canManageActionPlans,
   overlayPresets,
   playlists,
   songs,
@@ -2053,6 +2057,14 @@ export function MusicClient({
           ) : null}
         </div>
       ) : activeTab === "actionPlan" ? (
+        <DepartmentActionPlanManager
+          department="music-ministry"
+          departmentLabel="Music & Evangelism"
+          currentYear={new Date().getFullYear()}
+          actionPlans={actionPlans}
+          canManage={canManageActionPlans}
+        />
+      ) : activeTab === "__legacy-action-plan" ? (
         <div className="space-y-4 rounded-lg border border-gray-100 bg-white p-3 shadow-sm sm:p-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <h3 className="text-lg font-semibold text-gray-800">Music Action Plans</h3>
@@ -2107,6 +2119,7 @@ export function MusicClient({
                       <button type="button" onClick={() => setTaskModal({ plan })} className="text-green-600 hover:text-green-700" title="Create task">
                         <PlusCircle className="size-4" />
                       </button>
+                      <ActionPlanTaskTemplateButtons planId={plan.id} onResult={setNotice} buttonClassName="rounded-lg border border-gray-200 p-2 hover:bg-gray-50" />
                       <button type="button" onClick={() => exportActionPlanTasks(plan)} className="text-indigo-600 hover:text-indigo-700" title="Export tasks">
                         <FileUp className="size-4" />
                       </button>

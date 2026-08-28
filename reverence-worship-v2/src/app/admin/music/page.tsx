@@ -30,6 +30,7 @@ export default async function MusicPage() {
   const user = await requirePageAccess("music-ministry");
   const permissions = await getUserPermissionSet(user);
   const canManage = permissionSetHas(permissions, "music-ministry", "view");
+  const canManageActionPlans = permissionSetHas(permissions, "music-ministry", "manage-action-plans");
 
   const [playlists, songs, gallery, singers, serviceTeams, boardItems, youtubeVideos, featuredImages, actionPlans, overlayPresetSetting] = await Promise.all([
     prisma.playlist.findMany({
@@ -122,6 +123,7 @@ export default async function MusicPage() {
   return (
     <MusicClient
       canManage={canManage}
+      canManageActionPlans={canManageActionPlans}
       overlayPresets={parseProjectionOverlayPresets(overlayPresetSetting?.value)}
       playlists={playlists.map((playlist) => ({
         id: playlist.id,
