@@ -30,6 +30,15 @@ export function birthdayNotificationKey(userId: number, year: number) {
   return `birthday:${userId}:${year}`;
 }
 
+export function birthdayFollowUpNotificationKey(userId: number, year: number) {
+  return `birthday-follow-up:${userId}:${year}`;
+}
+
+export function birthdayFollowUpMessage(fullName: string, gender: string | null) {
+  const pronoun = gender === "male" ? "him" : gender === "female" ? "her" : "them";
+  return `${fullName.trim() || "A member"} is celebrating a birthday today! Celebrate with ${pronoun}.`;
+}
+
 export function renderBirthdayTemplate(template: string, fullName: string) {
   const normalizedName = fullName.trim();
   const firstName = normalizedName.split(/\s+/)[0] || "there";

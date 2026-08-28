@@ -1,12 +1,12 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { FormEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
+  CalendarDays,
   ChevronDown,
   Download,
-  Eye,
   FileText,
   Pencil,
   Plus,
@@ -157,7 +157,6 @@ export function DepartmentActionPlanManager({ department, departmentLabel, curre
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-lg font-bold text-gray-900">{departmentLabel} Action Plans</h2>
-          <p className="mt-1 text-sm text-gray-500">Create plans first, then add and manage their tasks separately.</p>
         </div>
         {canManage ? (
           <button type="button" onClick={() => setPlanModal("new")} className="inline-flex w-fit items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700">
@@ -372,7 +371,7 @@ function PlanActionsMenu({ plan, canManage, onAddTask, onImportResult, onExport,
             />
           ) : null}
           <MenuButton icon={<Download className="size-4 text-indigo-600" />} label="Export tasks" onClick={() => choose(onExport)} />
-          <MenuButton icon={<Eye className="size-4 text-purple-600" />} label="View action plan" onClick={() => choose(onView)} />
+          <MenuButton icon={<CalendarDays className="size-4 text-purple-600" />} label="View timeline" onClick={() => choose(onView)} />
           {canManage ? <MenuButton icon={<Pencil className="size-4 text-blue-600" />} label="Edit action plan" onClick={() => choose(onEdit)} /> : null}
           {canManage ? <div className="my-1 border-t border-gray-100" /> : null}
           {canManage ? <MenuButton icon={<Trash2 className="size-4 text-red-600" />} label="Delete action plan" danger onClick={() => choose(onDelete)} /> : null}
@@ -387,8 +386,186 @@ function MenuButton({ icon, label, danger = false, onClick }: { icon: React.Reac
 }
 
 function PlanDetailsModal({ plan, onClose }: { plan: DepartmentActionPlan; onClose: () => void }) {
-  const totalBudget = plan.tasks.reduce((sum, task) => sum + taskBudget(task), 0);
-  return <Modal title={plan.title} onClose={onClose} width="max-w-4xl"><div className="space-y-5 p-5"><div className="grid gap-3 rounded-lg bg-gray-50 p-4 text-sm sm:grid-cols-4"><Metric label="Start" value={plan.startDate} /><Metric label="Completion" value={plan.dueDate} /><Metric label="Progress" value={`${plan.progress}%`} /><Metric label="Total budget" value={formatCurrency(totalBudget)} /></div>{plan.description ? <p className="text-sm leading-6 text-gray-600">{plan.description}</p> : null}<div className="overflow-x-auto rounded-lg border"><table className="min-w-full text-sm"><thead className="bg-gray-50 text-left text-xs uppercase text-gray-500"><tr><th className="px-3 py-3">Activity</th><th className="px-3 py-3">Milestone</th><th className="px-3 py-3">Deadline</th><th className="px-3 py-3">Priority</th><th className="px-3 py-3">Progress</th><th className="px-3 py-3">Budget</th></tr></thead><tbody className="divide-y">{plan.tasks.length ? plan.tasks.map((task) => <tr key={task.id}><td className="px-3 py-3 font-medium">{task.activity || task.taskName}</td><td className="px-3 py-3 text-gray-600">{task.targetMilestone || "-"}</td><td className="px-3 py-3 text-gray-600">{task.deadline || "-"}</td><td className="px-3 py-3 capitalize text-gray-600">{task.priority}</td><td className="px-3 py-3 text-gray-600">{task.progress}%</td><td className="px-3 py-3 text-gray-600">{formatCurrency(taskBudget(task))}</td></tr>) : <tr><td colSpan={6} className="px-3 py-8 text-center text-gray-500">No tasks created yet.</td></tr>}</tbody></table></div></div></Modal>;
+  const timeline = useMemo(() => buildTimeline(plan), [plan]);
+
+  return (
+    <Modal title={plan.title} onClose={onClose} width="max-w-7xl">
+      <div className="p-4 sm:p-5">
+        <ActionPlanTimeline plan={plan} timeline={timeline} />
+      </div>
+    </Modal>
+  );
+}
+
+type TimelineMonth = {
+  key: string;
+  label: string;
+  left: number;
+  width: number;
+};
+
+type TimelineModel = {
+  start: Date;
+  end: Date;
+  totalDays: number;
+  chartWidth: number;
+  months: TimelineMonth[];
+  todayPosition: number | null;
+};
+
+function ActionPlanTimeline({ plan, timeline }: { plan: DepartmentActionPlan; timeline: TimelineModel | null }) {
+  const timelineContainerRef = useRef<HTMLDivElement>(null);
+  const [activityWidth, setActivityWidth] = useState<number | null>(null);
+  const orderedTasks = [...plan.tasks].sort(compareTasksByStartDate);
+
+  if (!orderedTasks.length) return <EmptyPlanTasks />;
+  if (!timeline) return <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-10 text-center text-sm text-gray-500">Add plan or task dates to build the timeline.</div>;
+
+  const minimumChartWidth = timeline.chartWidth;
+  const defaultActivityWidthCss = `min(420px, max(220px, calc(100% - ${minimumChartWidth}px)))`;
+  const activityWidthCss = activityWidth === null ? defaultActivityWidthCss : `${activityWidth}px`;
+  const chartWidthCss = activityWidth === null ? `max(${minimumChartWidth}px, calc(100% - ${defaultActivityWidthCss}))` : `max(${minimumChartWidth}px, calc(100% - ${activityWidth}px))`;
+  const contentWidthCss = activityWidth === null ? `max(100%, ${220 + minimumChartWidth}px)` : `max(100%, ${activityWidth + minimumChartWidth}px)`;
+
+  function resizeActivityColumn(clientX: number) {
+    const container = timelineContainerRef.current;
+    if (!container) return;
+    const bounds = container.getBoundingClientRect();
+    const maximum = Math.max(220, bounds.width - 280);
+    setActivityWidth(Math.min(maximum, Math.max(180, clientX - bounds.left)));
+  }
+
+  function startResize(event: ReactPointerEvent<HTMLSpanElement>) {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    resizeActivityColumn(event.clientX);
+  }
+
+  function continueResize(event: ReactPointerEvent<HTMLSpanElement>) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) resizeActivityColumn(event.clientX);
+  }
+
+  function stopResize(event: ReactPointerEvent<HTMLSpanElement>) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  }
+
+  function resizeWithKeyboard(event: ReactKeyboardEvent<HTMLSpanElement>) {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    const container = timelineContainerRef.current;
+    if (!container) return;
+    const currentWidth = activityWidth ?? Math.min(420, Math.max(220, container.clientWidth - minimumChartWidth));
+    const maximum = Math.max(220, container.clientWidth - 280);
+    const nextWidth = currentWidth + (event.key === "ArrowRight" ? 20 : -20);
+    setActivityWidth(Math.min(maximum, Math.max(180, nextWidth)));
+  }
+
+  const resizeHandleProps = { onPointerDown: startResize, onPointerMove: continueResize, onPointerUp: stopResize, onPointerCancel: stopResize, onKeyDown: resizeWithKeyboard };
+
+  return (
+    <div>
+      <div className="mb-3 flex flex-wrap gap-x-4 gap-y-2 text-xs text-gray-500">
+        <TimelineLegend color="bg-blue-600" label="In progress" />
+        <TimelineLegend color="bg-emerald-600" label="Completed" />
+        <TimelineLegend color="bg-rose-600" label="Overdue" />
+        <TimelineLegend color="bg-amber-500" label="Not started" />
+        <span className="text-gray-400">A diamond marks a task without a start date.</span>
+      </div>
+
+      <div className="space-y-3 md:hidden">
+        {orderedTasks.map((task) => <TimelineTaskCard key={task.id} task={task} />)}
+      </div>
+
+      <div ref={timelineContainerRef} className="hidden max-h-[calc(92vh-150px)] overflow-auto rounded-xl border border-gray-200 bg-white md:block">
+        <div style={{ width: contentWidthCss }}>
+          <div className="sticky top-0 z-40 flex border-b border-gray-200 bg-gray-50">
+            <div className="sticky left-0 z-40 flex shrink-0 items-center border-r border-gray-200 bg-gray-50 px-3 py-3 text-[11px] font-bold uppercase tracking-wide text-gray-500 shadow-[5px_0_10px_-8px_rgba(15,23,42,0.45)]" style={{ width: activityWidthCss }}>Activity<ActivityResizeHandle {...resizeHandleProps} /></div>
+            <div className="relative flex h-12 shrink-0" style={{ width: chartWidthCss }}>
+              {timeline.months.map((month) => <div key={month.key} className="flex shrink-0 items-center justify-center border-r border-gray-200 px-1 text-[10px] font-semibold text-gray-600" style={{ width: `${month.width}%` }}>{month.label}</div>)}
+              {timeline.todayPosition !== null ? <div className="absolute inset-y-0 z-10 w-px bg-rose-500" style={{ left: `${timeline.todayPosition}%` }}><span className="absolute left-1 top-1 text-[9px] font-bold uppercase text-rose-600">Today</span></div> : null}
+            </div>
+          </div>
+
+          {orderedTasks.map((task) => <TimelineRow key={task.id} task={task} timeline={timeline} activityWidth={activityWidthCss} chartWidth={chartWidthCss} resizeHandleProps={resizeHandleProps} />)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type ActivityResizeHandleProps = {
+  onPointerDown: (event: ReactPointerEvent<HTMLSpanElement>) => void;
+  onPointerMove: (event: ReactPointerEvent<HTMLSpanElement>) => void;
+  onPointerUp: (event: ReactPointerEvent<HTMLSpanElement>) => void;
+  onPointerCancel: (event: ReactPointerEvent<HTMLSpanElement>) => void;
+  onKeyDown: (event: ReactKeyboardEvent<HTMLSpanElement>) => void;
+};
+
+function ActivityResizeHandle(props: ActivityResizeHandleProps) {
+  return (
+    <span
+      role="separator"
+      aria-label="Resize activity column"
+      aria-orientation="vertical"
+      tabIndex={0}
+      title="Drag to resize the activity column"
+      className="group absolute -right-1 top-0 z-50 flex h-full w-2 touch-none cursor-col-resize items-center justify-center outline-none"
+      {...props}
+    >
+      <span className="h-full w-px bg-gray-200 transition group-hover:w-0.5 group-hover:bg-blue-500 group-focus:w-0.5 group-focus:bg-blue-500" aria-hidden="true" />
+    </span>
+  );
+}
+
+function TimelineRow({ task, timeline, activityWidth, chartWidth, resizeHandleProps }: { task: DepartmentActionPlanTask; timeline: TimelineModel; activityWidth: string; chartWidth: string; resizeHandleProps: ActivityResizeHandleProps }) {
+  const placement = taskPlacement(task, timeline);
+  const tone = taskTimelineTone(task);
+  const label = task.activity || task.taskName;
+
+  return (
+    <div className="flex min-h-12 border-b border-gray-100 last:border-b-0">
+      <div className="sticky left-0 z-30 flex shrink-0 flex-col justify-center border-r border-gray-200 bg-white px-3 py-2 shadow-[5px_0_10px_-8px_rgba(15,23,42,0.45)]" style={{ width: activityWidth }}>
+        <p className="truncate text-sm font-semibold text-gray-800" title={label}>{label}</p>
+        <ActivityResizeHandle {...resizeHandleProps} />
+      </div>
+      <div className="relative h-12 shrink-0 bg-white" style={{ width: chartWidth }}>
+        {timeline.months.map((month) => <span key={month.key} className="absolute inset-y-0 border-r border-gray-100" style={{ left: `${month.left + month.width}%` }} />)}
+        {timeline.todayPosition !== null ? <span className="absolute inset-y-0 z-10 w-px bg-rose-300" style={{ left: `${timeline.todayPosition}%` }} /> : null}
+        {placement ? (
+          <div
+            className={`absolute top-1/2 z-20 -translate-y-1/2 overflow-hidden border shadow-sm ${placement.point ? `size-4 rotate-45 rounded-sm ${tone.track}` : `h-7 rounded-full ${tone.track}`}`}
+            style={{ left: `${placement.left}%`, width: placement.point ? undefined : `max(${placement.width}%, 20px)`, transform: placement.point ? "translate(-50%, -50%) rotate(45deg)" : undefined }}
+            title={timelineTaskTitle(task)}
+            aria-label={timelineTaskTitle(task)}
+          >
+            {!placement.point ? <><span className={`absolute inset-y-0 left-0 ${tone.fill}`} style={{ width: `${clampProgress(task.progress)}%` }} /><span className="relative z-10 block truncate px-3 py-1 text-[11px] font-semibold text-gray-800">{task.progress}%</span></> : null}
+          </div>
+        ) : <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs italic text-gray-400">No task dates</span>}
+      </div>
+    </div>
+  );
+}
+
+function TimelineTaskCard({ task }: { task: DepartmentActionPlanTask }) {
+  const tone = taskTimelineTone(task);
+  return (
+    <article className="rounded-xl border border-gray-200 bg-white p-4">
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="text-sm font-semibold text-gray-900">{task.activity || task.taskName}</h3>
+        <span className={`size-2.5 shrink-0 rounded-full ${tone.dot}`} aria-hidden="true" />
+      </div>
+      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500"><span>Start: {task.startDate || "Not set"}</span><span>Deadline: {task.deadline || "Not set"}</span></div>
+      <div className="mt-3"><TaskProgress progress={task.progress} /></div>
+    </article>
+  );
+}
+
+function EmptyPlanTasks() {
+  return <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-10 text-center"><CalendarDays className="mx-auto size-9 text-gray-300" aria-hidden="true" /><p className="mt-2 text-sm font-medium text-gray-600">No tasks created yet.</p></div>;
+}
+
+function TimelineLegend({ color, label }: { color: string; label: string }) {
+  return <span className="inline-flex items-center gap-1.5"><span className={`size-2.5 rounded-full ${color}`} aria-hidden="true" />{label}</span>;
 }
 
 function Modal({ title, onClose, width = "max-w-2xl", children }: { title: string; onClose: () => void; width?: string; children: React.ReactNode }) {
@@ -427,6 +604,102 @@ function csvCell(value: string | number) {
   const text = String(value);
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
+
+const DAY_IN_MS = 86_400_000;
+
+function buildTimeline(plan: DepartmentActionPlan): TimelineModel | null {
+  const planStart = parseDateKey(planStartRaw(plan));
+  const planEnd = parseDateKey(planDueRaw(plan));
+  const taskDates = plan.tasks.flatMap((task) => [parseDateKey(taskStartRaw(task)), parseDateKey(taskDeadlineRaw(task))]).filter((date): date is Date => date !== null);
+  const dates = [planStart, planEnd, ...taskDates].filter((date): date is Date => date !== null);
+  if (!dates.length) return null;
+
+  const firstDate = new Date(Math.min(...dates.map((date) => date.getTime())));
+  const lastDate = new Date(Math.max(...dates.map((date) => date.getTime())));
+  const start = new Date(Date.UTC(firstDate.getUTCFullYear(), firstDate.getUTCMonth(), 1));
+  const end = new Date(Date.UTC(lastDate.getUTCFullYear(), lastDate.getUTCMonth() + 1, 0));
+  const totalDays = daysBetween(start, end) + 1;
+  const months: TimelineMonth[] = [];
+
+  for (let cursor = new Date(start); cursor <= end; cursor = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1))) {
+    const nextMonth = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1));
+    const days = daysBetween(cursor, nextMonth);
+    months.push({
+      key: cursor.toISOString().slice(0, 7),
+      label: new Intl.DateTimeFormat("en", { month: "short", year: "numeric", timeZone: "UTC" }).format(cursor),
+      left: percentage(daysBetween(start, cursor), totalDays),
+      width: percentage(days, totalDays),
+    });
+  }
+
+  const today = parseDateKey(currentKigaliDateKey());
+  const todayPosition = today && today >= start && today <= end ? percentage(daysBetween(start, today), totalDays) : null;
+  return {
+    start,
+    end,
+    totalDays,
+    chartWidth: Math.max(480, months.length * 56),
+    months,
+    todayPosition,
+  };
+}
+
+function taskPlacement(task: DepartmentActionPlanTask, timeline: TimelineModel) {
+  const start = parseDateKey(taskStartRaw(task));
+  const end = parseDateKey(taskDeadlineRaw(task));
+  if (!start && !end) return null;
+  if (!start || !end) {
+    const pointDate = start ?? end!;
+    return { left: clampPercentage(percentage(daysBetween(timeline.start, pointDate), timeline.totalDays)), width: 0, point: true };
+  }
+  const first = start <= end ? start : end;
+  const last = start <= end ? end : start;
+  return {
+    left: clampPercentage(percentage(daysBetween(timeline.start, first), timeline.totalDays)),
+    width: Math.max(0, percentage(daysBetween(first, last) + 1, timeline.totalDays)),
+    point: false,
+  };
+}
+
+function taskTimelineTone(task: DepartmentActionPlanTask) {
+  const completed = task.progress >= 100 || normalizeStatus(task.status) === "completed";
+  const overdue = Boolean(taskDeadlineRaw(task) && taskDeadlineRaw(task) < currentKigaliDateKey() && !completed);
+  if (completed) return { track: "border-emerald-300 bg-emerald-100", fill: "bg-emerald-500", dot: "bg-emerald-600" };
+  if (overdue) return { track: "border-rose-300 bg-rose-100", fill: "bg-rose-500", dot: "bg-rose-600" };
+  if (task.progress > 0 || normalizeStatus(task.status) === "in_progress") return { track: "border-blue-300 bg-blue-100", fill: "bg-blue-500", dot: "bg-blue-600" };
+  return { track: "border-amber-300 bg-amber-100", fill: "bg-amber-400", dot: "bg-amber-500" };
+}
+
+function compareTasksByStartDate(first: DepartmentActionPlanTask, second: DepartmentActionPlanTask) {
+  const firstStart = taskStartRaw(first) || taskDeadlineRaw(first) || "9999-12-31";
+  const secondStart = taskStartRaw(second) || taskDeadlineRaw(second) || "9999-12-31";
+  return firstStart.localeCompare(secondStart)
+    || (taskDeadlineRaw(first) || "9999-12-31").localeCompare(taskDeadlineRaw(second) || "9999-12-31")
+    || (first.activity || first.taskName).localeCompare(second.activity || second.taskName);
+}
+
+function timelineTaskTitle(task: DepartmentActionPlanTask) {
+  const start = task.startDate || "Start date not set";
+  const deadline = task.deadline || "Deadline not set";
+  return `${task.activity || task.taskName} · ${start} – ${deadline} · ${clampProgress(task.progress)}% complete`;
+}
+
+function parseDateKey(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function currentKigaliDateKey() {
+  const parts = new Intl.DateTimeFormat("en", { timeZone: "Africa/Kigali", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function daysBetween(start: Date, end: Date) { return Math.round((end.getTime() - start.getTime()) / DAY_IN_MS); }
+function percentage(value: number, total: number) { return total > 0 ? (value / total) * 100 : 0; }
+function clampPercentage(value: number) { return Math.min(100, Math.max(0, value)); }
+function clampProgress(value: number) { return Math.min(100, Math.max(0, value)); }
 
 function planStartRaw(plan: DepartmentActionPlan) { return plan.startDateRaw ?? plan.startDateValue ?? ""; }
 function planDueRaw(plan: DepartmentActionPlan) { return plan.dueDateRaw ?? plan.dueDateValue ?? ""; }

@@ -7,6 +7,8 @@ import { notifySuperAdmins, notifyUsers, processPendingEmailDeliveries, reconcil
 import { maintainNotificationArchive } from "@/lib/notification-maintenance";
 import { reconcileNotificationSources } from "@/lib/notification-source-validity";
 import {
+  birthdayFollowUpMessage,
+  birthdayFollowUpNotificationKey,
   birthdayNotificationKey,
   calendarDateInTimeZone,
   DEFAULT_BIRTHDAY_MESSAGE_TEMPLATE,
@@ -35,6 +37,7 @@ export async function runScheduledNotificationJobs() {
     emailsProcessed: 0,
     permissionRequestsChecked: 0,
     birthdayWishes: 0,
+    birthdayFollowUps: 0,
     probationReminders: 0,
     announcements: 0,
     formReminders: 0,
@@ -66,8 +69,9 @@ export async function runScheduledNotificationJobs() {
     const messageTemplate = typeof messageSetting === "string" && messageSetting.trim() ? messageSetting : DEFAULT_BIRTHDAY_MESSAGE_TEMPLATE;
     const birthdayMembers = await prisma.user.findMany({
       where: { status: "active", dateOfBirth: { not: null } },
-      select: { id: true, name: true, dateOfBirth: true },
+      select: { id: true, name: true, gender: true, dateOfBirth: true },
     });
+    const socialFellowshipFollowers = await userIdsWithPermission("social-fellowship", "view");
     for (const member of birthdayMembers) {
       if (!member.dateOfBirth || !isBirthdayOn(member.dateOfBirth, birthdayDate)) continue;
       await notifyUsers({
@@ -81,6 +85,19 @@ export async function runScheduledNotificationJobs() {
         dedupeKey: birthdayNotificationKey(member.id, birthdayDate.year),
       });
       results.birthdayWishes += 1;
+
+      const followUpUserIds = socialFellowshipFollowers.filter((userId) => userId !== member.id);
+      await notifyUsers({
+        userIds: followUpUserIds,
+        type: "birthday",
+        title: "Birthday Notice!",
+        message: birthdayFollowUpMessage(member.name, member.gender),
+        link: "/admin/social-fellowship",
+        sourceType: "user",
+        sourceId: member.id,
+        dedupeKey: birthdayFollowUpNotificationKey(member.id, birthdayDate.year),
+      });
+      results.birthdayFollowUps += followUpUserIds.length;
     }
   }
 

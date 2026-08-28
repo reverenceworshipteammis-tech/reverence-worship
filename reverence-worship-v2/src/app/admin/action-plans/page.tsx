@@ -4,6 +4,7 @@ import {
 } from "lucide-react";
 import { ActionPlanFilters } from "@/components/action-plan-filters";
 import { DepartmentActionPlanDetailsButton, type DepartmentPlanDetails } from "@/components/department-action-plan-details-button";
+import { OrganizationActionPlanTimeline, type OrganizationTimelinePlan } from "@/components/organization-action-plan-timeline";
 import { getUserPermissionSet, permissionSetHas, requirePermission } from "@/lib/auth";
 import {
   ACTION_PLAN_DEPARTMENTS,
@@ -66,6 +67,28 @@ export default async function ConsolidatedActionPlansPage({ searchParams }: { se
       estimatedBudget: task.estimatedBudget,
     })),
   }));
+  const timelinePlans: OrganizationTimelinePlan[] = portfolio.plans.map((plan) => ({
+    id: plan.id,
+    title: plan.title,
+    departmentLabel: plan.departmentLabel,
+    startDate: plan.startDate.toISOString(),
+    dueDate: plan.dueDate.toISOString(),
+    progress: plan.progress,
+    status: plan.status,
+    tasks: plan.tasks.filter((task) => {
+      if (filters.deadline === "overdue") return task.overdue;
+      if (filters.deadline === "due-soon") return task.dueSoon;
+      if (filters.deadline === "no-deadline") return !task.deadline;
+      return true;
+    }).map((task) => ({
+      id: task.id,
+      activity: task.activity || task.taskName,
+      startDate: task.startDate?.toISOString() ?? null,
+      deadline: task.deadline?.toISOString() ?? null,
+      progress: task.progress,
+      status: task.status,
+    })),
+  }));
 
   return (
     <main className="mx-auto max-w-7xl space-y-5 px-3 py-4 sm:px-4 sm:py-6 lg:px-5">
@@ -81,12 +104,15 @@ export default async function ConsolidatedActionPlansPage({ searchParams }: { se
             </div>
           </div>
         </div>
-        {canExport ? (
-          <a href={`/admin/action-plans/export?${exportSearch.toString()}`} className="mt-4 inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 sm:mt-0">
-            <Download className="size-4" aria-hidden="true" />
-            Export Excel
-          </a>
-        ) : null}
+        <div className="mt-4 flex flex-wrap gap-2 sm:mt-0">
+          <OrganizationActionPlanTimeline plans={timelinePlans} scopeLabel={filters.department ? ACTION_PLAN_DEPARTMENTS.find((department) => department.value === filters.department)?.label ?? "Selected department" : "All departments"} />
+          {canExport ? (
+            <a href={`/admin/action-plans/export?${exportSearch.toString()}`} className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100">
+              <Download className="size-4" aria-hidden="true" />
+              Export Excel
+            </a>
+          ) : null}
+        </div>
       </header>
 
       <ActionPlanFilters
@@ -102,7 +128,6 @@ export default async function ConsolidatedActionPlansPage({ searchParams }: { se
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-4 py-4 sm:px-5">
           <h2 className="font-bold text-slate-950">Department Summary</h2>
-         
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-[1020px] w-full text-left text-sm">

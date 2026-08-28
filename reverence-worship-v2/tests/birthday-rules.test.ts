@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  birthdayFollowUpMessage,
+  birthdayFollowUpNotificationKey,
   birthdayNotificationKey,
   calendarDateInTimeZone,
   isBirthdayOn,
@@ -21,6 +23,18 @@ test("birthday notifications are deduplicated for each member and year", () => {
   assert.equal(birthdayNotificationKey(42, 2026), "birthday:42:2026");
   assert.notEqual(birthdayNotificationKey(42, 2026), birthdayNotificationKey(42, 2027));
   assert.notEqual(birthdayNotificationKey(42, 2026), birthdayNotificationKey(43, 2026));
+});
+
+test("birthday follow-up notifications use a separate yearly deduplication key", () => {
+  assert.equal(birthdayFollowUpNotificationKey(42, 2026), "birthday-follow-up:42:2026");
+  assert.notEqual(birthdayFollowUpNotificationKey(42, 2026), birthdayNotificationKey(42, 2026));
+  assert.notEqual(birthdayFollowUpNotificationKey(42, 2026), birthdayFollowUpNotificationKey(42, 2027));
+});
+
+test("birthday follow-up messages use the member's recorded gender", () => {
+  assert.equal(birthdayFollowUpMessage("Alice Uwimana", "female"), "Alice Uwimana is celebrating a birthday today! Celebrate with her.");
+  assert.equal(birthdayFollowUpMessage("John Mugabo", "male"), "John Mugabo is celebrating a birthday today! Celebrate with him.");
+  assert.equal(birthdayFollowUpMessage("Alex Member", null), "Alex Member is celebrating a birthday today! Celebrate with them.");
 });
 
 test("February 29 birthdays match only the actual calendar date", () => {
