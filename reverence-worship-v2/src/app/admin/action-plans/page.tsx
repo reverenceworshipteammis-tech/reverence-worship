@@ -1,14 +1,8 @@
-import Link from "next/link";
 import {
-  Banknote,
-  Building2,
   ClipboardList,
   Download,
-  ListChecks,
-  Search,
-  Target,
-  TriangleAlert,
 } from "lucide-react";
+import { ActionPlanFilters } from "@/components/action-plan-filters";
 import { DepartmentActionPlanDetailsButton, type DepartmentPlanDetails } from "@/components/department-action-plan-details-button";
 import { getUserPermissionSet, permissionSetHas, requirePermission } from "@/lib/auth";
 import {
@@ -47,7 +41,6 @@ export default async function ConsolidatedActionPlansPage({ searchParams }: { se
     id: plan.id,
     department: plan.department,
     title: plan.title,
-    description: plan.description,
     year: plan.year,
     status: plan.status,
     priority: plan.priority,
@@ -64,7 +57,6 @@ export default async function ConsolidatedActionPlansPage({ searchParams }: { se
       taskName: task.taskName,
       activity: task.activity,
       targetMilestone: task.targetMilestone,
-      assigneeName: task.assigneeName,
       status: task.status,
       progress: task.progress,
       priority: task.priority,
@@ -87,7 +79,6 @@ export default async function ConsolidatedActionPlansPage({ searchParams }: { se
               <h1 className="text-xl font-bold text-slate-950 sm:text-2xl">All Action Plans</h1>
               <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">Read-only portfolio</span>
             </div>
-            <p className="mt-1 max-w-2xl text-sm text-slate-500">Consolidated plans, tasks, progress, deadlines, and planned budgets from every department.</p>
           </div>
         </div>
         {canExport ? (
@@ -98,34 +89,15 @@ export default async function ConsolidatedActionPlansPage({ searchParams }: { se
         ) : null}
       </header>
 
-      <form method="get" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.25fr_repeat(4,minmax(135px,0.7fr))_auto] xl:items-end">
-          <label className="text-xs font-semibold text-slate-600">
-            Search
-            <span className="relative mt-1 block">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-              <input name="q" defaultValue={filters.query} placeholder="Plan, activity, milestone, person" className="h-10 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm font-normal text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
-            </span>
-          </label>
-          <FilterSelect name="year" label="Year" defaultValue={filters.year === null ? "all" : String(filters.year)} options={[["all", "All years"], ...portfolio.availableYears.map((year) => [String(year), String(year)] as [string, string])]} />
-          <FilterSelect name="department" label="Department" defaultValue={filters.department ?? "all"} options={[["all", "All departments"], ...ACTION_PLAN_DEPARTMENTS.map((department) => [department.value, department.label] as [string, string])]} />
-          <FilterSelect name="status" label="Plan status" defaultValue={filters.status ?? "all"} options={[["all", "All statuses"], ["pending", "Pending"], ["in_progress", "In progress"], ["completed", "Completed"]]} />
-          <FilterSelect name="deadline" label="Deadline" defaultValue={filters.deadline ?? "all"} options={[["all", "All deadlines"], ["overdue", "Overdue"], ["due-soon", "Due within 7 days"], ["no-deadline", "No task deadline"]]} />
-          <div className="flex gap-2 md:col-span-2 xl:col-span-1">
-            <button type="submit" className="h-10 flex-1 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700">Apply</button>
-            <Link href="/admin/action-plans" className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50">Reset</Link>
-          </div>
-        </div>
-      </form>
-
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6" aria-label="Organization action plan summary">
-        <SummaryCard label="Departments" value={portfolio.summary.departmentCount} note="Represented in results" icon={Building2} tone="blue" />
-        <SummaryCard label="Action Plans" value={portfolio.summary.planCount} note={`${portfolio.summary.completedPlanCount} completed`} icon={ClipboardList} tone="violet" />
-        <SummaryCard label="Tasks" value={portfolio.summary.taskCount} note={`${portfolio.summary.completedTaskCount} completed`} icon={ListChecks} tone="sky" />
-        <SummaryCard label="Overall Progress" value={`${portfolio.summary.progress}%`} note="Average task progress" icon={Target} tone="emerald" />
-        <SummaryCard label="Overdue Tasks" value={portfolio.summary.overdueTaskCount} note={`${portfolio.summary.dueSoonTaskCount} due within 7 days`} icon={TriangleAlert} tone="rose" />
-        <SummaryCard label="Planned Budget" value={formatCurrency(portfolio.summary.plannedBudget)} note="Estimated, not actual spending" icon={Banknote} tone="amber" compact />
-      </section>
+      <ActionPlanFilters
+        query={filters.query}
+        year={filters.year === null ? "all" : String(filters.year)}
+        department={filters.department ?? "all"}
+        status={filters.status ?? "all"}
+        deadline={filters.deadline ?? "all"}
+        yearOptions={[["all", "All years"], ...portfolio.availableYears.map((year) => [String(year), String(year)] as [string, string])]}
+        departmentOptions={[["all", "All departments"], ...ACTION_PLAN_DEPARTMENTS.map((department) => [department.value, department.label] as [string, string])]}
+      />
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-4 py-4 sm:px-5">
@@ -184,36 +156,6 @@ export default async function ConsolidatedActionPlansPage({ searchParams }: { se
       </section>
 
     </main>
-  );
-}
-
-function FilterSelect({ name, label, defaultValue, options }: { name: string; label: string; defaultValue: string; options: Array<[string, string]> }) {
-  return (
-    <label className="text-xs font-semibold text-slate-600">
-      {label}
-      <select name={name} defaultValue={defaultValue} className="mt-1 h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-normal text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
-        {options.map(([value, optionLabel]) => <option key={value} value={value}>{optionLabel}</option>)}
-      </select>
-    </label>
-  );
-}
-
-function SummaryCard({ label, value, note, icon: Icon, tone, compact = false }: { label: string; value: string | number; note: string; icon: typeof Building2; tone: "blue" | "violet" | "sky" | "emerald" | "rose" | "amber"; compact?: boolean }) {
-  const tones = {
-    blue: "bg-blue-50 text-blue-700",
-    violet: "bg-violet-50 text-violet-700",
-    sky: "bg-sky-50 text-sky-700",
-    emerald: "bg-emerald-50 text-emerald-700",
-    rose: "bg-rose-50 text-rose-700",
-    amber: "bg-amber-50 text-amber-700",
-  };
-  return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className={`inline-flex size-9 items-center justify-center rounded-lg ${tones[tone]}`}><Icon className="size-4" aria-hidden="true" /></div>
-      <p className={`mt-3 font-bold text-slate-950 ${compact ? "text-lg" : "text-2xl"}`}>{value}</p>
-      <p className="mt-0.5 text-xs font-semibold text-slate-600">{label}</p>
-      <p className="mt-1 text-[11px] leading-4 text-slate-400">{note}</p>
-    </article>
   );
 }
 

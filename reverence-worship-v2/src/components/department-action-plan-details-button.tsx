@@ -1,13 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CalendarDays, Eye, ListChecks, Target, TriangleAlert, WalletCards, X } from "lucide-react";
+import { CalendarDays, Eye, X } from "lucide-react";
 
 export type DepartmentPlanDetails = {
   id: number;
   department: string;
   title: string;
-  description: string | null;
   year: number;
   status: string;
   priority: string;
@@ -24,7 +23,6 @@ export type DepartmentPlanDetails = {
     taskName: string;
     activity: string | null;
     targetMilestone: string | null;
-    assigneeName: string | null;
     status: string;
     progress: number;
     priority: string;
@@ -38,12 +36,6 @@ export type DepartmentPlanDetails = {
 type Props = {
   department: {
     label: string;
-    planCount: number;
-    taskCount: number;
-    completedTaskCount: number;
-    progress: number;
-    overdueTaskCount: number;
-    plannedBudget: number;
   };
   plans: DepartmentPlanDetails[];
 };
@@ -80,7 +72,6 @@ export function DepartmentActionPlanDetailsButton({ department, plans }: Props) 
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-600">Department action plans</p>
                 <h2 id="department-details-title" className="mt-1 text-xl font-bold text-slate-950 sm:text-2xl">{department.label}</h2>
-                <p className="mt-1 text-sm text-slate-500">Consolidated plan, task, deadline, progress, and budget details.</p>
               </div>
               <button type="button" onClick={() => setOpen(false)} className="inline-flex size-10 shrink-0 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900" aria-label="Close">
                 <X className="size-5" aria-hidden="true" />
@@ -88,18 +79,9 @@ export function DepartmentActionPlanDetailsButton({ department, plans }: Props) 
             </header>
 
             <div className="max-h-[calc(94vh-94px)] overflow-y-auto p-4 sm:p-6">
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-                <DetailMetric label="Plans" value={department.planCount} icon={CalendarDays} tone="blue" />
-                <DetailMetric label="Tasks" value={department.taskCount} icon={ListChecks} tone="violet" />
-                <DetailMetric label="Completed" value={department.completedTaskCount} icon={Target} tone="emerald" />
-                <DetailMetric label="Progress" value={`${department.progress}%`} icon={Target} tone="sky" />
-                <DetailMetric label="Overdue" value={department.overdueTaskCount} icon={TriangleAlert} tone="rose" />
-                <DetailMetric label="Planned Budget" value={formatCurrency(department.plannedBudget)} icon={WalletCards} tone="amber" compact />
-              </div>
-
-              <div className="mt-5 space-y-3">
+              <div className="space-y-3">
                 {plans.length ? plans.map((plan) => (
-                  <details key={plan.id} className="group overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                  <details key={plan.id} open className="group overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                     <summary className="cursor-pointer list-none p-4 marker:hidden [&::-webkit-details-marker]:hidden sm:p-5">
                       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                         <div className="min-w-0">
@@ -117,12 +99,11 @@ export function DepartmentActionPlanDetailsButton({ department, plans }: Props) 
                       <div className="mt-3 flex items-center gap-3"><ProgressBar value={plan.progress} /><span className="text-[11px] font-semibold text-blue-700 group-open:hidden">Show tasks</span><span className="hidden text-[11px] font-semibold text-blue-700 group-open:inline">Hide tasks</span></div>
                     </summary>
                     <div className="border-t border-slate-200 bg-slate-50 p-3 sm:p-4">
-                      {plan.description ? <p className="mb-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">{plan.description}</p> : null}
                       {plan.tasks.length ? (
                         <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-                          <table className="min-w-[960px] w-full text-left text-sm">
-                            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-3">Activity</th><th className="px-3 py-3">Milestone</th><th className="px-3 py-3">Assignee</th><th className="px-3 py-3">Deadline</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Progress</th><th className="px-3 py-3 text-right">Budget</th></tr></thead>
-                            <tbody className="divide-y divide-slate-100">{plan.tasks.map((task) => <tr key={task.id}><td className="max-w-64 px-3 py-3 font-semibold text-slate-800">{task.activity || task.taskName}</td><td className="max-w-64 px-3 py-3 text-slate-600">{task.targetMilestone || "—"}</td><td className="px-3 py-3 text-slate-600">{task.assigneeName || "Unassigned"}</td><td className={`px-3 py-3 font-medium ${task.overdue ? "text-rose-600" : task.dueSoon ? "text-amber-600" : "text-slate-600"}`}>{task.deadline ? formatDate(task.deadline) : "No deadline"}{task.overdue ? " · Overdue" : task.dueSoon ? " · Due soon" : ""}</td><td className="px-3 py-3"><StatusBadge status={task.progress >= 100 ? "completed" : task.status} /></td><td className="px-3 py-3"><div className="flex min-w-32 items-center gap-2"><ProgressBar value={task.progress} /><span className="text-xs font-semibold text-slate-600">{task.progress}%</span></div></td><td className="px-3 py-3 text-right font-semibold text-slate-800">{formatCurrency(task.estimatedBudget)}</td></tr>)}</tbody>
+                          <table className="min-w-[840px] w-full text-left text-sm">
+                            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-3">Activity</th><th className="px-3 py-3">Milestone</th><th className="px-3 py-3">Deadline</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Progress</th><th className="px-3 py-3 text-right">Budget</th></tr></thead>
+                            <tbody className="divide-y divide-slate-100">{plan.tasks.map((task) => <tr key={task.id}><td className="max-w-64 px-3 py-3 font-semibold text-slate-800">{task.activity || task.taskName}</td><td className="max-w-64 px-3 py-3 text-slate-600">{task.targetMilestone || "—"}</td><td className={`px-3 py-3 font-medium ${task.overdue ? "text-rose-600" : task.dueSoon ? "text-amber-600" : "text-slate-600"}`}>{task.deadline ? formatDate(task.deadline) : "No deadline"}{task.overdue ? " · Overdue" : task.dueSoon ? " · Due soon" : ""}</td><td className="px-3 py-3"><StatusBadge status={task.progress >= 100 ? "completed" : task.status} /></td><td className="px-3 py-3"><div className="flex min-w-32 items-center gap-2"><ProgressBar value={task.progress} /><span className="text-xs font-semibold text-slate-600">{task.progress}%</span></div></td><td className="px-3 py-3 text-right font-semibold text-slate-800">{formatCurrency(task.estimatedBudget)}</td></tr>)}</tbody>
                           </table>
                         </div>
                       ) : <div className="rounded-lg border border-dashed border-slate-300 bg-white py-8 text-center text-sm text-slate-500">No tasks have been added to this plan.</div>}
@@ -136,11 +117,6 @@ export function DepartmentActionPlanDetailsButton({ department, plans }: Props) 
       ) : null}
     </>
   );
-}
-
-function DetailMetric({ label, value, icon: Icon, tone, compact = false }: { label: string; value: string | number; icon: typeof CalendarDays; tone: "blue" | "violet" | "emerald" | "sky" | "rose" | "amber"; compact?: boolean }) {
-  const colors = { blue: "bg-blue-50 text-blue-700", violet: "bg-violet-50 text-violet-700", emerald: "bg-emerald-50 text-emerald-700", sky: "bg-sky-50 text-sky-700", rose: "bg-rose-50 text-rose-700", amber: "bg-amber-50 text-amber-700" };
-  return <div className="rounded-xl border border-slate-200 p-3"><span className={`inline-flex size-8 items-center justify-center rounded-lg ${colors[tone]}`}><Icon className="size-4" /></span><p className={`mt-2 truncate font-bold text-slate-950 ${compact ? "text-sm" : "text-xl"}`}>{value}</p><p className="mt-0.5 text-[11px] font-semibold text-slate-500">{label}</p></div>;
 }
 
 function PlanMetric({ label, value, danger = false }: { label: string; value: string; danger?: boolean }) {
