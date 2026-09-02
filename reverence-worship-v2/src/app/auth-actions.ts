@@ -5,7 +5,7 @@ import { createHash, randomBytes } from "crypto";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createSession, requireUser } from "@/lib/auth";
-import { withDatabaseRetry } from "@/lib/database-retry";
+import { isTransientDatabaseError, withDatabaseRetry } from "@/lib/database-retry";
 import { prisma } from "@/lib/prisma";
 import { getSystemSetting, isRegistrationEnabled, settingToNumber } from "@/lib/system-settings";
 import { notifyUsers, userIdsWithPermission } from "@/lib/notifications";
@@ -14,6 +14,15 @@ type AuthState = {
   error?: string;
   success?: string;
 };
+
+function registrationFailure(error: unknown): AuthState {
+  console.error("Registration submission failed.", error);
+  return {
+    error: isTransientDatabaseError(error)
+      ? "The registration service is temporarily unavailable. Please wait a moment and try again."
+      : "We couldn't submit your registration. Please try again.",
+  };
+}
 
 function tokenHash(token: string) {
   return createHash("sha256").update(token).digest("hex");
@@ -240,11 +249,19 @@ export async function registerAction(
   _previousState: AuthState,
   formData: FormData,
 ): Promise<AuthState> {
-  const [registrationEnabled, userCount, passwordMinLengthSetting] = await Promise.all([
-    isRegistrationEnabled(),
-    prisma.user.count(),
-    getSystemSetting("password_min_length"),
-  ]);
+  let registrationEnabled: boolean;
+  let userCount: number;
+  let passwordMinLengthSetting: unknown;
+
+  try {
+    [registrationEnabled, userCount, passwordMinLengthSetting] = await withDatabaseRetry(() => Promise.all([
+      isRegistrationEnabled(),
+      prisma.user.count(),
+      getSystemSetting("password_min_length"),
+    ]), 3);
+  } catch (error) {
+    return registrationFailure(error);
+  }
 
   if (!registrationEnabled && userCount > 0) {
     return { error: "Public registration is currently disabled." };
@@ -261,9 +278,14 @@ export async function registerAction(
     return { error: `Password must be at least ${passwordMinLength} characters.` };
   }
 
-  const existingUser = await prisma.user.findUnique({
-    where: { email: parsed.data.email },
-  });
+  let existingUser;
+  try {
+    existingUser = await withDatabaseRetry(() => prisma.user.findUnique({
+      where: { email: parsed.data.email },
+    }), 3);
+  } catch (error) {
+    return registrationFailure(error);
+  }
 
   if (existingUser) {
     return { error: "An account with this email already exists." };
@@ -271,63 +293,79 @@ export async function registerAction(
 
   const firstUser = userCount === 0;
   const roleName = firstUser ? "super-admin" : "member";
-  const role = await prisma.role.findUniqueOrThrow({ where: { name: roleName } });
+  let role;
+  try {
+    role = await withDatabaseRetry(() => prisma.role.findUniqueOrThrow({ where: { name: roleName } }), 3);
+  } catch (error) {
+    return registrationFailure(error);
+  }
   const passwordHash = await bcrypt.hash(parsed.data.password, 12);
 
-  const user = await prisma.user.create({
-    data: {
-      name: parsed.data.name,
-      email: parsed.data.email,
-      phone: parsed.data.phone,
-      dateOfBirth: new Date(parsed.data.dateOfBirth),
-      gender: parsed.data.gender,
-      maritalStatus: parsed.data.maritalStatus,
-      membershipType: "permanent",
-      province: parsed.data.province,
-      district: parsed.data.district,
-      sector: parsed.data.sector,
-      cell: parsed.data.cell,
-      village: parsed.data.village,
-      passwordHash,
-      status: firstUser ? "active" : "pending",
-      roles: {
-        create: {
-          roleId: role.id,
+  let user;
+  try {
+    user = await prisma.user.create({
+      data: {
+        name: parsed.data.name,
+        email: parsed.data.email,
+        phone: parsed.data.phone,
+        dateOfBirth: new Date(parsed.data.dateOfBirth),
+        gender: parsed.data.gender,
+        maritalStatus: parsed.data.maritalStatus,
+        membershipType: "permanent",
+        province: parsed.data.province,
+        district: parsed.data.district,
+        sector: parsed.data.sector,
+        cell: parsed.data.cell,
+        village: parsed.data.village,
+        passwordHash,
+        status: firstUser ? "active" : "pending",
+        roles: {
+          create: {
+            roleId: role.id,
+          },
         },
       },
-    },
-  });
+    });
+  } catch (error) {
+    return registrationFailure(error);
+  }
 
-  await notifyUsers({
-    userIds: [user.id],
-    type: "account",
-    title: "Registration submitted",
-    message: firstUser
-      ? "Your account has been created and activated."
-      : "Your registration was received and is awaiting administrator approval.",
-    link: "/admin/dashboard",
-    sourceType: "user",
-    sourceId: user.id,
-    dedupeKey: `registration:${user.id}:submitted`,
-  });
-
-  if (!firstUser) {
-    const approverIds = await userIdsWithPermission("users", "change-status");
+  try {
     await notifyUsers({
-      userIds: approverIds,
+      userIds: [user.id],
       type: "account",
-      title: "New account awaiting approval",
-      message: `${user.name} submitted a registration and is awaiting approval.`,
-      link: "/admin/users",
+      title: "Registration submitted",
+      message: firstUser
+        ? "Your account has been created and activated."
+        : "Your registration was received and is awaiting administrator approval.",
+      link: "/admin/dashboard",
       sourceType: "user",
       sourceId: user.id,
-      dedupeKey: `registration:${user.id}:approval`,
+      dedupeKey: `registration:${user.id}:submitted`,
     });
+
+    if (!firstUser) {
+      const approverIds = await userIdsWithPermission("users", "change-status");
+      await notifyUsers({
+        userIds: approverIds,
+        type: "account",
+        title: "New account awaiting approval",
+        message: `${user.name} submitted a registration and is awaiting approval.`,
+        link: "/admin/users",
+        sourceType: "user",
+        sourceId: user.id,
+        dedupeKey: `registration:${user.id}:approval`,
+      });
+    }
+  } catch (error) {
+    // The account is already stored. A notification outage must not make the
+    // user resubmit the same registration or hide the successful outcome.
+    console.error(`Registration notifications failed for user ${user.id}.`, error);
   }
 
   if (!firstUser) {
     return {
-      error: "Registration received. An admin must activate your account before login.",
+      success: "Your registration has been submitted successfully and is pending administrator approval.",
     };
   }
 

@@ -6,6 +6,8 @@ import { useActionState } from "react";
 import {
   ArrowLeft,
   Calendar,
+  CheckCircle2,
+  Clock3,
   Heart,
   Home,
   Mail,
@@ -74,6 +76,80 @@ function SelectField({
 
 export function RegisterForm() {
   const [state, formAction] = useActionState(registerAction, {});
+
+  if (state.success) {
+    return (
+      <div className="flex min-h-[30rem] flex-col">
+        <Link href="/" className="mb-7 hidden justify-center md:flex" aria-label="Reverence Worship Team home">
+          <span className="relative h-20 w-full max-w-[340px] overflow-hidden">
+            <Image
+              src="/reverence-logo-transparent.png"
+              alt="Reverence Worship Team logo"
+              fill
+              sizes="340px"
+              className="scale-[1.9] object-contain"
+              priority
+            />
+          </span>
+        </Link>
+
+        <Link href="/" className="mobile-card-brand" aria-label="Back to home">
+          <div className="brand-mark size-9 rounded-[0.7rem] border-blue-100 bg-blue-50">
+            <Image
+              src="/logo.png"
+              alt="Reverence Worship"
+              width={36}
+              height={36}
+              className="h-full w-full object-contain p-1"
+            />
+          </div>
+          <div>
+            <p className="font-extrabold tracking-wide text-white">REVERENCE</p>
+            <p className="text-[0.66rem] font-semibold uppercase tracking-[0.08em] text-blue-200">
+              Worship Team
+            </p>
+          </div>
+        </Link>
+
+        <div className="flex flex-1 items-center justify-center py-8">
+          <div
+            role="status"
+            aria-live="polite"
+            className="w-full max-w-lg rounded-3xl border border-emerald-200 bg-white/90 px-6 py-9 text-center shadow-xl shadow-emerald-900/10 sm:px-10"
+          >
+            <span className="mx-auto flex size-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+              <CheckCircle2 className="size-9" aria-hidden="true" />
+            </span>
+            <h2 className="auth-display mt-5 text-2xl font-extrabold text-gray-900">
+              Registration submitted successfully
+            </h2>
+            <div className="mt-5 inline-flex items-center gap-2 rounded-full bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-800">
+              <Clock3 className="size-4" aria-hidden="true" />
+              Awaiting administrator approval
+            </div>
+            <p className="mt-5 text-sm text-gray-500">
+              You will be able to sign in after an administrator activates your account.
+            </p>
+            <div className="mt-7 grid gap-3 sm:grid-cols-2">
+              <Link
+                href="/"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-4 text-sm font-bold text-blue-700 transition hover:bg-blue-50"
+              >
+                <ArrowLeft className="size-4" aria-hidden="true" />
+                Back to Home
+              </Link>
+              <Link
+                href="/login"
+                className="primary-action inline-flex h-11 items-center justify-center rounded-lg px-4 text-sm font-bold"
+              >
+                Go to Sign In
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <form action={formAction}>
