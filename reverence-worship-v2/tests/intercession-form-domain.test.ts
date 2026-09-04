@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  formatIntercessionKigaliDateTime,
+  formatIntercessionKigaliTime,
   intercessionFormAvailability,
   intercessionLifecycleDate,
   intercessionGuestFieldConfigurationIssue,
@@ -137,6 +139,10 @@ test("availability enforces publication, lifecycle, and response caps", () => {
   assert.equal(intercessionFormAvailability(base, true, 1, new Date("2026-08-13T10:00:00Z")), null);
   assert.equal(intercessionFormAvailability(base, true, 2), "This form has reached its response limit.");
   assert.equal(intercessionFormAvailability({ ...base, submission_opens_at: "2026-09-01T08:00" }, true, 0, new Date("2026-08-13T10:00:00Z"))?.startsWith("This form opens on"), true);
+  assert.equal(
+    intercessionFormAvailability({ ...base, submit_button_style: "attendance", submission_deadline: "2026-09-04T20:00" }, true, 0, new Date("2026-09-04T18:01:00Z")),
+    "Attendance closed on 04/09/2026 at 8:00 PM.",
+  );
   assert.equal(intercessionFormAvailability(base, false, 0), "This form is archived.");
 });
 
@@ -157,9 +163,13 @@ test("response action settings are normalized for one-click forms", () => {
   assert.equal(settings.submit_button_style, "attendance");
   assert.equal(parseIntercessionFormSettings({ submit_button_label: "   " }).submit_button_label, "Submit");
   assert.equal(parseIntercessionFormSettings({ submit_button_style: "unknown" }).submit_button_style, "default");
+  assert.equal(parseIntercessionFormSettings({ allow_empty_submission: true, submit_button_label: "Mark Attendance", submit_button_style: "default" }).submit_button_style, "attendance");
+  assert.equal(parseIntercessionFormSettings({ attendance_display_text: `  ${"E".repeat(130)}  ` }).attendance_display_text, "E".repeat(120));
 });
 
 test("lifecycle date-times are interpreted in Kigali time", () => {
   assert.equal(intercessionLifecycleDate("2026-08-13T10:00")?.toISOString(), "2026-08-13T08:00:00.000Z");
   assert.equal(intercessionLifecycleDate("2026-08-13", true)?.toISOString(), "2026-08-13T21:59:59.999Z");
+  assert.equal(formatIntercessionKigaliDateTime(new Date("2026-09-04T18:42:00.000Z")), "04/09/2026 at 8:42 PM");
+  assert.equal(formatIntercessionKigaliTime(new Date("2026-09-04T18:42:00.000Z")), "8:42 PM");
 });

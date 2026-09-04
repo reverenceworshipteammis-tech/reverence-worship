@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 import { IntercessionTakeForm } from "@/components/intercession-take-form";
 import { requirePermission } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -63,7 +65,17 @@ export default async function TakeIntercessionFormPage({
 
   const formSettings = parseIntercessionFormSettings(form.settings);
   const availability = intercessionFormAvailability(formSettings, form.isActive, await withDatabaseRetry(() => prisma.formSubmission.count({ where: { formId, deletedAt: null } }), 3));
-  if (availability) return <div className="mx-auto max-w-2xl p-6"><div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-center text-amber-900">{availability}</div></div>;
+  if (availability) return (
+    <div className="mx-auto max-w-2xl p-6">
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-center text-amber-900">{availability}</div>
+      <div className="mt-5 text-center">
+        <Link href="/admin/intercession" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-5 py-2.5 text-sm font-semibold text-blue-700 shadow-sm transition hover:border-blue-300 hover:bg-blue-50">
+          <ArrowLeft className="size-4" aria-hidden="true" />
+          Back to Forms
+        </Link>
+      </div>
+    </div>
+  );
 
   const existingSubmission = await withDatabaseRetry(() => prisma.formSubmission.findFirst({
     where: { formId, userId: user.id, deletedAt: null },

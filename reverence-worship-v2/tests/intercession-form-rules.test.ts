@@ -54,3 +54,24 @@ test("one-click forms can publish without answerable questions when explicitly e
   assert.deepEqual(getIntercessionPublishingIssues("Meeting attendance", displayOnlyQuestions).map((issue) => issue.id), ["no-questions"]);
   assert.deepEqual(getIntercessionPublishingIssues("Meeting attendance", displayOnlyQuestions, { allow_empty_submission: true }), []);
 });
+
+test("attendance forms require a valid recording window before publication", () => {
+  const attendance = { allow_empty_submission: true, submit_button_label: "Mark Attendance", submit_button_style: "attendance" };
+  assert.deepEqual(
+    getIntercessionPublishingIssues("Meeting attendance", [], attendance).map((issue) => issue.id),
+    ["attendance-opens-at", "attendance-closes-at"],
+  );
+  assert.deepEqual(getIntercessionPublishingIssues("Meeting attendance", [], {
+    ...attendance,
+    submission_opens_at: "2026-09-04T18:00",
+    submission_deadline: "2026-09-04T20:00",
+  }), []);
+  assert.deepEqual(
+    getIntercessionPublishingIssues("Meeting attendance", [], {
+      ...attendance,
+      submission_opens_at: "2026-09-04T20:00",
+      submission_deadline: "2026-09-04T18:00",
+    }).map((issue) => issue.id),
+    ["attendance-window-order"],
+  );
+});

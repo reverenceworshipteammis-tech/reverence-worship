@@ -12,6 +12,7 @@ import { notifyEmailAddress, notifyUsers, userIdsWithPermission } from "@/lib/no
 import { intercessionRichTextToPlainText } from "@/lib/intercession-rich-text";
 import { getIntercessionPublishingIssues, parseIntercessionQuestionCondition } from "@/lib/intercession-form-rules";
 import {
+  formatIntercessionKigaliTime,
   intercessionFormAvailability,
   intercessionGuestFieldConfigurationIssue,
   isIntercessionAnswerable,
@@ -1027,7 +1028,12 @@ export async function submitSpiritualForm(formId: number, formData: FormData) {
     await logIntercessionActivity(user?.id ?? null, editSubmission ? "intercession.response.edited" : "intercession.response.submitted", { formId, submissionId: submission.id, formVersion: editSubmission?.formVersion ?? form.version });
     revalidatePath("/admin/intercession");
     revalidatePath(`/admin/intercession/forms/${form.id}/submissions`);
-    return { ok: true, message: editSubmission ? "Your response has been updated." : settings.thank_you_message, redirectUrl: settings.redirect_url, score: settings.release_grade === "immediately" ? quizResult.score : null, editUrl: activeEditToken ? `/forms/${form.id}/edit/${activeEditToken}` : "" };
+    const successMessage = editSubmission
+      ? "Your response has been updated."
+      : settings.submit_button_style === "attendance"
+        ? `Attendance recorded for ${visitorName || "you"} at ${formatIntercessionKigaliTime(submission.submittedAt)}.`
+        : settings.thank_you_message;
+    return { ok: true, message: successMessage, redirectUrl: settings.redirect_url, score: settings.release_grade === "immediately" ? quizResult.score : null, editUrl: activeEditToken ? `/forms/${form.id}/edit/${activeEditToken}` : "" };
   } catch (error) {
     await Promise.all(uploadedFiles.map(deleteResponseFile));
     return { ok: false, message: formSubmissionErrorMessage(error) };

@@ -90,6 +90,9 @@ type FormPreviewSettings = {
   allow_empty_submission: boolean;
   submit_button_label: string;
   submit_button_style: "default" | "attendance";
+  attendance_display_text: string;
+  submission_opens_at: string;
+  submission_deadline: string;
 };
 
 type SpiritualForm = {
@@ -305,7 +308,7 @@ export function IntercessionClient({
   const [isPending, startTransition] = useTransition();
 
   const reportForms = forms.filter((form) => form.isPublished && form.isActive);
-  const publishedForms = permissions.canSubmitForms ? reportForms.filter((form) => !form.availabilityMessage) : [];
+  const publishedForms = permissions.canSubmitForms ? reportForms : [];
   const filteredForms = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     const byStatus = forms.filter((form) => form.isActive === (manageStatus === "active"));
@@ -822,7 +825,7 @@ export function IntercessionClient({
                 {publishedForms.length ? (
                   publishedForms.map((form) => {
                     const cardUrl = `/admin/intercession/forms/${form.id}/take`;
-                    
+
                     return (
                       <article
                         key={form.id}
@@ -848,6 +851,11 @@ export function IntercessionClient({
                                   Limit 1
                                 </span>
                               )}
+                              {form.availabilityMessage && (
+                                <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                                  Currently unavailable
+                                </span>
+                              )}
                             </div>
                             {form.description && (
                               <p className="mt-1 text-sm text-gray-500 line-clamp-2"><IntercessionRichText value={form.description} /></p>
@@ -863,6 +871,11 @@ export function IntercessionClient({
                                 {form.createdAt}
                               </span>
                             </div>
+                            {form.availabilityMessage && (
+                              <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
+                                {form.availabilityMessage}
+                              </p>
+                            )}
                           </div>
                           </div>
                         </Link>

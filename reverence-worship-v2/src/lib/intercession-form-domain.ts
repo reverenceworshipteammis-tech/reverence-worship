@@ -149,6 +149,7 @@ export type IntercessionFormSettings = {
   allow_empty_submission: boolean;
   submit_button_label: string;
   submit_button_style: "default" | "attendance";
+  attendance_display_text: string;
   submission_opens_at: string;
   submission_deadline: string;
   max_responses: number;
@@ -198,6 +199,11 @@ export function parseIntercessionFormQuestions(value: unknown): IntercessionForm
 export function parseIntercessionFormSettings(value: unknown): IntercessionFormSettings {
   const item = record(value);
   const maxResponses = Number(item.max_responses ?? 0);
+  const submitButtonLabel = typeof item.submit_button_label === "string" && item.submit_button_label.trim()
+    ? item.submit_button_label.trim().slice(0, 80)
+    : "Submit";
+  const legacyAttendanceStyle = item.allow_empty_submission === true
+    && submitButtonLabel.toLowerCase() === "mark attendance";
   return {
     is_published: Boolean(item.is_published), is_quiz: Boolean(item.is_quiz),
     accepting_responses: item.accepting_responses !== false,
@@ -216,10 +222,9 @@ export function parseIntercessionFormSettings(value: unknown): IntercessionFormS
       : "This form is no longer accepting responses.",
     allow_export: item.allow_export !== false, include_timestamps: item.include_timestamps !== false,
     allow_empty_submission: Boolean(item.allow_empty_submission),
-    submit_button_label: typeof item.submit_button_label === "string" && item.submit_button_label.trim()
-      ? item.submit_button_label.trim().slice(0, 80)
-      : "Submit",
-    submit_button_style: item.submit_button_style === "attendance" ? "attendance" : "default",
+    submit_button_label: submitButtonLabel,
+    submit_button_style: item.submit_button_style === "attendance" || legacyAttendanceStyle ? "attendance" : "default",
+    attendance_display_text: typeof item.attendance_display_text === "string" ? item.attendance_display_text.trim().slice(0, 120) : "",
     submission_opens_at: typeof item.submission_opens_at === "string" ? item.submission_opens_at : "",
     submission_deadline: typeof item.submission_deadline === "string" ? item.submission_deadline : "",
     max_responses: Number.isInteger(maxResponses) && maxResponses > 0 ? maxResponses : 0,
@@ -258,6 +263,28 @@ export function intercessionLifecycleDate(value: string, endOfDay = false) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function intercessionKigaliDateTimeParts(value: Date) {
+  return Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+    timeZone: "Africa/Kigali",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).formatToParts(value).map((part) => [part.type, part.value]));
+}
+
+export function formatIntercessionKigaliTime(value: Date) {
+  const parts = intercessionKigaliDateTimeParts(value);
+  return `${parts.hour}:${parts.minute} ${String(parts.dayPeriod).toUpperCase()}`;
+}
+
+export function formatIntercessionKigaliDateTime(value: Date) {
+  const parts = intercessionKigaliDateTimeParts(value);
+  return `${parts.day}/${parts.month}/${parts.year} at ${parts.hour}:${parts.minute} ${String(parts.dayPeriod).toUpperCase()}`;
+}
+
 export function intercessionFormAvailability(settings: IntercessionFormSettings, isActive: boolean, submissionCount: number, now = new Date()) {
   if (!isActive) return "This form is archived.";
   if (!settings.is_published) return "This form is not published.";
@@ -268,7 +295,12 @@ export function intercessionFormAvailability(settings: IntercessionFormSettings,
   }
   if (settings.submission_deadline) {
     const closes = intercessionLifecycleDate(settings.submission_deadline, true);
-    if (closes && now > closes) return "The submission deadline has passed.";
+    if (closes && now > closes) {
+      const closedAt = formatIntercessionKigaliDateTime(closes);
+      return settings.submit_button_style === "attendance"
+        ? `Attendance closed on ${closedAt}.`
+        : `This form closed on ${closedAt}.`;
+    }
   }
   if (settings.max_responses > 0 && submissionCount >= settings.max_responses) return "This form has reached its response limit.";
   return null;

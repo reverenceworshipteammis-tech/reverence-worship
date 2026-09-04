@@ -25,6 +25,12 @@ function asStrings(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && Boolean(item.trim())) : [];
 }
 
+function attendanceWindowDate(value: unknown) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return null;
+  const parsed = new Date(`${value}:00+02:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 export function parseIntercessionQuestionCondition(value: unknown): IntercessionQuestionCondition | null {
   const condition = asRecord(value);
   const questionId = typeof condition.questionId === "string" ? condition.questionId.slice(0, 100) : "";
@@ -72,6 +78,20 @@ export function getIntercessionPublishingIssues(
   const answerable = questions.filter((question) => !["title_section", "section_break"].includes(String(question.type)));
   if (answerable.length === 0 && !settings.allow_empty_submission) {
     issues.push({ id: "no-questions", message: "Add at least one answerable question." });
+  }
+
+  const isAttendanceForm = settings.submit_button_style === "attendance"
+    || (settings.allow_empty_submission === true
+      && typeof settings.submit_button_label === "string"
+      && settings.submit_button_label.trim().toLowerCase() === "mark attendance");
+  if (isAttendanceForm) {
+    const opensAt = attendanceWindowDate(settings.submission_opens_at);
+    const closesAt = attendanceWindowDate(settings.submission_deadline);
+    if (!opensAt) issues.push({ id: "attendance-opens-at", message: "Set when attendance recording starts." });
+    if (!closesAt) issues.push({ id: "attendance-closes-at", message: "Set when attendance recording ends." });
+    if (opensAt && closesAt && closesAt <= opensAt) {
+      issues.push({ id: "attendance-window-order", message: "Attendance must end after its start time." });
+    }
   }
 
   questions.forEach((question, index) => {

@@ -147,6 +147,9 @@ export default async function IntercessionPage({ searchParams }: { searchParams:
         allow_empty_submission: parsedSettings.allow_empty_submission,
         submit_button_label: parsedSettings.submit_button_label,
         submit_button_style: parsedSettings.submit_button_style,
+        attendance_display_text: parsedSettings.attendance_display_text,
+        submission_opens_at: parsedSettings.submission_opens_at,
+        submission_deadline: parsedSettings.submission_deadline,
         visitor_fields: parsedSettings.visitor_fields,
       },
     };

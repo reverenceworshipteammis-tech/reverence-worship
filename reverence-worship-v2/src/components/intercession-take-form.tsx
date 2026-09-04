@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ActionNotice } from "@/components/action-notice";
 import { FormEvent, useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { ArrowLeft, CheckCircle2, FileText, Info, Lock, Paperclip, Presentation, Send } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Clock, FileText, Info, Lock, Paperclip, Presentation, Send } from "lucide-react";
 import { submitSpiritualForm } from "@/app/admin/intercession/actions";
 import { IntercessionRichText } from "@/components/intercession-rich-text";
 import { IntercessionQuestionImages } from "@/components/intercession-question-images";
@@ -45,9 +45,29 @@ type TakeSettings = {
   allow_empty_submission?: boolean;
   submit_button_label?: string;
   submit_button_style?: "default" | "attendance";
+  attendance_display_text?: string;
+  submission_opens_at?: string;
+  submission_deadline?: string;
   redirect_url?: string;
   visitor_fields?: IntercessionVisitorField[];
 };
+
+function attendanceLongDate(value: Date) {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Kigali",
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  }).format(value);
+}
+
+function attendanceTime(value: string | undefined) {
+  const match = value?.match(/^\d{4}-\d{2}-\d{2}T(\d{2}):(\d{2})/);
+  if (!match) return "";
+  const hour = Number(match[1]);
+  return `${hour % 12 || 12}:${match[2]} ${hour >= 12 ? "PM" : "AM"}`;
+}
 
 export function IntercessionTakeForm({
   form,
@@ -81,7 +101,7 @@ export function IntercessionTakeForm({
   const [submitted, setSubmitted] = useState<{ message: string; redirectUrl: string; score: number | null; editUrl: string } | null>(null);
   const startedAt = useRef(new Date().toISOString());
   const [draftStatus, setDraftStatus] = useState<string | null>(null);
-  const [attendanceDate, setAttendanceDate] = useState({ iso: "", label: "DD/MM/YYYY" });
+  const [attendanceDate, setAttendanceDate] = useState({ iso: "", label: "DD/MM/YYYY", longLabel: "Event date" });
   const formRef = useRef<HTMLFormElement>(null);
   const draftRestored = useRef(false);
   const [shuffleSeed] = useState(() => Math.random());
@@ -93,16 +113,32 @@ export function IntercessionTakeForm({
   useEffect(() => {
     if (!isAttendanceAction) return;
     const timer = window.setTimeout(() => {
+      const scheduledDate = settings.submission_opens_at?.match(/^(\d{4})-(\d{2})-(\d{2})T/);
+      if (scheduledDate) {
+        const [, year, month, day] = scheduledDate;
+        const iso = `${year}-${month}-${day}`;
+        setAttendanceDate({ iso, label: `${day}/${month}/${year}`, longLabel: attendanceLongDate(new Date(`${iso}T12:00:00+02:00`)) });
+        return;
+      }
       const parts = Object.fromEntries(new Intl.DateTimeFormat("en-GB", {
         timeZone: "Africa/Kigali",
         day: "2-digit",
         month: "2-digit",
         year: "numeric",
       }).formatToParts(new Date()).map((part) => [part.type, part.value]));
-      setAttendanceDate({ iso: `${parts.year}-${parts.month}-${parts.day}`, label: `${parts.day}/${parts.month}/${parts.year}` });
+      setAttendanceDate({
+        iso: `${parts.year}-${parts.month}-${parts.day}`,
+        label: `${parts.day}/${parts.month}/${parts.year}`,
+        longLabel: attendanceLongDate(new Date()),
+      });
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [isAttendanceAction]);
+  }, [isAttendanceAction, settings.submission_opens_at]);
+  const attendanceOpensAt = attendanceTime(settings.submission_opens_at);
+  const attendanceClosesAt = attendanceTime(settings.submission_deadline);
+  const attendanceWindow = attendanceOpensAt && attendanceClosesAt
+    ? `${attendanceOpensAt} – ${attendanceClosesAt}`
+    : attendanceOpensAt || attendanceClosesAt || "Time to be announced";
   const displayQuestions = useMemo(() => {
     const visible = visibleIntercessionQuestions(questions.map((question) => ({
       ...question, points: question.points ?? 1, correctAnswer: question.correctAnswer ?? "", correctAnswers: question.correctAnswers ?? [],
@@ -208,7 +244,7 @@ export function IntercessionTakeForm({
     });
   }
 
-  if (submitted) return <TakeShell title={editToken ? "Response updated" : "Response recorded"} tone="green"><CheckCircle2 className="mx-auto mb-3 size-10 text-emerald-600" aria-hidden="true" /><p className="mb-2 text-slate-700">{submitted.message}</p>{submitted.score !== null ? <p className="mb-4 text-lg font-bold text-blue-700">Score: {submitted.score}%</p> : null}<div className="flex flex-wrap justify-center gap-2">{submitted.editUrl ? <Link href={submitted.editUrl} className="inline-flex rounded-lg border border-blue-200 bg-blue-50 px-5 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-100">Edit response</Link> : null}<Link href={submitted.redirectUrl || backHref} className="inline-flex rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">Continue</Link></div></TakeShell>;
+  if (submitted) return <TakeShell title={editToken ? "Response updated" : isAttendanceAction ? "Attendance recorded" : "Response recorded"} tone="green"><CheckCircle2 className="mx-auto mb-3 size-10 text-emerald-600" aria-hidden="true" /><p className="mb-2 text-slate-700">{submitted.message}</p>{submitted.score !== null ? <p className="mb-4 text-lg font-bold text-blue-700">Score: {submitted.score}%</p> : null}<div className="flex flex-wrap justify-center gap-2">{submitted.editUrl ? <Link href={submitted.editUrl} className="inline-flex rounded-lg border border-blue-200 bg-blue-50 px-5 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-100">Edit response</Link> : null}<Link href={submitted.redirectUrl || backHref} className="inline-flex rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">Continue</Link></div></TakeShell>;
 
   if (!preview && !editToken && alreadySubmitted && limitOneResponse) {
     return (
@@ -245,10 +281,10 @@ export function IntercessionTakeForm({
               <ArrowLeft className="size-4" aria-hidden="true" />
               {preview ? "Back to Manage Forms" : "Back to Forms"}
             </Link>
-            <div className="flex items-center gap-2 text-sm">
+            {!isAttendanceAction || preview ? <div className="flex items-center gap-2 text-sm">
               <FileText className="size-4" aria-hidden="true" />
               <span>{preview ? "Preview" : "Form"}</span>
-            </div>
+            </div> : null}
           </div> : null}
           <div className={embedded ? "" : "mt-4"}>
             <h1 className="mb-2 text-3xl font-bold text-slate-900"><IntercessionRichText value={form.title} /></h1>
@@ -293,28 +329,44 @@ export function IntercessionTakeForm({
             </div>
           ) : null}
 
-          <div className="border-t border-gray-200 bg-white px-5 py-5 sm:px-8">
+          <div className={isAttendanceAction ? "relative overflow-hidden border-t border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-cyan-50 px-5 py-8 sm:px-8 sm:py-10" : "border-t border-gray-200 bg-white px-5 py-5 sm:px-8"}>
+            {isAttendanceAction ? <><div className="pointer-events-none absolute -left-20 -top-20 size-56 rounded-full bg-emerald-200/30 blur-3xl" /><div className="pointer-events-none absolute -bottom-24 -right-20 size-64 rounded-full bg-cyan-200/30 blur-3xl" /></> : null}
             <div className={isAttendanceAction ? "flex flex-col items-center gap-4" : "flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end"}>
               {isAttendanceAction ? (
                 <>
-                  <div className="grid w-full max-w-md grid-cols-[minmax(0,1fr)_9rem] items-center gap-3 sm:grid-cols-[minmax(0,1fr)_10rem] sm:gap-6">
-                    <div className="text-center">
-                      <p className="text-lg font-medium uppercase tracking-wide text-slate-900">Date:</p>
-                      <time dateTime={attendanceDate.iso || undefined} className="mt-1 block text-xl font-bold text-emerald-600 sm:text-2xl">
-                        {attendanceDate.label}
-                      </time>
+                  <section className="relative z-10 w-full max-w-2xl overflow-hidden rounded-3xl border border-white/80 bg-white/90 p-5 shadow-[0_20px_60px_rgba(5,150,105,0.14)] backdrop-blur sm:p-8">
+                    <div className="flex justify-center">
+                      <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">
+                        <span className="size-2 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.14)]" />
+                        Attendance Open
+                      </span>
                     </div>
-                    <button
-                      type={preview ? "button" : "submit"}
-                      disabled={!preview && (isPending || answerableQuestions.length === 0 && !settings.allow_empty_submission)}
-                      aria-disabled={preview || undefined}
-                      title={preview ? "Preview only" : undefined}
-                      className="inline-flex size-36 flex-col items-center justify-center gap-2 justify-self-center rounded-full bg-emerald-600 px-4 py-4 text-center text-base font-semibold text-white shadow-md shadow-emerald-200 transition hover:bg-emerald-700 disabled:opacity-60 sm:size-40 sm:text-lg"
-                    >
-                      <CheckCircle2 className="size-7" aria-hidden="true" />
-                      {isPending ? "Submitting..." : submitButtonLabel}
-                    </button>
-                  </div>
+                    <div className="mt-6 grid items-center gap-7 sm:grid-cols-[minmax(0,1fr)_12rem] sm:gap-10">
+                      <div className="text-center sm:text-left">
+                        <time dateTime={attendanceDate.iso || undefined} className="mt-1 block text-2xl font-bold leading-tight text-slate-900 sm:text-3xl">
+                          {settings.attendance_display_text?.trim() || attendanceDate.longLabel}
+                        </time>
+                        <p className="mt-2 text-sm font-semibold text-emerald-700">{attendanceDate.label}</p>
+                        <div className="mt-4 inline-flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-600 ring-1 ring-slate-200">
+                          <Clock className="size-4 text-emerald-600" aria-hidden="true" />
+                          {attendanceWindow}
+                        </div>
+                      </div>
+                      <button
+                        type={preview ? "button" : "submit"}
+                        disabled={!preview && (isPending || answerableQuestions.length === 0 && !settings.allow_empty_submission)}
+                        aria-disabled={preview || undefined}
+                        title={preview ? "Preview only" : undefined}
+                        className="group inline-flex size-36 flex-col items-center justify-center gap-2 justify-self-center rounded-full bg-gradient-to-br from-emerald-500 to-emerald-700 px-4 py-4 text-center text-base font-bold text-white ring-8 ring-emerald-50 shadow-[0_18px_40px_rgba(5,150,105,0.35)] transition duration-200 hover:-translate-y-1 hover:scale-[1.02] hover:shadow-[0_24px_48px_rgba(5,150,105,0.42)] active:translate-y-0 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:scale-100 sm:size-48 sm:px-5 sm:py-5 sm:text-lg"
+                      >
+                        <span className="inline-flex size-10 items-center justify-center rounded-full bg-white/15 ring-1 ring-white/30 transition group-hover:bg-white/20">
+                          <CheckCircle2 className="size-7" aria-hidden="true" />
+                        </span>
+                        <span className="max-w-32 leading-tight">{isPending ? "Submitting..." : submitButtonLabel}</span>
+                      </button>
+                    </div>
+                    <p className="mt-7 text-center text-sm text-slate-500">One click confirms your presence!</p>
+                  </section>
                   {preview ? (
                     <button type="button" onClick={onPreviewClose} className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-6 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">
                       Close Preview

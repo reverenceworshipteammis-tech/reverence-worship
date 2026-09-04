@@ -123,6 +123,7 @@ type BuilderSettings = {
   allow_empty_submission: boolean;
   submit_button_label: string;
   submit_button_style: "default" | "attendance";
+  attendance_display_text: string;
   submission_deadline: string;
   submission_opens_at: string;
   max_responses: number;
@@ -234,6 +235,9 @@ const formTemplates: Array<{ id: string; name: string; description: string; titl
       allow_empty_submission: true,
       submit_button_label: "Mark Attendance",
       submit_button_style: "attendance",
+      attendance_display_text: "",
+      submission_opens_at: "",
+      submission_deadline: "",
       require_login: true,
       limit_one_response: true,
       allow_response_editing: false,
@@ -323,6 +327,7 @@ const defaultSettings: BuilderSettings = {
   allow_empty_submission: false,
   submit_button_label: "Submit",
   submit_button_style: "default",
+  attendance_display_text: "",
   submission_deadline: "",
   submission_opens_at: "",
   max_responses: 0,
@@ -332,9 +337,16 @@ const defaultSettings: BuilderSettings = {
 };
 
 function normalizeBuilderSettings(value: Partial<BuilderSettings> | undefined): BuilderSettings {
+  const submitButtonLabel = typeof value?.submit_button_label === "string" && value.submit_button_label.trim()
+    ? value.submit_button_label.trim().slice(0, 80)
+    : defaultSettings.submit_button_label;
+  const legacyAttendanceStyle = value?.allow_empty_submission === true
+    && submitButtonLabel.toLowerCase() === "mark attendance";
   return {
     ...defaultSettings,
     ...(value ?? {}),
+    submit_button_label: submitButtonLabel,
+    submit_button_style: value?.submit_button_style === "attendance" || legacyAttendanceStyle ? "attendance" : "default",
     visitor_fields: parseIntercessionVisitorFields(value?.visitor_fields),
   };
 }
@@ -752,6 +764,49 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
 
             <div className="relative mx-auto max-w-5xl">
               <div className="space-y-4">
+                {settings.submit_button_style === "attendance" ? (
+                  <section className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-5 shadow-sm">
+                    <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                      <div>
+                        <h2 className="text-base font-semibold text-slate-900">Attendance recording window</h2>
+
+                      </div>
+                      <span className="mt-1 shrink-0 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">Required to publish</span>
+                    </div>
+                    <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                      <label className="text-sm font-semibold text-slate-700">
+                        Start date and time
+                        <input
+                          type="datetime-local"
+                          value={settings.submission_opens_at}
+                          onChange={(event) => setSettings((current) => ({ ...current, submission_opens_at: event.target.value }))}
+                          className="mt-2 w-full rounded-lg border border-emerald-200 bg-white px-3 py-2.5 font-normal text-slate-900 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"
+                        />
+                      </label>
+                      <label className="text-sm font-semibold text-slate-700">
+                        End date and time
+                        <input
+                          type="datetime-local"
+                          min={settings.submission_opens_at || undefined}
+                          value={settings.submission_deadline}
+                          onChange={(event) => setSettings((current) => ({ ...current, submission_deadline: event.target.value }))}
+                          className="mt-2 w-full rounded-lg border border-emerald-200 bg-white px-3 py-2.5 font-normal text-slate-900 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"
+                        />
+                      </label>
+                    </div>
+                    <label className="mt-4 block text-sm font-semibold text-slate-700">
+                      Display text <span className="font-normal text-slate-500">(optional)</span>
+                      <input
+                        value={settings.attendance_display_text}
+                        maxLength={120}
+                        onChange={(event) => setSettings((current) => ({ ...current, attendance_display_text: event.target.value }))}
+                        placeholder="Example: Sunday Worship Service"
+                        className="mt-2 w-full rounded-lg border border-emerald-200 bg-white px-3 py-2.5 font-normal text-slate-900 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"
+                      />
+                      <span className="mt-1 block text-xs font-normal text-slate-500">Shown prominently on the attendance card. Leave blank to show the full event date.</span>
+                    </label>
+                  </section>
+                ) : null}
                 {questions.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-blue-200 bg-white p-8 text-center shadow-sm">
                     <p className="text-sm text-slate-500">This form can be submitted without questions.</p>
