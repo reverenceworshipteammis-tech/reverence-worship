@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { notificationLifetimeCutoff } from "@/lib/notification-retention-policy";
 import { filterCurrentNotifications } from "@/lib/notification-source-validity";
 import { normalizePermissionRequestNotificationMessage } from "@/lib/permission-notification-copy";
+import { isTransientDatabaseError } from "@/lib/database-retry";
 
 export type AdminNotification = {
   id: string;
@@ -70,7 +71,7 @@ async function safeRead<T>(promise: Promise<T>, fallback: T) {
   }
 }
 
-export async function getAdminNotifications() {
+async function readAdminNotifications() {
   const user = await requireUser();
   const roleNames = user.roles.map((userRole) => userRole.role.name);
   const roleIds = user.roles.map((userRole) => userRole.role.id);
@@ -147,6 +148,16 @@ export async function getAdminNotifications() {
     notifications: limited,
     unreadCount: limited.filter((notification) => !notification.readAt).length,
   };
+}
+
+export async function getAdminNotifications() {
+  try {
+    return await readAdminNotifications();
+  } catch (error) {
+    if (!isTransientDatabaseError(error)) throw error;
+    console.error("Unable to load notifications because the database connection is unavailable.", error);
+    return { ok: false, notifications: [] as AdminNotification[], unreadCount: 0 };
+  }
 }
 
 export async function markAdminNotificationRead(type: AdminNotification["type"], sourceId: number) {

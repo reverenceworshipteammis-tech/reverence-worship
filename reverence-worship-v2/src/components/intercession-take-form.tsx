@@ -42,6 +42,9 @@ type TakeSettings = {
   is_quiz?: boolean;
   release_grade?: string;
   thank_you_message?: string;
+  allow_empty_submission?: boolean;
+  submit_button_label?: string;
+  submit_button_style?: "default" | "attendance";
   redirect_url?: string;
   visitor_fields?: IntercessionVisitorField[];
 };
@@ -78,12 +81,28 @@ export function IntercessionTakeForm({
   const [submitted, setSubmitted] = useState<{ message: string; redirectUrl: string; score: number | null; editUrl: string } | null>(null);
   const startedAt = useRef(new Date().toISOString());
   const [draftStatus, setDraftStatus] = useState<string | null>(null);
+  const [attendanceDate, setAttendanceDate] = useState({ iso: "", label: "DD/MM/YYYY" });
   const formRef = useRef<HTMLFormElement>(null);
   const draftRestored = useRef(false);
   const [shuffleSeed] = useState(() => Math.random());
   const [isPending, startTransition] = useTransition();
 
   const limitOneResponse = settings.limit_one_response !== false;
+  const submitButtonLabel = settings.submit_button_label?.trim() || "Submit";
+  const isAttendanceAction = settings.submit_button_style === "attendance";
+  useEffect(() => {
+    if (!isAttendanceAction) return;
+    const timer = window.setTimeout(() => {
+      const parts = Object.fromEntries(new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Africa/Kigali",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      }).formatToParts(new Date()).map((part) => [part.type, part.value]));
+      setAttendanceDate({ iso: `${parts.year}-${parts.month}-${parts.day}`, label: `${parts.day}/${parts.month}/${parts.year}` });
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [isAttendanceAction]);
   const displayQuestions = useMemo(() => {
     const visible = visibleIntercessionQuestions(questions.map((question) => ({
       ...question, points: question.points ?? 1, correctAnswer: question.correctAnswer ?? "", correctAnswers: question.correctAnswers ?? [],
@@ -252,43 +271,71 @@ export function IntercessionTakeForm({
         {message && <ActionNotice message={message} tone={messageIsError ? "error" : "info"} onClose={() => setMessage(null)} className="mx-5 mt-4 sm:mx-8" />}
 
         <form ref={formRef} onSubmit={submit} noValidate onInput={(event) => saveDraft(event.currentTarget)}>
-          <div className="space-y-6 bg-slate-50 p-5 sm:p-8">
-            {requireRespondentName ? <VisitorInformationFields fields={parseIntercessionVisitorFields(settings.visitor_fields)} formId={form.id} /> : null}
-            {displayQuestions.length ? (
-              displayQuestions.map(({ question, index }) => (
-                <div key={`${question.id}-${index}`}>
-                  {["title_section", "section_break"].includes(question.type) ? <FormDisplayBlock question={question} /> : <QuestionField
-                    question={question}
-                    index={index}
-                    displayNumber={settings.show_question_numbers ? answerableQuestions.findIndex((item) => item.index === index) + 1 : null}
-                    editing={Boolean(editToken)}
-                    onAnswered={(value) => setAnswered((current) => ({ ...current, [`question_${index}`]: value }))}
-                    onAnswerChange={(value) => setAnswersByQuestionId((current) => ({ ...current, [question.id]: value }))}
-                  />}
-                </div>
-              ))
-            ) : (
-              <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-sm text-gray-500">This form has no questions yet.</div>
-            )}
-          </div>
+          {requireRespondentName || displayQuestions.length > 0 || !settings.allow_empty_submission ? (
+            <div className="space-y-6 bg-slate-50 p-5 sm:p-8">
+              {requireRespondentName ? <VisitorInformationFields fields={parseIntercessionVisitorFields(settings.visitor_fields)} formId={form.id} /> : null}
+              {displayQuestions.length ? (
+                displayQuestions.map(({ question, index }) => (
+                  <div key={`${question.id}-${index}`}>
+                    {["title_section", "section_break"].includes(question.type) ? <FormDisplayBlock question={question} /> : <QuestionField
+                      question={question}
+                      index={index}
+                      displayNumber={settings.show_question_numbers ? answerableQuestions.findIndex((item) => item.index === index) + 1 : null}
+                      editing={Boolean(editToken)}
+                      onAnswered={(value) => setAnswered((current) => ({ ...current, [`question_${index}`]: value }))}
+                      onAnswerChange={(value) => setAnswersByQuestionId((current) => ({ ...current, [question.id]: value }))}
+                    />}
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-sm text-gray-500">This form has no questions yet.</div>
+              )}
+            </div>
+          ) : null}
 
           <div className="border-t border-gray-200 bg-white px-5 py-5 sm:px-8">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
-              {preview ? (
-                <button
-                  type="button"
-                  onClick={onPreviewClose}
-                  className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-8 py-3 font-semibold text-slate-700 transition hover:bg-slate-100"
-                >
-                  Cancel
-                </button>
+            <div className={isAttendanceAction ? "flex flex-col items-center gap-4" : "flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end"}>
+              {isAttendanceAction ? (
+                <>
+                  <div className="grid w-full max-w-md grid-cols-[minmax(0,1fr)_9rem] items-center gap-3 sm:grid-cols-[minmax(0,1fr)_10rem] sm:gap-6">
+                    <div className="text-center">
+                      <p className="text-lg font-medium uppercase tracking-wide text-slate-900">Date:</p>
+                      <time dateTime={attendanceDate.iso || undefined} className="mt-1 block text-xl font-bold text-emerald-600 sm:text-2xl">
+                        {attendanceDate.label}
+                      </time>
+                    </div>
+                    <button
+                      type={preview ? "button" : "submit"}
+                      disabled={!preview && (isPending || answerableQuestions.length === 0 && !settings.allow_empty_submission)}
+                      aria-disabled={preview || undefined}
+                      title={preview ? "Preview only" : undefined}
+                      className="inline-flex size-36 flex-col items-center justify-center gap-2 justify-self-center rounded-full bg-emerald-600 px-4 py-4 text-center text-base font-semibold text-white shadow-md shadow-emerald-200 transition hover:bg-emerald-700 disabled:opacity-60 sm:size-40 sm:text-lg"
+                    >
+                      <CheckCircle2 className="size-7" aria-hidden="true" />
+                      {isPending ? "Submitting..." : submitButtonLabel}
+                    </button>
+                  </div>
+                  {preview ? (
+                    <button type="button" onClick={onPreviewClose} className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-6 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">
+                      Close Preview
+                    </button>
+                  ) : null}
+                </>
+              ) : preview ? (
+                  <button
+                    type="button"
+                    onClick={onPreviewClose}
+                    className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-8 py-3 font-semibold text-slate-700 transition hover:bg-slate-100"
+                  >
+                    Cancel
+                  </button>
               ) : (
                 <button
                   disabled={isPending || answerableQuestions.length === 0}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-8 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-8 py-3 font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60"
                 >
-                  {isPending ? <CheckCircle2 className="size-4" /> : <Send className="size-4" />}
-                  {isPending ? "Submitting..." : "Submit"}
+                  {isPending ? <CheckCircle2 className="size-5" /> : <Send className="size-4" />}
+                  {isPending ? "Submitting..." : submitButtonLabel}
                 </button>
               )}
             </div>

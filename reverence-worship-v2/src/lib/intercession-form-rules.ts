@@ -70,7 +70,9 @@ export function getIntercessionPublishingIssues(
   }
 
   const answerable = questions.filter((question) => !["title_section", "section_break"].includes(String(question.type)));
-  if (answerable.length === 0) issues.push({ id: "no-questions", message: "Add at least one answerable question." });
+  if (answerable.length === 0 && !settings.allow_empty_submission) {
+    issues.push({ id: "no-questions", message: "Add at least one answerable question." });
+  }
 
   questions.forEach((question, index) => {
     const id = typeof question.id === "string" && question.id ? question.id : `question-${index + 1}`;

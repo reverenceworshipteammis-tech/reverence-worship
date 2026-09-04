@@ -87,6 +87,9 @@ type FormPreviewSettings = {
   require_login: boolean;
   allow_export: boolean;
   include_timestamps: boolean;
+  allow_empty_submission: boolean;
+  submit_button_label: string;
+  submit_button_style: "default" | "attendance";
 };
 
 type SpiritualForm = {

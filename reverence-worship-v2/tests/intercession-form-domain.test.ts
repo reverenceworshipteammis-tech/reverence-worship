@@ -146,6 +146,19 @@ test("redirects accept only internal paths", () => {
   assert.equal(parseIntercessionFormSettings({ redirect_url: "//example.com" }).redirect_url, "");
 });
 
+test("response action settings are normalized for one-click forms", () => {
+  const settings = parseIntercessionFormSettings({
+    allow_empty_submission: true,
+    submit_button_label: `  ${"M".repeat(100)}  `,
+    submit_button_style: "attendance",
+  });
+  assert.equal(settings.allow_empty_submission, true);
+  assert.equal(settings.submit_button_label, "M".repeat(80));
+  assert.equal(settings.submit_button_style, "attendance");
+  assert.equal(parseIntercessionFormSettings({ submit_button_label: "   " }).submit_button_label, "Submit");
+  assert.equal(parseIntercessionFormSettings({ submit_button_style: "unknown" }).submit_button_style, "default");
+});
+
 test("lifecycle date-times are interpreted in Kigali time", () => {
   assert.equal(intercessionLifecycleDate("2026-08-13T10:00")?.toISOString(), "2026-08-13T08:00:00.000Z");
   assert.equal(intercessionLifecycleDate("2026-08-13", true)?.toISOString(), "2026-08-13T21:59:59.999Z");

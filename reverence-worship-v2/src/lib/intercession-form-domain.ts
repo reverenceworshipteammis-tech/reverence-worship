@@ -146,6 +146,9 @@ export type IntercessionFormSettings = {
   notify_user_on_review: boolean;
   allow_export: boolean;
   include_timestamps: boolean;
+  allow_empty_submission: boolean;
+  submit_button_label: string;
+  submit_button_style: "default" | "attendance";
   submission_opens_at: string;
   submission_deadline: string;
   max_responses: number;
@@ -212,6 +215,11 @@ export function parseIntercessionFormSettings(value: unknown): IntercessionFormS
       ? item.response_closed_message.trim().slice(0, 500)
       : "This form is no longer accepting responses.",
     allow_export: item.allow_export !== false, include_timestamps: item.include_timestamps !== false,
+    allow_empty_submission: Boolean(item.allow_empty_submission),
+    submit_button_label: typeof item.submit_button_label === "string" && item.submit_button_label.trim()
+      ? item.submit_button_label.trim().slice(0, 80)
+      : "Submit",
+    submit_button_style: item.submit_button_style === "attendance" ? "attendance" : "default",
     submission_opens_at: typeof item.submission_opens_at === "string" ? item.submission_opens_at : "",
     submission_deadline: typeof item.submission_deadline === "string" ? item.submission_deadline : "",
     max_responses: Number.isInteger(maxResponses) && maxResponses > 0 ? maxResponses : 0,

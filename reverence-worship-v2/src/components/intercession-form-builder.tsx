@@ -120,6 +120,9 @@ type BuilderSettings = {
   notify_user_on_review: boolean;
   allow_export: boolean;
   include_timestamps: boolean;
+  allow_empty_submission: boolean;
+  submit_button_label: string;
+  submit_button_style: "default" | "attendance";
   submission_deadline: string;
   submission_opens_at: string;
   max_responses: number;
@@ -220,7 +223,23 @@ type DraftStatus = "saved" | "saving" | "unsaved" | "error";
 
 const NEW_FORM_DRAFT_KEY = "intercession-form-builder-draft-v1";
 
-const formTemplates: Array<{ id: string; name: string; description: string; title: string; questions: BuilderQuestion[] }> = [
+const formTemplates: Array<{ id: string; name: string; description: string; title: string; questions: BuilderQuestion[]; settings?: Partial<BuilderSettings> }> = [
+  {
+    id: "attendance",
+    name: "Attendance",
+    description: "A one-click meeting or event attendance form.",
+    title: "Meeting attendance",
+    questions: [],
+    settings: {
+      allow_empty_submission: true,
+      submit_button_label: "Mark Attendance",
+      submit_button_style: "attendance",
+      require_login: true,
+      limit_one_response: true,
+      allow_response_editing: false,
+      thank_you_message: "Your attendance has been recorded.",
+    },
+  },
   {
     id: "registration",
     name: "Registration",
@@ -301,6 +320,9 @@ const defaultSettings: BuilderSettings = {
   notify_user_on_review: false,
   allow_export: true,
   include_timestamps: true,
+  allow_empty_submission: false,
+  submit_button_label: "Submit",
+  submit_button_style: "default",
   submission_deadline: "",
   submission_opens_at: "",
   max_responses: 0,
@@ -326,7 +348,7 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
   const [title, setTitle] = useState(initialData?.title ?? "");
   const [description, setDescription] = useState(initialData?.description ?? "");
   const [questions, setQuestions] = useState<BuilderQuestion[]>(
-    initialData?.questions?.length ? initialData.questions.map(normalizeQuestion) : [newQuestion("short_answer", defaultSettings.default_required)],
+    initialData?.questions ? initialData.questions.map(normalizeQuestion) : [newQuestion("short_answer", defaultSettings.default_required)],
   );
   const [selectedQuestionId, setSelectedQuestionId] = useState<string | null>(null);
   const [draggingQuestionId, setDraggingQuestionId] = useState<string | null>(null);
@@ -440,7 +462,7 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
             const restored: BuilderSnapshot = {
               title: typeof parsed.title === "string" ? parsed.title : "",
               description: typeof parsed.description === "string" ? parsed.description : "",
-              questions: Array.isArray(parsed.questions) && parsed.questions.length ? parsed.questions.map(normalizeQuestion) : [newQuestion("short_answer", Boolean(parsed.settings?.default_required))],
+              questions: Array.isArray(parsed.questions) ? parsed.questions.map(normalizeQuestion) : [newQuestion("short_answer", Boolean(parsed.settings?.default_required))],
               settings: normalizeBuilderSettings(parsed.settings),
             };
             applySnapshot(restored);
@@ -555,7 +577,14 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
     setTitle(template.title);
     setDescription(template.description);
     setQuestions(template.questions.map(cloneQuestion));
-    if (template.id === "quiz") setSettings((current) => ({ ...current, is_quiz: true }));
+    setSettings((current) => ({
+      ...current,
+      is_quiz: template.id === "quiz",
+      allow_empty_submission: false,
+      submit_button_label: "Submit",
+      submit_button_style: "default",
+      ...template.settings,
+    }));
     setSelectedQuestionId(null);
     setShowTemplates(false);
   }
@@ -570,7 +599,7 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
   }
 
   function deleteQuestion(id: string) {
-    if (questions.length === 1) return;
+    if (questions.length === 1 && !settings.allow_empty_submission) return;
     setQuestions((current) => current.filter((question) => question.id !== id));
     setSelectedQuestionId((current) => (current === id ? null : current));
   }
@@ -723,6 +752,15 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
 
             <div className="relative mx-auto max-w-5xl">
               <div className="space-y-4">
+                {questions.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-blue-200 bg-white p-8 text-center shadow-sm">
+                    <p className="text-sm text-slate-500">This form can be submitted without questions.</p>
+                    <button type="button" onClick={() => addQuestion()} className="mt-4 inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700">
+                      <Plus className="size-4" aria-hidden="true" />
+                      Add optional question
+                    </button>
+                  </div>
+                ) : null}
                 {questions.map((question) => (
                   <QuestionCard
                     key={question.id}
@@ -1647,6 +1685,7 @@ function SettingsPanel({
               <p className="mt-1 text-xs text-gray-500">Use 0 for no response limit.</p>
             </div>
             <label className="block border-b border-gray-100 py-3 text-sm font-medium text-gray-800">Thank-you message<textarea value={settings.thank_you_message} onChange={(event) => update("thank_you_message", event.target.value)} rows={3} className="mt-2 w-full resize-y rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+            <label className="block border-b border-gray-100 py-3 text-sm font-medium text-gray-800">Submit button label<input value={settings.submit_button_label} maxLength={80} onChange={(event) => update("submit_button_label", event.target.value)} placeholder="Submit" className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /><span className="mt-1 block text-xs font-normal text-gray-500">For example, Submit, Register, or Mark Attendance.</span></label>
             <label className="block border-b border-gray-100 py-3 text-sm font-medium text-gray-800">Closed-form message<textarea value={settings.response_closed_message} onChange={(event) => update("response_closed_message", event.target.value)} rows={2} className="mt-2 w-full resize-y rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
             <label className="block border-b border-gray-100 py-3 text-sm font-medium text-gray-800">Continue to (optional)<input value={settings.redirect_url} onChange={(event) => update("redirect_url", event.target.value)} placeholder="/admin/intercession" className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /><span className="mt-1 block text-xs font-normal text-gray-500">Enter a safe path inside this system, beginning with /.</span></label>
           </>
@@ -1674,6 +1713,7 @@ function SettingsPanel({
             {settings.allow_response_editing ? <SettingNumber title="Editing window (hours)" value={Number(settings.response_edit_hours)} onChange={(value) => update("response_edit_hours", Math.min(720, Math.max(1, value)))} /> : null}
             <SettingToggle title="Allow response export" description="Admin can download CSV or Excel workbooks" checked={Boolean(settings.allow_export)} onChange={(value) => update("allow_export", value)} />
             <SettingToggle title="Include timestamps in export" description="Show submission time in downloaded files" checked={Boolean(settings.include_timestamps)} onChange={(value) => update("include_timestamps", value)} />
+            <SettingToggle title="Allow submission without questions" description="Let this form record the respondent and submission time without requiring an answer" checked={Boolean(settings.allow_empty_submission)} onChange={(value) => update("allow_empty_submission", value)} />
           </>
         )}
       </div>

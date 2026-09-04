@@ -48,3 +48,9 @@ test("quiz publishing rejects checkbox answer keys outside the options", () => {
   }], { is_quiz: true });
   assert.deepEqual(issues.map((issue) => issue.id), ["check-correct-options"]);
 });
+
+test("one-click forms can publish without answerable questions when explicitly enabled", () => {
+  const displayOnlyQuestions = [{ id: "attendance", type: "title_section", label: "Mark your attendance" }];
+  assert.deepEqual(getIntercessionPublishingIssues("Meeting attendance", displayOnlyQuestions).map((issue) => issue.id), ["no-questions"]);
+  assert.deepEqual(getIntercessionPublishingIssues("Meeting attendance", displayOnlyQuestions, { allow_empty_submission: true }), []);
+});

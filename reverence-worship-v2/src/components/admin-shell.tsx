@@ -193,6 +193,9 @@ export function AdminShell({
       } else {
         setNotificationError("Could not load notifications.");
       }
+    } catch (error) {
+      console.error("Unable to refresh notifications", error);
+      setNotificationError("Could not load notifications. They will retry automatically.");
     } finally {
       if (!silent) setPending(false);
     }
@@ -256,14 +259,19 @@ export function AdminShell({
     const refreshSession = async () => {
       if (!activitySincePingRef.current) return;
       activitySincePingRef.current = false;
+      try {
+        const response = await fetch("/api/session/ping", {
+          method: "POST",
+          cache: "no-store",
+        });
 
-      const response = await fetch("/api/session/ping", {
-        method: "POST",
-        cache: "no-store",
-      });
-
-      if (response.status === 401) {
-        await logoutForIdle();
+        if (response.status === 401) {
+          await logoutForIdle();
+        } else if (!response.ok) {
+          activitySincePingRef.current = true;
+        }
+      } catch {
+        activitySincePingRef.current = true;
       }
     };
 
