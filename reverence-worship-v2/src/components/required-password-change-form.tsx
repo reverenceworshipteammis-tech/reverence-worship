@@ -6,11 +6,12 @@ import { requiredPasswordChangeAction } from "@/app/auth-actions";
 import { AuthFormButton } from "@/components/auth-form-button";
 import { PasswordField } from "@/components/password-field";
 
-export function RequiredPasswordChangeForm() {
+export function RequiredPasswordChangeForm({ returnTo }: { returnTo: string }) {
   const [state, formAction] = useActionState(requiredPasswordChangeAction, {});
 
   return (
     <form action={formAction} className="mx-auto w-full max-w-md space-y-4 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+      <input type="hidden" name="returnTo" value={returnTo} />
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Change Password</h1>
         <p className="mt-1 text-sm leading-6 text-gray-500">

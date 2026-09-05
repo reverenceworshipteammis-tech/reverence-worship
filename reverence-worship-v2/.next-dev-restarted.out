@@ -1,0 +1,18 @@
+
+> reverence-worship-v2@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.10 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://10.181.81.219:3000
+- Environments: .env
+✓ Ready in 489ms
+Creating turbopack project {
+  dir: 'D:\\MY.DATA\\Systems\\New_System\\reverence-worship\\reverence-worship-v2',
+  testMode: true
+}
+- Experiments (use with caution):
+  · serverActions
+
+ GET /manifest.webmanifest 200 in 259ms (next.js: 233ms, proxy.ts: 8ms, application-code: 18ms)
+ GET / 200 in 5.6s (next.js: 2.6s, proxy.ts: 149ms, application-code: 2.8s)

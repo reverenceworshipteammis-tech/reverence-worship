@@ -9,6 +9,7 @@ import { isTransientDatabaseError, withDatabaseRetry } from "@/lib/database-retr
 import { prisma } from "@/lib/prisma";
 import { getSystemSetting, isRegistrationEnabled, settingToNumber } from "@/lib/system-settings";
 import { notifyUsers, userIdsWithPermission } from "@/lib/notifications";
+import { authPathWithReturnTo, safeAuthReturnPath } from "@/lib/auth-return-path";
 
 type AuthState = {
   error?: string;
@@ -118,6 +119,7 @@ export async function loginAction(
   _previousState: AuthState,
   formData: FormData,
 ): Promise<AuthState> {
+  const returnTo = safeAuthReturnPath(formData.get("returnTo"));
   const parsed = loginSchema.safeParse(Object.fromEntries(formData));
 
   if (!parsed.success) {
@@ -152,16 +154,17 @@ export async function loginAction(
   await createSession(user.id, { sessionVersion: user.sessionVersion });
 
   if (user.mustChangePassword) {
-    redirect("/change-password");
+    redirect(authPathWithReturnTo("/change-password", returnTo));
   }
 
-  redirect("/admin/dashboard");
+  redirect(returnTo);
 }
 
 export async function requiredPasswordChangeAction(
   _previousState: AuthState,
   formData: FormData,
 ): Promise<AuthState> {
+  const returnTo = safeAuthReturnPath(formData.get("returnTo"));
   const user = await requireUser();
   const parsed = requiredPasswordChangeSchema.safeParse(Object.fromEntries(formData));
 
@@ -195,17 +198,18 @@ export async function requiredPasswordChangeAction(
     dedupeKey: `required-password-change:${user.id}:${Date.now()}`,
   });
 
-  redirect("/admin/dashboard");
+  redirect(returnTo);
 }
 
 export async function completeGoogleProfileAction(
   _previousState: AuthState,
   formData: FormData,
 ): Promise<AuthState> {
+  const returnTo = safeAuthReturnPath(formData.get("returnTo"));
   const user = await requireUser();
 
   if (!user.googleId) {
-    redirect("/admin/dashboard");
+    redirect(returnTo);
   }
 
   const parsed = googleProfileCompletionSchema.safeParse(Object.fromEntries(formData));
@@ -242,7 +246,7 @@ export async function completeGoogleProfileAction(
     dedupeKey: `google-profile-completed:${user.id}`,
   });
 
-  redirect("/admin/dashboard");
+  redirect(returnTo);
 }
 
 export async function registerAction(

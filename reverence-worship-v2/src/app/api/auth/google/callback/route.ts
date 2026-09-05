@@ -1,16 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSession, needsGoogleProfileCompletion } from "@/lib/auth";
-import { exchangeGoogleCode, GOOGLE_OAUTH_STATE_COOKIE } from "@/lib/google-oauth";
+import { exchangeGoogleCode, GOOGLE_OAUTH_RETURN_COOKIE, GOOGLE_OAUTH_STATE_COOKIE } from "@/lib/google-oauth";
 import { notifyUsers, userIdsWithPermission } from "@/lib/notifications";
 import { prisma } from "@/lib/prisma";
 import { isRegistrationEnabled } from "@/lib/system-settings";
+import { authPathWithReturnTo, safeAuthReturnPath } from "@/lib/auth-return-path";
 
-function loginRedirect(request: NextRequest, error: string) {
+function clearOAuthCookies(response: NextResponse) {
+  response.cookies.delete(GOOGLE_OAUTH_STATE_COOKIE);
+  response.cookies.delete(GOOGLE_OAUTH_RETURN_COOKIE);
+  return response;
+}
+
+function loginRedirect(request: NextRequest, error: string, returnTo: string) {
   const url = new URL("/login", request.nextUrl.origin);
   url.searchParams.set("error", error);
+  url.searchParams.set("next", returnTo);
   const response = NextResponse.redirect(url);
-  response.cookies.delete(GOOGLE_OAUTH_STATE_COOKIE);
-  return response;
+  return clearOAuthCookies(response);
 }
 
 async function createGoogleUser(profile: Awaited<ReturnType<typeof exchangeGoogleCode>>) {
@@ -72,17 +79,18 @@ async function createGoogleUser(profile: Awaited<ReturnType<typeof exchangeGoogl
 }
 
 export async function GET(request: NextRequest) {
+  const returnTo = safeAuthReturnPath(request.cookies.get(GOOGLE_OAUTH_RETURN_COOKIE)?.value);
   const receivedState = request.nextUrl.searchParams.get("state");
   const expectedState = request.cookies.get(GOOGLE_OAUTH_STATE_COOKIE)?.value;
   const code = request.nextUrl.searchParams.get("code");
   const googleError = request.nextUrl.searchParams.get("error");
 
   if (googleError) {
-    return loginRedirect(request, "Google sign-in was cancelled.");
+    return loginRedirect(request, "Google sign-in was cancelled.", returnTo);
   }
 
   if (!code || !receivedState || !expectedState || receivedState !== expectedState) {
-    return loginRedirect(request, "Google sign-in could not be verified. Please try again.");
+    return loginRedirect(request, "Google sign-in could not be verified. Please try again.", returnTo);
   }
 
   try {
@@ -106,21 +114,23 @@ export async function GET(request: NextRequest) {
       });
     } else {
       const result = await createGoogleUser(profile);
-      if (!result.user || result.message) return loginRedirect(request, result.message ?? "Google sign-in failed.");
+      if (!result.user || result.message) return loginRedirect(request, result.message ?? "Google sign-in failed.", returnTo);
       user = await prisma.user.findUnique({
         where: { id: result.user.id },
         include: { roles: { include: { role: true } } },
       });
     }
 
-    if (!user) return loginRedirect(request, "Google sign-in failed.");
-    if (user.status !== "active") return loginRedirect(request, "Your account is not active yet.");
+    if (!user) return loginRedirect(request, "Google sign-in failed.", returnTo);
+    if (user.status !== "active") return loginRedirect(request, "Your account is not active yet.", returnTo);
 
     await createSession(user.id, { sessionVersion: user.sessionVersion });
-    const response = NextResponse.redirect(new URL(needsGoogleProfileCompletion(user) ? "/complete-profile" : "/admin/dashboard", request.nextUrl.origin));
-    response.cookies.delete(GOOGLE_OAUTH_STATE_COOKIE);
-    return response;
+    const destination = needsGoogleProfileCompletion(user)
+      ? authPathWithReturnTo("/complete-profile", returnTo)
+      : returnTo;
+    const response = NextResponse.redirect(new URL(destination, request.nextUrl.origin));
+    return clearOAuthCookies(response);
   } catch (error) {
-    return loginRedirect(request, error instanceof Error ? error.message : "Google sign-in failed.");
+    return loginRedirect(request, error instanceof Error ? error.message : "Google sign-in failed.", returnTo);
   }
 }

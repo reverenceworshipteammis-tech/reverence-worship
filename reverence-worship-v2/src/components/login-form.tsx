@@ -8,11 +8,12 @@ import { loginAction } from "@/app/auth-actions";
 import { AuthFormButton } from "@/components/auth-form-button";
 import { PasswordField } from "@/components/password-field";
 
-export function LoginForm({ externalError }: { externalError?: string }) {
+export function LoginForm({ externalError, returnTo }: { externalError?: string; returnTo: string }) {
   const [state, formAction] = useActionState(loginAction, {});
 
   return (
     <form action={formAction} className="space-y-3.5">
+      <input type="hidden" name="returnTo" value={returnTo} />
       <Link href="/" className="mb-7 hidden justify-center md:flex" aria-label="Reverence Worship Team home">
         <span className="relative h-20 w-full max-w-[340px] overflow-hidden">
           <Image
@@ -103,7 +104,7 @@ export function LoginForm({ externalError }: { externalError?: string }) {
       </div>
 
       <Link
-        href="/api/auth/google"
+        href={`/api/auth/google?${new URLSearchParams({ next: returnTo }).toString()}`}
         className="group inline-flex h-11 w-full items-center justify-center gap-3 rounded-xl border border-gray-200 bg-white px-4 text-[0.86rem] font-bold text-gray-700 shadow-sm shadow-gray-200/60 transition hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50/40 hover:text-gray-900 hover:shadow-md focus:outline-none focus:ring-4 focus:ring-blue-100"
       >
         <span className="flex size-6 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-gray-100 transition group-hover:ring-blue-100" aria-hidden="true">

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/login-form";
 import { getCurrentUser, needsGoogleProfileCompletion } from "@/lib/auth";
 import { isRegistrationEnabled } from "@/lib/system-settings";
+import { authPathWithReturnTo, safeAuthReturnPath } from "@/lib/auth-return-path";
 
 async function RegistrationLink() {
   if (!await isRegistrationEnabled()) return null;
@@ -18,25 +19,26 @@ async function RegistrationLink() {
   );
 }
 
-export default async function LoginPage({ searchParams }: { searchParams?: Promise<{ error?: string }> }) {
+export default async function LoginPage({ searchParams }: { searchParams?: Promise<{ error?: string; next?: string }> }) {
   const [user, params] = await Promise.all([
     getCurrentUser(),
     searchParams,
   ]);
+  const returnTo = safeAuthReturnPath(params?.next);
 
   if (user) {
     if (user.mustChangePassword) {
-      redirect("/change-password");
+      redirect(authPathWithReturnTo("/change-password", returnTo));
     }
     if (needsGoogleProfileCompletion(user)) {
-      redirect("/complete-profile");
+      redirect(authPathWithReturnTo("/complete-profile", returnTo));
     }
-    redirect("/admin/dashboard");
+    redirect(returnTo);
   }
 
   return (
     <div className="auth-login-content mx-auto w-full max-w-sm">
-      <LoginForm externalError={params?.error} />
+      <LoginForm externalError={params?.error} returnTo={returnTo} />
       <Suspense fallback={<div className="h-9" aria-hidden="true" />}>
         <RegistrationLink />
       </Suspense>

@@ -2,6 +2,7 @@ import { randomBytes } from "crypto";
 import { jwtVerify, createRemoteJWKSet } from "jose";
 
 export const GOOGLE_OAUTH_STATE_COOKIE = "google_oauth_state";
+export const GOOGLE_OAUTH_RETURN_COOKIE = "google_oauth_return";
 
 type GoogleTokenResponse = {
   id_token?: string;

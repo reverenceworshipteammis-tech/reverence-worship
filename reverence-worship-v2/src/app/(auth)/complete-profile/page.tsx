@@ -1,25 +1,29 @@
 import { redirect } from "next/navigation";
 import { CompleteGoogleProfileForm } from "@/components/complete-google-profile-form";
 import { getCurrentUser, needsGoogleProfileCompletion } from "@/lib/auth";
+import { authPathWithReturnTo, safeAuthReturnPath } from "@/lib/auth-return-path";
 
-export default async function CompleteProfilePage() {
+export default async function CompleteProfilePage({ searchParams }: { searchParams?: Promise<{ next?: string }> }) {
+  const params = await searchParams;
+  const returnTo = safeAuthReturnPath(params?.next);
   const user = await getCurrentUser();
 
   if (!user) {
-    redirect("/login");
+    redirect(authPathWithReturnTo("/login", returnTo));
   }
 
   if (user.mustChangePassword) {
-    redirect("/change-password");
+    redirect(authPathWithReturnTo("/change-password", returnTo));
   }
 
   if (!needsGoogleProfileCompletion(user)) {
-    redirect("/admin/dashboard");
+    redirect(returnTo);
   }
 
   return (
     <div className="mx-auto w-full">
       <CompleteGoogleProfileForm
+        returnTo={returnTo}
         user={{
           name: user.name,
           email: user.email,

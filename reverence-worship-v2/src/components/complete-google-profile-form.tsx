@@ -7,6 +7,7 @@ import { completeGoogleProfileAction } from "@/app/auth-actions";
 import { AuthFormButton } from "@/components/auth-form-button";
 
 type CompleteGoogleProfileFormProps = {
+  returnTo: string;
   user: {
     name: string;
     email: string;
@@ -91,11 +92,12 @@ function SelectField({
   );
 }
 
-export function CompleteGoogleProfileForm({ user }: CompleteGoogleProfileFormProps) {
+export function CompleteGoogleProfileForm({ user, returnTo }: CompleteGoogleProfileFormProps) {
   const [state, formAction] = useActionState(completeGoogleProfileAction, {});
 
   return (
     <form action={formAction}>
+      <input type="hidden" name="returnTo" value={returnTo} />
       <div className="mb-6 flex justify-center">
         <span className="relative h-20 w-full max-w-[340px] overflow-hidden">
           <Image

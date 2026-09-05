@@ -1,21 +1,27 @@
 import { AdminShell } from "@/components/admin-shell";
 import { AppDialogProvider } from "@/components/app-dialog-provider";
-import { getUserPermissionSet, isUserParent, needsGoogleProfileCompletion, requireUser } from "@/lib/auth";
+import { getCurrentUser, getUserPermissionSet, isUserParent, needsGoogleProfileCompletion } from "@/lib/auth";
+import { authPathWithReturnTo, safeAuthReturnPath } from "@/lib/auth-return-path";
 import { normalizeSessionLifetimeMinutes } from "@/lib/session-policy";
 import { getSystemSetting } from "@/lib/system-settings";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 
 export default async function AdminLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const user = await requireUser();
+  const [user, requestHeaders] = await Promise.all([getCurrentUser(), headers()]);
+  const returnTo = safeAuthReturnPath(requestHeaders.get("x-reverence-return-path"));
+  if (!user) {
+    redirect(authPathWithReturnTo("/login", returnTo));
+  }
   if (user.mustChangePassword) {
-    redirect("/change-password");
+    redirect(authPathWithReturnTo("/change-password", returnTo));
   }
   if (needsGoogleProfileCompletion(user)) {
-    redirect("/complete-profile");
+    redirect(authPathWithReturnTo("/complete-profile", returnTo));
   }
   const roles = user.roles.map((userRole) => userRole.role.name);
   const [permissionSet, sessionLifetimeSetting, isParent] = await Promise.all([
