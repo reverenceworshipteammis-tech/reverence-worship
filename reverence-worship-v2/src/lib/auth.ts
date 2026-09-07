@@ -7,7 +7,7 @@ import jwt from "jsonwebtoken";
 import { prisma } from "@/lib/prisma";
 import { normalizeSessionLifetimeMinutes } from "@/lib/session-policy";
 import { getSystemSetting, settingToNumber } from "@/lib/system-settings";
-import { withDatabaseRetry } from "@/lib/database-retry";
+import { isTransientDatabaseError, withDatabaseRetry } from "@/lib/database-retry";
 
 export const SESSION_COOKIE = "reverence_session";
 
@@ -85,20 +85,26 @@ export const getCurrentUser = cache(async () => {
   }
   const sessionVersion = payload.sessionVersion ?? 0;
 
-  return withDatabaseRetry(() => prisma.user.findFirst({
-    where: {
-      id: payload.userId,
-      status: "active",
-      sessionVersion,
-    },
-    include: {
-      roles: {
-        include: {
-          role: true,
+  try {
+    return await withDatabaseRetry(() => prisma.user.findFirst({
+      where: {
+        id: payload.userId,
+        status: "active",
+        sessionVersion,
+      },
+      include: {
+        roles: {
+          include: {
+            role: true,
+          },
         },
       },
-    },
-  }), 3);
+    }));
+  } catch (error) {
+    if (!isTransientDatabaseError(error)) throw error;
+    console.warn("Authentication database lookup remained unavailable after retries.");
+    return null;
+  }
 });
 
 export async function requireUser() {
@@ -160,7 +166,7 @@ export async function requireAdminUser() {
 }
 
 const getParentAssociation = cache(async (userId: number) => {
-  const rows = await prisma.$queryRaw<Array<{ isParent: boolean }>>`
+  const rows = await withDatabaseRetry(() => prisma.$queryRaw<Array<{ isParent: boolean }>>`
     SELECT (
       EXISTS(
         SELECT 1 FROM "family_members"
@@ -169,7 +175,7 @@ const getParentAssociation = cache(async (userId: number) => {
         SELECT 1 FROM "families" WHERE "parent_id" = ${userId}
       )
     ) AS "isParent"
-  `;
+  `);
   return rows[0]?.isParent ?? false;
 });
 
@@ -178,13 +184,13 @@ const getPermissionKeys = cache(async (userId: number, roleIdsKey: string, isSup
 
   const roleIds = roleIdsKey.split(",").map(Number).filter((roleId) => Number.isInteger(roleId) && roleId > 0);
   const permissions = roleIds.length > 0
-    ? await prisma.rolePageFeature.findMany({
+    ? await withDatabaseRetry(() => prisma.rolePageFeature.findMany({
         where: { roleId: { in: roleIds } },
         include: {
           page: { select: { name: true } },
           feature: { select: { name: true } },
         },
-      })
+      }))
     : [];
 
   const permissionSet = new Set<PermissionKey>(

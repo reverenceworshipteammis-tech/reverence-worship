@@ -52,7 +52,7 @@ export function isTransientDatabaseError(error: unknown) {
     || TRANSIENT_DATABASE_ERRORS.some((pattern) => message.includes(pattern));
 }
 
-export async function withDatabaseRetry<T>(operation: () => Promise<T>, attempts = 2): Promise<T> {
+export async function withDatabaseRetry<T>(operation: () => Promise<T>, attempts = 5): Promise<T> {
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {

@@ -1,8 +1,8 @@
 import "dotenv/config";
-import { PrismaNeon } from "@prisma/adapter-neon";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 
-const adapter = new PrismaNeon({
+const adapter = new PrismaPg({
   connectionString: process.env.DATABASE_URL,
 });
 

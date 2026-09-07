@@ -2,6 +2,7 @@ import { ProbationClient, type ProbationRow } from "@/components/probation-clien
 import { getUserPermissionSet, permissionSetHas, requirePageAccess } from "@/lib/auth";
 import { getProbationMonitoringBatch, probationDateSummary } from "@/lib/probation-data";
 import { DEFAULT_PROBATION_DURATION_MONTHS } from "@/lib/probation-rules";
+import { withDatabaseRetry } from "@/lib/database-retry";
 import { prisma } from "@/lib/prisma";
 import { getSystemSetting, settingToNumber } from "@/lib/system-settings";
 
@@ -19,7 +20,7 @@ export default async function ProbationPage({
   searchParams: Promise<{ record?: string; status?: string }>;
 }) {
   const user = await requirePageAccess("probation");
-  const [params, permissions, defaultDurationSetting, probations, eligibleMembers, decisionApprovers] = await Promise.all([
+  const [params, permissions, defaultDurationSetting, probations, eligibleMembers, decisionApprovers] = await withDatabaseRetry(() => Promise.all([
     searchParams,
     getUserPermissionSet(user),
     getSystemSetting("probation_default_duration_months"),
@@ -63,7 +64,7 @@ export default async function ProbationPage({
       orderBy: [{ name: "asc" }, { id: "asc" }],
       select: { id: true, name: true },
     }),
-  ]);
+  ]), 5);
 
   const canViewConfidential = permissionSetHas(permissions, "probation", "view-confidential-comments");
   const canViewDiscipline = permissionSetHas(permissions, "discipline", "view");

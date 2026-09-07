@@ -131,9 +131,13 @@ export async function loginAction(
     user = await withDatabaseRetry(() => prisma.user.findUnique({
       where: { email: parsed.data.email },
       select: { id: true, passwordHash: true, status: true, mustChangePassword: true, sessionVersion: true },
-    }), 3);
+    }), 5);
   } catch (error) {
-    console.error("Login database lookup failed.", error);
+    if (isTransientDatabaseError(error)) {
+      console.warn("Login database lookup remained unavailable after retries.");
+    } else {
+      console.error("Login database lookup failed.", error);
+    }
     return { error: "Unable to sign in right now. Please try again shortly." };
   }
 

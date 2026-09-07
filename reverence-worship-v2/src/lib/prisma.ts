@@ -1,4 +1,4 @@
-import { PrismaNeon } from "@prisma/adapter-neon";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
 
 const globalForPrisma = globalThis as unknown as {
@@ -6,36 +6,39 @@ const globalForPrisma = globalThis as unknown as {
   prismaSchemaVersion?: string;
 };
 
-const PRISMA_SCHEMA_VERSION = "2026-08-28-neon-websocket-transport";
+const PRISMA_SCHEMA_VERSION = "2026-09-07-postgres-direct-development-v5";
 
 function databaseUrl() {
-  const value = process.env.DATABASE_URL;
-  if (!value) return value;
+  const directUrl = process.env.DIRECT_URL?.trim();
+  const value = directUrl || process.env.DATABASE_URL;
+  if (!value || directUrl || process.env.NODE_ENV === "production") return value;
 
   try {
     const url = new URL(value);
-    if (url.hostname.includes("neon.tech") && url.searchParams.get("sslmode") === "require") {
-      url.searchParams.set("sslmode", "verify-full");
+    if (url.hostname.includes("neon.tech") && url.hostname.includes("-pooler.")) {
+      url.hostname = url.hostname.replace("-pooler.", ".");
+      return url.toString();
     }
-    return url.toString();
   } catch {
-    return value;
+    // Prisma will report a useful configuration error for malformed URLs.
   }
+
+  return value;
 }
 
 function databasePoolMax() {
-  const configured = Number(process.env.DATABASE_POOL_MAX ?? 5);
-  if (!Number.isInteger(configured)) return 5;
+  const defaultPoolMax = process.env.NODE_ENV === "production" ? 5 : 1;
+  const configured = Number(process.env.DATABASE_POOL_MAX ?? defaultPoolMax);
+  if (!Number.isInteger(configured)) return defaultPoolMax;
   return Math.min(10, Math.max(1, configured));
 }
 
-const adapter = new PrismaNeon({
+const adapter = new PrismaPg({
   connectionString: databaseUrl(),
-  // Neon WebSockets use port 443, avoiding networks that block PostgreSQL's
-  // port 5432 while retaining sessions and interactive transaction support.
   max: databasePoolMax(),
   connectionTimeoutMillis: 30_000,
   idleTimeoutMillis: 60_000,
+  keepAlive: true,
 });
 
 const existingPrisma = globalForPrisma.prisma;

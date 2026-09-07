@@ -36,6 +36,20 @@ export function percentage(part: number, total: number, emptyValue = 0) {
   return Math.max(0, Math.min(100, Math.round((part / total) * 100)));
 }
 
+export function calculateProbationRates(input: {
+  present: number;
+  attendanceTotal: number;
+  communicated: number;
+  disciplinePositive: number;
+  disciplineTotal: number;
+}) {
+  return {
+    attendance: percentage(input.present, input.attendanceTotal),
+    communication: percentage(input.communicated, input.attendanceTotal),
+    discipline: percentage(input.disciplinePositive, input.disciplineTotal),
+  };
+}
+
 export function probationAttentionReasons(input: ProbationScoreInput) {
   const reasons: string[] = [];
   if (input.attendanceRate < PROBATION_GOOD_THRESHOLD) reasons.push(`Attendance is below ${PROBATION_GOOD_THRESHOLD}%`);

@@ -604,14 +604,14 @@ export function DisciplineClient({
         const record = existing.find((item) => item.userId === user.id);
         const permission = permissions.find((item) => item.userId === user.id && item.startDateValue <= date && item.endDateValue >= date);
         const hasApprovedPermission = permission?.status === "approved";
-        const present = record ? ["present", "late"].includes(record.status) : !hasApprovedPermission;
-        const discipline = record ? record.disciplinePoints > 0 : true;
+        const present = record ? ["present", "late"].includes(record.status) : false;
+        const discipline = record ? record.disciplinePoints > 0 : false;
         return {
           userId: user.id,
           present,
           status: present ? "present" : "absent",
-          onTime: record?.onTime ?? true,
-          communicated: record?.communicated ?? true,
+          onTime: record?.onTime ?? false,
+          communicated: record?.communicated ?? false,
           discipline,
           disciplinePoints: discipline ? 1 : 0,
           lateMinutes: record?.lateMinutes ?? 0,

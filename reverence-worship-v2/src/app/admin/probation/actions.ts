@@ -24,7 +24,9 @@ function dateAtNoon(value: string) {
 }
 
 function validDate(value: string) {
-  return datePattern.test(value) && !Number.isNaN(dateAtNoon(value).getTime());
+  if (!datePattern.test(value)) return false;
+  const date = dateAtNoon(value);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
 function errorMessage(error: unknown, fallback: string) {
@@ -215,11 +217,16 @@ export async function enrollProbation(formData: FormData): Promise<ProbationActi
 export async function updateProbation(formData: FormData): Promise<ProbationActionResult> {
   const actor = await requirePermission("probation", "update", "/admin/probation");
   const probationId = Number(text(formData, "probationId"));
+  const startDateValue = text(formData, "startDate");
+  const endDateValue = text(formData, "endDate");
   const memberVisibleSummary = text(formData, "memberVisibleSummary");
   const confidentialComments = text(formData, "confidentialComments");
-  if (!Number.isInteger(probationId) || probationId <= 0) {
-    return { ok: false, message: "Select a valid probation record." };
+  if (!Number.isInteger(probationId) || probationId <= 0 || !validDate(startDateValue) || !validDate(endDateValue)) {
+    return { ok: false, message: "Select a valid probation record and dates." };
   }
+  const startDate = dateAtNoon(startDateValue);
+  const endDate = dateAtNoon(endDateValue);
+  if (endDate < startDate) return { ok: false, message: "The end date cannot be before the start date." };
 
   const permissions = await getUserPermissionSet(actor);
   const canEditConfidential = permissionSetHas(permissions, "probation", "view-confidential-comments");
@@ -228,6 +235,10 @@ export async function updateProbation(formData: FormData): Promise<ProbationActi
     select: {
       state: true,
       confidentialComments: true,
+      originalStartDate: true,
+      originalExpectedEndDate: true,
+      currentExpectedEndDate: true,
+      extensions: { select: { id: true }, take: 1 },
     },
   });
   if (!existing) return { ok: false, message: "Probation record not found." };
@@ -241,6 +252,9 @@ export async function updateProbation(formData: FormData): Promise<ProbationActi
       data: {
         memberVisibleSummary: memberVisibleSummary || null,
         confidentialComments: canEditConfidential ? confidentialComments || null : existing.confidentialComments,
+        originalStartDate: startDate,
+        currentExpectedEndDate: endDate,
+        ...(!existing.extensions.length ? { originalExpectedEndDate: endDate } : {}),
         updatedById: actor.id,
       },
     }),
@@ -249,12 +263,21 @@ export async function updateProbation(formData: FormData): Promise<ProbationActi
         userId: actor.id,
         action: "probation.updated",
         module: "probation",
-        metadata: { probationId, confidentialCommentsUpdated: canEditConfidential },
+        metadata: {
+          probationId,
+          confidentialCommentsUpdated: canEditConfidential,
+          previousStartDate: existing.originalStartDate.toISOString().slice(0, 10),
+          previousOriginalExpectedEndDate: existing.originalExpectedEndDate.toISOString().slice(0, 10),
+          previousEndDate: existing.currentExpectedEndDate.toISOString().slice(0, 10),
+          startDate: startDateValue,
+          endDate: endDateValue,
+          originalExpectedEndAdjusted: !existing.extensions.length,
+        },
       },
     }),
   ]);
   revalidateProbation();
-  return { ok: true, message: "Probation details updated." };
+  return { ok: true, message: "Probation dates and details updated." };
 }
 
 export async function extendProbation(formData: FormData): Promise<ProbationActionResult> {

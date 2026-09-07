@@ -1,0 +1,8 @@
+⨯ upstream image response failed for https://w8u7ljldpwrjwo2p.public.blob.vercel-storage.com/uploads/landing/1784106080924-5118948d-90f0-4b71-9882-161e9960637b-1770283711-dyqr6r1rdkyik3ilthy4.jpg 404
+Database connection dropped; retrying (1/2).
+Database connection dropped; retrying (2/2).
+Database connection dropped; retrying (1/2).
+Database connection dropped; retrying (2/2).
+System setting "registration_enabled" is temporarily unavailable; using its last known value.
+System setting "registration_enabled" is temporarily unavailable; using its last known value.
+[browser] Unable to refresh notifications Error: An unexpected response was received from the server. (src/components/admin-shell.tsx:197:15)

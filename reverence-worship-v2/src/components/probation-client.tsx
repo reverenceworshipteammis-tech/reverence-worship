@@ -154,13 +154,15 @@ function StateBadge({ row }: { row: ProbationRow }) {
   );
 }
 
-function Score({ label, rate, detail }: { label: string; rate: number; detail: string }) {
+function Score({ label, rate, achieved, total, detail }: { label: string; rate: number; achieved: number; total: number; detail: string }) {
   const good = rate >= PROBATION_GOOD_THRESHOLD;
   return (
     <div className={`rounded-xl border p-3 ${good ? "border-emerald-100 bg-emerald-50" : "border-rose-100 bg-rose-50"}`}>
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-semibold text-slate-600">{label}</span>
-        <span className={`text-lg font-black ${good ? "text-emerald-700" : "text-rose-700"}`}>{rate}%</span>
+        <span className={`text-right text-lg font-black ${good ? "text-emerald-700" : "text-rose-700"}`}>
+          {rate}% <span className="text-xs font-bold">({achieved}/{total})</span>
+        </span>
       </div>
       <p className="mt-1 text-xs text-slate-500">{detail}</p>
     </div>
@@ -173,17 +175,23 @@ function MonitoringGrid({ monitoring }: { monitoring: ProbationMonitoring }) {
       <Score
         label="Attendance"
         rate={monitoring.attendance.rate}
+        achieved={monitoring.attendance.present}
+        total={monitoring.attendance.total}
         detail={`${monitoring.attendance.present}/${monitoring.attendance.total} present · ${monitoring.attendance.late} late`}
       />
       <Score
         label="Communication"
         rate={monitoring.communication.rate}
-        detail={`${monitoring.communication.communicated}/${monitoring.communication.absences} absences communicated`}
+        achieved={monitoring.communication.communicated}
+        total={monitoring.communication.total}
+        detail={`${monitoring.communication.communicated}/${monitoring.communication.total} sessions communicated`}
       />
       <Score
         label="Discipline"
         rate={monitoring.discipline.rate}
-        detail={`${monitoring.discipline.positive} positive · ${monitoring.discipline.unresolved} unresolved`}
+        achieved={monitoring.discipline.positive}
+        total={monitoring.discipline.total}
+        detail={`${monitoring.discipline.positive}/${monitoring.discipline.total} positive · ${monitoring.discipline.unresolved} unresolved`}
       />
     </div>
   );
@@ -377,9 +385,9 @@ export function ProbationClient({
                       {row.isOverdue ? `${Math.abs(row.daysRemaining)} day(s) overdue` : isOpen(row) ? `${row.daysRemaining} day(s) remaining` : `Original end: ${formatDate(row.originalExpectedEndDate)}`}
                     </p>
                   </td>
-                  <RateCell rate={row.monitoring.attendance.rate} />
-                  <RateCell rate={row.monitoring.communication.rate} />
-                  <RateCell rate={row.monitoring.discipline.rate} />
+                  <RateCell rate={row.monitoring.attendance.rate} achieved={row.monitoring.attendance.present} total={row.monitoring.attendance.total} />
+                  <RateCell rate={row.monitoring.communication.rate} achieved={row.monitoring.communication.communicated} total={row.monitoring.communication.total} />
+                  <RateCell rate={row.monitoring.discipline.rate} achieved={row.monitoring.discipline.positive} total={row.monitoring.discipline.total} />
                   <td className="px-4 py-4">
                     <RowActions row={row} permissions={permissions} open={setModal} />
                   </td>
@@ -498,10 +506,14 @@ export function ProbationClient({
           {modal.type === "edit" ? (
             <form onSubmit={(event) => submitForm(event, updateProbation)} className="space-y-4">
               <input type="hidden" name="probationId" value={modal.row.id} />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Start date"><input name="startDate" required type="date" defaultValue={modal.row.originalStartDate} className={inputClass} /></Field>
+                <Field label="End date"><input name="endDate" required type="date" defaultValue={modal.row.currentExpectedEndDate} className={inputClass} /></Field>
+              </div>
               <Field label="Member-visible summary"><textarea name="memberVisibleSummary" defaultValue={modal.row.memberVisibleSummary ?? ""} className={textareaClass} /></Field>
               {permissions.viewConfidential ? <Field label="Confidential comments"><textarea name="confidentialComments" defaultValue={modal.row.confidentialComments ?? ""} className={textareaClass} /></Field> : null}
 
-              <SubmitButtons pending={pending} label="Save details" onCancel={() => setModal({ type: "details", row: modal.row })} />
+              <SubmitButtons pending={pending} label="Save changes" onCancel={() => setModal({ type: "details", row: modal.row })} />
             </form>
           ) : null}
 
@@ -560,9 +572,14 @@ export function ProbationClient({
   );
 }
 
-function RateCell({ rate }: { rate: number }) {
+function RateCell({ rate, achieved, total }: { rate: number; achieved: number; total: number }) {
   const good = rate >= PROBATION_GOOD_THRESHOLD;
-  return <td className={`px-4 py-4 text-sm font-black ${good ? "text-emerald-700" : "text-rose-700"}`}>{rate}%</td>;
+  return (
+    <td className="px-4 py-4">
+      <p className={`text-sm font-black ${good ? "text-emerald-700" : "text-rose-700"}`}>{rate}%</p>
+      <p className="mt-0.5 text-xs font-medium text-slate-500">{achieved}/{total}</p>
+    </td>
+  );
 }
 
 function RowActions({ row, permissions, open }: { row: ProbationRow; permissions: Props["permissions"]; open: (modal: Modal) => void }) {
@@ -637,7 +654,7 @@ function Details({
       <div className="grid gap-3 sm:grid-cols-2">
         <Info label="Original period" value={`${formatDate(row.originalStartDate)} – ${formatDate(row.originalExpectedEndDate)}`} />
         <Info label="Current expected end" value={`${formatDate(row.currentExpectedEndDate)}${row.isOverdue ? ` (${Math.abs(row.daysRemaining)} days overdue)` : isOpen(row) ? ` (${row.daysRemaining} days remaining)` : ""}`} />
-        <Info label="Permission requests" value={`${row.monitoring.permissions.approved} approved · ${row.monitoring.permissions.rejected} rejected · ${row.monitoring.permissions.pending} pending · ${row.monitoring.communication.uncommunicated} uncommunicated absences`} />
+        <Info label="Permission requests" value={`${row.monitoring.permissions.approved} approved · ${row.monitoring.permissions.rejected} rejected · ${row.monitoring.permissions.pending} pending`} />
         <Info label="Audit" value={`Created by ${row.createdByName}; last updated by ${row.updatedByName} on ${formatDate(row.updatedAt, true)}`} />
       </div>
 
@@ -729,7 +746,7 @@ function DecisionSummary({ row }: { row: ProbationRow }) {
       <span><strong>{row.monitoring.permissions.pending}</strong><br />Pending permissions</span>
       <span><strong>{row.monitoring.discipline.unresolved}</strong><br />Unresolved discipline</span>
       <span><strong>{row.extensions.length}</strong><br />Extensions</span>
-      <span><strong>{row.monitoring.communication.uncommunicated}</strong><br />Uncommunicated absences</span>
+      <span><strong>{row.monitoring.communication.uncommunicated}</strong><br />Uncommunicated sessions</span>
     </div>
   );
 }

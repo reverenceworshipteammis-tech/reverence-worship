@@ -1,7 +1,8 @@
 import "server-only";
 
+import { withDatabaseRetry } from "@/lib/database-retry";
 import { prisma } from "@/lib/prisma";
-import { calendarDaysRemaining, percentage, probationAttentionReasons } from "@/lib/probation-rules";
+import { calculateProbationRates, calendarDaysRemaining, probationAttentionReasons } from "@/lib/probation-rules";
 
 export type ProbationMonitoring = {
   attendance: {
@@ -13,7 +14,7 @@ export type ProbationMonitoring = {
     rate: number;
   };
   communication: {
-    absences: number;
+    total: number;
     communicated: number;
     uncommunicated: number;
     rate: number;
@@ -76,18 +77,22 @@ function summarizeProbationMonitoring(
   });
   const present = evaluatedAttendance.filter((record) => record.status.toLowerCase() === "present");
   const absent = evaluatedAttendance.filter((record) => record.status.toLowerCase() !== "present");
-  const communicatedAbsences = absent.filter((record) => record.communicated);
+  const communicated = evaluatedAttendance.filter((record) => record.communicated);
   const positive = disciplineRecords.filter((record) => record.type?.toLowerCase() === "positive");
   const negative = disciplineRecords.filter((record) => record.type?.toLowerCase() !== "positive");
   const unresolved = negative.filter((record) => !["resolved", "closed"].includes(record.status.toLowerCase()));
 
-  const attendanceRate = percentage(present.length, evaluatedAttendance.length);
-  const communicationRate = percentage(communicatedAbsences.length, absent.length, 100);
-  const disciplineRate = percentage(positive.length, disciplineRecords.length, 100);
+  const rates = calculateProbationRates({
+    present: present.length,
+    attendanceTotal: evaluatedAttendance.length,
+    communicated: communicated.length,
+    disciplinePositive: positive.length,
+    disciplineTotal: disciplineRecords.length,
+  });
   const attentionReasons = probationAttentionReasons({
-    attendanceRate,
-    communicationRate,
-    disciplineRate,
+    attendanceRate: rates.attendance,
+    communicationRate: rates.communication,
+    disciplineRate: rates.discipline,
     unresolvedDiscipline: unresolved.length,
   });
 
@@ -98,20 +103,20 @@ function summarizeProbationMonitoring(
       absent: absent.length,
       onTime: present.filter((record) => record.onTime).length,
       late: present.filter((record) => !record.onTime || record.lateMinutes > 0).length,
-      rate: attendanceRate,
+      rate: rates.attendance,
     },
     communication: {
-      absences: absent.length,
-      communicated: communicatedAbsences.length,
-      uncommunicated: absent.length - communicatedAbsences.length,
-      rate: communicationRate,
+      total: evaluatedAttendance.length,
+      communicated: communicated.length,
+      uncommunicated: evaluatedAttendance.length - communicated.length,
+      rate: rates.communication,
     },
     discipline: {
       total: disciplineRecords.length,
       positive: positive.length,
       negative: negative.length,
       unresolved: unresolved.length,
-      rate: disciplineRate,
+      rate: rates.discipline,
     },
     permissions: {
       total: permissionRequests.length,
@@ -127,7 +132,7 @@ function summarizeProbationMonitoring(
 
 export async function getProbationMonitoring(probation: ProbationWindow): Promise<ProbationMonitoring> {
   const endDate = probation.decisionDate ?? new Date();
-  const [attendanceRecords, disciplineRecords, permissionRequests] = await Promise.all([
+  const [attendanceRecords, disciplineRecords, permissionRequests] = await withDatabaseRetry(() => Promise.all([
     prisma.attendanceRecord.findMany({
       where: {
         userId: probation.userId,
@@ -149,7 +154,7 @@ export async function getProbationMonitoring(probation: ProbationWindow): Promis
       },
       select: { status: true, startDate: true, endDate: true },
     }),
-  ]);
+  ]), 5);
 
   return summarizeProbationMonitoring(attendanceRecords, disciplineRecords, permissionRequests);
 }
@@ -160,7 +165,7 @@ export async function getProbationMonitoringBatch(
   if (probations.length === 0) return new Map();
 
   const now = new Date();
-  const [attendanceRecords, disciplineRecords, permissionRequests] = await Promise.all([
+  const [attendanceRecords, disciplineRecords, permissionRequests] = await withDatabaseRetry(() => Promise.all([
     prisma.attendanceRecord.findMany({
       where: {
         OR: probations.map((probation) => ({
@@ -188,7 +193,7 @@ export async function getProbationMonitoringBatch(
       },
       select: { userId: true, createdAt: true, status: true, startDate: true, endDate: true },
     }),
-  ]);
+  ]), 5);
 
   return new Map(probations.map((probation) => {
     const endDate = probation.decisionDate ?? now;

@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   PROBATION_GOOD_THRESHOLD,
   addCalendarMonths,
+  calculateProbationRates,
   calendarDaysRemaining,
   percentage,
   probationAttentionReasons,
@@ -47,8 +48,42 @@ test("probation monitoring explains every score below threshold", () => {
 test("percentage supports explicit empty-data behavior", () => {
   assert.equal(percentage(7, 10), 70);
   assert.equal(percentage(0, 0), 0);
-  assert.equal(percentage(0, 0, 100), 100);
   assert.equal(percentage(12, 10), 100);
+});
+
+test("all probation metrics start at zero before records are registered", () => {
+  assert.deepEqual(calculateProbationRates({
+    present: 0,
+    attendanceTotal: 0,
+    communicated: 0,
+    disciplinePositive: 0,
+    disciplineTotal: 0,
+  }), {
+    attendance: 0,
+    communication: 0,
+    discipline: 0,
+  });
+});
+
+test("probation communication uses registered sessions instead of only absences", () => {
+  assert.deepEqual(calculateProbationRates({
+    present: 1,
+    attendanceTotal: 1,
+    communicated: 0,
+    disciplinePositive: 0,
+    disciplineTotal: 0,
+  }), {
+    attendance: 100,
+    communication: 0,
+    discipline: 0,
+  });
+  assert.equal(calculateProbationRates({
+    present: 2,
+    attendanceTotal: 4,
+    communicated: 3,
+    disciplinePositive: 1,
+    disciplineTotal: 2,
+  }).communication, 75);
 });
 
 test("calendar day calculations ignore time of day", () => {

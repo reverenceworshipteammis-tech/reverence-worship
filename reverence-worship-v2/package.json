@@ -23,8 +23,7 @@
     "desktop:dev": "node desktop-projector/dev-launcher.cjs"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^1.1.0",
-    "@prisma/adapter-neon": "^7.8.0",
+    "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@vercel/blob": "^2.6.1",
     "bcryptjs": "^3.0.3",
@@ -36,6 +35,7 @@
     "next": "16.2.10",
     "nodemailer": "^9.0.3",
     "pdfkit": "^0.19.1",
+    "pg": "^8.23.0",
     "prisma": "^7.8.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
