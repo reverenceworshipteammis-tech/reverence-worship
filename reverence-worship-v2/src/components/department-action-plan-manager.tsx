@@ -2,6 +2,7 @@
 
 import { FormEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { addCalendarDays, kigaliDateKey } from "@/lib/calendar-date";
 import {
   AlertTriangle,
   CalendarDays,
@@ -96,10 +97,8 @@ export function DepartmentActionPlanManager({ department, departmentLabel, curre
 
   const summary = useMemo(() => {
     const tasks = actionPlans.flatMap((plan) => plan.tasks);
-    const today = new Date().toISOString().slice(0, 10);
-    const dueSoonDate = new Date(`${today}T12:00:00Z`);
-    dueSoonDate.setUTCDate(dueSoonDate.getUTCDate() + 7);
-    const dueSoon = dueSoonDate.toISOString().slice(0, 10);
+    const today = kigaliDateKey();
+    const dueSoon = addCalendarDays(today, 7);
     return {
       overdue: tasks.filter((task) => taskDeadlineRaw(task) && taskDeadlineRaw(task) < today && task.progress < 100).length,
       dueSoon: tasks.filter((task) => taskDeadlineRaw(task) >= today && taskDeadlineRaw(task) <= dueSoon && task.progress < 100).length,

@@ -5,6 +5,7 @@ import { calculateContributionRate, calculateContributionTermTarget } from "@/li
 import { prisma } from "@/lib/prisma";
 import { hasSuperAdminRole } from "@/lib/system-account-rules";
 import { redirect } from "next/navigation";
+import { currentKigaliYear } from "@/lib/calendar-date";
 
 type ContributionsPageProps = {
   searchParams: Promise<{ year?: string }>;
@@ -68,7 +69,7 @@ export default async function MyContributionsPage({ searchParams }: Contribution
   if (hasSuperAdminRole(user.roles.map(({ role }) => role.name))) redirect("/admin/dashboard");
   const permissions = await getUserPermissionSet(user);
   const params = await searchParams;
-  const currentYear = new Date().getFullYear();
+  const currentYear = currentKigaliYear();
   const [contributions, allPayments, termSettings] = await Promise.all([
     prisma.contribution.findMany({
       where: { userId: user.id },

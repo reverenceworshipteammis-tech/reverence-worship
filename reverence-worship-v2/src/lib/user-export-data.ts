@@ -5,7 +5,19 @@ type UserExportFilters = {
   search?: string | null;
   role?: string | null;
   status?: string | null;
+  gender?: string | null;
+  maritalStatus?: string | null;
+  membershipType?: string | null;
 };
+
+type AccountStatus = "active" | "pending" | "inactive";
+type Gender = "male" | "female";
+type MaritalStatus = "Single" | "Married" | "Divorced" | "Widowed";
+type MembershipType = "permanent" | "temporary" | "visitor";
+
+function selectedValues<T extends string>(value: string | null | undefined, allowed: readonly T[]): T[] {
+  return [...new Set((value ?? "").split(",").filter((item): item is T => allowed.includes(item as T)))];
+}
 
 export type UserExportRow = {
   index: number;
@@ -81,7 +93,10 @@ export async function getUserExportRows(filters: UserExportFilters) {
   const search = filters.search?.trim();
   const inProbation = filters.role === "in-probation";
   const roleId = filters.role && !inProbation ? Number(filters.role) : undefined;
-  const status = filters.status;
+  const statuses = selectedValues<AccountStatus>(filters.status, ["active", "pending", "inactive"]);
+  const genders = selectedValues<Gender>(filters.gender, ["male", "female"]);
+  const maritalStatuses = selectedValues<MaritalStatus>(filters.maritalStatus, ["Single", "Married", "Divorced", "Widowed"]);
+  const membershipTypes = selectedValues<MembershipType>(filters.membershipType, ["permanent", "temporary", "visitor"]);
 
   const users = await prisma.user.findMany({
     where: {
@@ -93,9 +108,12 @@ export async function getUserExportRows(filters: UserExportFilters) {
             ],
           }
         : {}),
-      ...(status === "active" || status === "pending" || status === "inactive"
-        ? { status }
+      ...(statuses.length ? { status: { in: statuses } } : {}),
+      ...(genders.length ? { gender: { in: genders } } : {}),
+      ...(maritalStatuses.length
+        ? { maritalStatus: { in: maritalStatuses, mode: "insensitive" as const } }
         : {}),
+      ...(membershipTypes.length ? { membershipType: { in: membershipTypes } } : {}),
       roles: {
         ...excludeSuperAdminUserWhere().roles,
         ...(Number.isFinite(roleId) ? { some: { roleId } } : {}),

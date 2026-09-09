@@ -2,6 +2,7 @@ import { getUserPermissionSet, permissionSetHas, requirePageAccess } from "@/lib
 import { prisma } from "@/lib/prisma";
 import { FinanceClient } from "@/components/finance-client";
 import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
+import { currentKigaliYear } from "@/lib/calendar-date";
 
 function money(value: unknown) {
   return Number(value ?? 0);
@@ -9,7 +10,7 @@ function money(value: unknown) {
 
 function formatDate(date: Date | null) {
   if (!date) return "-";
-  return new Intl.DateTimeFormat("en", { month: "short", day: "2-digit", year: "numeric" }).format(date);
+  return new Intl.DateTimeFormat("en", { month: "short", day: "2-digit", year: "numeric", timeZone: "Africa/Kigali" }).format(date);
 }
 
 function parseNumberArray(value: string | null | undefined, fallback: number[]) {
@@ -64,7 +65,7 @@ async function safeRead<T>(promise: Promise<T>, fallback: T) {
 export default async function FinancePage() {
   const currentUser = await requirePageAccess("finance");
   const permissionSet = await getUserPermissionSet(currentUser);
-  const year = new Date().getFullYear();
+  const year = currentKigaliYear();
 
   const [users, families, contributions, payments, contributionEvents, gifts, expenses, sponsors, actionPlans, termSettings] = await Promise.all([
     safeRead(

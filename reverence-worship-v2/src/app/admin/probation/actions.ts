@@ -5,6 +5,7 @@ import { z } from "zod";
 import { getUserPermissionSet, permissionSetHas, requirePermission, requireUser } from "@/lib/auth";
 import { notifyUsers, userIdsWithPermission } from "@/lib/notifications";
 import { prisma } from "@/lib/prisma";
+import { kigaliDateKey } from "@/lib/calendar-date";
 
 export type ProbationActionResult = {
   ok: boolean;
@@ -291,9 +292,7 @@ export async function extendProbation(formData: FormData): Promise<ProbationActi
   }
   if (reason.length < 3) return { ok: false, message: "An extension reason is required." };
   const newEndDate = dateAtNoon(newEndDateValue);
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
-  if (newEndDate <= today) return { ok: false, message: "The extension end date must be in the future." };
+  if (newEndDateValue <= kigaliDateKey()) return { ok: false, message: "The extension end date must be in the future." };
 
   try {
     const result = await prisma.$transaction(async (tx) => {
@@ -633,9 +632,7 @@ export async function reopenProbation(formData: FormData): Promise<ProbationActi
   }
   if (reason.length < 3) return { ok: false, message: "A reopening reason is required." };
   const newEndDate = dateAtNoon(newEndDateValue);
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
-  if (newEndDate <= today) return { ok: false, message: "The reopened probation must end on a future date." };
+  if (newEndDateValue <= kigaliDateKey()) return { ok: false, message: "The reopened probation must end on a future date." };
   const roles = await probationRoles();
   if (!roles.member || !roles.probation) return { ok: false, message: "Probation roles are not configured." };
 

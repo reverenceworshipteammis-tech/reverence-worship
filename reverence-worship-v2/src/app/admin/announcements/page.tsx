@@ -2,10 +2,11 @@ import { AnnouncementsClient } from "@/components/announcements-client";
 import { getUserPermissionSet, permissionSetHas, requirePageAccess } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
+import { databaseDate, kigaliDateKey } from "@/lib/calendar-date";
 
 function formatDate(date: Date | null) {
   if (!date) return "-";
-  return new Intl.DateTimeFormat("en", { month: "short", day: "2-digit", year: "numeric" }).format(date);
+  return new Intl.DateTimeFormat("en", { month: "short", day: "2-digit", year: "numeric", timeZone: "Africa/Kigali" }).format(date);
 }
 
 function formatDateTime(date: Date) {
@@ -33,6 +34,35 @@ function parseIdList(value: string | null) {
   }
 }
 
+type RecipientFilters = {
+  statuses: string[];
+  genders: string[];
+  maritalStatuses: string[];
+  membershipTypes: string[];
+};
+
+const emptyRecipientFilters: RecipientFilters = { statuses: [], genders: [], maritalStatuses: [], membershipTypes: [] };
+
+function parseRecipientFilters(value: string | null): RecipientFilters {
+  if (!value?.startsWith("{")) return emptyRecipientFilters;
+  try {
+    const parsed = JSON.parse(value) as Partial<RecipientFilters>;
+    return {
+      statuses: Array.isArray(parsed.statuses) ? parsed.statuses.filter((item): item is string => typeof item === "string") : [],
+      genders: Array.isArray(parsed.genders) ? parsed.genders.filter((item): item is string => typeof item === "string") : [],
+      maritalStatuses: Array.isArray(parsed.maritalStatuses) ? parsed.maritalStatuses.filter((item): item is string => typeof item === "string") : [],
+      membershipTypes: Array.isArray(parsed.membershipTypes) ? parsed.membershipTypes.filter((item): item is string => typeof item === "string") : [],
+    };
+  } catch {
+    return emptyRecipientFilters;
+  }
+}
+
+function recipientFilterLabel(filters: RecipientFilters) {
+  const labels = [...filters.statuses, ...filters.genders, ...filters.maritalStatuses, ...filters.membershipTypes];
+  return labels.length ? `Filtered: ${labels.map((label) => label.slice(0, 1).toUpperCase() + label.slice(1)).join(", ")}` : "Filtered users";
+}
+
 export default async function AnnouncementsPage() {
   const user = await requirePageAccess("announcements");
   const permissions = await getUserPermissionSet(user);
@@ -41,7 +71,7 @@ export default async function AnnouncementsPage() {
 
   const [allAnnouncements, roles, users, deliveryRows] = await Promise.all([
     prisma.announcement.findMany({
-      where: canManage ? undefined : { status: "active", OR: [{ expiryDate: null }, { expiryDate: { gte: new Date() } }] },
+      where: canManage ? undefined : { status: "active", OR: [{ expiryDate: null }, { expiryDate: { gte: databaseDate(kigaliDateKey()) } }] },
       orderBy: { createdAt: "desc" },
       include: {
         creator: { select: { id: true, name: true } },
@@ -61,12 +91,16 @@ export default async function AnnouncementsPage() {
       select: { id: true, name: true, displayName: true },
     }) : Promise.resolve([]),
     canManage ? prisma.user.findMany({
-      where: { status: "active", ...excludeSuperAdminUserWhere() },
+      where: excludeSuperAdminUserWhere(),
       orderBy: { name: "asc" },
       select: {
         id: true,
         name: true,
         email: true,
+        status: true,
+        gender: true,
+        maritalStatus: true,
+        membershipType: true,
         roles: { select: { roleId: true } },
       },
     }) : Promise.resolve([]),
@@ -81,7 +115,7 @@ export default async function AnnouncementsPage() {
     ? allAnnouncements
     : allAnnouncements.filter((announcement) => {
         if (announcement.targetType === "all") return true;
-        if (announcement.targetType === "users") return parseIdList(announcement.targetUsers).includes(user.id);
+        if (announcement.targetType === "users" || announcement.targetType === "filters") return parseIdList(announcement.targetUsers).includes(user.id);
         if (announcement.targetType === "roles") return parseIdList(announcement.targetRoles).some((id) => roleIds.includes(id));
         return false;
       });
@@ -102,15 +136,18 @@ export default async function AnnouncementsPage() {
 
     let recipientIds: number[] = [];
     if (announcement.targetType === "all") {
-      recipientIds = users.map((recipient) => recipient.id);
+      recipientIds = users.filter((recipient) => recipient.status === "active").map((recipient) => recipient.id);
     } else if (announcement.targetType === "users") {
+      const ids = parseIdList(announcement.targetUsers);
+      recipientIds = ids.filter((id) => userById.get(id)?.status === "active");
+    } else if (announcement.targetType === "filters") {
       const ids = parseIdList(announcement.targetUsers);
       recipientIds = ids.filter((id) => userById.has(id));
     } else if (announcement.targetType === "roles") {
       const ids = parseIdList(announcement.targetRoles);
       if (ids.length) {
         recipientIds = users
-          .filter((recipient) => recipient.roles.some((role) => ids.includes(role.roleId)))
+          .filter((recipient) => recipient.status === "active" && recipient.roles.some((role) => ids.includes(role.roleId)))
           .map((recipient) => recipient.id);
       }
     }
@@ -161,11 +198,21 @@ export default async function AnnouncementsPage() {
     <AnnouncementsClient
       readOnly={!canManage}
       roles={roles}
-      users={users}
+      users={users.map((recipient) => ({
+        id: recipient.id,
+        name: recipient.name,
+        email: recipient.email,
+        status: recipient.status,
+        gender: recipient.gender,
+        maritalStatus: recipient.maritalStatus,
+        membershipType: recipient.membershipType,
+        roleIds: recipient.roles.map((role) => role.roleId),
+      }))}
       announcements={announcements.map((announcement, index) => {
         const analytics = announcementAnalytics[index] ?? { recipientCount: 0, deliveredCount: 0, readCount: 0, readRate: 0, readers: [], unreadRecipients: [] };
         const targetRoleIds = parseIdList(announcement.targetRoles);
         const targetUserIds = parseIdList(announcement.targetUsers);
+        const targetFilters = parseRecipientFilters(announcement.targetAudience);
         const roleNames = targetRoleIds.map((id) => roleNameById.get(id)).filter(Boolean) as string[];
         const userNames = targetUserIds.map((id) => userById.get(id)?.name).filter(Boolean) as string[];
         const recipientLabel = !canManage
@@ -175,7 +222,9 @@ export default async function AnnouncementsPage() {
             ? "All Users"
             : announcement.targetType === "roles"
               ? roleNames.join(", ") || "Selected roles"
-              : userNames.join(", ") || "Selected users";
+              : announcement.targetType === "filters"
+                ? recipientFilterLabel(targetFilters)
+                : userNames.join(", ") || "Selected users";
 
         return {
           id: announcement.id,
@@ -190,6 +239,7 @@ export default async function AnnouncementsPage() {
           targetType: announcement.targetType,
           targetRoles: targetRoleIds,
           targetUsers: targetUserIds,
+          targetFilters,
           recipientLabel,
           recipientCount: analytics.recipientCount,
           deliveredCount: analytics.deliveredCount,

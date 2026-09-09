@@ -2,6 +2,7 @@ import { FamilyClient } from "@/components/family-client";
 import { requirePageAccess } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { hasSuperAdminRole } from "@/lib/system-account-rules";
+import { databaseDateKey, kigaliDateKey } from "@/lib/calendar-date";
 import { redirect } from "next/navigation";
 
 function formatDueDate(date: Date | null) {
@@ -11,6 +12,7 @@ function formatDueDate(date: Date | null) {
     day: "2-digit",
     month: "short",
     year: "numeric",
+    timeZone: "Africa/Kigali",
   }).format(date);
 }
 
@@ -68,8 +70,7 @@ export default async function FamilyPage() {
     return <FamilyClient family={null} members={[]} tasks={[]} taskStats={{ completed: 0, pending: 0, inProgress: 0 }} />;
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = kigaliDateKey();
 
   const members = membership.family.members.map((member) => ({
     id: member.id,
@@ -82,7 +83,7 @@ export default async function FamilyPage() {
   const tasks = membership.family.tasks.map((task) => {
     const status = normalizeTaskStatus(task);
     const dueDate = task.dueDate ? new Date(task.dueDate) : null;
-    const isOverdue = Boolean(dueDate && dueDate < today && status !== "completed");
+    const isOverdue = Boolean(dueDate && databaseDateKey(dueDate) < today && status !== "completed");
 
     return {
       id: task.id,

@@ -240,11 +240,17 @@ export async function userIdsWithPermission(pageName: string, featureName: strin
 }
 
 export async function userIdsForAnnouncement(targetType: string, targetRoles: string | null, targetUsers: string | null) {
-  if (targetType === "users") {
+  if (targetType === "users" || targetType === "filters") {
     try {
       const userIds = uniqueIds((JSON.parse(targetUsers ?? "[]") as unknown[]).map(Number));
       if (!userIds.length) return [];
-      const users = await prisma.user.findMany({ where: { id: { in: userIds }, status: "active" }, select: { id: true } });
+      const users = await prisma.user.findMany({
+        where: {
+          id: { in: userIds },
+          ...(targetType === "users" ? { status: "active" as const } : {}),
+        },
+        select: { id: true },
+      });
       return users.map((user) => user.id);
     } catch {
       return [];

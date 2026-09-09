@@ -17,14 +17,10 @@ import {
   renderBirthdayTemplate,
 } from "@/lib/birthday-rules";
 import { settingToBoolean } from "@/lib/system-settings";
+import { addCalendarDays, databaseDate, databaseDateKey, kigaliDateKey, kigaliDayBounds } from "@/lib/calendar-date";
 
 function dayBounds(offsetDays = 0) {
-  const start = new Date();
-  start.setUTCHours(0, 0, 0, 0);
-  start.setUTCDate(start.getUTCDate() + offsetDays);
-  const end = new Date(start);
-  end.setUTCDate(end.getUTCDate() + 1);
-  return { start, end };
+  return kigaliDayBounds(addCalendarDays(kigaliDateKey(), offsetDays));
 }
 
 function dateLabel(date: Date) {
@@ -102,6 +98,7 @@ export async function runScheduledNotificationJobs() {
   }
 
   const today = dayBounds();
+  const todayKey = kigaliDateKey();
   const probationLeaders = await userIdsWithPermission("probation", "view");
   const openProbations = await prisma.probation.findMany({
     where: { state: { in: ["active", "extended"] } },
@@ -114,9 +111,7 @@ export async function runScheduledNotificationJobs() {
     },
   });
   for (const probation of openProbations) {
-    const endDay = new Date(probation.currentExpectedEndDate);
-    endDay.setUTCHours(0, 0, 0, 0);
-    const daysRemaining = Math.round((endDay.getTime() - today.start.getTime()) / 86_400_000);
+    const daysRemaining = Math.round((databaseDate(probation.currentExpectedEndDate.toISOString().slice(0, 10)).getTime() - databaseDate(todayKey).getTime()) / 86_400_000);
     if ([14, 7, 1].includes(daysRemaining)) {
       await notifyUsers({
         userIds: [probation.userId],
@@ -148,14 +143,14 @@ export async function runScheduledNotificationJobs() {
         link: `/admin/probation?record=${probation.id}`,
         sourceType: "probation",
         sourceId: probation.id,
-        dedupeKey: `probation:${probation.id}:overdue:${today.start.toISOString().slice(0, 10)}`,
+        dedupeKey: `probation:${probation.id}:overdue:${todayKey}`,
       });
       results.probationReminders += 1;
     }
   }
 
   const scheduledAnnouncements = await prisma.announcement.findMany({
-    where: { status: "scheduled", scheduledDate: { lte: today.end } },
+    where: { status: "scheduled", scheduledDate: { lte: databaseDate(todayKey) } },
   });
   for (const announcement of scheduledAnnouncements) {
     const updated = await prisma.announcement.update({ where: { id: announcement.id }, data: { status: "active", publishedAt: new Date() } });
@@ -188,38 +183,38 @@ export async function runScheduledNotificationJobs() {
     results.formReminders += recipients.length;
   }
 
-  const tomorrow = dayBounds(1);
+  const tomorrowKey = addCalendarDays(todayKey, 1);
   const dueTasks = await prisma.actionPlanTask.findMany({
-    where: { assignedTo: { not: null }, progress: { lt: 100 }, deadline: { not: null, lt: tomorrow.end } },
+    where: { assignedTo: { not: null }, progress: { lt: 100 }, deadline: { not: null, lte: databaseDate(tomorrowKey) } },
     select: { id: true, taskName: true, deadline: true, assignedTo: true, actionPlan: { select: { createdBy: true, department: true } } },
   });
   for (const task of dueTasks) {
     if (!task.deadline || !task.assignedTo) continue;
-    const overdue = task.deadline < today.start;
+    const overdue = databaseDateKey(task.deadline) < todayKey;
     const userIds = overdue ? [task.assignedTo, ...(task.actionPlan.createdBy ? [task.actionPlan.createdBy] : [])] : [task.assignedTo];
     await notifyUsers({
       userIds, type: "task", title: overdue ? "Task overdue" : "Task due soon",
       message: `${task.taskName} ${overdue ? "was due" : "is due"} ${dateLabel(task.deadline)}.`,
       link: `/admin/${task.actionPlan.department === "social-fellowship" ? "social-fellowship" : task.actionPlan.department}`,
       sourceType: "action_plan_task", sourceId: task.id,
-      dedupeKey: `action-task:${task.id}:${overdue ? `overdue:${today.start.toISOString().slice(0, 10)}` : "due-soon"}`,
+      dedupeKey: `action-task:${task.id}:${overdue ? `overdue:${todayKey}` : "due-soon"}`,
     });
     results.taskReminders += userIds.length;
   }
 
   const familyTasks = await prisma.familyTask.findMany({
-    where: { progress: { lt: 100 }, dueDate: { not: null, lt: tomorrow.end } },
+    where: { progress: { lt: 100 }, dueDate: { not: null, lte: databaseDate(tomorrowKey) } },
     select: { id: true, title: true, dueDate: true, assignedTo: true, family: { select: { parentId: true } } },
   });
   for (const task of familyTasks) {
     if (!task.dueDate) continue;
-    const overdue = task.dueDate < today.start;
+    const overdue = databaseDateKey(task.dueDate) < todayKey;
     const userIds = [...new Set([task.assignedTo, task.family.parentId].filter((id): id is number => Boolean(id)))];
     await notifyUsers({
       userIds, type: "family", title: overdue ? "Family task overdue" : "Family task due soon",
       message: `${task.title} ${overdue ? "was due" : "is due"} ${dateLabel(task.dueDate)}.`, link: "/admin/family",
       sourceType: "family_task", sourceId: task.id,
-      dedupeKey: `family-task:${task.id}:${overdue ? `overdue:${today.start.toISOString().slice(0, 10)}` : "due-soon"}`,
+      dedupeKey: `family-task:${task.id}:${overdue ? `overdue:${todayKey}` : "due-soon"}`,
     });
     results.familyReminders += userIds.length;
   }

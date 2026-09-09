@@ -3,6 +3,7 @@
 import { FormEvent, TouchEvent as ReactTouchEvent, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { addCalendarDays, databaseDate, kigaliDateKey } from "@/lib/calendar-date";
 import { ActionNotice } from "@/components/action-notice";
 import { ActionPlanTaskTemplateButtons } from "@/components/action-plan-task-template-buttons";
 import { DepartmentActionPlanManager } from "@/components/department-action-plan-manager";
@@ -303,8 +304,8 @@ export function IntercessionClient({
   const [reportDetail, setReportDetail] = useState<ReportRow | null>(null);
   const [previewForm, setPreviewForm] = useState<SpiritualForm | null>(null);
   const [manageStatus, setManageStatus] = useState<"active" | "archived">("active");
-  const [todayValue] = useState(() => new Date().toISOString().slice(0, 10));
-  const [weekValue] = useState(() => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10));
+  const [todayValue] = useState(() => kigaliDateKey());
+  const [weekValue] = useState(() => addCalendarDays(kigaliDateKey(), 7));
   const [isPending, startTransition] = useTransition();
 
   const reportForms = forms.filter((form) => form.isPublished && form.isActive);
@@ -2914,8 +2915,7 @@ function buildActionPlanTimeline(plan: IntercessionActionPlan) {
   const rangeStart = new Date(rangeStartCandidate.getFullYear(), rangeStartCandidate.getMonth(), 1);
   const rangeEnd = new Date(rangeEndCandidate.getFullYear(), rangeEndCandidate.getMonth(), 1);
   const months = buildTimelineMonths(rangeStart, rangeEnd);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = databaseDate(kigaliDateKey());
 
   const rows = plan.tasks.map((task, index) => {
     const taskStart = parseActionPlanDate(task.startDateRaw) ?? parseActionPlanDate(task.startDate) ?? planStart ?? rangeStart;

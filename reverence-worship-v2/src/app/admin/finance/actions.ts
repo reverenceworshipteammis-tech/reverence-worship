@@ -8,6 +8,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { requirePermission, requireUser } from "@/lib/auth";
 import { calculateAvailableBalance, canApproveExpense, reconcileContributionPaymentAmounts, validateContributionPaymentDate, validateExpenseRequest } from "@/lib/finance-rules";
 import { prisma } from "@/lib/prisma";
+import { currentKigaliYear, databaseDate, kigaliDateKey } from "@/lib/calendar-date";
 import { notifyUsers } from "@/lib/notifications";
 
 function readString(formData: FormData, key: string) {
@@ -212,7 +213,7 @@ export async function recordContributionPayment(formData: FormData) {
       term,
       amount,
       paymentMethod,
-      paymentDate: paymentDateValue ? new Date(`${paymentDateValue}T12:00:00.000Z`) : new Date(),
+      paymentDate: databaseDate(paymentDateValue || kigaliDateKey()),
       notes,
       referenceNumber,
       createdBy: user.id,
@@ -285,7 +286,7 @@ export async function updateFinancePayment(formData: FormData) {
       term,
       amount,
       paymentMethod,
-      paymentDate: new Date(`${paymentDateValue}T12:00:00.000Z`),
+      paymentDate: databaseDate(paymentDateValue),
       notes,
       referenceNumber,
     },
@@ -616,9 +617,9 @@ export async function recordSponsorPayment(formData: FormData) {
       sponsorId,
       amount,
       year,
-      month: paymentDateValue ? Number(paymentDateValue.slice(5, 7)) : new Date().getMonth() + 1,
+      month: Number((paymentDateValue || kigaliDateKey()).slice(5, 7)),
       paymentMethod,
-      paymentDate: paymentDateValue ? new Date(`${paymentDateValue}T12:00:00.000Z`) : new Date(),
+      paymentDate: databaseDate(paymentDateValue || kigaliDateKey()),
       notes,
       createdBy: user.id,
     },
@@ -763,7 +764,7 @@ export async function saveExpense(formData: FormData) {
           data: {
             amount,
             description,
-            date: dateValue ? new Date(`${dateValue}T12:00:00.000Z`) : new Date(),
+            date: databaseDate(dateValue || kigaliDateKey()),
             year,
             category: null,
             status: "pending",
@@ -925,7 +926,7 @@ export async function saveFinanceActionPlan(formData: FormData) {
   const description = readString(formData, "description") || null;
   const startDateValue = readString(formData, "startDate");
   const dueDateValue = readString(formData, "dueDate");
-  const year = Number(readString(formData, "year") || new Date().getFullYear());
+  const year = Number(readString(formData, "year") || currentKigaliYear());
 
   if (!title || !startDateValue || !dueDateValue) {
     return { ok: false, message: "Action plan name, start date, and completion date are required." };

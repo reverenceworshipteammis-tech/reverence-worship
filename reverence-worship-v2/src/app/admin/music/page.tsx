@@ -3,12 +3,14 @@ import { getUserPermissionSet, permissionSetHas, requirePageAccess } from "@/lib
 import { prisma } from "@/lib/prisma";
 import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
 import { parseProjectionOverlayPresets, PROJECTION_OVERLAY_PRESETS_SETTING_KEY } from "@/lib/projection-overlays";
+import { kigaliDateTimeInputValue } from "@/lib/calendar-date";
 
 function formatDate(date: Date) {
   return new Intl.DateTimeFormat("en", {
     month: "short",
     day: "2-digit",
     year: "numeric",
+    timeZone: "Africa/Kigali",
   }).format(date);
 }
 
@@ -19,6 +21,7 @@ function formatDateTime(date: Date) {
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "Africa/Kigali",
   }).format(date);
 }
 
@@ -206,7 +209,7 @@ export default async function MusicPage() {
         content: item.content,
         type: item.type,
         eventDate: item.eventDate ? formatDateTime(item.eventDate) : null,
-        eventDateValue: item.eventDate ? item.eventDate.toISOString().slice(0, 16) : "",
+        eventDateValue: item.eventDate ? kigaliDateTimeInputValue(item.eventDate) : "",
         isPublished: item.isPublished,
         isPinned: item.isPinned,
       }))}

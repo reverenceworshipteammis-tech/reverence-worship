@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { addCalendarDays, kigaliDateKey } from "@/lib/calendar-date";
 import { useAppDialog } from "@/components/app-dialog-provider";
 import { ActionNotice } from "@/components/action-notice";
 import { ActionPlanTaskTemplateButtons } from "@/components/action-plan-task-template-buttons";
@@ -614,10 +615,8 @@ function FinanceActionPlansTab({ currentYear, actionPlans }: { currentYear: numb
 
   const summary = useMemo(() => {
     const tasks = actionPlans.flatMap((plan) => plan.tasks);
-    const today = new Date().toISOString().slice(0, 10);
-    const dueSoonLimit = new Date();
-    dueSoonLimit.setDate(dueSoonLimit.getDate() + 7);
-    const dueSoon = dueSoonLimit.toISOString().slice(0, 10);
+    const today = kigaliDateKey();
+    const dueSoon = addCalendarDays(today, 7);
     return {
       overdueTasks: tasks.filter((task) => task.deadlineRaw && task.deadlineRaw < today && task.progress < 100).length,
       dueSoonTasks: tasks.filter((task) => task.deadlineRaw && task.deadlineRaw >= today && task.deadlineRaw <= dueSoon && task.progress < 100).length,
@@ -1887,7 +1886,7 @@ function FinanceContributionsTab({
           user={paymentModalUser}
           users={users}
           year={selectedYear}
-          defaultDate={fromDate <= new Date().toISOString().slice(0, 10) && new Date().toISOString().slice(0, 10) <= toDate ? new Date().toISOString().slice(0, 10) : fromDate}
+          defaultDate={fromDate <= kigaliDateKey() && kigaliDateKey() <= toDate ? kigaliDateKey() : fromDate}
           termNumbers={termNumbers}
           pending={pending}
           onUserChange={setPaymentModalUser}
@@ -3449,7 +3448,7 @@ function SponsorPaymentModal({
             </select>
           </FieldLabel>
           <FieldLabel label="Payment Date">
-            <input name="payment_date" type="date" defaultValue={new Date().toISOString().slice(0, 10)} className={fieldClass} />
+            <input name="payment_date" type="date" defaultValue={kigaliDateKey()} className={fieldClass} />
           </FieldLabel>
         </div>
         <FieldLabel label="Notes">
@@ -3554,7 +3553,7 @@ function ExpenseModal({
             <input name="amount" type="number" min={1} max={availableBalance} step="0.01" required className={fieldClass} />
           </FieldLabel>
           <FieldLabel label="Date">
-            <input name="date" type="date" defaultValue={new Date().toISOString().slice(0, 10)} className={fieldClass} />
+            <input name="date" type="date" defaultValue={kigaliDateKey()} className={fieldClass} />
           </FieldLabel>
         </div>
         <FieldLabel label="Reason">

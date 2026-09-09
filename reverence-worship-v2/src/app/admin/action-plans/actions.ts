@@ -9,6 +9,7 @@ import {
   parseActionPlanTaskImport,
 } from "@/lib/action-plan-task-import";
 import { prisma } from "@/lib/prisma";
+import { currentKigaliYear } from "@/lib/calendar-date";
 
 const DEPARTMENT_ACCESS: Record<string, { page: string; route: string; inProgressStatus: string }> = {
   "music-ministry": { page: "music-ministry", route: "/admin/music", inProgressStatus: "in_progress" },
@@ -63,7 +64,7 @@ export async function saveDepartmentActionPlan(department: string, formData: For
   const description = readString(formData, "description");
   const startDateValue = readString(formData, "startDate");
   const dueDateValue = readString(formData, "dueDate");
-  const year = Number(readString(formData, "year") ?? new Date().getFullYear());
+  const year = Number(readString(formData, "year") ?? currentKigaliYear());
   if (!title || !validDateValue(startDateValue) || !validDateValue(dueDateValue)) {
     return { ok: false, message: "Action plan name, start date, and completion date are required." };
   }

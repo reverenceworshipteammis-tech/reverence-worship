@@ -2,6 +2,7 @@
 
 import { FormEvent, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { addCalendarDays, kigaliDateKey } from "@/lib/calendar-date";
 import { ActionNotice } from "@/components/action-notice";
 import { ActionPlanTaskTemplateButtons } from "@/components/action-plan-task-template-buttons";
 import { DepartmentActionPlanManager } from "@/components/department-action-plan-manager";
@@ -275,15 +276,12 @@ export function SocialFellowshipClient({
       const matchesFamily = taskFamilyFilter === "all" || String(task.familyId) === taskFamilyFilter;
       let matchesDue = true;
       if (taskDueFilter !== "all") {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const due = task.dueDateValue ? new Date(`${task.dueDateValue}T00:00:00`) : null;
-        const tomorrow = new Date(today);
-        tomorrow.setDate(today.getDate() + 1);
-        const weekEnd = new Date(today);
-        weekEnd.setDate(today.getDate() + 7);
-        if (taskDueFilter === "today") matchesDue = Boolean(due && due.getTime() === today.getTime());
-        if (taskDueFilter === "tomorrow") matchesDue = Boolean(due && due.getTime() === tomorrow.getTime());
+        const today = kigaliDateKey();
+        const due = task.dueDateValue;
+        const tomorrow = addCalendarDays(today, 1);
+        const weekEnd = addCalendarDays(today, 7);
+        if (taskDueFilter === "today") matchesDue = due === today;
+        if (taskDueFilter === "tomorrow") matchesDue = due === tomorrow;
         if (taskDueFilter === "week") matchesDue = Boolean(due && due >= today && due <= weekEnd);
         if (taskDueFilter === "overdue") matchesDue = Boolean(due && due < today && task.status !== "completed");
       }

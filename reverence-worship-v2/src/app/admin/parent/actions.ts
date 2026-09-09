@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requirePageAccess } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { databaseDate } from "@/lib/calendar-date";
 
 async function getParentFamilyId() {
   const user = await requirePageAccess("parent");
@@ -47,7 +48,7 @@ export async function createParentTask(formData: FormData) {
       familyId: parent.familyId,
       title,
       description: readString(formData, "description") || null,
-      dueDate: readString(formData, "dueDate") ? new Date(readString(formData, "dueDate")) : null,
+      dueDate: readString(formData, "dueDate") ? databaseDate(readString(formData, "dueDate")) : null,
       createdBy: parent.userId,
       subtasks: {
         create: subtasks.map((subtask) => ({ title: subtask })),
@@ -79,7 +80,7 @@ export async function updateParentTask(formData: FormData) {
       data: {
         title,
         description: readString(formData, "description") || null,
-        dueDate: readString(formData, "dueDate") ? new Date(readString(formData, "dueDate")) : null,
+        dueDate: readString(formData, "dueDate") ? databaseDate(readString(formData, "dueDate")) : null,
       },
     }),
     prisma.taskSubtask.deleteMany({ where: { taskId } }),

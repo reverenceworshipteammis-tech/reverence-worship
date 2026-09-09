@@ -6,6 +6,7 @@ import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
 import { parseQuestionImages } from "@/lib/intercession-question-images";
 import { parseIntercessionQuestionCondition } from "@/lib/intercession-form-rules";
 import { intercessionFormAvailability, parseIntercessionFormSettings } from "@/lib/intercession-form-domain";
+import { kigaliDateKey } from "@/lib/calendar-date";
 
 function formatDate(date: Date) {
   return new Intl.DateTimeFormat("en", {
@@ -221,13 +222,13 @@ export default async function IntercessionPage({ searchParams }: { searchParams:
           submissions: submitted.map((submission) => ({
             formId: submission.formId,
             score: submission.score,
-            submittedAt: submission.submittedAt.toISOString().slice(0, 10),
+            submittedAt: kigaliDateKey(submission.submittedAt),
           })),
           submitted: submittedPublishedCount,
           totalForms,
           participation,
           averageScore,
-          latestSubmittedAt: latestSubmittedAt ? latestSubmittedAt.toISOString().slice(0, 10) : null,
+          latestSubmittedAt: latestSubmittedAt ? kigaliDateKey(latestSubmittedAt) : null,
           status: totalForms === 0 || submittedPublishedCount === 0 ? "Not Started" : submittedPublishedCount === totalForms ? "Complete" : "Partial",
         };
       })}

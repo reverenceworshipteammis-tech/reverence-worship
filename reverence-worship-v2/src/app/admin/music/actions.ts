@@ -12,6 +12,7 @@ import {
   playlistServiceLabel,
 } from "@/lib/playlist-rules";
 import { prisma } from "@/lib/prisma";
+import { currentKigaliYear, databaseDate, kigaliDateKey } from "@/lib/calendar-date";
 import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
 import { validateProjectionSongLyrics } from "@/lib/song-projection";
 import type { ImportedSong } from "@/lib/freeshow-import";
@@ -354,7 +355,7 @@ export async function saveMusicActionPlan(formData: FormData) {
   const description = readString(formData, "description");
   const startDateValue = readString(formData, "startDate");
   const dueDateValue = readString(formData, "dueDate");
-  const year = Number(readString(formData, "year") || new Date().getFullYear());
+  const year = Number(readString(formData, "year") || currentKigaliYear());
 
   if (!title || !startDateValue || !dueDateValue) {
     return { ok: false, message: "Action plan name, start date, and completion date are required." };
@@ -811,7 +812,7 @@ export async function uploadGalleryPhotos(formData: FormData) {
       title: caption || baseName || "Untitled",
       imagePath,
       description: caption,
-      eventDate: new Date(),
+      eventDate: databaseDate(kigaliDateKey()),
       createdBy: user.id,
     });
   }
@@ -1010,7 +1011,7 @@ export async function generateServiceTeams(formData: FormData) {
   await prisma.serviceTeam.create({
     data: {
       serviceName,
-      serviceDate: new Date(serviceDate),
+      serviceDate: databaseDate(serviceDate),
       numberOfTeams: teamCount,
       createdBy: user.id,
       members: {
@@ -1096,7 +1097,7 @@ export async function saveBoardItem(formData: FormData) {
     title,
     content,
     type,
-    eventDate: type === "event" && eventDate ? new Date(eventDate) : null,
+    eventDate: type === "event" && eventDate ? new Date(`${eventDate}:00+02:00`) : null,
     isPublished: readBoolean(formData, "isPublished"),
     isPinned: readBoolean(formData, "isPinned"),
   };

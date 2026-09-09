@@ -305,6 +305,17 @@ function parseGender(value: string): "male" | "female" | null {
   return null;
 }
 
+function normalizeMaritalStatus(value: string | null | undefined) {
+  const trimmed = value?.trim() ?? "";
+  const normalized = trimmed.toLowerCase();
+
+  if (normalized === "single") return "Single";
+  if (normalized === "married") return "Married";
+  if (normalized === "divorced") return "Divorced";
+  if (normalized === "widowed") return "Widowed";
+  return trimmed || null;
+}
+
 function parseRoleNames(value: string) {
   return value
     .split(/[;,|]/)
@@ -326,7 +337,7 @@ function parseImportedUser(row: Record<string, string>): ImportedUserRow | null 
     joinedDate: parseImportDate(readImportValue(row, "Joined Date", "Join Date", "Registered Date")),
     dateOfBirth: parseImportDate(readImportValue(row, "Date of Birth", "DOB")),
     gender: parseGender(readImportValue(row, "Gender")),
-    maritalStatus: readImportValue(row, "Marital Status") || null,
+    maritalStatus: normalizeMaritalStatus(readImportValue(row, "Marital Status")),
     province: readImportValue(row, "Province") || null,
     district: readImportValue(row, "District") || null,
     sector: readImportValue(row, "Sector") || null,
@@ -450,7 +461,7 @@ export async function createUserAction(
       cell: parsed.data.cell || null,
       village: parsed.data.village || null,
       gender: parsed.data.gender || null,
-      maritalStatus: parsed.data.maritalStatus || null,
+      maritalStatus: normalizeMaritalStatus(parsed.data.maritalStatus),
       membershipType: parsed.data.membershipType || null,
       occupation: parsed.data.occupation || null,
       skills: parsed.data.skills || null,
@@ -804,7 +815,7 @@ export async function updateUserAction(
       cell: parsed.data.cell || null,
       village: parsed.data.village || null,
       gender: parsed.data.gender || null,
-      maritalStatus: parsed.data.maritalStatus || null,
+      maritalStatus: normalizeMaritalStatus(parsed.data.maritalStatus),
       membershipType: parsed.data.membershipType || null,
       occupation: parsed.data.occupation || null,
       skills: parsed.data.skills || null,

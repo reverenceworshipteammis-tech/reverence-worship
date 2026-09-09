@@ -13,6 +13,7 @@ import {
   Download,
   FileText,
   FileUp,
+  Filter,
   Mars,
   RotateCcw,
   Search,
@@ -111,6 +112,10 @@ const userImportHeaders = [
   "Approval Status",
 ];
 
+function filterValues(value: string) {
+  return value.split(",").filter(Boolean);
+}
+
 function initials(name: string) {
   return name
     .split(" ")
@@ -139,6 +144,44 @@ function displayRoles(user: UserRow) {
 
 function hasFullSystemAccess(user: UserRow) {
   return user.roles.some((role) => role.name === "super-admin");
+}
+
+function FilterCheckboxGroup({
+  label,
+  name,
+  options,
+  selected,
+  onChange,
+}: {
+  label: string;
+  name: string;
+  options: ReadonlyArray<readonly [value: string, label: string]>;
+  selected: string[];
+  onChange: (value: string, checked: boolean) => void;
+}) {
+  return (
+    <fieldset>
+      <legend className="mb-2 text-xs font-semibold text-gray-700">{label}</legend>
+      <div className="space-y-1">
+        {options.map(([value, optionLabel]) => (
+          <label
+            key={value}
+            className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-gray-700 transition hover:bg-gray-50"
+          >
+            <input
+              type="checkbox"
+              name={name}
+              value={value}
+              checked={selected.includes(value)}
+              onChange={(event) => onChange(value, event.target.checked)}
+              className="size-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            {optionLabel}
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
 }
 
 function SortButton({
@@ -189,6 +232,7 @@ export function UserManagementClient({
   const router = useRouter();
   const searchParams = useSearchParams();
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const filterDetailsRef = useRef<HTMLDetailsElement | null>(null);
   const [searchInput, setSearchInput] = useState(() => {
     const value = searchParams.get("search") ?? "";
     return { urlValue: value, value };
@@ -225,9 +269,18 @@ export function UserManagementClient({
       search: searchParams.get("search") ?? "",
       role: searchParams.get("role") ?? "",
       status: searchParams.get("status") ?? "",
+      gender: searchParams.get("gender") ?? "",
+      maritalStatus: searchParams.get("maritalStatus") ?? "",
+      membershipType: searchParams.get("membershipType") ?? "",
     }),
     [searchParams],
   );
+
+  const activeFilterCount =
+    filterValues(currentFilters.status).length
+    + filterValues(currentFilters.gender).length
+    + filterValues(currentFilters.maritalStatus).length
+    + filterValues(currentFilters.membershipType).length;
 
   const searchValue =
     searchInput.urlValue === currentFilters.search ? searchInput.value : currentFilters.search;
@@ -240,6 +293,33 @@ export function UserManagementClient({
     },
     [],
   );
+
+  useEffect(() => {
+    function closeFilterOnOutsideClick(event: PointerEvent) {
+      const details = filterDetailsRef.current;
+
+      if (details?.open && event.target instanceof Node && !details.contains(event.target)) {
+        details.open = false;
+      }
+    }
+
+    function closeFilterOnEscape(event: KeyboardEvent) {
+      const details = filterDetailsRef.current;
+
+      if (event.key === "Escape" && details?.open) {
+        details.open = false;
+        details.querySelector<HTMLElement>("summary")?.focus();
+      }
+    }
+
+    document.addEventListener("pointerdown", closeFilterOnOutsideClick);
+    document.addEventListener("keydown", closeFilterOnEscape);
+
+    return () => {
+      document.removeEventListener("pointerdown", closeFilterOnOutsideClick);
+      document.removeEventListener("keydown", closeFilterOnEscape);
+    };
+  }, []);
 
   const sortedUsers = useMemo(() => {
     const direction = sort.direction === "asc" ? 1 : -1;
@@ -280,7 +360,14 @@ export function UserManagementClient({
   }
 
   function pushFilters(
-    filters: { search?: string; role?: string; status?: string },
+    filters: {
+      search?: string;
+      role?: string;
+      status?: string;
+      gender?: string;
+      maritalStatus?: string;
+      membershipType?: string;
+    },
     navigation: "push" | "replace" = "push",
   ) {
     if (searchTimerRef.current) {
@@ -292,10 +379,16 @@ export function UserManagementClient({
     const search = filters.search?.trim() ?? "";
     const role = filters.role ?? "";
     const status = filters.status ?? "";
+    const gender = filters.gender ?? "";
+    const maritalStatus = filters.maritalStatus ?? "";
+    const membershipType = filters.membershipType ?? "";
 
     if (search) params.set("search", search);
     if (role) params.set("role", role);
     if (status) params.set("status", status);
+    if (gender) params.set("gender", gender);
+    if (maritalStatus) params.set("maritalStatus", maritalStatus);
+    if (membershipType) params.set("membershipType", membershipType);
 
     startTransition(() => {
       const url = `/admin/users${params.toString() ? `?${params.toString()}` : ""}`;
@@ -321,17 +414,43 @@ export function UserManagementClient({
           search: value,
           role: currentFilters.role,
           status: currentFilters.status,
+          gender: currentFilters.gender,
+          maritalStatus: currentFilters.maritalStatus,
+          membershipType: currentFilters.membershipType,
         },
         "replace",
       );
     }, 350);
   }
 
+  function toggleFilter(
+    field: "status" | "gender" | "maritalStatus" | "membershipType",
+    value: string,
+    checked: boolean,
+  ) {
+    const selected = new Set(filterValues(currentFilters[field]));
+
+    if (checked) {
+      selected.add(value);
+    } else {
+      selected.delete(value);
+    }
+
+    pushFilters({
+      ...currentFilters,
+      search: searchValue,
+      [field]: [...selected].join(","),
+    });
+  }
+
   function applyFilters(formData: FormData) {
     pushFilters({
       search: String(formData.get("search") || ""),
       role: String(formData.get("role") || ""),
-      status: String(formData.get("status") || ""),
+      status: formData.getAll("status").map(String).join(","),
+      gender: formData.getAll("gender").map(String).join(","),
+      maritalStatus: formData.getAll("maritalStatus").map(String).join(","),
+      membershipType: formData.getAll("membershipType").map(String).join(","),
     });
   }
 
@@ -353,6 +472,9 @@ export function UserManagementClient({
     if (currentFilters.search) params.set("search", currentFilters.search);
     if (currentFilters.role) params.set("role", currentFilters.role);
     if (currentFilters.status) params.set("status", currentFilters.status);
+    if (currentFilters.gender) params.set("gender", currentFilters.gender);
+    if (currentFilters.maritalStatus) params.set("maritalStatus", currentFilters.maritalStatus);
+    if (currentFilters.membershipType) params.set("membershipType", currentFilters.membershipType);
 
     const base = kind === "csv" ? "/admin/users/export" : "/admin/users/export-pdf";
     return `${base}${params.toString() ? `?${params.toString()}` : ""}`;
@@ -474,6 +596,9 @@ export function UserManagementClient({
                     pushFilters({
                       role: currentFilters.role,
                       status: currentFilters.status,
+                      gender: currentFilters.gender,
+                      maritalStatus: currentFilters.maritalStatus,
+                      membershipType: currentFilters.membershipType,
                     }, "replace");
                   }
                 }}
@@ -493,6 +618,9 @@ export function UserManagementClient({
                     search: searchValue,
                     role: event.target.value,
                     status: currentFilters.status,
+                    gender: currentFilters.gender,
+                    maritalStatus: currentFilters.maritalStatus,
+                    membershipType: currentFilters.membershipType,
                   })
                 }
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 sm:w-32"
@@ -507,24 +635,48 @@ export function UserManagementClient({
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-700">Status</label>
-              <select
-                name="status"
-                defaultValue={currentFilters.status}
-                onChange={(event) =>
-                  pushFilters({
-                    search: searchValue,
-                    role: currentFilters.role,
-                    status: event.target.value,
-                  })
-                }
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 sm:w-28"
-              >
-                <option value="">All</option>
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-                <option value="pending">Pending</option>
-              </select>
+              <label className="mb-1 block text-xs font-medium text-gray-700">Filter</label>
+              <details ref={filterDetailsRef} className="group relative">
+                <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 [&::-webkit-details-marker]:hidden">
+                  <Filter className="size-4" aria-hidden="true" />
+                  <span>Filter</span>
+                  {activeFilterCount > 0 ? (
+                    <span className="flex size-5 items-center justify-center rounded-full bg-blue-600 text-[11px] font-semibold text-white">
+                      {activeFilterCount}
+                    </span>
+                  ) : null}
+                </summary>
+                <div className="absolute right-0 z-30 mt-2 w-64 space-y-4 rounded-xl border border-gray-200 bg-white p-4 shadow-xl">
+                  <FilterCheckboxGroup
+                    label="Account status"
+                    name="status"
+                    options={[["active", "Active"], ["inactive", "Inactive"], ["pending", "Pending"]]}
+                    selected={filterValues(currentFilters.status)}
+                    onChange={(value, checked) => toggleFilter("status", value, checked)}
+                  />
+                  <FilterCheckboxGroup
+                    label="Gender"
+                    name="gender"
+                    options={[["male", "Male"], ["female", "Female"]]}
+                    selected={filterValues(currentFilters.gender)}
+                    onChange={(value, checked) => toggleFilter("gender", value, checked)}
+                  />
+                  <FilterCheckboxGroup
+                    label="Marital status"
+                    name="maritalStatus"
+                    options={[["Single", "Single"], ["Married", "Married"], ["Divorced", "Divorced"], ["Widowed", "Widowed"]]}
+                    selected={filterValues(currentFilters.maritalStatus)}
+                    onChange={(value, checked) => toggleFilter("maritalStatus", value, checked)}
+                  />
+                  <FilterCheckboxGroup
+                    label="Membership type"
+                    name="membershipType"
+                    options={[["permanent", "Permanent"], ["temporary", "Temporary Member"], ["visitor", "Partner"]]}
+                    selected={filterValues(currentFilters.membershipType)}
+                    onChange={(value, checked) => toggleFilter("membershipType", value, checked)}
+                  />
+                </div>
+              </details>
             </div>
             <button
               type="button"

@@ -9,6 +9,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { getCurrentUser, requireAnyPermission, requirePermission } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { notifyEmailAddress, notifyUsers, userIdsWithPermission } from "@/lib/notifications";
+import { currentKigaliYear, kigaliDateKey } from "@/lib/calendar-date";
 import { intercessionRichTextToPlainText } from "@/lib/intercession-rich-text";
 import { getIntercessionPublishingIssues, parseIntercessionQuestionCondition } from "@/lib/intercession-form-rules";
 import {
@@ -397,7 +398,7 @@ export async function saveIntercessionActionPlan(formData: FormData) {
   const description = readString(formData, "description");
   const startDateValue = readString(formData, "startDate");
   const dueDateValue = readString(formData, "dueDate");
-  const year = Number(readString(formData, "year") || new Date().getFullYear());
+  const year = Number(readString(formData, "year") || currentKigaliYear());
 
   if (!title || !startDateValue || !dueDateValue) {
     return { ok: false, message: "Action plan name, start date, and completion date are required." };
@@ -1301,7 +1302,7 @@ export async function sendFormResponseReminders(formId: number) {
   await notifyUsers({
     userIds: recipients, type: "form", title: "Form response reminder",
     message: `Please complete ${intercessionRichTextToPlainText(form.title)}.`, link: `/admin/intercession/forms/${formId}/take`,
-    sourceType: "spiritual_form", sourceId: formId, dedupeKey: `form:${formId}:reminder:${new Date().toISOString().slice(0, 10)}`,
+    sourceType: "spiritual_form", sourceId: formId, dedupeKey: `form:${formId}:reminder:${kigaliDateKey()}`,
   });
   await logIntercessionActivity(user.id, "intercession.form.reminders-sent", { formId, recipientCount: recipients.length });
   return { ok: true, message: `Reminder sent to ${recipients.length} member${recipients.length === 1 ? "" : "s"}.` };

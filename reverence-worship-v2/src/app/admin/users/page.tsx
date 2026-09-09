@@ -8,15 +8,28 @@ type UsersPageProps = {
   searchParams: Promise<{
     search?: string;
     role?: string;
-    status?: "active" | "pending" | "inactive";
+    status?: string;
+    gender?: string;
+    maritalStatus?: string;
+    membershipType?: string;
   }>;
 };
+
+type AccountStatus = "active" | "pending" | "inactive";
+type Gender = "male" | "female";
+type MaritalStatus = "Single" | "Married" | "Divorced" | "Widowed";
+type MembershipType = "permanent" | "temporary" | "visitor";
+
+function selectedValues<T extends string>(value: string | undefined, allowed: readonly T[]): T[] {
+  return [...new Set((value ?? "").split(",").filter((item): item is T => allowed.includes(item as T)))];
+}
 
 function formatDate(date: Date) {
   return new Intl.DateTimeFormat("en", {
     month: "short",
     day: "2-digit",
     year: "numeric",
+    timeZone: "Africa/Kigali",
   }).format(date);
 }
 
@@ -37,7 +50,10 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
   const search = params.search?.trim();
   const inProbation = params.role === "in-probation";
   const roleId = params.role && !inProbation ? Number(params.role) : undefined;
-  const status = params.status;
+  const statuses = selectedValues<AccountStatus>(params.status, ["active", "pending", "inactive"]);
+  const genders = selectedValues<Gender>(params.gender, ["male", "female"]);
+  const maritalStatuses = selectedValues<MaritalStatus>(params.maritalStatus, ["Single", "Married", "Divorced", "Widowed"]);
+  const membershipTypes = selectedValues<MembershipType>(params.membershipType, ["permanent", "temporary", "visitor"]);
 
   const where = {
     ...(search
@@ -48,7 +64,12 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
           ],
         }
       : {}),
-    ...(status ? { status } : {}),
+    ...(statuses.length ? { status: { in: statuses } } : {}),
+    ...(genders.length ? { gender: { in: genders } } : {}),
+    ...(maritalStatuses.length
+      ? { maritalStatus: { in: maritalStatuses, mode: "insensitive" as const } }
+      : {}),
+    ...(membershipTypes.length ? { membershipType: { in: membershipTypes } } : {}),
     roles: {
       ...excludeSuperAdminUserWhere().roles,
       ...(Number.isFinite(roleId) ? { some: { roleId } } : {}),

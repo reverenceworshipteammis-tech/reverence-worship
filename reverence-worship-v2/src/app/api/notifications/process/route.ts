@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runScheduledNotificationJobs } from "@/lib/notification-jobs";
 import { notifySuperAdmins, sendCriticalSystemEmail } from "@/lib/notifications";
+import { kigaliDateKey } from "@/lib/calendar-date";
 
 export const runtime = "nodejs";
 
@@ -21,7 +22,7 @@ async function handler(request: NextRequest) {
       // The platform request remains failed so external monitoring can also alert.
     }
     try {
-      await notifySuperAdmins({ type: "system", title: "Scheduled notification job failed", message, link: "/admin/settings", dedupeKey: `scheduled-job:${new Date().toISOString().slice(0, 10)}`, sendEmail: false });
+      await notifySuperAdmins({ type: "system", title: "Scheduled notification job failed", message, link: "/admin/settings", dedupeKey: `scheduled-job:${kigaliDateKey()}`, sendEmail: false });
     } catch {
       // The database may itself be unavailable; the platform still records this failed request.
     }

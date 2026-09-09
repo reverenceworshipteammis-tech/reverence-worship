@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requirePermission } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { currentKigaliYear, databaseDate } from "@/lib/calendar-date";
 import { notifyUsers } from "@/lib/notifications";
 
 function readString(formData: FormData, key: string) {
@@ -25,7 +26,7 @@ export async function createSocialFamily(formData: FormData) {
     return { ok: false, message: "Family name is required." };
   }
 
-  const year = readNumber(formData, "year") ?? new Date().getFullYear();
+  const year = readNumber(formData, "year") ?? currentKigaliYear();
   const parentId = readNumber(formData, "parentId");
 
   if (parentId) {
@@ -218,7 +219,7 @@ type ActionPlanTaskInput = {
 
 function readDate(formData: FormData, key: string) {
   const value = readString(formData, key);
-  return value ? new Date(value) : null;
+  return value ? databaseDate(value) : null;
 }
 
 function readActionPlanTasks(formData: FormData) {
@@ -237,8 +238,8 @@ function readActionPlanTasks(formData: FormData) {
           activity: task.activity?.trim() || null,
           targetMilestone: task.targetMilestone?.trim() || null,
           estimatedBudget: task.estimatedBudget?.trim() || "0",
-          startDate: task.startDate ? new Date(task.startDate) : null,
-          deadline: task.deadline ? new Date(task.deadline) : null,
+          startDate: task.startDate ? databaseDate(task.startDate) : null,
+          deadline: task.deadline ? databaseDate(task.deadline) : null,
           priority: task.priority || "medium",
           progress: Number.isFinite(progress) ? Math.max(0, Math.min(100, progress)) : 0,
           assignedTo: Number.isFinite(assignedTo) ? assignedTo : null,
@@ -300,7 +301,7 @@ export async function createSocialTask(formData: FormData) {
       familyId,
       title,
       description: readString(formData, "description"),
-      dueDate: readString(formData, "dueDate") ? new Date(readString(formData, "dueDate")!) : null,
+      dueDate: readString(formData, "dueDate") ? databaseDate(readString(formData, "dueDate")!) : null,
       createdBy: user.id,
       status: "pending",
       progress: 0,
@@ -340,7 +341,7 @@ export async function updateSocialTask(taskId: number, formData: FormData) {
         familyId,
         title,
         description: readString(formData, "description"),
-        dueDate: readString(formData, "dueDate") ? new Date(readString(formData, "dueDate")!) : null,
+        dueDate: readString(formData, "dueDate") ? databaseDate(readString(formData, "dueDate")!) : null,
       },
     });
     await tx.taskSubtask.deleteMany({ where: { taskId } });
@@ -418,7 +419,7 @@ export async function createSocialActionPlan(formData: FormData) {
       dueDate,
       priority: readString(formData, "priority") ?? "medium",
       department: "social-fellowship",
-      year: readNumber(formData, "year") ?? new Date().getFullYear(),
+      year: readNumber(formData, "year") ?? currentKigaliYear(),
       createdBy: user.id,
       tasks: {
         create: tasks,

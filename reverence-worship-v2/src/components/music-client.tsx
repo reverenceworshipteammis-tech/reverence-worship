@@ -3,6 +3,7 @@
 import { FormEvent, useMemo, useRef, useState, useTransition } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { addCalendarDays, kigaliDateKey } from "@/lib/calendar-date";
 import { ActionNotice } from "@/components/action-notice";
 import { ActionPlanTaskTemplateButtons } from "@/components/action-plan-task-template-buttons";
 import { DepartmentActionPlanManager } from "@/components/department-action-plan-manager";
@@ -1386,13 +1387,11 @@ export function MusicClient({
   }, [actionPlans, actionPlanSearch, actionPlanStatus]);
   const actionPlanSummary = useMemo(() => {
     const tasks = actionPlans.flatMap((plan) => plan.tasks);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const soon = new Date(today);
-    soon.setDate(soon.getDate() + 7);
+    const today = kigaliDateKey();
+    const soon = addCalendarDays(today, 7);
 
     const openTasks = tasks.filter((task) => task.status !== "completed" && task.progress < 100);
-    const dueDate = (task: MusicActionPlanTask) => task.deadlineRaw ? new Date(`${task.deadlineRaw}T12:00:00`) : null;
+    const dueDate = (task: MusicActionPlanTask) => task.deadlineRaw || null;
 
     return {
       totalPlans: actionPlans.length,
@@ -2644,7 +2643,7 @@ export function MusicClient({
             </label>
             <label>
               <span className="mb-1 block text-sm font-medium text-gray-700">Service Date *</span>
-              <input name="serviceDate" type="date" defaultValue={new Date().toISOString().slice(0, 10)} required className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input name="serviceDate" type="date" defaultValue={kigaliDateKey()} required className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </label>
             <label>
               <span className="mb-1 block text-sm font-medium text-gray-700">Number of Teams *</span>

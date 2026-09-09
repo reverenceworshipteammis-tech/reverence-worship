@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAppDialog } from "@/components/app-dialog-provider";
 import { ActionNotice } from "@/components/action-notice";
 import { ADMIN_NOTIFICATIONS_CHANGED_EVENT } from "@/lib/admin-notification-events";
-import { BarChart3, CheckCircle2, ChevronLeft, ChevronRight, FileSearch2, MailCheck, Megaphone, Pencil, Plus, RefreshCw, Search, Send, Trash2, Upload, X } from "lucide-react";
+import { BarChart3, CheckCircle2, ChevronLeft, ChevronRight, FileSearch2, Filter, MailCheck, Megaphone, Pencil, Plus, RefreshCw, Search, Send, Trash2, Upload, X } from "lucide-react";
 import {
   deleteAnnouncement,
   saveAnnouncement,
@@ -23,6 +23,25 @@ type UserOption = {
   id: number;
   name: string;
   email: string;
+  status: "active" | "pending" | "inactive";
+  gender: "male" | "female" | "other" | null;
+  maritalStatus: string | null;
+  membershipType: "permanent" | "temporary" | "visitor" | null;
+  roleIds: number[];
+};
+
+type RecipientFilters = {
+  statuses: string[];
+  genders: string[];
+  maritalStatuses: string[];
+  membershipTypes: string[];
+};
+
+const emptyRecipientFilters: RecipientFilters = {
+  statuses: [],
+  genders: [],
+  maritalStatuses: [],
+  membershipTypes: [],
 };
 
 type Announcement = {
@@ -38,6 +57,7 @@ type Announcement = {
   targetType: string;
   targetRoles: number[];
   targetUsers: number[];
+  targetFilters: RecipientFilters;
   recipientLabel: string;
   recipientCount: number;
   deliveredCount: number;
@@ -87,9 +107,10 @@ export function AnnouncementsClient({
   const [modal, setModal] = useState<"compose" | "edit" | "view" | "analytics" | null>(null);
   const [selected, setSelected] = useState<Announcement | null>(null);
   const [analyticsAudience, setAnalyticsAudience] = useState<"read" | "unread">("read");
-  const [targetType, setTargetType] = useState<"all" | "roles" | "users">("all");
+  const [targetType, setTargetType] = useState<"all" | "roles" | "users" | "filters">("all");
   const [selectedRoles, setSelectedRoles] = useState<number[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<number[]>([]);
+  const [recipientFilters, setRecipientFilters] = useState<RecipientFilters>(emptyRecipientFilters);
   const [userSearch, setUserSearch] = useState("");
   const [result, setResult] = useState<Result | null>(null);
   const [pending, startTransition] = useTransition();
@@ -113,21 +134,43 @@ export function AnnouncementsClient({
   const pageStart = (currentPage - 1) * ANNOUNCEMENTS_PER_PAGE;
   const visibleAnnouncements = filteredAnnouncements.slice(pageStart, pageStart + ANNOUNCEMENTS_PER_PAGE);
 
+  const activeUsers = useMemo(() => users.filter((user) => user.status === "active"), [users]);
   const filteredUsers = useMemo(() => {
     const needle = userSearch.trim().toLowerCase();
-    return users
+    return activeUsers
       .filter((user) => !needle || user.name.toLowerCase().includes(needle))
       .slice(0, 12);
-  }, [users, userSearch]);
+  }, [activeUsers, userSearch]);
+  const hasRecipientFilters = recipientFilters.statuses.length > 0
+    || recipientFilters.genders.length > 0
+    || recipientFilters.maritalStatuses.length > 0
+    || recipientFilters.membershipTypes.length > 0;
+  const filterRecipients = useMemo(() => !hasRecipientFilters ? [] : users.filter((user) => {
+    const matchesStatus = !recipientFilters.statuses.length || recipientFilters.statuses.includes(user.status);
+    const matchesGender = !recipientFilters.genders.length || Boolean(user.gender && recipientFilters.genders.includes(user.gender));
+    const maritalStatus = user.maritalStatus?.trim().toLowerCase() ?? "";
+    const matchesMaritalStatus = !recipientFilters.maritalStatuses.length
+      || recipientFilters.maritalStatuses.some((status) => status.toLowerCase() === maritalStatus);
+    const matchesMembershipType = !recipientFilters.membershipTypes.length
+      || Boolean(user.membershipType && recipientFilters.membershipTypes.includes(user.membershipType));
+    return matchesStatus && matchesGender && matchesMaritalStatus && matchesMembershipType;
+  }), [hasRecipientFilters, recipientFilters, users]);
   const selectedRoleLabels = roles.filter((role) => selectedRoles.includes(role.id)).map((role) => role.displayName);
-  const selectedUserLabels = users.filter((user) => selectedUsers.includes(user.id)).map((user) => user.name);
-  const recipientCount = targetType === "all" ? users.length : targetType === "roles" ? selectedRoles.length : selectedUsers.length;
+  const selectedUserLabels = activeUsers.filter((user) => selectedUsers.includes(user.id)).map((user) => user.name);
+  const recipientCount = targetType === "all"
+    ? activeUsers.length
+    : targetType === "roles"
+      ? activeUsers.filter((user) => user.roleIds.some((roleId) => selectedRoles.includes(roleId))).length
+      : targetType === "filters"
+        ? filterRecipients.length
+        : selectedUsers.length;
 
   function openCompose() {
     setSelected(null);
     setTargetType("all");
     setSelectedRoles([]);
     setSelectedUsers([]);
+    setRecipientFilters(emptyRecipientFilters);
     setUserSearch("");
     setResult(null);
     setModal("compose");
@@ -135,9 +178,10 @@ export function AnnouncementsClient({
 
   function openEdit(announcement: Announcement) {
     setSelected(announcement);
-    setTargetType(announcement.targetType === "roles" ? "roles" : announcement.targetType === "users" ? "users" : "all");
+    setTargetType(announcement.targetType === "roles" ? "roles" : announcement.targetType === "users" ? "users" : announcement.targetType === "filters" ? "filters" : "all");
     setSelectedRoles(announcement.targetRoles);
     setSelectedUsers(announcement.targetUsers);
+    setRecipientFilters(announcement.targetFilters);
     setUserSearch("");
     setResult(null);
     setModal("edit");
@@ -154,6 +198,7 @@ export function AnnouncementsClient({
     formData.set("targetType", targetType);
     formData.set("targetRoles", JSON.stringify(selectedRoles));
     formData.set("targetUsers", JSON.stringify(selectedUsers));
+    formData.set("targetFilters", JSON.stringify(recipientFilters));
     if (selected) formData.set("id", String(selected.id));
 
     setResult(null);
@@ -191,6 +236,15 @@ export function AnnouncementsClient({
 
   function toggleUser(userId: number) {
     setSelectedUsers((current) => current.includes(userId) ? current.filter((id) => id !== userId) : [...current, userId]);
+  }
+
+  function toggleRecipientFilter(field: keyof RecipientFilters, value: string) {
+    setRecipientFilters((current) => ({
+      ...current,
+      [field]: current[field].includes(value)
+        ? current[field].filter((item) => item !== value)
+        : [...current[field], value],
+    }));
   }
 
   return (
@@ -363,10 +417,11 @@ export function AnnouncementsClient({
                   <span className="w-full text-sm font-medium text-gray-600 sm:w-12 sm:pt-1.5">To</span>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1">
-                      <select value={targetType} onChange={(event) => setTargetType(event.target.value as "all" | "roles" | "users")} className="w-full border-0 bg-transparent px-1 py-1.5 text-sm font-medium text-gray-800 outline-none focus:ring-0">
+                      <select value={targetType} onChange={(event) => setTargetType(event.target.value as "all" | "roles" | "users" | "filters")} className="w-full border-0 bg-transparent px-1 py-1.5 text-sm font-medium text-gray-800 outline-none focus:ring-0">
                       <option value="all">All Users</option>
                       <option value="roles">Select Roles...</option>
                       <option value="users">Select Users...</option>
+                      <option value="filters">Filter Users...</option>
                     </select>
                     </div>
                   </div>
@@ -423,6 +478,45 @@ export function AnnouncementsClient({
                     </div>
                     <p className="mt-1.5 text-xs text-gray-500">{selectedUsers.length} user(s) selected</p>
                   </div>
+                </div>
+              )}
+
+              {targetType === "filters" && (
+                <div className="mb-4 ml-0 rounded-xl border border-blue-100 bg-blue-50/40 p-4 sm:ml-12">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <span className="inline-flex items-center gap-2 text-sm font-semibold text-gray-800">
+                      <Filter className="size-4 text-blue-600" aria-hidden="true" />
+                      Recipient filters
+                    </span>
+                    <span className="text-xs font-medium text-blue-700">{filterRecipients.length} matched</span>
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <AudienceFilterGroup
+                      label="Account status"
+                      options={[["active", "Active"], ["inactive", "Inactive"], ["pending", "Pending"]]}
+                      selected={recipientFilters.statuses}
+                      onToggle={(value) => toggleRecipientFilter("statuses", value)}
+                    />
+                    <AudienceFilterGroup
+                      label="Gender"
+                      options={[["male", "Male"], ["female", "Female"]]}
+                      selected={recipientFilters.genders}
+                      onToggle={(value) => toggleRecipientFilter("genders", value)}
+                    />
+                    <AudienceFilterGroup
+                      label="Marital status"
+                      options={[["Single", "Single"], ["Married", "Married"], ["Divorced", "Divorced"], ["Widowed", "Widowed"]]}
+                      selected={recipientFilters.maritalStatuses}
+                      onToggle={(value) => toggleRecipientFilter("maritalStatuses", value)}
+                    />
+                    <AudienceFilterGroup
+                      label="Membership type"
+                      options={[["permanent", "Permanent"], ["temporary", "Temporary Member"], ["visitor", "Partner"]]}
+                      selected={recipientFilters.membershipTypes}
+                      onToggle={(value) => toggleRecipientFilter("membershipTypes", value)}
+                    />
+                  </div>
+                  <p className="mt-3 text-xs text-gray-500">Options within a group are combined; selected groups are matched together.</p>
                 </div>
               )}
 
@@ -641,4 +735,35 @@ function statusBadge(status: string) {
   if (status === "expired") return "bg-red-100 text-red-700";
   if (status === "archived") return "bg-slate-100 text-slate-600";
   return "bg-gray-100 text-gray-700";
+}
+
+function AudienceFilterGroup({
+  label,
+  options,
+  selected,
+  onToggle,
+}: {
+  label: string;
+  options: ReadonlyArray<readonly [value: string, label: string]>;
+  selected: string[];
+  onToggle: (value: string) => void;
+}) {
+  return (
+    <fieldset>
+      <legend className="mb-1.5 text-xs font-semibold text-gray-700">{label}</legend>
+      <div className="space-y-1">
+        {options.map(([value, optionLabel]) => (
+          <label key={value} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-gray-700 hover:bg-white">
+            <input
+              type="checkbox"
+              checked={selected.includes(value)}
+              onChange={() => onToggle(value)}
+              className="size-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            {optionLabel}
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
 }

@@ -86,8 +86,8 @@ test("probation communication uses registered sessions instead of only absences"
   }).communication, 75);
 });
 
-test("calendar day calculations ignore time of day", () => {
+test("calendar day calculations use the Kigali calendar date", () => {
   const now = new Date("2026-07-26T22:00:00.000Z");
-  assert.equal(calendarDaysRemaining(new Date("2026-07-27T01:00:00.000Z"), now), 1);
-  assert.equal(calendarDaysRemaining(new Date("2026-07-25T20:00:00.000Z"), now), -1);
+  assert.equal(calendarDaysRemaining(new Date("2026-07-27T00:00:00.000Z"), now), 0);
+  assert.equal(calendarDaysRemaining(new Date("2026-07-26T00:00:00.000Z"), now), -1);
 });

@@ -1,6 +1,7 @@
 import { ParentDashboardClient } from "@/components/parent-dashboard-client";
 import { requirePageAccess } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { currentKigaliYear } from "@/lib/calendar-date";
 
 function formatDate(date: Date | null) {
   if (!date) return "";
@@ -17,7 +18,7 @@ function money(value: unknown) {
 
 export default async function ParentDashboardPage() {
   const user = await requirePageAccess("parent");
-  const currentYear = new Date().getFullYear();
+  const currentYear = currentKigaliYear();
 
   const [parentMembership, directlyManagedFamily] = await Promise.all([
     prisma.familyMember.findFirst({

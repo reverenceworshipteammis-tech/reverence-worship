@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getUserPermissionSet, permissionSetHas, requirePermission } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { currentKigaliYear, databaseDate, kigaliDateKey, kigaliDayBounds } from "@/lib/calendar-date";
 import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
 import { notifyUsers, userIdsWithPermission } from "@/lib/notifications";
 import {
@@ -75,7 +76,7 @@ function readAttendanceRecords(formData: FormData) {
 }
 
 function dateOnly(value: string) {
-  return new Date(`${value}T12:00:00.000Z`);
+  return databaseDate(value);
 }
 
 function normalizeImportHeader(value: string) {
@@ -236,7 +237,7 @@ async function writeAttendanceSession(formData: FormData, complete: boolean) {
     return { ok: false, message: "Attendance can include normal member accounts only. Super Admin is a protected system account." };
   }
   const ineligibleUserIds = attendanceUsers
-    .filter((attendanceUser) => attendanceUser.createdAt.toISOString().slice(0, 10) > sessionDateValue)
+    .filter((attendanceUser) => kigaliDateKey(attendanceUser.createdAt) > sessionDateValue)
     .map((attendanceUser) => attendanceUser.id);
   if (ineligibleUserIds.length > 0) {
     return { ok: false, message: "Attendance can only include users who joined on or before the session date." };
@@ -462,7 +463,7 @@ export async function importAttendanceCsv(formData: FormData) {
       failures.push(email ? `${location}: no user has email ${email}` : `${location}: missing Email`);
       return;
     }
-    if (matchedUser.createdAt.toISOString().slice(0, 10) > sessionDate) {
+    if (kigaliDateKey(matchedUser.createdAt) > sessionDate) {
       failures.push(`${location}: ${email} joined after the session date`);
       return;
     }
@@ -954,8 +955,7 @@ async function writeDisciplineSession(formData: FormData, complete: boolean) {
   }
 
   const createdAt = dateOnly(sessionDateValue);
-  const dayStart = new Date(`${sessionDateValue}T00:00:00`);
-  const dayEnd = new Date(`${sessionDateValue}T23:59:59`);
+  const { start: dayStart, end: dayEnd } = kigaliDayBounds(sessionDateValue);
   const existingSession = await prisma.disciplineSession.findUnique({
     where: {
       sessionDate_title: {
@@ -971,7 +971,7 @@ async function writeDisciplineSession(formData: FormData, complete: boolean) {
   }
 
   const attendanceSession = await prisma.attendanceSession.findFirst({
-    where: { sessionDate: { gte: dayStart, lte: dayEnd }, isCompleted: true },
+    where: { sessionDate: createdAt, isCompleted: true },
     orderBy: { updatedAt: "desc" },
     select: { sessionType: true },
   });
@@ -982,7 +982,7 @@ async function writeDisciplineSession(formData: FormData, complete: boolean) {
 
   const presentAttendance = await prisma.attendanceRecord.findMany({
     where: {
-      sessionDate: { gte: dayStart, lte: dayEnd },
+      sessionDate: createdAt,
       sessionType: attendanceSession.sessionType,
       status: { in: ["present", "late"], mode: "insensitive" },
     },
@@ -1092,8 +1092,7 @@ export async function completeDisciplineSession(formData: FormData) {
 export async function deleteDisciplineSession(sessionDateValue: string, title: string) {
   await requirePermission("discipline", "delete-discipline");
   const sessionDate = dateOnly(sessionDateValue);
-  const dayStart = new Date(`${sessionDateValue}T00:00:00`);
-  const dayEnd = new Date(`${sessionDateValue}T23:59:59`);
+  const { start: dayStart, end: dayEnd } = kigaliDayBounds(sessionDateValue);
 
   await prisma.$transaction(async (tx) => {
     await tx.disciplineRecord.deleteMany({
@@ -1165,7 +1164,7 @@ export async function saveDisciplineActionPlan(formData: FormData) {
     startDate: dateOnly(startDateValue),
     dueDate: dateOnly(dueDateValue),
     department: "discipline",
-    year: new Date().getFullYear(),
+    year: currentKigaliYear(),
     createdBy: user.id,
   };
 

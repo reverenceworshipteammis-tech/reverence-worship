@@ -7,10 +7,10 @@ import {
   notificationLifetimeCutoff,
   readNotificationCutoff,
 } from "@/lib/notification-retention-policy";
+import { databaseDate, kigaliDateKey } from "@/lib/calendar-date";
 
 export async function maintainNotificationArchive(now = new Date()) {
-  const today = new Date(now);
-  today.setHours(0, 0, 0, 0);
+  const today = databaseDate(kigaliDateKey(now));
 
   const [archivedAnnouncements, deletedNotifications] = await Promise.all([
     prisma.announcement.updateMany({

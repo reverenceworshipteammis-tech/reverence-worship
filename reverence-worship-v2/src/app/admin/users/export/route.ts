@@ -36,6 +36,9 @@ export async function GET(request: NextRequest) {
     search: request.nextUrl.searchParams.get("search"),
     role: request.nextUrl.searchParams.get("role"),
     status: request.nextUrl.searchParams.get("status"),
+    gender: request.nextUrl.searchParams.get("gender"),
+    maritalStatus: request.nextUrl.searchParams.get("maritalStatus"),
+    membershipType: request.nextUrl.searchParams.get("membershipType"),
   });
 
   const csvRows = [

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requirePermission } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { notifyUsers, userIdsForAnnouncement } from "@/lib/notifications";
+import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
 
 function readString(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -26,18 +27,38 @@ function parseIdList(value: string) {
   }
 }
 
+function parseFilterList<T extends string>(value: unknown, allowed: readonly T[]) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((item): item is T => typeof item === "string" && allowed.includes(item as T)))];
+}
+
+function parseRecipientFilters(value: string) {
+  try {
+    const parsed = JSON.parse(value) as Record<string, unknown>;
+    return {
+      statuses: parseFilterList(parsed.statuses, ["active", "pending", "inactive"] as const),
+      genders: parseFilterList(parsed.genders, ["male", "female"] as const),
+      maritalStatuses: parseFilterList(parsed.maritalStatuses, ["Single", "Married", "Divorced", "Widowed"] as const),
+      membershipTypes: parseFilterList(parsed.membershipTypes, ["permanent", "temporary", "visitor"] as const),
+    };
+  } catch {
+    return { statuses: [], genders: [], maritalStatuses: [], membershipTypes: [] };
+  }
+}
+
 function normalizeStatus(status: string, scheduledDate: string) {
   if (status === "draft" || status === "archived") return status;
   if (status === "scheduled" || scheduledDate) return "scheduled";
   return "active";
 }
 
-function normalizeTarget(formData: FormData) {
+async function normalizeTarget(formData: FormData) {
   const targetType = readString(formData, "targetType") || "all";
   const targetRoles = parseIdList(readString(formData, "targetRoles"));
   const targetUsers = parseIdList(readString(formData, "targetUsers"));
+  const targetFilters = parseRecipientFilters(readString(formData, "targetFilters"));
 
-  if (!["all", "roles", "users"].includes(targetType)) {
+  if (!["all", "roles", "users", "filters"].includes(targetType)) {
     return { ok: false as const, message: "Please select a valid recipient type." };
   }
 
@@ -49,11 +70,48 @@ function normalizeTarget(formData: FormData) {
     return { ok: false as const, message: "Select at least one user." };
   }
 
+  if (targetType === "filters") {
+    const hasFilters = targetFilters.statuses.length > 0
+      || targetFilters.genders.length > 0
+      || targetFilters.maritalStatuses.length > 0
+      || targetFilters.membershipTypes.length > 0;
+
+    if (!hasFilters) {
+      return { ok: false as const, message: "Select at least one recipient filter." };
+    }
+
+    const recipients = await prisma.user.findMany({
+      where: {
+        ...excludeSuperAdminUserWhere(),
+        ...(targetFilters.statuses.length ? { status: { in: targetFilters.statuses } } : {}),
+        ...(targetFilters.genders.length ? { gender: { in: targetFilters.genders } } : {}),
+        ...(targetFilters.maritalStatuses.length
+          ? { maritalStatus: { in: targetFilters.maritalStatuses, mode: "insensitive" as const } }
+          : {}),
+        ...(targetFilters.membershipTypes.length ? { membershipType: { in: targetFilters.membershipTypes } } : {}),
+      },
+      select: { id: true },
+    });
+
+    if (!recipients.length) {
+      return { ok: false as const, message: "No users match the selected filters." };
+    }
+
+    return {
+      ok: true as const,
+      targetType: "filters",
+      targetRoles: null,
+      targetUsers: JSON.stringify(recipients.map((recipient) => recipient.id)),
+      targetAudience: JSON.stringify(targetFilters),
+    };
+  }
+
   return {
     ok: true as const,
     targetType,
     targetRoles: targetType === "roles" ? JSON.stringify(targetRoles) : null,
     targetUsers: targetType === "users" ? JSON.stringify(targetUsers) : null,
+    targetAudience: targetType === "all" ? "All Users" : null,
   };
 }
 
@@ -66,7 +124,7 @@ export async function saveAnnouncement(formData: FormData) {
   const type = readString(formData, "type") || "general";
   const scheduledDateValue = readString(formData, "scheduledDate");
   const expiryDateValue = readString(formData, "expiryDate");
-  const target = normalizeTarget(formData);
+  const target = await normalizeTarget(formData);
 
   if (!title || !content) {
     return { ok: false, message: "Subject and message are required." };
@@ -91,7 +149,7 @@ export async function saveAnnouncement(formData: FormData) {
         targetType: target.targetType,
         targetRoles: target.targetRoles,
         targetUsers: target.targetUsers,
-        targetAudience: target.targetType === "all" ? "All Users" : null,
+        targetAudience: target.targetAudience,
         publishedBy: status === "active" ? user.id : null,
         publishedAt,
       },
@@ -108,7 +166,7 @@ export async function saveAnnouncement(formData: FormData) {
         targetType: target.targetType,
         targetRoles: target.targetRoles,
         targetUsers: target.targetUsers,
-        targetAudience: target.targetType === "all" ? "All Users" : null,
+        targetAudience: target.targetAudience,
         createdBy: user.id,
         publishedBy: status === "active" ? user.id : null,
         publishedAt,

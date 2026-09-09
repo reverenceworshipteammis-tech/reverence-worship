@@ -4,6 +4,7 @@ import { hasSuperAdminRole } from "@/lib/system-account-rules";
 import { getPerformanceDateRange } from "@/lib/performance-date-range";
 import { getUserPerformanceData } from "@/lib/user-performance";
 import { redirect } from "next/navigation";
+import { currentKigaliYear } from "@/lib/calendar-date";
 
 function money(value: unknown) {
   return Number(value ?? 0);
@@ -15,6 +16,7 @@ function formatDate(date: Date | null | undefined) {
     day: "2-digit",
     month: "short",
     year: "numeric",
+    timeZone: "Africa/Kigali",
   }).format(date);
 }
 
@@ -27,9 +29,15 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
   const user = await requirePageAccess("performance");
   if (hasSuperAdminRole(user.roles.map(({ role }) => role.name))) redirect("/admin/dashboard");
   const params = await searchParams;
-  const year = new Date().getFullYear();
+  const year = currentKigaliYear();
   const range = getPerformanceDateRange(year, params.from, params.to);
-  const { disciplineRecords, attendanceRecords, payments, metrics } = await getUserPerformanceData(user.id, year, { from: range.fromDate, to: range.toDate, label: range.label });
+  const { disciplineRecords, attendanceRecords, payments, metrics } = await getUserPerformanceData(user.id, year, {
+    from: range.fromDate,
+    to: range.toDate,
+    databaseFrom: range.databaseFromDate,
+    databaseTo: range.databaseToDate,
+    label: range.label,
+  });
 
   return (
     <PerformanceClient

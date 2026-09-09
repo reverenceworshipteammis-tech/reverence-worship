@@ -2,6 +2,7 @@
 
 import { useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { kigaliDateKey } from "@/lib/calendar-date";
 import { useAppDialog } from "@/components/app-dialog-provider";
 import { ActionNotice } from "@/components/action-notice";
 import { ArrowDown, ArrowUp, ArrowUpDown, Check, FileSpreadsheet, HandCoins, Pencil, PlusCircle, Search, Trash2, UsersRound, X } from "lucide-react";
@@ -260,8 +261,7 @@ function eventSortValue(event: FinanceContributionEvent, field: EventSortField, 
 }
 
 function localDateValue(date: Date) {
-  const offset = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 10);
+  return kigaliDateKey(date);
 }
 
 function EventRow({ event, totalMembers, today, permissions, onEdit, onPay, onHistory, onExport }: { event: FinanceContributionEvent; totalMembers: number; today: string; permissions: EventPermissions; onEdit: () => void; onPay: () => void; onHistory: () => void; onExport: () => void }) {
@@ -302,7 +302,7 @@ function EventStat({ label, value, tone }: { label: string; value: string; tone:
 }
 
 function EventModal({ event, pending, onClose, onSubmit }: { event: FinanceContributionEvent | null; pending: boolean; onClose: () => void; onSubmit: (formData: FormData) => void }) {
-  return <EventDialog title={event ? "Edit Other Contribution" : "Create Other Contribution"} onClose={onClose}><form onSubmit={(formEvent) => { formEvent.preventDefault(); onSubmit(new FormData(formEvent.currentTarget)); }} className="space-y-4">{event ? <input type="hidden" name="id" value={event.id} /> : null}<EventField label="Contribution title"><input name="title" required minLength={3} defaultValue={event?.title ?? ""} className={fieldClass} /></EventField><EventField label="Description"><textarea name="description" rows={3} defaultValue={event?.description ?? ""} className={`${fieldClass} h-auto py-2`} /></EventField><div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><EventField label="Contributions open"><input name="start_date" type="date" required defaultValue={event?.startDateRaw ?? new Date().toISOString().slice(0, 10)} className={fieldClass} /></EventField><EventField label="Deadline"><input name="end_date" type="date" defaultValue={event?.endDateRaw ?? ""} className={fieldClass} /></EventField></div><EventField label="Status"><select name="status" defaultValue={event?.status ?? "active"} className={fieldClass}><option value="draft">Draft</option><option value="active">Active</option><option value="closed">Closed</option></select></EventField><DialogFooter pending={pending} label={event ? "Save Changes" : "Create Contribution"} onClose={onClose} /></form></EventDialog>;
+  return <EventDialog title={event ? "Edit Other Contribution" : "Create Other Contribution"} onClose={onClose}><form onSubmit={(formEvent) => { formEvent.preventDefault(); onSubmit(new FormData(formEvent.currentTarget)); }} className="space-y-4">{event ? <input type="hidden" name="id" value={event.id} /> : null}<EventField label="Contribution title"><input name="title" required minLength={3} defaultValue={event?.title ?? ""} className={fieldClass} /></EventField><EventField label="Description"><textarea name="description" rows={3} defaultValue={event?.description ?? ""} className={`${fieldClass} h-auto py-2`} /></EventField><div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><EventField label="Contributions open"><input name="start_date" type="date" required defaultValue={event?.startDateRaw ?? localDateValue(new Date())} className={fieldClass} /></EventField><EventField label="Deadline"><input name="end_date" type="date" defaultValue={event?.endDateRaw ?? ""} className={fieldClass} /></EventField></div><EventField label="Status"><select name="status" defaultValue={event?.status ?? "active"} className={fieldClass}><option value="draft">Draft</option><option value="active">Active</option><option value="closed">Closed</option></select></EventField><DialogFooter pending={pending} label={event ? "Save Changes" : "Create Contribution"} onClose={onClose} /></form></EventDialog>;
 }
 
 function EventPaymentModal({ event, users, pending, onClose, onSubmit }: { event: FinanceContributionEvent; users: EventUser[]; pending: boolean; onClose: () => void; onSubmit: (formData: FormData) => void }) {

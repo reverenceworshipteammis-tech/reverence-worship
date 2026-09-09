@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { databaseDate, kigaliDateKey } from "@/lib/calendar-date";
 import { notificationLifetimeCutoff } from "@/lib/notification-retention-policy";
 import { filterCurrentNotifications } from "@/lib/notification-source-validity";
 import { normalizePermissionRequestNotificationMessage } from "@/lib/permission-notification-copy";
@@ -50,7 +51,7 @@ function announcementIsForUser(
     }
   }
 
-  if (announcement.targetType === "users") {
+  if (announcement.targetType === "users" || announcement.targetType === "filters") {
     try {
       const users = JSON.parse(announcement.targetUsers ?? "[]") as Array<number | string>;
       return users.some((id) => Number(id) === userId);
@@ -77,8 +78,7 @@ async function readAdminNotifications() {
   const roleIds = user.roles.map((userRole) => userRole.role.id);
   const workspaceUser = hasWorkspaceRole(roleNames);
   const notifications: AdminNotification[] = [];
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = databaseDate(kigaliDateKey());
 
   const [storedNotificationRows, announcements] = await Promise.all([
     safeRead(prisma.notification.findMany({

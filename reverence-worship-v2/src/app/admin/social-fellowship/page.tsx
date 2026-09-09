@@ -2,6 +2,7 @@ import { SocialFellowshipClient } from "@/components/social-fellowship-client";
 import { getUserPermissionSet, permissionSetHas, requirePageAccess } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
+import { currentKigaliYear } from "@/lib/calendar-date";
 
 function formatDate(date: Date) {
   return new Intl.DateTimeFormat("en", {
@@ -23,7 +24,7 @@ export default async function SocialFellowshipPage({
   const user = await requirePageAccess("social-fellowship");
   const permissions = await getUserPermissionSet(user);
   const params = await searchParams;
-  const selectedYear = Number(params.year) || new Date().getFullYear();
+  const selectedYear = Number(params.year) || currentKigaliYear();
 
   const [families, availableUsers, users, tasks, actionPlans] = await Promise.all([
     prisma.family.findMany({

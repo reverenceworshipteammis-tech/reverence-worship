@@ -2,10 +2,11 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { addCalendarDays, kigaliDateKey } from "@/lib/calendar-date";
 import { ActionNotice } from "@/components/action-notice";
 import { ActionPlanTaskTemplateButtons } from "@/components/action-plan-task-template-buttons";
 import { DepartmentActionPlanManager } from "@/components/department-action-plan-manager";
-import { BookOpen, CalendarCheck, CheckCircle2, ClipboardList, Clock, Download, Edit, FileSearch2, FileText, FileUp, Filter, Gavel, Info, MailOpen, Play, Plus, Save, Search, Smile, Trash2, TriangleAlert, X, XCircle } from "lucide-react";
+import { BookOpen, CalendarCheck, CheckCircle2, ChevronRight, ClipboardList, Clock, Download, Edit, FileSearch2, FileText, FileUp, Filter, Gavel, Info, MailOpen, Play, Plus, Save, Search, Trash2, TriangleAlert, X, XCircle } from "lucide-react";
 import {
   approvePermissionRequest,
   completeAttendanceSession,
@@ -31,9 +32,16 @@ import { ADMIN_NOTIFICATION_NAVIGATION_EVENT } from "@/lib/admin-notification-ev
 
 type DisciplineStats = {
   permissionRequests: number;
-  attendanceSessions: number;
-  disciplineSessions: number;
-  avgGoodBehavior: number;
+  attendanceRate: number;
+  attendancePresent: number;
+  attendanceTotal: number;
+  communicationRate: number;
+  communicated: number;
+  communicationTotal: number;
+  disciplineRate: number;
+  goodDiscipline: number;
+  disciplineTotal: number;
+  performancePeriod: string;
 };
 
 type RecentAttendanceSession = {
@@ -246,7 +254,7 @@ export function DisciplineClient({
   const [sessionReadOnly, setSessionReadOnly] = useState(false);
   const [sessionImported, setSessionImported] = useState(false);
   const [permissionReviewModal, setPermissionReviewModal] = useState<null | "pending" | "rejected">(null);
-  const [sessionDate, setSessionDate] = useState(new Date().toISOString().slice(0, 10));
+  const [sessionDate, setSessionDate] = useState(() => kigaliDateKey());
   const [sessionType, setSessionType] = useState("");
   const [attendanceDrafts, setAttendanceDrafts] = useState<AttendanceDraft[]>([]);
   const [sessionUserSearch, setSessionUserSearch] = useState("");
@@ -266,15 +274,15 @@ export function DisciplineClient({
   const [selectedPermissionUser, setSelectedPermissionUser] = useState<AttendanceUser | null>(null);
   const [permissionUserSearch, setPermissionUserSearch] = useState("");
   const [permissionType, setPermissionType] = useState("General");
-  const [permissionStartDate, setPermissionStartDate] = useState(new Date().toISOString().slice(0, 10));
-  const [permissionEndDate, setPermissionEndDate] = useState(new Date().toISOString().slice(0, 10));
+  const [permissionStartDate, setPermissionStartDate] = useState(() => kigaliDateKey());
+  const [permissionEndDate, setPermissionEndDate] = useState(() => kigaliDateKey());
   const [permissionReason, setPermissionReason] = useState("");
   const [disciplineFrom, setDisciplineFrom] = useState(startDate);
   const [disciplineTo, setDisciplineTo] = useState(endDate);
   const [disciplinePage, setDisciplinePage] = useState(1);
   const [disciplineModal, setDisciplineModal] = useState(false);
   const [disciplineSessionReadOnly, setDisciplineSessionReadOnly] = useState(false);
-  const [disciplineDate, setDisciplineDate] = useState(new Date().toISOString().slice(0, 10));
+  const [disciplineDate, setDisciplineDate] = useState(() => kigaliDateKey());
   const [disciplineTitle, setDisciplineTitle] = useState("");
   const [disciplineSearch, setDisciplineSearch] = useState(initialMember?.name ?? "");
   const [disciplineDrafts, setDisciplineDrafts] = useState<DisciplineDraft[]>([]);
@@ -575,7 +583,7 @@ export function DisciplineClient({
     }
   }
 
-  function openAttendanceSession(date = new Date().toISOString().slice(0, 10), type = "") {
+  function openAttendanceSession(date = kigaliDateKey(), type = "") {
     if (!date || !type.trim()) {
       setNotice({ title: "Notice", message: "Please enter session date and name" });
       return;
@@ -832,8 +840,8 @@ export function DisciplineClient({
     setSelectedPermissionUser(selectedUser);
     setPermissionUserSearch(selectedUser?.name ?? "");
     setPermissionType(permission?.type ?? "General");
-    setPermissionStartDate(permission?.startDateValue ?? new Date().toISOString().slice(0, 10));
-    setPermissionEndDate(permission?.endDateValue ?? new Date().toISOString().slice(0, 10));
+    setPermissionStartDate(permission?.startDateValue ?? kigaliDateKey());
+    setPermissionEndDate(permission?.endDateValue ?? kigaliDateKey());
     setPermissionReason(permission?.reason ?? "");
     setPermissionModal(true);
   }
@@ -1034,7 +1042,7 @@ export function DisciplineClient({
     return user.name.toLowerCase().includes(normalized);
   });
 
-  function openDisciplineSession(date = new Date().toISOString().slice(0, 10), title = "") {
+  function openDisciplineSession(date = kigaliDateKey(), title = "") {
     if (!disciplineAttendanceSessionForDate(date)) {
       setNotice({ title: "Attendance Required", message: "Complete the Attendance session for this date before recording Discipline." });
       return;
@@ -1127,13 +1135,10 @@ export function DisciplineClient({
   }
 
   const actionSummary = {
-    overdueTasks: actionPlans.reduce((count, plan) => count + plan.tasks.filter((task) => task.deadlineValue && task.deadlineValue < new Date().toISOString().slice(0, 10) && task.progress < 100).length, 0),
+    overdueTasks: actionPlans.reduce((count, plan) => count + plan.tasks.filter((task) => task.deadlineValue && task.deadlineValue < kigaliDateKey() && task.progress < 100).length, 0),
     dueSoonTasks: actionPlans.reduce((count, plan) => {
-      const today = new Date();
-      const soon = new Date();
-      soon.setDate(today.getDate() + 7);
-      const todayValue = today.toISOString().slice(0, 10);
-      const soonValue = soon.toISOString().slice(0, 10);
+      const todayValue = kigaliDateKey();
+      const soonValue = addCalendarDays(todayValue, 7);
       return count + plan.tasks.filter((task) => task.deadlineValue >= todayValue && task.deadlineValue <= soonValue && task.progress < 100).length;
     }, 0),
     myTodoTasks: actionPlans.reduce((count, plan) => count + plan.tasks.filter((task) => task.progress < 100).length, 0),
@@ -1266,11 +1271,32 @@ export function DisciplineClient({
 
           {activeTab === "overview" ? (
             <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-4">
-                <StatCard label="Permission Requests" value={stats.permissionRequests} icon={MailOpen} color="indigo" />
-                <StatCard label="Attendance Sessions" value={stats.attendanceSessions} icon={CalendarCheck} color="purple" />
-                <StatCard label="Discipline Sessions" value={stats.disciplineSessions} icon={Gavel} color="blue" />
-                <StatCard label="Avg Good Behavior" value={`${stats.avgGoodBehavior}%`} icon={Smile} color="green" />
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <StatCard label="Permission Requests" value={stats.permissionRequests} icon={MailOpen} color="indigo" onClick={() => setActiveTab("permission")} />
+                <PerformanceRateCard
+                  title="Attendance Performance"
+                  metricLabel="Attendance Rate"
+                  rate={stats.attendanceRate}
+                  period={stats.performancePeriod}
+                  tone="blue"
+                  onClick={() => setActiveTab("attendance")}
+                />
+                <PerformanceRateCard
+                  title="Communication Performance"
+                  metricLabel="Communication Rate"
+                  rate={stats.communicationRate}
+                  period={stats.performancePeriod}
+                  tone="cyan"
+                  onClick={() => setActiveTab("attendance")}
+                />
+                <PerformanceRateCard
+                  title="Discipline Performance"
+                  metricLabel="Good Behavior Rate"
+                  rate={stats.disciplineRate}
+                  period={stats.performancePeriod}
+                  tone="green"
+                  onClick={() => setActiveTab("discipline-records")}
+                />
               </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -1297,17 +1323,17 @@ export function DisciplineClient({
               </div>
 
               <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-                <section className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+                <section className="flex h-full flex-col overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
                   <div className="border-b border-gray-100 bg-gray-50 px-4 py-3">
                     <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-800">
                       <Gavel className="size-4 text-blue-500" />
                       Recent Attendance Sessions
                     </h2>
                   </div>
-                  <div className="divide-y divide-gray-100">
+                  <div className="flex flex-1 flex-col divide-y divide-gray-100">
                     {recentAttendanceSessions.length ? (
                       recentAttendanceSessions.map((session) => (
-                        <div key={`${session.sessionDate}-${session.sessionType}`} className="flex items-center justify-between gap-3 px-4 py-3 transition hover:bg-gray-50">
+                        <div key={`${session.sessionDate}-${session.sessionType}`} className="flex flex-1 items-center justify-between gap-3 px-4 py-3 transition hover:bg-gray-50">
                           <div className="min-w-0">
                             <h4 className="truncate text-sm font-medium text-gray-800">{session.sessionType}</h4>
                             <p className="mt-0.5 flex items-center gap-1 text-xs text-gray-400">
@@ -1340,18 +1366,18 @@ export function DisciplineClient({
                   </div>
                 </section>
 
-                <section className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+                <section className="flex h-full flex-col overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
                   <div className="border-b border-gray-100 bg-gray-50 px-4 py-3">
                     <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-800">
                       <MailOpen className="size-4 text-green-500" />
                       Recent Permission Requests
                     </h2>
                   </div>
-                  <div className="divide-y divide-gray-100">
+                  <div className="flex flex-1 flex-col divide-y divide-gray-100">
                     {recentPermissions.length ? (
                       recentPermissions.map((permission) => (
-                        <div key={permission.id} className="px-4 py-3 transition hover:bg-gray-50">
-                          <div className="flex items-start justify-between gap-3">
+                        <div key={permission.id} className="flex flex-1 items-center px-4 py-3 transition hover:bg-gray-50">
+                          <div className="flex w-full items-start justify-between gap-3">
                             <div className="min-w-0 flex-1">
                               <div className="mb-1 flex items-center gap-2">
                                 <h4 className="truncate text-sm font-medium text-gray-800">{permission.userName}</h4>
@@ -2970,23 +2996,86 @@ export function DisciplineClient({
   );
 }
 
-function StatCard({ label, value, icon: Icon, color }: { label: string; value: number | string; icon: typeof MailOpen; color: "indigo" | "purple" | "blue" | "green" }) {
+function StatCard({ label, value, icon: Icon, color, onClick }: { label: string; value: number | string; icon: typeof MailOpen; color: "indigo" | "purple" | "blue" | "green"; onClick?: () => void }) {
   const colors = {
-    indigo: "bg-indigo-100 text-indigo-600",
-    purple: "bg-purple-100 text-purple-600",
-    blue: "bg-blue-100 text-blue-600",
-    green: "bg-emerald-100 text-emerald-600",
+    indigo: { card: "border-indigo-100 bg-gradient-to-br from-indigo-50/80 via-white to-white hover:border-indigo-300 focus:ring-indigo-500", icon: "border-indigo-100 bg-indigo-50 text-indigo-600" },
+    purple: { card: "border-purple-100 bg-gradient-to-br from-purple-50/80 via-white to-white hover:border-purple-300 focus:ring-purple-500", icon: "border-purple-100 bg-purple-50 text-purple-600" },
+    blue: { card: "border-blue-100 bg-gradient-to-br from-blue-50/80 via-white to-white hover:border-blue-300 focus:ring-blue-500", icon: "border-blue-100 bg-blue-50 text-blue-600" },
+    green: { card: "border-emerald-100 bg-gradient-to-br from-emerald-50/80 via-white to-white hover:border-emerald-300 focus:ring-emerald-500", icon: "border-emerald-100 bg-emerald-50 text-emerald-600" },
   };
+  const content = (
+    <>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-sm font-bold leading-tight text-slate-900">{label}</h2>
+        {onClick ? <ChevronRight className="size-4 shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-indigo-500" aria-hidden="true" /> : null}
+      </div>
+      <div className="mt-4 flex items-center gap-4">
+        <div className={`flex size-[68px] shrink-0 items-center justify-center rounded-full border-[5px] ${colors[color].icon}`}>
+          <Icon className="size-6" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-slate-500">Total requests</p>
+          <p className="mt-0.5 text-2xl font-black tracking-tight text-slate-900">{value}</p>
+        </div>
+      </div>
+    </>
+  );
+
+  if (onClick) {
+    return <button type="button" onClick={onClick} className={`group min-h-[148px] rounded-2xl border p-4 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 ${colors[color].card}`}>{content}</button>;
+  }
   return (
-    <div className="flex items-center gap-2 rounded-lg bg-white p-3 shadow-sm transition hover:shadow-md sm:p-4">
-      <div className={`flex size-8 shrink-0 items-center justify-center rounded-full ${colors[color]}`}>
-        <Icon className="size-4" />
+    <div className={`group min-h-[148px] rounded-2xl border p-4 text-left shadow-sm ${colors[color].card}`}>{content}</div>
+  );
+}
+
+function PerformanceRateCard({
+  title,
+  metricLabel,
+  rate,
+  period,
+  tone,
+  onClick,
+}: {
+  title: string;
+  metricLabel: string;
+  rate: number;
+  period: string;
+  tone: "blue" | "cyan" | "green";
+  onClick: () => void;
+}) {
+  const visualRate = Math.max(0, Math.min(100, rate));
+  const palette = {
+    blue: { accent: "#3b82f6", track: "#dbeafe", card: "border-blue-100 bg-gradient-to-br from-blue-50/80 via-white to-white hover:border-blue-300 focus:ring-blue-500", arrow: "group-hover:text-blue-500" },
+    cyan: { accent: "#0891b2", track: "#cffafe", card: "border-cyan-100 bg-gradient-to-br from-cyan-50/80 via-white to-white hover:border-cyan-300 focus:ring-cyan-500", arrow: "group-hover:text-cyan-600" },
+    green: { accent: "#10b981", track: "#d1fae5", card: "border-emerald-100 bg-gradient-to-br from-emerald-50/80 via-white to-white hover:border-emerald-300 focus:ring-emerald-500", arrow: "group-hover:text-emerald-500" },
+  }[tone];
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`group min-h-[148px] rounded-2xl border p-4 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 ${palette.card}`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-sm font-bold leading-tight text-slate-900">{title}</h2>
+        <ChevronRight className={`size-4 shrink-0 text-slate-300 transition group-hover:translate-x-0.5 ${palette.arrow}`} aria-hidden="true" />
       </div>
-      <div>
-        <p className="text-[10px] uppercase tracking-wide text-gray-500 sm:text-[11px]">{label}</p>
-        <p className="mt-1 text-lg font-bold text-gray-900 sm:text-xl">{value}</p>
+      <div className="mt-4 flex items-center gap-3">
+        <div
+          className="size-[68px] shrink-0 rounded-full p-[5px]"
+          style={{ background: `conic-gradient(${palette.accent} ${visualRate}%, ${palette.track} 0)` }}
+        >
+          <div className="flex size-full items-center justify-center rounded-full bg-white text-lg font-black text-slate-900 shadow-inner">
+            {rate}%
+          </div>
+        </div>
+        <div className="min-w-0 text-[13px] leading-snug">
+          <p className="font-semibold text-slate-700">{metricLabel}</p>
+          <p className="mt-1 text-[11px] leading-relaxed text-slate-500">{period}</p>
+        </div>
       </div>
-    </div>
+    </button>
   );
 }
 

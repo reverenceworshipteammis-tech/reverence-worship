@@ -2,41 +2,33 @@ import { DisciplineClient } from "@/components/discipline-client";
 import { getUserPermissionSet, permissionSetHas, requirePageAccess } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
+import { databaseDate, databaseDateKey, kigaliDateKey, kigaliDayBounds } from "@/lib/calendar-date";
 
 function formatDate(date: Date) {
   return new Intl.DateTimeFormat("en", {
     month: "short",
     day: "2-digit",
     year: "numeric",
+    timeZone: "Africa/Kigali",
   }).format(date);
 }
 
 function dateValue(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return kigaliDateKey(date);
 }
 
 function monthStart() {
-  const date = new Date();
-  date.setDate(1);
-  date.setHours(0, 0, 0, 0);
-  return date;
+  return `${kigaliDateKey().slice(0, 7)}-01`;
 }
 
 function monthEnd() {
-  const date = new Date();
-  date.setMonth(date.getMonth() + 1, 0);
-  date.setHours(23, 59, 59, 999);
-  return date;
+  const start = databaseDate(monthStart());
+  start.setUTCMonth(start.getUTCMonth() + 1, 0);
+  return databaseDateKey(start);
 }
 
 function yearStart() {
-  const date = new Date();
-  date.setMonth(0, 1);
-  date.setHours(0, 0, 0, 0);
-  return date;
+  return `${kigaliDateKey().slice(0, 4)}-01-01`;
 }
 
 async function safeRead<T>(promise: Promise<T>, fallback: T) {
@@ -50,10 +42,11 @@ async function safeRead<T>(promise: Promise<T>, fallback: T) {
 
 type DisciplineStatsRow = {
   permissionRequests: number;
-  attendanceSessions: number;
   attendanceRecords: number;
   goodAttendance: number;
-  disciplineSessions: number;
+  communicatedRecords: number;
+  disciplineRecords: number;
+  goodDiscipline: number;
 };
 
 export default async function DisciplinePage({
@@ -74,10 +67,16 @@ export default async function DisciplinePage({
   const canManage = permissionSetHas(permissions, "discipline", "view");
   const canViewProbation = permissionSetHas(permissions, "probation", "view");
   const params = await searchParams;
-  const startDate = params.start_date ? new Date(`${params.start_date}T00:00:00`) : monthStart();
-  const endDate = params.end_date ? new Date(`${params.end_date}T23:59:59`) : monthEnd();
-  const attendanceStartDate = params.attendance_start_date ? new Date(`${params.attendance_start_date}T00:00:00`) : yearStart();
-  const attendanceEndDate = params.attendance_end_date ? new Date(`${params.attendance_end_date}T23:59:59`) : monthEnd();
+  const startDateValue = params.start_date ?? monthStart();
+  const endDateValue = params.end_date ?? monthEnd();
+  const attendanceStartDateValue = params.attendance_start_date ?? yearStart();
+  const attendanceEndDateValue = params.attendance_end_date ?? monthEnd();
+  const startDate = kigaliDayBounds(startDateValue).start;
+  const endDate = kigaliDayBounds(endDateValue).end;
+  const startCalendarDate = databaseDate(startDateValue);
+  const endCalendarDate = databaseDate(endDateValue);
+  const attendanceStartDate = databaseDate(attendanceStartDateValue);
+  const attendanceEndDate = databaseDate(attendanceEndDateValue);
 
   if (!canManage) {
     const ownPermissions = await prisma.permissionRequest.findMany({
@@ -98,11 +97,23 @@ export default async function DisciplinePage({
         canManage={false}
         canManageActionPlans={false}
         canViewProbation={false}
-        startDate={dateValue(startDate)}
-        endDate={dateValue(endDate)}
-        attendanceStartDate={dateValue(attendanceStartDate)}
-        attendanceEndDate={dateValue(attendanceEndDate)}
-        stats={{ permissionRequests: ownPermissions.length, attendanceSessions: 0, disciplineSessions: 0, avgGoodBehavior: 0 }}
+        startDate={startDateValue}
+        endDate={endDateValue}
+        attendanceStartDate={attendanceStartDateValue}
+        attendanceEndDate={attendanceEndDateValue}
+        stats={{
+          permissionRequests: ownPermissions.length,
+          attendanceRate: 0,
+          attendancePresent: 0,
+          attendanceTotal: 0,
+          communicationRate: 0,
+          communicated: 0,
+          communicationTotal: 0,
+          disciplineRate: 0,
+          goodDiscipline: 0,
+          disciplineTotal: 0,
+          performancePeriod: `${formatDate(startDate)} - ${formatDate(endDate)}`,
+        }}
         recentAttendanceSessions={[]}
         recentPermissions={[]}
         attendanceRecords={[]}
@@ -150,11 +161,10 @@ export default async function DisciplinePage({
         SELECT
           (SELECT COUNT(*)::int FROM "permission_requests"
             WHERE "created_at" BETWEEN ${startDate} AND ${endDate}) AS "permissionRequests",
-          (SELECT COUNT(*)::int FROM "attendance_sessions"
-            WHERE "session_date" BETWEEN ${startDate} AND ${endDate}) AS "attendanceSessions",
           (SELECT COUNT(*)::int FROM "attendance_records" records
             INNER JOIN "users" users ON users."id" = records."user_id"
-            WHERE records."session_date" BETWEEN ${startDate} AND ${endDate}
+            WHERE records."session_date" BETWEEN ${startCalendarDate} AND ${endCalendarDate}
+              AND users."status" = 'active'
               AND (users."membership_type" IS NULL OR users."membership_type" <> 'temporary')
               AND NOT EXISTS (
                 SELECT 1 FROM "role_user" system_role
@@ -163,33 +173,64 @@ export default async function DisciplinePage({
               )) AS "attendanceRecords",
           (SELECT COUNT(*)::int FROM "attendance_records" records
             INNER JOIN "users" users ON users."id" = records."user_id"
-            WHERE records."session_date" BETWEEN ${startDate} AND ${endDate}
+            WHERE records."session_date" BETWEEN ${startCalendarDate} AND ${endCalendarDate}
               AND records."status" = 'present'
+              AND users."status" = 'active'
               AND (users."membership_type" IS NULL OR users."membership_type" <> 'temporary')
               AND NOT EXISTS (
                 SELECT 1 FROM "role_user" system_role
                 INNER JOIN "roles" role ON role."id" = system_role."role_id"
                 WHERE system_role."user_id" = users."id" AND role."name" = 'super-admin'
               )) AS "goodAttendance",
-          (SELECT COUNT(*)::int FROM "discipline_sessions"
-            WHERE "session_date" BETWEEN ${startDate} AND ${endDate}) AS "disciplineSessions"
+          (SELECT COUNT(*)::int FROM "attendance_records" records
+            INNER JOIN "users" users ON users."id" = records."user_id"
+            WHERE records."session_date" BETWEEN ${startCalendarDate} AND ${endCalendarDate}
+              AND records."communicated" = true
+              AND users."status" = 'active'
+              AND (users."membership_type" IS NULL OR users."membership_type" <> 'temporary')
+              AND NOT EXISTS (
+                SELECT 1 FROM "role_user" system_role
+                INNER JOIN "roles" role ON role."id" = system_role."role_id"
+                WHERE system_role."user_id" = users."id" AND role."name" = 'super-admin'
+              )) AS "communicatedRecords",
+          (SELECT COUNT(*)::int FROM "discipline_records" records
+            INNER JOIN "users" users ON users."id" = records."user_id"
+            WHERE records."created_at" BETWEEN ${startDate} AND ${endDate}
+              AND users."status" = 'active'
+              AND (users."membership_type" IS NULL OR users."membership_type" <> 'temporary')
+              AND NOT EXISTS (
+                SELECT 1 FROM "role_user" system_role
+                INNER JOIN "roles" role ON role."id" = system_role."role_id"
+                WHERE system_role."user_id" = users."id" AND role."name" = 'super-admin'
+              )) AS "disciplineRecords",
+          (SELECT COUNT(*)::int FROM "discipline_records" records
+            INNER JOIN "users" users ON users."id" = records."user_id"
+            WHERE records."created_at" BETWEEN ${startDate} AND ${endDate}
+              AND records."type" = 'positive'
+              AND users."status" = 'active'
+              AND (users."membership_type" IS NULL OR users."membership_type" <> 'temporary')
+              AND NOT EXISTS (
+                SELECT 1 FROM "role_user" system_role
+                INNER JOIN "roles" role ON role."id" = system_role."role_id"
+                WHERE system_role."user_id" = users."id" AND role."name" = 'super-admin'
+              )) AS "goodDiscipline"
       `,
       [],
     ),
     safeRead(
       prisma.attendanceSession.findMany({
         where: {
-          sessionDate: { gte: startDate, lte: endDate },
+          sessionDate: { gte: startCalendarDate, lte: endCalendarDate },
         },
         orderBy: [{ sessionDate: "desc" }, { createdAt: "desc" }],
-        take: 6,
+        take: 5,
       }),
       [],
     ),
     safeRead(
       prisma.permissionRequest.findMany({
         orderBy: { createdAt: "desc" },
-        take: 6,
+        take: 5,
         include: {
           user: { select: { id: true, name: true, email: true } },
         },
@@ -252,7 +293,7 @@ export default async function DisciplinePage({
     ),
     safeRead(
       prisma.disciplineSession.findMany({
-        where: { sessionDate: { gte: startDate, lte: endDate } },
+        where: { sessionDate: { gte: startCalendarDate, lte: endCalendarDate } },
         orderBy: [{ sessionDate: "desc" }, { title: "asc" }],
       }),
       [],
@@ -274,12 +315,15 @@ export default async function DisciplinePage({
 
   const stats = statsRows[0] ?? {
     permissionRequests: 0,
-    attendanceSessions: 0,
     attendanceRecords: 0,
     goodAttendance: 0,
-    disciplineSessions: 0,
+    communicatedRecords: 0,
+    disciplineRecords: 0,
+    goodDiscipline: 0,
   };
-  const avgGoodBehavior = stats.attendanceRecords ? Math.round((stats.goodAttendance / stats.attendanceRecords) * 100) : 0;
+  const attendanceRate = stats.attendanceRecords ? Math.round((stats.goodAttendance / stats.attendanceRecords) * 100) : 0;
+  const communicationRate = stats.attendanceRecords ? Math.round((stats.communicatedRecords / stats.attendanceRecords) * 100) : 0;
+  const disciplineRate = stats.disciplineRecords ? Math.round((stats.goodDiscipline / stats.disciplineRecords) * 100) : 0;
 
   return (
     <DisciplineClient
@@ -290,15 +334,22 @@ export default async function DisciplinePage({
       canManage
       canManageActionPlans={permissionSetHas(permissions, "discipline", "manage-action-plans")}
       canViewProbation={canViewProbation}
-      startDate={dateValue(startDate)}
-      endDate={dateValue(endDate)}
-      attendanceStartDate={dateValue(attendanceStartDate)}
-      attendanceEndDate={dateValue(attendanceEndDate)}
+      startDate={startDateValue}
+      endDate={endDateValue}
+      attendanceStartDate={attendanceStartDateValue}
+      attendanceEndDate={attendanceEndDateValue}
       stats={{
         permissionRequests: stats.permissionRequests,
-        attendanceSessions: stats.attendanceSessions,
-        disciplineSessions: stats.disciplineSessions,
-        avgGoodBehavior,
+        attendanceRate,
+        attendancePresent: stats.goodAttendance,
+        attendanceTotal: stats.attendanceRecords,
+        communicationRate,
+        communicated: stats.communicatedRecords,
+        communicationTotal: stats.attendanceRecords,
+        disciplineRate,
+        goodDiscipline: stats.goodDiscipline,
+        disciplineTotal: stats.disciplineRecords,
+        performancePeriod: `${formatDate(startCalendarDate)} - ${formatDate(endCalendarDate)}`,
       }}
       recentAttendanceSessions={recentAttendanceSessions.map((session) => ({
         sessionDate: dateValue(session.sessionDate),

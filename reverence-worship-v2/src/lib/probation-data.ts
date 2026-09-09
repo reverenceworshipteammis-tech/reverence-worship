@@ -2,6 +2,7 @@ import "server-only";
 
 import { withDatabaseRetry } from "@/lib/database-retry";
 import { prisma } from "@/lib/prisma";
+import { databaseDate, databaseDateKey, kigaliDateKey, kigaliDayBounds } from "@/lib/calendar-date";
 import { calculateProbationRates, calendarDaysRemaining, probationAttentionReasons } from "@/lib/probation-rules";
 
 export type ProbationMonitoring = {
@@ -132,25 +133,28 @@ function summarizeProbationMonitoring(
 
 export async function getProbationMonitoring(probation: ProbationWindow): Promise<ProbationMonitoring> {
   const endDate = probation.decisionDate ?? new Date();
+  const startKey = databaseDateKey(probation.originalStartDate);
+  const timestampStart = kigaliDayBounds(startKey).start;
+  const attendanceEnd = databaseDate(kigaliDateKey(endDate));
   const [attendanceRecords, disciplineRecords, permissionRequests] = await withDatabaseRetry(() => Promise.all([
     prisma.attendanceRecord.findMany({
       where: {
         userId: probation.userId,
-        sessionDate: { gte: probation.originalStartDate, lte: endDate },
+        sessionDate: { gte: databaseDate(startKey), lte: attendanceEnd },
       },
       select: { sessionDate: true, status: true, communicated: true, onTime: true, lateMinutes: true },
     }),
     prisma.disciplineRecord.findMany({
       where: {
         userId: probation.userId,
-        createdAt: { gte: probation.originalStartDate, lte: endDate },
+        createdAt: { gte: timestampStart, lte: endDate },
       },
       select: { type: true, status: true },
     }),
     prisma.permissionRequest.findMany({
       where: {
         userId: probation.userId,
-        createdAt: { gte: probation.originalStartDate, lte: endDate },
+        createdAt: { gte: timestampStart, lte: endDate },
       },
       select: { status: true, startDate: true, endDate: true },
     }),
@@ -170,7 +174,10 @@ export async function getProbationMonitoringBatch(
       where: {
         OR: probations.map((probation) => ({
           userId: probation.userId,
-          sessionDate: { gte: probation.originalStartDate, lte: probation.decisionDate ?? now },
+          sessionDate: {
+            gte: databaseDate(databaseDateKey(probation.originalStartDate)),
+            lte: databaseDate(kigaliDateKey(probation.decisionDate ?? now)),
+          },
         })),
       },
       select: { userId: true, sessionDate: true, status: true, communicated: true, onTime: true, lateMinutes: true },
@@ -179,7 +186,7 @@ export async function getProbationMonitoringBatch(
       where: {
         OR: probations.map((probation) => ({
           userId: probation.userId,
-          createdAt: { gte: probation.originalStartDate, lte: probation.decisionDate ?? now },
+          createdAt: { gte: kigaliDayBounds(databaseDateKey(probation.originalStartDate)).start, lte: probation.decisionDate ?? now },
         })),
       },
       select: { userId: true, createdAt: true, type: true, status: true },
@@ -188,7 +195,7 @@ export async function getProbationMonitoringBatch(
       where: {
         OR: probations.map((probation) => ({
           userId: probation.userId,
-          createdAt: { gte: probation.originalStartDate, lte: probation.decisionDate ?? now },
+          createdAt: { gte: kigaliDayBounds(databaseDateKey(probation.originalStartDate)).start, lte: probation.decisionDate ?? now },
         })),
       },
       select: { userId: true, createdAt: true, status: true, startDate: true, endDate: true },
@@ -197,13 +204,20 @@ export async function getProbationMonitoringBatch(
 
   return new Map(probations.map((probation) => {
     const endDate = probation.decisionDate ?? now;
-    const inWindow = (date: Date) => date >= probation.originalStartDate && date <= endDate;
+    const timestampStart = kigaliDayBounds(databaseDateKey(probation.originalStartDate)).start;
+    const inTimestampWindow = (date: Date) => date >= timestampStart && date <= endDate;
+    const startKey = databaseDateKey(probation.originalStartDate);
+    const endKey = kigaliDateKey(endDate);
+    const inAttendanceWindow = (date: Date) => {
+      const key = databaseDateKey(date);
+      return key >= startKey && key <= endKey;
+    };
     return [
       probation.id,
       summarizeProbationMonitoring(
-        attendanceRecords.filter((record) => record.userId === probation.userId && inWindow(record.sessionDate)),
-        disciplineRecords.filter((record) => record.userId === probation.userId && inWindow(record.createdAt)),
-        permissionRequests.filter((request) => request.userId === probation.userId && inWindow(request.createdAt)),
+        attendanceRecords.filter((record) => record.userId === probation.userId && inAttendanceWindow(record.sessionDate)),
+        disciplineRecords.filter((record) => record.userId === probation.userId && inTimestampWindow(record.createdAt)),
+        permissionRequests.filter((request) => request.userId === probation.userId && inTimestampWindow(request.createdAt)),
       ),
     ];
   }));

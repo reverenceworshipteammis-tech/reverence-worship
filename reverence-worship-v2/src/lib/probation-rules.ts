@@ -1,3 +1,5 @@
+import { databaseDate, databaseDateKey, kigaliDateKey } from "@/lib/calendar-date";
+
 export const PROBATION_GOOD_THRESHOLD = 70;
 export const DEFAULT_PROBATION_DURATION_MONTHS = 4;
 
@@ -60,8 +62,8 @@ export function probationAttentionReasons(input: ProbationScoreInput) {
 }
 
 export function calendarDaysRemaining(endDate: Date, now = new Date()) {
-  const end = Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth(), endDate.getUTCDate());
-  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const end = databaseDate(databaseDateKey(endDate)).getTime();
+  const today = databaseDate(kigaliDateKey(now)).getTime();
   return Math.ceil((end - today) / 86_400_000);
 }
 

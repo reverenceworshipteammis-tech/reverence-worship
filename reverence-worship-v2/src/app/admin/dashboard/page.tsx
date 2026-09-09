@@ -23,6 +23,7 @@ import { filterCurrentNotifications } from "@/lib/notification-source-validity";
 import { PerformanceSummaryCards } from "@/components/performance-client";
 import { getPerformanceDateRange } from "@/lib/performance-date-range";
 import { getUserPerformanceData, type PerformanceMetrics } from "@/lib/user-performance";
+import { currentKigaliYear, databaseDate, kigaliDateKey } from "@/lib/calendar-date";
 import { ProfileModalTrigger } from "@/components/profile-modal";
 import { getProbationMonitoring, probationDateSummary } from "@/lib/probation-data";
 import { PROBATION_GOOD_THRESHOLD } from "@/lib/probation-rules";
@@ -79,7 +80,7 @@ function announcementIsForUser(
   try {
     const targets = JSON.parse(rawTargets) as unknown;
     if (!Array.isArray(targets)) return false;
-    if (announcement.targetType === "users") return targets.some((target) => Number(target) === userId);
+    if (announcement.targetType === "users" || announcement.targetType === "filters") return targets.some((target) => Number(target) === userId);
     if (announcement.targetType === "roles") {
       return targets.some((target) => roleIds.includes(Number(target)) || roleNames.includes(String(target)));
     }
@@ -111,8 +112,7 @@ function bulletinDate(date: Date) {
 }
 
 async function getDashboardBulletins(userId: number, roleIds: number[], roleNames: string[]): Promise<DashboardBulletin[]> {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = databaseDate(kigaliDateKey());
   const [announcements, notifications] = await withDatabaseRetry(() => Promise.all([
     prisma.announcement.findMany({
       where: {
@@ -219,7 +219,7 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
   const params = await searchParams;
   const roles = user.roles.map((userRole) => userRole.role.name);
   const roleIds = user.roles.map((userRole) => userRole.roleId);
-  const year = new Date().getFullYear();
+  const year = currentKigaliYear();
   const range = getPerformanceDateRange(year, params.from, params.to);
   const sharedProps = { userId: user.id, userName: user.name, roles, roleIds, year, range };
 
@@ -401,6 +401,8 @@ async function DashboardPerformanceSection({ userId, year, range }: DashboardSec
   const { metrics } = await getUserPerformanceData(userId, year, {
     from: range.fromDate,
     to: range.toDate,
+    databaseFrom: range.databaseFromDate,
+    databaseTo: range.databaseToDate,
     label: range.label,
   });
   return <DashboardPerformance metrics={metrics} fromDate={range.from} toDate={range.to} />;
@@ -521,9 +523,8 @@ function formIsStillAvailable(settings: unknown, today: string, submissionCount:
 }
 
 async function DashboardTodoPanel({ userId, includeProbation = false }: { userId: number; includeProbation?: boolean }) {
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
-  const todayValue = today.toISOString().slice(0, 10);
+  const todayValue = kigaliDateKey();
+  const today = databaseDate(todayValue);
   const [forms, submissions, countRows] = await withDatabaseRetry(() => Promise.all([
     prisma.spiritualForm.findMany({
       where: { isActive: true },
