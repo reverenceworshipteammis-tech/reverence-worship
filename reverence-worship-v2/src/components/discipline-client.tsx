@@ -1330,10 +1330,10 @@ export function DisciplineClient({
                       Recent Attendance Sessions
                     </h2>
                   </div>
-                  <div className="flex flex-1 flex-col divide-y divide-gray-100">
+                  <div className="grid flex-1 grid-rows-5 divide-y divide-gray-100">
                     {recentAttendanceSessions.length ? (
                       recentAttendanceSessions.map((session) => (
-                        <div key={`${session.sessionDate}-${session.sessionType}`} className="flex flex-1 items-center justify-between gap-3 px-4 py-3 transition hover:bg-gray-50">
+                        <div key={`${session.sessionDate}-${session.sessionType}`} className="flex items-center justify-between gap-3 px-4 py-3 transition hover:bg-gray-50">
                           <div className="min-w-0">
                             <h4 className="truncate text-sm font-medium text-gray-800">{session.sessionType}</h4>
                             <p className="mt-0.5 flex items-center gap-1 text-xs text-gray-400">
@@ -1361,7 +1361,7 @@ export function DisciplineClient({
                         </div>
                       ))
                     ) : (
-                      <EmptyList label="No attendance sessions found" />
+                      <div className="row-span-5 flex items-center justify-center"><EmptyList label="No attendance sessions found" /></div>
                     )}
                   </div>
                 </section>
@@ -1373,10 +1373,10 @@ export function DisciplineClient({
                       Recent Permission Requests
                     </h2>
                   </div>
-                  <div className="flex flex-1 flex-col divide-y divide-gray-100">
+                  <div className="grid flex-1 grid-rows-5 divide-y divide-gray-100">
                     {recentPermissions.length ? (
                       recentPermissions.map((permission) => (
-                        <div key={permission.id} className="flex flex-1 items-center px-4 py-3 transition hover:bg-gray-50">
+                        <div key={permission.id} className="flex items-center px-4 py-3 transition hover:bg-gray-50">
                           <div className="flex w-full items-start justify-between gap-3">
                             <div className="min-w-0 flex-1">
                               <div className="mb-1 flex items-center gap-2">
@@ -1399,7 +1399,7 @@ export function DisciplineClient({
                         </div>
                       ))
                     ) : (
-                      <EmptyList label="No permission requests found" />
+                      <div className="row-span-5 flex items-center justify-center"><EmptyList label="No permission requests found" /></div>
                     )}
                   </div>
                 </section>
