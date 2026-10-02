@@ -146,9 +146,10 @@ export function getIntercessionPublishingIssues(
 
     if (settings.is_quiz && !["title_section", "section_break", "file_upload"].includes(type)) {
       const points = Number(question.points);
-      if (!Number.isFinite(points) || points <= 0) {
-        issues.push({ id: `${id}-points`, questionId: id, message: `${prefix} needs a point value greater than zero.` });
+      if (!Number.isFinite(points) || points < 0) {
+        issues.push({ id: `${id}-points`, questionId: id, message: `${prefix} needs a point value of zero or greater.` });
       }
+      if (points <= 0) return;
       const hasSingleAnswer = typeof question.correctAnswer === "string" && Boolean(question.correctAnswer.trim());
       const correctAnswers = question.correctAnswers;
       const hasManyAnswers = Array.isArray(correctAnswers)
