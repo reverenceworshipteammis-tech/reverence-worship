@@ -175,7 +175,7 @@ export default async function IntercessionPage({ searchParams }: { searchParams:
   return (
     <IntercessionClient
       initialTab={intercessionPermissions.canReadBible && (params.tab === "bible" || !intercessionPermissions.canSubmitForms) ? "bible" : "forms"}
-      initialSection={params.section === "results" ? "results" : "available"}
+      initialSection={params.section === "manage" ? "manage" : params.section === "reports" ? "reports" : params.section === "results" ? "results" : "available"}
       showDepartmentNavigation={showDepartmentNavigation}
       permissions={intercessionPermissions}
       forms={serializedForms}

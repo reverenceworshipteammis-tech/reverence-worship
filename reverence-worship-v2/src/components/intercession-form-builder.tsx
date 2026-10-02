@@ -671,7 +671,7 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
         <div className="mx-auto mb-5 max-w-5xl overflow-hidden rounded-xl border border-gray-200 bg-white shadow-[0_8px_28px_rgba(15,23,42,0.05)]">
           <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
             <div>
-              <Link href="/admin/intercession" onClick={async (event) => {
+              <Link href="/admin/intercession?section=manage" onClick={async (event) => {
                 if (!["unsaved", "saving", "error"].includes(draftStatus)) return;
                 event.preventDefault();
                 const shouldLeave = await confirm({
@@ -680,9 +680,9 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
                   confirmLabel: "Leave builder",
                   tone: "danger",
                 });
-                if (shouldLeave) router.push("/admin/intercession");
-              }} className="inline-flex items-center gap-2 rounded text-xs font-semibold text-gray-500 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
-                <ArrowLeft className="size-3.5" aria-hidden="true" />
+                if (shouldLeave) router.push("/admin/intercession?section=manage");
+              }} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-sm font-semibold text-blue-700 shadow-sm transition hover:border-blue-300 hover:bg-blue-100 hover:text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 active:bg-blue-200">
+                <ArrowLeft className="size-4" aria-hidden="true" />
                 Manage Forms
               </Link>
               <h1 className="mt-1 text-xl font-bold text-gray-900">{isEditing ? "Edit form" : "Create a new form"}</h1>
