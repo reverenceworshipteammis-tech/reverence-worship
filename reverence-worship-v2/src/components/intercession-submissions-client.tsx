@@ -752,7 +752,7 @@ function ReviewSubmissionModal({
                     </div>
                     {form.isQuiz ? (
                       <span className="w-fit rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
-                        {answer.points} point{answer.points === 1 ? "" : "s"}
+                        {answer.points === 0 ? "Unscored reflection" : `${answer.points} point${answer.points === 1 ? "" : "s"}`}
                       </span>
                     ) : null}
                   </div>
@@ -760,8 +760,8 @@ function ReviewSubmissionModal({
                   <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm leading-6 text-slate-700">
                     {/^https?:\/\//.test(answer.answer) || answer.answer.startsWith("/uploads/form-answers/") ? <a href={answer.answer} target="_blank" rel="noreferrer" className="font-semibold text-blue-700 underline underline-offset-2">Open uploaded file</a> : answer.answer}
                   </div>
-                  {form.isQuiz && answer.earnedPoints !== null ? <p className="mt-2 text-xs font-semibold text-blue-700">Awarded {answer.earnedPoints.toLocaleString()} of {answer.points.toLocaleString()} point{answer.points === 1 ? "" : "s"}</p> : null}
-                  {manualReview ? (
+                  {form.isQuiz && answer.points > 0 && answer.earnedPoints !== null ? <p className="mt-2 text-xs font-semibold text-blue-700">Awarded {answer.earnedPoints.toLocaleString()} of {answer.points.toLocaleString()} point{answer.points === 1 ? "" : "s"}</p> : null}
+                  {manualReview && answer.points > 0 ? (
                     <div className="mt-3 flex flex-wrap items-center gap-2">
                       <label className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800">Award points<input type="number" min={0} max={answer.points} step={0.01} value={awardedPoints[answer.questionIndex] ?? 0} onChange={(event) => { const value = Math.min(answer.points, Math.max(0, Number(event.target.value) || 0)); setAwardedPoints((current) => ({ ...current, [answer.questionIndex]: value })); setGrades((current) => ({ ...current, [answer.questionIndex]: value >= answer.points })); }} className="w-20 rounded border border-blue-200 bg-white px-2 py-1 text-right" /><span>/ {answer.points}</span></label>
                       <button

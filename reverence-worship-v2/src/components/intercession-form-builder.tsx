@@ -1182,7 +1182,7 @@ function QuestionCard({
                   Points
                   <input
                     type="number"
-                    min={0.01}
+                    min={0.00}
                     step={0.01}
                     value={question.points}
                     onChange={(event) => onChange({ points: Number(event.target.value) || 0 })}

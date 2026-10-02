@@ -166,9 +166,9 @@ function strings(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean) : [];
 }
 
-function positiveNumber(value: unknown, fallback: number) {
+function nonNegativeNumber(value: unknown, fallback: number) {
   const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
 export function parseIntercessionFormQuestions(value: unknown): IntercessionFormQuestion[] {
@@ -187,7 +187,7 @@ export function parseIntercessionFormQuestions(value: unknown): IntercessionForm
       options: strings(item.options), rows: strings(item.rows), columns: strings(item.columns),
       min: Number.isFinite(Number(item.min)) ? Number(item.min) : 1,
       max: Number.isFinite(Number(item.max)) ? Number(item.max) : 5,
-      points: positiveNumber(item.points, 1),
+      points: nonNegativeNumber(item.points, 1),
       correctAnswer: typeof item.correctAnswer === "string" ? item.correctAnswer : "",
       correctAnswers,
       images: parseQuestionImages(item.images),
@@ -329,7 +329,7 @@ export function scoreIntercessionQuiz(questions: IntercessionFormQuestion[], ans
   let earned = 0;
   let total = 0;
   questions.forEach((question, index) => {
-    if (!visibleIndexes.has(index) || !isIntercessionAnswerable(question.type) || question.type === "file_upload") return;
+    if (!visibleIndexes.has(index) || !isIntercessionAnswerable(question.type) || question.type === "file_upload" || question.points <= 0) return;
     total += question.points;
     const submitted = answers[`question_${index}`];
     let earnedPoints = 0;

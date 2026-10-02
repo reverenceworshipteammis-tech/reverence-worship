@@ -1075,7 +1075,7 @@ export async function saveSubmissionManualReview(formData: FormData) {
           const record = item as Record<string, unknown>;
           const questionIndex = Number(record.questionIndex);
           const question = reviewQuestions[questionIndex];
-          if (!question || !isIntercessionAnswerable(question.type) || question.type === "file_upload") return null;
+          if (!question || !isIntercessionAnswerable(question.type) || question.type === "file_upload" || question.points <= 0) return null;
           const requestedEarnedPoints = Number(record.earnedPoints);
           const earnedPoints = Number.isFinite(requestedEarnedPoints)
             ? Math.min(question.points, Math.max(0, Math.round(requestedEarnedPoints * 100) / 100))

@@ -174,7 +174,7 @@ export default async function IntercessionFormSubmissionsPage({
           const value = intercessionAnswerForQuestion(submission.answers, submissionQuestions, question.id);
           return value === null ? [] : [{ ...catalogQuestion, ...question, questionIndex, value }];
         });
-        const totalPoints = visibleReviewQuestions.reduce((sum, question) => sum + (question.type === "file_upload" ? 0 : Number.isFinite(question.points) && question.points > 0 ? question.points : 1), 0);
+        const totalPoints = visibleReviewQuestions.reduce((sum, question) => sum + (question.type === "file_upload" ? 0 : Number.isFinite(question.points) ? Math.max(0, question.points) : 1), 0);
         return {
           id: submission.id,
           memberName: submission.user?.name ?? submission.respondentName ?? "Anonymous guest",
@@ -198,7 +198,7 @@ export default async function IntercessionFormSubmissionsPage({
             questionIndex: question.questionIndex,
             question: question.label,
             type: question.type,
-            points: Number.isFinite(question.points) && question.points > 0 ? question.points : 1,
+            points: Number.isFinite(question.points) ? Math.max(0, question.points) : 1,
             images: question.images,
             answer: intercessionAnswerText(question.value),
             responseValue: normalizeIntercessionResponseValue(question.value),
