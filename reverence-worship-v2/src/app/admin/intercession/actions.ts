@@ -602,7 +602,7 @@ export async function createSpiritualFormFromBuilder(formData: FormData) {
 
   revalidatePath("/admin/intercession");
 
-  return { ok: true, message: "Form created successfully." };
+  return { ok: true, message: "Form created successfully.", formId: form.id };
 }
 
 export async function duplicateSpiritualForm(formId: number) {

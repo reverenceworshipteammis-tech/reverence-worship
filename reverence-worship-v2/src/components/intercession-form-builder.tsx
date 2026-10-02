@@ -656,8 +656,11 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
         discardedImagePaths.forEach((imagePath) => removedImagePathsRef.current.delete(imagePath));
         localStorage.removeItem(initialData?.id ? `${NEW_FORM_DRAFT_KEY}-${initialData.id}` : NEW_FORM_DRAFT_KEY);
         setDraftStatus("saved");
-        router.push("/admin/intercession");
-        router.refresh();
+        if (initialData?.id) {
+          router.refresh();
+        } else if ("formId" in result) {
+          router.replace(`/admin/intercession/forms/${result.formId}/edit`);
+        }
       }
     });
   }
