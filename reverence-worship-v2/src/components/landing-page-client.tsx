@@ -30,7 +30,6 @@ type LandingEvent = {
 
 type LandingPageClientProps = {
   dashboardHref: string | null;
-  registrationEnabled: boolean;
   videos: LandingVideo[];
   pictures: LandingPicture[];
   events: LandingEvent[];
@@ -82,7 +81,7 @@ function SocialIcon({ name }: { name: "instagram" | "youtube" | "spotify" | "app
   );
 }
 
-export function LandingPageClient({ dashboardHref, registrationEnabled, videos, pictures, events }: LandingPageClientProps) {
+export function LandingPageClient({ dashboardHref, videos, pictures, events }: LandingPageClientProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [heroIndex, setHeroIndex] = useState(0);
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
@@ -191,14 +190,14 @@ export function LandingPageClient({ dashboardHref, registrationEnabled, videos, 
             <a href="#music" onClick={() => setMenuOpen(false)} className="flex w-full rounded-xl px-3 py-2 hover:bg-white/10 md:w-auto md:rounded-full md:px-3 md:py-2">Music</a>
             <a href="#pictures" onClick={() => setMenuOpen(false)} className="flex w-full rounded-xl px-3 py-2 hover:bg-white/10 md:w-auto md:rounded-full md:px-3 md:py-2">Pictures</a>
             <a href="#events" onClick={() => setMenuOpen(false)} className="flex w-full rounded-xl px-3 py-2 hover:bg-white/10 md:w-auto md:rounded-full md:px-3 md:py-2">Events</a>
-            <a href="#join" onClick={() => setMenuOpen(false)} className="hidden rounded-full px-3 py-2 hover:bg-white/10 md:flex">Join us</a>
+            <Link href="/join" onClick={() => setMenuOpen(false)} className="hidden rounded-full px-3 py-2 hover:bg-white/10 md:flex">Join us</Link>
             <Link href={dashboardHref ?? "/login"} className="hidden rounded-full border border-white/50 bg-transparent px-4 py-2 hover:bg-white/15 md:flex">
               {dashboardHref ? "Dashboard" : "Login"}
             </Link>
           </nav>
 
           <div className="ml-auto flex shrink-0 items-center gap-1.5 md:hidden">
-            <a href="#join" onClick={() => setMenuOpen(false)} className="inline-flex h-[34px] items-center rounded-full bg-white/10 px-2.5 text-[11px] font-bold hover:bg-white/15">Join us</a>
+            <Link href="/join" onClick={() => setMenuOpen(false)} className="inline-flex h-[34px] items-center rounded-full bg-white/10 px-2.5 text-[11px] font-bold hover:bg-white/15">Join us</Link>
             <Link href={dashboardHref ?? "/login"} onClick={() => setMenuOpen(false)} className="inline-flex h-[34px] items-center rounded-full border border-white/50 bg-white/10 px-2.5 text-[11px] font-bold hover:bg-white/15">
               {dashboardHref ? "Dashboard" : "Login"}
             </Link>
@@ -233,7 +232,7 @@ export function LandingPageClient({ dashboardHref, registrationEnabled, videos, 
             </div>
             <div className="mt-7 flex flex-wrap gap-3">
               <a href="#music" className="rounded-full bg-white px-5 py-3 text-sm font-bold text-blue-700">Explore our music</a>
-              <a href="#join" className="rounded-full border border-white/60 px-5 py-3 text-sm font-bold text-white">Join us</a>
+              <Link href="/join" className="rounded-full border border-white/60 px-5 py-3 text-sm font-bold text-white">Join us</Link>
             </div>
           </div>
         </div>
@@ -383,12 +382,8 @@ export function LandingPageClient({ dashboardHref, registrationEnabled, videos, 
         <div className="mx-auto w-[min(760px,calc(100%-28px))]">
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-600">You belong here</p>
           <h2 className="mt-3 font-serif text-4xl font-bold">Join us in worship</h2>
-          <p className="mt-3 leading-7 text-slate-500">Create your account to become part of the Reverence Worship community and stay connected with the ministry.</p>
-          {registrationEnabled ? (
-            <Link href="/register" className="mt-7 inline-flex rounded-full bg-blue-600 px-6 py-3 text-sm font-bold text-white">Join Reverence Worship</Link>
-          ) : (
-            <Link href="/login" className="mt-7 inline-flex rounded-full bg-blue-600 px-6 py-3 text-sm font-bold text-white">Login</Link>
-          )}
+          <p className="mt-3 leading-7 text-slate-500">Tell us a little about yourself and our team will be in touch. We look forward to welcoming you.</p>
+          <Link href="/join" className="mt-7 inline-flex rounded-full bg-blue-600 px-6 py-3 text-sm font-bold text-white">Join Reverence Worship</Link>
         </div>
       </section>
 
@@ -422,7 +417,7 @@ export function LandingPageClient({ dashboardHref, registrationEnabled, videos, 
               <nav className="grid gap-[13px]" aria-label="Footer navigation">
                 <a className="w-max transition hover:pl-1 hover:text-blue-400" href="#home">Home</a>
                 <a className="w-max transition hover:pl-1 hover:text-blue-400" href="#about">About Us</a>
-                <a className="w-max transition hover:pl-1 hover:text-blue-400" href="#join">Join Us</a>
+                <Link className="w-max transition hover:pl-1 hover:text-blue-400" href="/join">Join Us</Link>
                 <a className="w-max transition hover:pl-1 hover:text-blue-400" href="#music">Music</a>
                 <a className="w-max transition hover:pl-1 hover:text-blue-400" href="#pictures">Pictures</a>
                 <a className="w-max transition hover:pl-1 hover:text-blue-400" href="#events">Events</a>

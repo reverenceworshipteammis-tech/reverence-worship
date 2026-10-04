@@ -4,6 +4,8 @@ export const NOTIFICATION_CATEGORIES = [
   "announcement",
   "permission",
   "form",
+  "join_request",
+  "probation",
   "task",
   "finance",
   "system",
@@ -12,6 +14,8 @@ export const NOTIFICATION_CATEGORIES = [
 export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
 
 export function notificationCategory(type: string): NotificationCategory {
+  if (type === "join_request") return "join_request";
+  if (type === "probation") return "probation";
   if (["expense", "expense_approval", "expense_status", "finance", "contribution", "payment", "gift", "sponsor"].includes(type)) return "finance";
   if (type === "permission") return "permission";
   if (type === "form") return "form";

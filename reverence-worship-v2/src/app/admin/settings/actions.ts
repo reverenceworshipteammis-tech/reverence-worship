@@ -165,6 +165,8 @@ export async function updateNotificationSettings(formData: FormData) {
         notification_announcement_enabled: readBoolean(formData, "notification_announcement_enabled"),
         notification_permission_enabled: readBoolean(formData, "notification_permission_enabled"),
         notification_form_enabled: readBoolean(formData, "notification_form_enabled"),
+        notification_join_request_enabled: readBoolean(formData, "notification_join_request_enabled"),
+        notification_probation_enabled: readBoolean(formData, "notification_probation_enabled"),
         notification_task_enabled: readBoolean(formData, "notification_task_enabled"),
         notification_finance_enabled: readBoolean(formData, "notification_finance_enabled"),
         notification_system_enabled: readBoolean(formData, "notification_system_enabled"),

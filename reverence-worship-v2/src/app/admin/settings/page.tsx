@@ -47,6 +47,8 @@ export default async function SettingsPage() {
       announcementEnabled: boolValue(settings.get("notification_announcement_enabled"), true),
       permissionEnabled: boolValue(settings.get("notification_permission_enabled"), true),
       formEnabled: boolValue(settings.get("notification_form_enabled"), true),
+      joinRequestEnabled: boolValue(settings.get("notification_join_request_enabled"), true),
+      probationEnabled: boolValue(settings.get("notification_probation_enabled"), true),
       taskEnabled: boolValue(settings.get("notification_task_enabled"), true),
       financeEnabled: boolValue(settings.get("notification_finance_enabled"), true),
       systemEnabled: boolValue(settings.get("notification_system_enabled"), true),

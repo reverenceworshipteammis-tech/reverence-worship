@@ -32,6 +32,8 @@ export type SettingsValues = {
     announcementEnabled: boolean;
     permissionEnabled: boolean;
     formEnabled: boolean;
+    joinRequestEnabled: boolean;
+    probationEnabled: boolean;
     taskEnabled: boolean;
     financeEnabled: boolean;
     systemEnabled: boolean;
@@ -238,6 +240,8 @@ export function SettingsClient({ values }: { values: SettingsValues }) {
                     <CheckField name="notification_announcement_enabled" label="Announcements" note="Admin announcements and broadcasts." defaultChecked={values.notifications.announcementEnabled} />
                     <CheckField name="notification_permission_enabled" label="Permission requests" note="New requests and approval or rejection decisions." defaultChecked={values.notifications.permissionEnabled} />
                     <CheckField name="notification_form_enabled" label="Forms" note="Available forms and submission reminders." defaultChecked={values.notifications.formEnabled} />
+                    <CheckField name="notification_join_request_enabled" label="Join requests" note="Guest requests to join Reverence Worship." defaultChecked={values.notifications.joinRequestEnabled} />
+                    <CheckField name="notification_probation_enabled" label="Probation" note="Probation enrollment, updates, reviews, and decisions." defaultChecked={values.notifications.probationEnabled} />
                     <CheckField name="notification_task_enabled" label="Tasks" note="Assigned task and overdue task reminders." defaultChecked={values.notifications.taskEnabled} />
                     <CheckField name="notification_finance_enabled" label="Finance" note="Expense approvals, payments, contributions." defaultChecked={values.notifications.financeEnabled} />
                     <CheckField name="notification_system_enabled" label="System alerts" note="System health and delivery failure alerts." defaultChecked={values.notifications.systemEnabled} />

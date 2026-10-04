@@ -279,6 +279,47 @@ export async function notifySuperAdmins(input: Omit<NotifyUsersInput, "userIds">
   return notifyUsers({ ...input, userIds: await userIdsForRoles(["super-admin"]) });
 }
 
+export async function notifyJoinRequestAdmins(title: string, message: string) {
+  const settings = await getNotificationSettings();
+  if (!settings.emailEnabled) {
+    return { status: "skipped", error: "Email notifications are disabled in System Settings." } satisfies EmailDeliveryResult;
+  }
+  if (!settings.enabledTypes.has("join_request")) {
+    return { status: "skipped", error: "Join request notifications are disabled in System Settings." } satisfies EmailDeliveryResult;
+  }
+
+  const users = await prisma.user.findMany({
+    where: {
+      status: "active",
+      roles: { some: { role: { name: { in: ["admin", "super-admin"] } } } },
+    },
+    select: { id: true, email: true },
+  });
+  const recipients = [...new Set(users.map((user) => user.email).filter(Boolean))];
+  if (!recipients.length) {
+    return { status: "skipped", error: "No active admin accounts have an email address." } satisfies EmailDeliveryResult;
+  }
+
+  await notifyUsers({
+    userIds: users.map((user) => user.id),
+    type: "join_request",
+    title,
+    message,
+    sendEmail: false,
+    sendInApp: true,
+    dedupeKey: `join-request:${crypto.randomUUID()}`,
+  });
+
+  const results = await Promise.all(recipients.map((recipient) =>
+    notifyEmailAddress(recipient, "A guest wants to join Reverence Worship", message),
+  ));
+  const failure = results.find((result) => result.status === "failed" || result.status === "skipped");
+  if (failure) return failure;
+  return results.some((result) => result.status === "pending")
+    ? { status: "pending", error: null } satisfies EmailDeliveryResult
+    : { status: "sent", error: null } satisfies EmailDeliveryResult;
+}
+
 export async function reconcilePendingPermissionNotifications(limit = 100) {
   const [requests, approverIds] = await Promise.all([
     prisma.permissionRequest.findMany({
