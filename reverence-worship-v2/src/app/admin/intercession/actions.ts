@@ -24,6 +24,7 @@ import {
   scoreIntercessionQuiz,
   visibleIntercessionQuestions,
   type IntercessionFormAnswer,
+  type IntercessionFormQuestion,
 } from "@/lib/intercession-form-domain";
 import {
   isManagedQuestionImagePath,
@@ -99,6 +100,30 @@ function boundedProgress(value: FormDataEntryValue | null) {
 
 function readValues(formData: FormData, key: string) {
   return formData.getAll(key).filter((value): value is string => typeof value === "string");
+}
+
+function formatImmediateAnswer(value: IntercessionFormAnswer | undefined, rows: string[]) {
+  if (Array.isArray(value)) return value.length ? value.join(", ") : "No answer submitted.";
+  if (value && typeof value === "object") {
+    const lines = Object.entries(value).map(([key, rowAnswer], index) => {
+      const rowIndex = Number(key.match(/_(\d+)$/)?.[1] ?? index);
+      const label = rows[rowIndex] ?? `Row ${rowIndex + 1}`;
+      const formatted = Array.isArray(rowAnswer) ? rowAnswer.join(", ") : String(rowAnswer ?? "");
+      return `${label}: ${formatted || "No answer"}`;
+    });
+    return lines.join("\n") || "No answer submitted.";
+  }
+  return String(value ?? "").trim() || "No answer submitted.";
+}
+
+function formatCorrectAnswer(question: IntercessionFormQuestion) {
+  if (Array.isArray(question.correctAnswers)) return question.correctAnswers.join(", ");
+  const lines = Object.entries(question.correctAnswers).map(([key, answer], index) => {
+    const rowIndex = Number(key.match(/_(\d+)$/)?.[1] ?? index);
+    const label = question.rows[rowIndex] ?? `Row ${rowIndex + 1}`;
+    return `${label}: ${Array.isArray(answer) ? answer.join(", ") : answer}`;
+  });
+  return lines.length ? lines.join("\n") : question.correctAnswer;
 }
 
 function formSubmissionErrorMessage(error: unknown) {
@@ -1034,8 +1059,31 @@ export async function submitSpiritualForm(formId: number, formData: FormData) {
       : settings.submit_button_style === "attendance"
         ? `Attendance recorded for ${visitorName || "you"} at ${formatIntercessionKigaliTime(submission.submittedAt)}.`
         : settings.thank_you_message;
-    const releaseScore = settings.release_grade === "immediately";
-    return { ok: true, message: successMessage, redirectUrl: settings.redirect_url, score: releaseScore ? quizResult.score : null, earnedPoints: releaseScore ? quizResult.earnedPoints : null, totalPoints: releaseScore ? quizResult.totalPoints : null, editUrl: activeEditToken ? `/forms/${form.id}/edit/${activeEditToken}` : "" };
+    const releaseScore = settings.is_quiz && settings.release_grade === "immediately";
+    const gradeByQuestionIndex = new Map(quizResult.grades.map((grade) => [grade.questionIndex, grade]));
+    const responseDetails = releaseScore && settings.allow_view_response
+      ? [...visibleIndexes].sort((a, b) => a - b).flatMap((questionIndex) => {
+        const question = questions[questionIndex];
+        if (!question) return [];
+        const grade = gradeByQuestionIndex.get(questionIndex);
+        const rawAnswer = answers[`question_${questionIndex}`];
+        const answer = question.type === "file_upload" && rawAnswer
+          ? `File uploaded: ${String(rawAnswer).split(/[\\/]/).at(-1)}`
+          : formatImmediateAnswer(rawAnswer, question.rows);
+        const correctResponse = settings.show_correct_answers && question.type !== "file_upload" ? formatCorrectAnswer(question) : "";
+        return [{
+          questionIndex,
+          question: question.label,
+          type: question.type,
+          answer,
+          correctResponse: correctResponse || null,
+          correct: grade?.correct ?? null,
+          earnedPoints: grade?.earnedPoints ?? 0,
+          points: grade?.points ?? 0,
+        }];
+      })
+      : [];
+    return { ok: true, message: successMessage, redirectUrl: settings.redirect_url, score: releaseScore ? quizResult.score : null, earnedPoints: releaseScore ? quizResult.earnedPoints : null, totalPoints: releaseScore ? quizResult.totalPoints : null, responseDetails, editUrl: activeEditToken ? `/forms/${form.id}/edit/${activeEditToken}` : "" };
   } catch (error) {
     await Promise.all(uploadedFiles.map(deleteResponseFile));
     return { ok: false, message: formSubmissionErrorMessage(error) };

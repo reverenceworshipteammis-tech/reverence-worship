@@ -113,6 +113,14 @@ function earnedPointsFor(value: unknown, questionIndex: number) {
   return Number.isFinite(earned) ? Math.round(earned * 100) / 100 : record.correct ? Number(record.points ?? 1) : 0;
 }
 
+function pointsFor(value: unknown, questionIndex: number) {
+  if (!Array.isArray(value)) return null;
+  const grade = value.find((item) => item && typeof item === "object" && Number((item as Record<string, unknown>).questionIndex) === questionIndex);
+  if (!grade || typeof grade !== "object") return null;
+  const points = Number((grade as Record<string, unknown>).points);
+  return Number.isFinite(points) ? points : null;
+}
+
 function scorePointsFor(value: unknown) {
   if (!Array.isArray(value)) return { earned: 0, total: 0 };
   return value.reduce((sum, item) => {
@@ -225,6 +233,7 @@ export default async function MemberSubmissionResultPage({
                     ? manualGradeFor(submission.manualGrades, question.index)
                     : null;
                   const awardedPoints = canViewScore ? earnedPointsFor(submission.manualGrades, question.index) : null;
+                  const questionPoints = canViewScore ? pointsFor(submission.manualGrades, question.index) : null;
                   return (
                     <article key={question.index} className="rounded-xl border border-slate-200 bg-white p-5">
                       <div className="flex items-start justify-between gap-3">
@@ -236,7 +245,7 @@ export default async function MemberSubmissionResultPage({
                           <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${
                             grade ? "bg-green-100 text-green-700" : awardedPoints && awardedPoints > 0 ? "bg-blue-100 text-blue-700" : "bg-red-100 text-red-700"
                           }`}>
-                            {grade ? "Correct" : awardedPoints && awardedPoints > 0 ? `Partial · ${formatIntercessionMarks(awardedPoints)} points` : "Incorrect"}
+                            {awardedPoints !== null && questionPoints !== null ? formatIntercessionMarks(awardedPoints) + " / " + formatIntercessionMarks(questionPoints) : "Scored"}
                           </span>
                         ) : null}
                       </div>
@@ -256,7 +265,7 @@ export default async function MemberSubmissionResultPage({
                       ) : null}
                       {resultInput.isQuiz && canViewScore && allowPartialPoints && grade === false && ["checkboxes", "checkbox_grid"].includes(question.type) ? (
                         <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-5 text-amber-900">
-                          Partial credit rule: each incorrect selection offsets one correct selection. Credit cannot fall below zero.
+                          Marking rule: If you choose one wrong answer, you lose the credit for one correct answer.
                         </p>
                       ) : null}
                     </article>

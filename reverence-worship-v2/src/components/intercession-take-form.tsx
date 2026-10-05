@@ -37,10 +37,11 @@ type TakeQuestion = {
 
 type TakeSettings = {
   limit_one_response?: boolean;
+  show_question_numbers?: boolean;
   show_progress_bar?: boolean;
   shuffle_questions?: boolean;
-  show_question_numbers?: boolean;
   is_quiz?: boolean;
+  allow_partial_points?: boolean;
   release_grade?: string;
   thank_you_message?: string;
   allow_empty_submission?: boolean;
@@ -99,7 +100,15 @@ export function IntercessionTakeForm({
   const [messageIsError, setMessageIsError] = useState(false);
   const [answered, setAnswered] = useState<Record<string, boolean>>({});
   const [answersByQuestionId, setAnswersByQuestionId] = useState<Record<string, IntercessionFormAnswer>>({});
-  const [submitted, setSubmitted] = useState<{ message: string; redirectUrl: string; score: number | null; earnedPoints: number | null; totalPoints: number | null; editUrl: string } | null>(null);
+  const [submitted, setSubmitted] = useState<{
+    message: string;
+    redirectUrl: string;
+    score: number | null;
+    earnedPoints: number | null;
+    totalPoints: number | null;
+    responseDetails: Array<{ questionIndex: number; question: string; type: string; answer: string; correctResponse: string | null; correct: boolean | null; earnedPoints: number; points: number }>;
+    editUrl: string;
+  } | null>(null);
   const startedAt = useRef(new Date().toISOString());
   const [draftStatus, setDraftStatus] = useState<string | null>(null);
   const [attendanceDate, setAttendanceDate] = useState({ iso: "", label: "DD/MM/YYYY", longLabel: "Event date" });
@@ -240,12 +249,55 @@ export function IntercessionTakeForm({
       setMessageIsError(!result.ok);
       if (result.ok) {
         localStorage.removeItem(draftKey);
-        setSubmitted({ message: result.message, redirectUrl: result.redirectUrl ?? "", score: result.score ?? null, earnedPoints: result.earnedPoints ?? null, totalPoints: result.totalPoints ?? null, editUrl: result.editUrl ?? "" });
+        setSubmitted({ message: result.message, redirectUrl: result.redirectUrl ?? "", score: result.score ?? null, earnedPoints: result.earnedPoints ?? null, totalPoints: result.totalPoints ?? null, responseDetails: result.responseDetails ?? [], editUrl: result.editUrl ?? "" });
       }
     });
   }
 
-  if (submitted) return <TakeShell title={editToken ? "Response updated" : isAttendanceAction ? "Attendance recorded" : "Response recorded"} tone="green"><CheckCircle2 className="mx-auto mb-3 size-10 text-emerald-600" aria-hidden="true" /><p className="mb-2 text-slate-700">{submitted.message}</p>{submitted.earnedPoints !== null && submitted.totalPoints !== null ? <p className="mb-4 text-lg font-bold text-blue-700">Score: {formatIntercessionMarks(submitted.earnedPoints)} / {formatIntercessionMarks(submitted.totalPoints)}</p> : null}<div className="flex flex-wrap justify-center gap-2">{submitted.editUrl ? <Link href={submitted.editUrl} className="inline-flex rounded-lg border border-blue-200 bg-blue-50 px-5 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-100">Edit response</Link> : null}<Link href={submitted.redirectUrl || backHref} className="inline-flex rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">Continue</Link></div></TakeShell>;
+  if (submitted) return (
+    <TakeShell title={editToken ? "Response updated" : isAttendanceAction ? "Attendance recorded" : "Response recorded"} tone="green">
+      <CheckCircle2 className="mx-auto mb-3 size-10 text-emerald-600" aria-hidden="true" />
+      <p className="mb-2 text-slate-700">{submitted.message}</p>
+      {submitted.earnedPoints !== null && submitted.totalPoints !== null ? <p className="mb-4 text-lg font-bold text-blue-700">Score: {formatIntercessionMarks(submitted.earnedPoints)} / {formatIntercessionMarks(submitted.totalPoints)}</p> : null}
+      {submitted.responseDetails.length ? (
+        <div className="mt-6 space-y-3 text-left">
+          <h3 className="text-lg font-bold text-slate-900">Your responses</h3>
+          {submitted.responseDetails.map((detail) => (
+            <article key={detail.questionIndex} className="rounded-xl border border-slate-200 bg-white p-4">
+              <div className="flex items-start justify-between gap-3">
+                <h4 className="font-semibold text-slate-900">
+                  {settings.show_question_numbers !== false ? <span className="mr-2 text-blue-600">{detail.questionIndex + 1}.</span> : null}
+                  <IntercessionRichText value={detail.question} />
+                </h4>
+                <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${detail.correct === null ? "bg-slate-100 text-slate-600" : detail.correct ? "bg-green-100 text-green-700" : detail.earnedPoints > 0 ? "bg-blue-100 text-blue-700" : "bg-red-100 text-red-700"}`}>
+                  {detail.correct === null ? "Response recorded" : `${formatIntercessionMarks(detail.earnedPoints)} / ${formatIntercessionMarks(detail.points)}`}
+                </span>
+              </div>
+              <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Answer</p>
+                <p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-800">{detail.answer}</p>
+              </div>
+              {detail.correctResponse ? (
+                <div className="mt-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3">
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-green-700">Correct response</p>
+                  <p className="whitespace-pre-wrap break-words text-sm leading-6 text-green-900">{detail.correctResponse}</p>
+                </div>
+              ) : null}
+              {settings.allow_partial_points !== false && detail.correct === false && ["checkboxes", "checkbox_grid"].includes(detail.type) ? (
+                <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-5 text-amber-900">
+                  Marking rule: If you choose one wrong answer, you lose the credit for one correct answer.
+                </p>
+              ) : null}
+            </article>
+          ))}
+        </div>
+      ) : null}
+      <div className="mt-5 flex flex-wrap justify-center gap-2">
+        {submitted.editUrl ? <Link href={submitted.editUrl} className="inline-flex rounded-lg border border-blue-200 bg-blue-50 px-5 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-100">Edit response</Link> : null}
+        <Link href={submitted.redirectUrl || backHref} className="inline-flex rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">Continue</Link>
+      </div>
+    </TakeShell>
+  );
 
   if (!preview && !editToken && alreadySubmitted && limitOneResponse) {
     return (
