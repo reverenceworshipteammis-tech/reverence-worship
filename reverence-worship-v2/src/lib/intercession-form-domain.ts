@@ -327,7 +327,8 @@ function selectionCredit(expected: string[], actual: string[], allowPartial: boo
   if (exact) return 1;
   if (!allowPartial) return 0;
   const correctSelected = actual.filter((item) => expected.includes(item)).length;
-  return Math.min(1, correctSelected / expected.length);
+  const incorrectSelected = actual.filter((item) => !expected.includes(item)).length;
+  return Math.max(0, Math.min(1, (correctSelected - incorrectSelected) / expected.length));
 }
 
 export function scoreIntercessionQuiz(questions: IntercessionFormQuestion[], answers: Record<string, IntercessionFormAnswer>, visibleIndexes: Set<number>, partial: boolean) {

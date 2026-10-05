@@ -156,7 +156,9 @@ export default async function MemberSubmissionResultPage({
   const answers = asObject(submission.answers);
   const questions = parseQuestions(submission.questionSnapshot ?? submission.form.questions);
   const allowViewResponse = settings.allow_view_response !== false;
+  const showQuestionNumbers = settings.show_question_numbers !== false;
   const showCorrectAnswers = settings.show_correct_answers !== false;
+  const allowPartialPoints = settings.allow_partial_points !== false;
   const resultInput = {
     isQuiz: Boolean(settings.is_quiz),
     releaseGrade: String(settings.release_grade ?? "never"),
@@ -227,7 +229,7 @@ export default async function MemberSubmissionResultPage({
                     <article key={question.index} className="rounded-xl border border-slate-200 bg-white p-5">
                       <div className="flex items-start justify-between gap-3">
                         <h3 className="font-semibold text-slate-900">
-                          <span className="mr-2 text-blue-600">{displayIndex + 1}.</span>
+                          {showQuestionNumbers ? <span className="mr-2 text-blue-600">{displayIndex + 1}.</span> : null}
                           <IntercessionRichText value={question.label} />
                         </h3>
                         {grade !== null ? (
@@ -251,6 +253,11 @@ export default async function MemberSubmissionResultPage({
                           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-green-700">Correct response</p>
                           <p className="whitespace-pre-wrap break-words text-sm leading-6 text-green-900">{correctAnswerText(question)}</p>
                         </div>
+                      ) : null}
+                      {resultInput.isQuiz && canViewScore && allowPartialPoints && grade === false && ["checkboxes", "checkbox_grid"].includes(question.type) ? (
+                        <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-5 text-amber-900">
+                          Partial credit rule: each incorrect selection offsets one correct selection. Credit cannot fall below zero.
+                        </p>
                       ) : null}
                     </article>
                   );

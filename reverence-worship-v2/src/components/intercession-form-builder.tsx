@@ -1763,7 +1763,7 @@ function SettingsPanel({
           <>
             <SettingToggle title="Make questions required by default" description="Users must answer all questions" checked={Boolean(settings.default_required)} onChange={(value) => update("default_required", value)} />
             <SettingToggle title="Publish form by default" description="Form will be visible immediately" checked={Boolean(settings.is_published)} onChange={(value) => update("is_published", value)} />
-            <SettingToggle title="Allow partial points for checkboxes" description="Award proportional credit for correct selections; wrong selections do not subtract earned points" checked={Boolean(settings.allow_partial_points)} onChange={(value) => update("allow_partial_points", value)} />
+            <SettingToggle title="Allow partial points for checkboxes" description="Award partial credit for correct selections and subtract credit for wrong selections, to a minimum of zero" checked={Boolean(settings.allow_partial_points)} onChange={(value) => update("allow_partial_points", value)} />
           </>
         )}
         {activeTab === "advanced" && (
