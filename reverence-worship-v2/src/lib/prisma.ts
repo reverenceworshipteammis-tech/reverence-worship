@@ -6,28 +6,16 @@ const globalForPrisma = globalThis as unknown as {
   prismaSchemaVersion?: string;
 };
 
-const PRISMA_SCHEMA_VERSION = "2026-09-07-postgres-direct-development-v5";
+const PRISMA_SCHEMA_VERSION = "2026-10-05-pooled-database-url-v7";
 
 function databaseUrl() {
-  const directUrl = process.env.DIRECT_URL?.trim();
-  const value = directUrl || process.env.DATABASE_URL;
-  if (!value || directUrl || process.env.NODE_ENV === "production") return value;
-
-  try {
-    const url = new URL(value);
-    if (url.hostname.includes("neon.tech") && url.hostname.includes("-pooler.")) {
-      url.hostname = url.hostname.replace("-pooler.", ".");
-      return url.toString();
-    }
-  } catch {
-    // Prisma will report a useful configuration error for malformed URLs.
-  }
-
-  return value;
+  // The application should use the pooled URL. DIRECT_URL is reserved for
+  // tools that explicitly need a direct database connection (such as migrations).
+  return process.env.DATABASE_URL?.trim() || process.env.DIRECT_URL?.trim();
 }
 
 function databasePoolMax() {
-  const defaultPoolMax = process.env.NODE_ENV === "production" ? 5 : 1;
+  const defaultPoolMax = 5;
   const configured = Number(process.env.DATABASE_POOL_MAX ?? defaultPoolMax);
   if (!Number.isInteger(configured)) return defaultPoolMax;
   return Math.min(10, Math.max(1, configured));
@@ -36,7 +24,7 @@ function databasePoolMax() {
 const adapter = new PrismaPg({
   connectionString: databaseUrl(),
   max: databasePoolMax(),
-  connectionTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 15_000,
   idleTimeoutMillis: 60_000,
   keepAlive: true,
 });

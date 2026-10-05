@@ -102,6 +102,7 @@ type BuilderSettings = {
   is_quiz: boolean;
   accepting_responses: boolean;
   release_grade: string;
+  show_correct_answers: boolean;
   default_points: number;
   allow_view_response: boolean;
   limit_one_response: boolean;
@@ -306,6 +307,7 @@ const defaultSettings: BuilderSettings = {
   is_quiz: false,
   accepting_responses: true,
   release_grade: "never",
+  show_correct_answers: true,
   default_points: 1,
   allow_view_response: true,
   limit_one_response: true,
@@ -1727,6 +1729,7 @@ function SettingsPanel({
               ["later", "Later, after manual review"],
               ["never", "Never show score"],
             ]} />
+            {settings.is_quiz ? <SettingToggle title="Show correct answers" description="Show correct answers to respondents when their quiz result is released" checked={Boolean(settings.show_correct_answers)} onChange={(value) => update("show_correct_answers", value)} /> : null}
             <SettingNumber title="Default points" value={Number(settings.default_points)} onChange={(value) => update("default_points", value)} />
           </>
         )}

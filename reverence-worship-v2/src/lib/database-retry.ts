@@ -2,6 +2,7 @@ const TRANSIENT_DATABASE_ERRORS = [
   "connection terminated unexpectedly",
   "connection terminated",
   "connection timeout",
+  "timeout exceeded when trying to connect",
   "connection pool timeout",
   "connection closed",
   "server closed the connection",

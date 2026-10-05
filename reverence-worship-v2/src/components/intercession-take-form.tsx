@@ -11,6 +11,7 @@ import type { IntercessionQuestionImage } from "@/lib/intercession-question-imag
 import type { IntercessionQuestionCondition } from "@/lib/intercession-form-rules";
 import {
   parseIntercessionVisitorFields,
+  formatIntercessionMarks,
   visibleIntercessionQuestions,
   type IntercessionFormAnswer,
   type IntercessionVisitorField,
@@ -98,7 +99,7 @@ export function IntercessionTakeForm({
   const [messageIsError, setMessageIsError] = useState(false);
   const [answered, setAnswered] = useState<Record<string, boolean>>({});
   const [answersByQuestionId, setAnswersByQuestionId] = useState<Record<string, IntercessionFormAnswer>>({});
-  const [submitted, setSubmitted] = useState<{ message: string; redirectUrl: string; score: number | null; editUrl: string } | null>(null);
+  const [submitted, setSubmitted] = useState<{ message: string; redirectUrl: string; score: number | null; earnedPoints: number | null; totalPoints: number | null; editUrl: string } | null>(null);
   const startedAt = useRef(new Date().toISOString());
   const [draftStatus, setDraftStatus] = useState<string | null>(null);
   const [attendanceDate, setAttendanceDate] = useState({ iso: "", label: "DD/MM/YYYY", longLabel: "Event date" });
@@ -239,12 +240,12 @@ export function IntercessionTakeForm({
       setMessageIsError(!result.ok);
       if (result.ok) {
         localStorage.removeItem(draftKey);
-        setSubmitted({ message: result.message, redirectUrl: result.redirectUrl ?? "", score: result.score ?? null, editUrl: result.editUrl ?? "" });
+        setSubmitted({ message: result.message, redirectUrl: result.redirectUrl ?? "", score: result.score ?? null, earnedPoints: result.earnedPoints ?? null, totalPoints: result.totalPoints ?? null, editUrl: result.editUrl ?? "" });
       }
     });
   }
 
-  if (submitted) return <TakeShell title={editToken ? "Response updated" : isAttendanceAction ? "Attendance recorded" : "Response recorded"} tone="green"><CheckCircle2 className="mx-auto mb-3 size-10 text-emerald-600" aria-hidden="true" /><p className="mb-2 text-slate-700">{submitted.message}</p>{submitted.score !== null ? <p className="mb-4 text-lg font-bold text-blue-700">Score: {submitted.score}%</p> : null}<div className="flex flex-wrap justify-center gap-2">{submitted.editUrl ? <Link href={submitted.editUrl} className="inline-flex rounded-lg border border-blue-200 bg-blue-50 px-5 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-100">Edit response</Link> : null}<Link href={submitted.redirectUrl || backHref} className="inline-flex rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">Continue</Link></div></TakeShell>;
+  if (submitted) return <TakeShell title={editToken ? "Response updated" : isAttendanceAction ? "Attendance recorded" : "Response recorded"} tone="green"><CheckCircle2 className="mx-auto mb-3 size-10 text-emerald-600" aria-hidden="true" /><p className="mb-2 text-slate-700">{submitted.message}</p>{submitted.earnedPoints !== null && submitted.totalPoints !== null ? <p className="mb-4 text-lg font-bold text-blue-700">Score: {formatIntercessionMarks(submitted.earnedPoints)} / {formatIntercessionMarks(submitted.totalPoints)}</p> : null}<div className="flex flex-wrap justify-center gap-2">{submitted.editUrl ? <Link href={submitted.editUrl} className="inline-flex rounded-lg border border-blue-200 bg-blue-50 px-5 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-100">Edit response</Link> : null}<Link href={submitted.redirectUrl || backHref} className="inline-flex rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">Continue</Link></div></TakeShell>;
 
   if (!preview && !editToken && alreadySubmitted && limitOneResponse) {
     return (

@@ -189,6 +189,10 @@ export default async function IntercessionPage({ searchParams }: { searchParams:
           isReleased: submission.isReleased,
         };
         const resultState = memberResultState(resultInput);
+        const grades = Array.isArray(submission.manualGrades) ? submission.manualGrades.map(asObject) : [];
+        const canViewScore = memberCanViewScore(resultInput);
+        const totalPoints = grades.reduce((sum, grade) => sum + (Number.isFinite(Number(grade.points)) ? Math.max(0, Number(grade.points)) : 0), 0);
+        const earnedPoints = grades.reduce((sum, grade) => sum + (Number.isFinite(Number(grade.earnedPoints)) ? Math.max(0, Number(grade.earnedPoints)) : 0), 0);
         return {
           id: submission.id,
           formId: submission.formId,
@@ -196,7 +200,9 @@ export default async function IntercessionPage({ searchParams }: { searchParams:
           formDescription: submission.form.description,
           questionCount: questions.length,
           submittedAt: formatDate(submission.submittedAt),
-          score: memberCanViewScore(resultInput) ? submission.score : null,
+          score: canViewScore ? submission.score : null,
+          earnedPoints: canViewScore && submission.score !== null && totalPoints > 0 ? earnedPoints : null,
+          totalPoints: canViewScore && submission.score !== null && totalPoints > 0 ? totalPoints : null,
           resultStatus: memberResultLabel(resultState),
         };
       })}

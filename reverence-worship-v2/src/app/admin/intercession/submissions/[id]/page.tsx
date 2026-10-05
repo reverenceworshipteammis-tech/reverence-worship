@@ -12,6 +12,7 @@ import { IntercessionRichText } from "@/components/intercession-rich-text";
 import { IntercessionQuestionImages } from "@/components/intercession-question-images";
 import { PrintButton } from "@/components/print-button";
 import { parseQuestionImages, type IntercessionQuestionImage } from "@/lib/intercession-question-images";
+import { formatIntercessionMarks } from "@/lib/intercession-form-domain";
 
 type Question = {
   index: number;
@@ -19,6 +20,8 @@ type Question = {
   label: string;
   description: string;
   rows: string[];
+  correctAnswer: string;
+  correctAnswers: string[] | Record<string, string | string[]>;
   images: IntercessionQuestionImage[];
 };
 
@@ -46,10 +49,25 @@ function parseQuestions(value: unknown): Question[] {
         label: String(question.label ?? question.text ?? `Question ${index + 1}`),
         description: typeof question.description === "string" ? question.description : "",
         rows: asStringArray(question.rows),
+        correctAnswer: typeof question.correctAnswer === "string" ? question.correctAnswer : "",
+        correctAnswers: Array.isArray(question.correctAnswers)
+          ? asStringArray(question.correctAnswers)
+          : Object.fromEntries(Object.entries(asObject(question.correctAnswers)).map(([key, answer]) => [key, Array.isArray(answer) ? asStringArray(answer) : typeof answer === "string" ? answer : ""])),
         images: parseQuestionImages(question.images),
       };
     })
     .filter((question) => question.type !== "title_section" && question.type !== "section_break");
+}
+
+function correctAnswerText(question: Question) {
+  if (Array.isArray(question.correctAnswers)) return question.correctAnswers.join(", ");
+  const gridAnswers = Object.entries(question.correctAnswers).map(([key, answer], index) => {
+    const rowIndex = Number(key.match(/_(\d+)$/)?.[1] ?? index);
+    const rowLabel = question.rows[rowIndex] ?? `Row ${rowIndex + 1}`;
+    const answerText = Array.isArray(answer) ? answer.join(", ") : answer;
+    return `${rowLabel}: ${answerText}`;
+  });
+  return gridAnswers.length ? gridAnswers.join("\n") : question.correctAnswer;
 }
 
 function answerText(value: unknown, rows: string[]) {
@@ -95,6 +113,19 @@ function earnedPointsFor(value: unknown, questionIndex: number) {
   return Number.isFinite(earned) ? Math.round(earned * 100) / 100 : record.correct ? Number(record.points ?? 1) : 0;
 }
 
+function scorePointsFor(value: unknown) {
+  if (!Array.isArray(value)) return { earned: 0, total: 0 };
+  return value.reduce((sum, item) => {
+    const grade = asObject(item);
+    const points = Number(grade.points ?? 0);
+    const earned = Number(grade.earnedPoints);
+    return {
+      earned: sum.earned + (Number.isFinite(earned) ? earned : grade.correct ? points : 0),
+      total: sum.total + (Number.isFinite(points) ? points : 0),
+    };
+  }, { earned: 0, total: 0 });
+}
+
 function formatDateTime(date: Date) {
   return new Intl.DateTimeFormat("en", {
     dateStyle: "medium",
@@ -125,6 +156,7 @@ export default async function MemberSubmissionResultPage({
   const answers = asObject(submission.answers);
   const questions = parseQuestions(submission.questionSnapshot ?? submission.form.questions);
   const allowViewResponse = settings.allow_view_response !== false;
+  const showCorrectAnswers = settings.show_correct_answers !== false;
   const resultInput = {
     isQuiz: Boolean(settings.is_quiz),
     releaseGrade: String(settings.release_grade ?? "never"),
@@ -133,6 +165,7 @@ export default async function MemberSubmissionResultPage({
   };
   const resultState = memberResultState(resultInput);
   const canViewScore = memberCanViewScore(resultInput);
+  const scorePoints = scorePointsFor(submission.manualGrades);
 
   return (
     <div className="mx-auto max-w-5xl px-3 py-5 sm:px-4 sm:py-8">
@@ -162,7 +195,7 @@ export default async function MemberSubmissionResultPage({
             </div>
             <span className="inline-flex shrink-0 items-center gap-2 self-start rounded-full bg-green-100 px-3 py-1.5 text-sm font-semibold text-green-700">
               <CheckCircle2 className="size-4" aria-hidden="true" />
-              {canViewScore ? `${submission.score}%` : memberResultLabel(resultState)}
+              {canViewScore && scorePoints.total > 0 ? `${formatIntercessionMarks(scorePoints.earned)} / ${formatIntercessionMarks(scorePoints.total)}` : memberResultLabel(resultState)}
             </span>
           </div>
         </div>
@@ -201,7 +234,7 @@ export default async function MemberSubmissionResultPage({
                           <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${
                             grade ? "bg-green-100 text-green-700" : awardedPoints && awardedPoints > 0 ? "bg-blue-100 text-blue-700" : "bg-red-100 text-red-700"
                           }`}>
-                            {grade ? "Correct" : awardedPoints && awardedPoints > 0 ? `Partial · ${awardedPoints} points` : "Incorrect"}
+                            {grade ? "Correct" : awardedPoints && awardedPoints > 0 ? `Partial · ${formatIntercessionMarks(awardedPoints)} points` : "Incorrect"}
                           </span>
                         ) : null}
                       </div>
@@ -213,6 +246,12 @@ export default async function MemberSubmissionResultPage({
                         <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Answer</p>
                         {question.type === "file_upload" && typeof answers[`question_${question.index}`] === "string" && String(answers[`question_${question.index}`]).startsWith("/") ? <a href={String(answers[`question_${question.index}`])} target="_blank" rel="noreferrer" className="text-sm font-semibold text-blue-700 underline underline-offset-2">Open uploaded file</a> : question.type === "file_upload" && /^https?:\/\//.test(String(answers[`question_${question.index}`] ?? "")) ? <a href={String(answers[`question_${question.index}`])} target="_blank" rel="noreferrer" className="text-sm font-semibold text-blue-700 underline underline-offset-2">Open uploaded file</a> : <p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-800">{answerText(answers[`question_${question.index}`], question.rows)}</p>}
                       </div>
+                      {resultInput.isQuiz && canViewScore && showCorrectAnswers && correctAnswerText(question) ? (
+                        <div className="mt-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3">
+                          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-green-700">Correct response</p>
+                          <p className="whitespace-pre-wrap break-words text-sm leading-6 text-green-900">{correctAnswerText(question)}</p>
+                        </div>
+                      ) : null}
                     </article>
                   );
                 })}

@@ -16,6 +16,7 @@ import {
   BookMarked,
   BookOpen,
   CheckCircle2,
+  CalendarDays,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
@@ -61,6 +62,7 @@ import { IntercessionTakeForm } from "@/components/intercession-take-form";
 import { bibleBooks, bibleVersions } from "@/lib/bible-data";
 import type { IntercessionQuestionImage } from "@/lib/intercession-question-images";
 import type { IntercessionQuestionCondition } from "@/lib/intercession-form-rules";
+import { formatIntercessionMarks } from "@/lib/intercession-form-domain";
 import { useDialogFocusTrap } from "@/hooks/use-dialog-focus-trap";
 
 type Question = {
@@ -121,6 +123,8 @@ type FormSubmission = {
   questionCount: number;
   submittedAt: string;
   score: number | null;
+  earnedPoints: number | null;
+  totalPoints: number | null;
   resultStatus: string;
 };
 
@@ -319,6 +323,21 @@ export function IntercessionClient({
         .some((value) => value.toLowerCase().includes(normalized)),
     );
   }, [forms, manageStatus, query]);
+
+  const submissionGroups = useMemo(() => {
+    const groups = new Map<number, { formId: number; formTitle: string; formDescription: string | null; submissions: FormSubmission[] }>();
+    for (const submission of mySubmissions) {
+      const group = groups.get(submission.formId);
+      if (group) group.submissions.push(submission);
+      else groups.set(submission.formId, {
+        formId: submission.formId,
+        formTitle: submission.formTitle,
+        formDescription: submission.formDescription,
+        submissions: [submission],
+      });
+    }
+    return [...groups.values()];
+  }, [mySubmissions]);
 
   const filteredReportRows = useMemo(() => {
     const normalized = reportSearch.trim().toLowerCase();
@@ -901,38 +920,43 @@ export function IntercessionClient({
 
           {activeFormSection === "results" && (
             <section>
-              <h2 className="mb-4 text-lg font-bold text-gray-900">My Results</h2>
-              <div className="space-y-3">
-                {mySubmissions.length ? (
-                  mySubmissions.map((submission) => {
-                    return (
-                      <Link
-                        key={submission.id}
-                        href={`/admin/intercession/submissions/${submission.id}`}
-                        className="block rounded-xl border border-gray-200 p-4 transition hover:shadow-md sm:p-5"
-                      >
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                          <div>
-                            <h3 className="font-semibold text-gray-900"><IntercessionRichText value={submission.formTitle} /></h3>
-                            {submission.formDescription && <p className="mt-1 text-sm text-gray-500 line-clamp-2"><IntercessionRichText value={submission.formDescription} /></p>}
-                            <p className="mt-2 text-xs font-medium text-gray-400">
-                              <svg className="inline-block size-3 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                                <line x1="16" y1="2" x2="16" y2="6" />
-                                <line x1="8" y1="2" x2="8" y2="6" />
-                                <line x1="3" y1="10" x2="21" y2="10" />
-                              </svg>
-                              Submitted {submission.submittedAt}
-                            </p>
-                          </div>
-                          <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
-                            <CheckCircle2 className="size-3" aria-hidden="true" />
-                            {submission.score === null ? submission.resultStatus : `${submission.score}%`}
-                          </span>
+              <h2 className="mx-auto mb-4 max-w-5xl text-lg font-bold text-gray-900">My Results</h2>
+              <div className="mx-auto max-w-5xl space-y-3">
+                {submissionGroups.length ? (
+                  submissionGroups.map((group) => (
+                    <section key={group.formId} className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+                      <header className="flex flex-col gap-2 bg-slate-50/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                        <div className="min-w-0">
+                          <h3 className="font-semibold text-gray-900"><IntercessionRichText value={group.formTitle} /></h3>
+                          {group.formDescription ? <p className="mt-1 line-clamp-1 text-sm text-gray-500"><IntercessionRichText value={group.formDescription} /></p> : null}
                         </div>
-                      </Link>
-                    );
-                  })
+                        <span className="w-fit shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+                          {group.submissions.length} {group.submissions.length === 1 ? "attempt" : "attempts"}
+                        </span>
+                      </header>
+                      <div className="divide-y divide-gray-100 border-t border-gray-100">
+                        {group.submissions.map((submission, index) => (
+                          <Link
+                            key={submission.id}
+                            href={`/admin/intercession/submissions/${submission.id}`}
+                            className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5 transition hover:bg-blue-50/50 focus-visible:bg-blue-50/50 sm:px-5"
+                          >
+                            <span className="rounded-md bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600">
+                              {index + 1}
+                            </span>
+                            <span className="flex min-w-0 items-center gap-2 text-sm text-gray-600">
+                              <CalendarDays className="size-3.5 shrink-0 text-gray-400" aria-hidden="true" />
+                              <span className="truncate">Submitted {submission.submittedAt}</span>
+                            </span>
+                            <span className="inline-flex min-w-20 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-full bg-green-100 px-2.5 py-1 text-xs font-semibold text-green-700">
+                              <CheckCircle2 className="size-3" aria-hidden="true" />
+                              {submission.score === null ? submission.resultStatus : submission.earnedPoints !== null && submission.totalPoints !== null ? `${formatIntercessionMarks(submission.earnedPoints)} / ${formatIntercessionMarks(submission.totalPoints)}` : submission.resultStatus}
+                            </span>
+                          </Link>
+                        ))}
+                      </div>
+                    </section>
+                  ))
                 ) : (
                   <EmptyState title="No results yet" />
                 )}

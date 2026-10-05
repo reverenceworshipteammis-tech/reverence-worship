@@ -13,6 +13,10 @@ export const INTERCESSION_ANSWERABLE_TYPES = [
 
 export type IntercessionFormAnswer = IntercessionConditionAnswer;
 
+export function formatIntercessionMarks(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
 export const INTERCESSION_VISITOR_FIELD_TYPES = ["text", "phone", "email", "number", "date", "select", "checkboxes"] as const;
 export type IntercessionVisitorFieldType = typeof INTERCESSION_VISITOR_FIELD_TYPES[number];
 
@@ -130,6 +134,7 @@ export type IntercessionFormSettings = {
   accepting_responses: boolean;
   is_quiz: boolean;
   release_grade: string;
+  show_correct_answers: boolean;
   allow_partial_points: boolean;
   allow_view_response: boolean;
   limit_one_response: boolean;
@@ -208,6 +213,7 @@ export function parseIntercessionFormSettings(value: unknown): IntercessionFormS
     is_published: Boolean(item.is_published), is_quiz: Boolean(item.is_quiz),
     accepting_responses: item.accepting_responses !== false,
     release_grade: typeof item.release_grade === "string" ? item.release_grade : "never",
+    show_correct_answers: item.show_correct_answers !== false,
     allow_partial_points: item.allow_partial_points !== false,
     allow_view_response: item.allow_view_response !== false,
     limit_one_response: item.limit_one_response !== false,

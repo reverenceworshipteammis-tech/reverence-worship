@@ -941,7 +941,7 @@ export async function submitSpiritualForm(formId: number, formData: FormData) {
 
   const quizResult = settings.is_quiz
     ? scoreIntercessionQuiz(questions, answers, visibleIndexes, settings.allow_partial_points)
-    : { score: null, grades: [] };
+    : { score: null, grades: [], earnedPoints: 0, totalPoints: 0 };
   const storedAnswers = { ...answers, __byQuestionId: answersByQuestionId };
   const startedAtValue = readString(formData, "startedAt");
   const parsedStartedAt = startedAtValue ? new Date(startedAtValue) : null;
@@ -1034,7 +1034,8 @@ export async function submitSpiritualForm(formId: number, formData: FormData) {
       : settings.submit_button_style === "attendance"
         ? `Attendance recorded for ${visitorName || "you"} at ${formatIntercessionKigaliTime(submission.submittedAt)}.`
         : settings.thank_you_message;
-    return { ok: true, message: successMessage, redirectUrl: settings.redirect_url, score: settings.release_grade === "immediately" ? quizResult.score : null, editUrl: activeEditToken ? `/forms/${form.id}/edit/${activeEditToken}` : "" };
+    const releaseScore = settings.release_grade === "immediately";
+    return { ok: true, message: successMessage, redirectUrl: settings.redirect_url, score: releaseScore ? quizResult.score : null, earnedPoints: releaseScore ? quizResult.earnedPoints : null, totalPoints: releaseScore ? quizResult.totalPoints : null, editUrl: activeEditToken ? `/forms/${form.id}/edit/${activeEditToken}` : "" };
   } catch (error) {
     await Promise.all(uploadedFiles.map(deleteResponseFile));
     return { ok: false, message: formSubmissionErrorMessage(error) };
