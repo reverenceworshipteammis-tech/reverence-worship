@@ -330,7 +330,7 @@ const defaultSettings: BuilderSettings = {
   attendance_display_text: "",
   submission_deadline: "",
   submission_opens_at: "",
-  max_responses: 0,
+  max_responses: 200,
   thank_you_message: "Thank you. Your response has been recorded.",
   redirect_url: "",
   visitor_fields: DEFAULT_INTERCESSION_VISITOR_FIELDS.map((field) => ({ ...field, options: [...field.options] })),
@@ -345,6 +345,7 @@ function normalizeBuilderSettings(value: Partial<BuilderSettings> | undefined): 
   return {
     ...defaultSettings,
     ...(value ?? {}),
+    max_responses: value?.max_responses == null || value.max_responses === 0 ? 200 : value.max_responses,
     submit_button_label: submitButtonLabel,
     submit_button_style: value?.submit_button_style === "attendance" || legacyAttendanceStyle ? "attendance" : "default",
     visitor_fields: parseIntercessionVisitorFields(value?.visitor_fields),
@@ -1739,7 +1740,7 @@ function SettingsPanel({
             <div className="grid gap-3 border-b border-gray-100 py-3 sm:grid-cols-2"><label className="text-sm font-medium text-gray-800">Opens at<input type="datetime-local" value={String(settings.submission_opens_at ?? "")} onChange={(event) => update("submission_opens_at", event.target.value)} className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label><label className="text-sm font-medium text-gray-800">Closes at<input type="datetime-local" value={String(settings.submission_deadline ?? "")} onChange={(event) => update("submission_deadline", event.target.value)} className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label></div>
             <div className="border-b border-gray-100 py-3">
               <h3 className="mb-2 text-sm font-medium text-gray-800">Maximum responses</h3>
-              <input type="number" min={0} value={Number(settings.max_responses)} onChange={(event) => update("max_responses", Math.max(0, Number(event.target.value) || 0))} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              <input type="number" min={0} value={settings.max_responses ?? 200} onChange={(event) => update("max_responses", Math.max(0, Number(event.target.value) || 0))} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
               <p className="mt-1 text-xs text-gray-500">Use 0 for no response limit.</p>
             </div>
             <label className="block border-b border-gray-100 py-3 text-sm font-medium text-gray-800">Thank-you message<textarea value={settings.thank_you_message} onChange={(event) => update("thank_you_message", event.target.value)} rows={3} className="mt-2 w-full resize-y rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
