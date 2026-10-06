@@ -291,10 +291,23 @@ export function formatIntercessionKigaliDateTime(value: Date) {
   return `${parts.day}/${parts.month}/${parts.year} at ${parts.hour}:${parts.minute} ${String(parts.dayPeriod).toUpperCase()}`;
 }
 
+export function intercessionFormIsPublished(settings: IntercessionFormSettings, now = new Date()) {
+  const opens = settings.submission_opens_at ? intercessionLifecycleDate(settings.submission_opens_at) : null;
+  const closes = settings.submission_deadline ? intercessionLifecycleDate(settings.submission_deadline, true) : null;
+  if (!opens) return settings.is_published && (!closes || now <= closes);
+  return now >= opens && (!closes || now <= closes);
+}
+
+export function intercessionFormPublicationStatus(settings: IntercessionFormSettings, now = new Date()) {
+  const opens = settings.submission_opens_at ? intercessionLifecycleDate(settings.submission_opens_at) : null;
+  if (opens && now < opens) return "scheduled" as const;
+  const closes = settings.submission_deadline ? intercessionLifecycleDate(settings.submission_deadline, true) : null;
+  if (closes && now > closes) return "closed" as const;
+  return intercessionFormIsPublished(settings, now) ? "published" as const : "draft" as const;
+}
+
 export function intercessionFormAvailability(settings: IntercessionFormSettings, isActive: boolean, submissionCount: number, now = new Date()) {
   if (!isActive) return "This form is archived.";
-  if (!settings.is_published) return "This form is not published.";
-  if (!settings.accepting_responses) return settings.response_closed_message;
   if (settings.submission_opens_at) {
     const opens = intercessionLifecycleDate(settings.submission_opens_at);
     if (opens && now < opens) return `This form opens on ${opens.toLocaleString("en-RW", { timeZone: "Africa/Kigali" })}.`;
@@ -308,6 +321,8 @@ export function intercessionFormAvailability(settings: IntercessionFormSettings,
         : `This form closed on ${closedAt}.`;
     }
   }
+  if (!intercessionFormIsPublished(settings, now)) return "This form is not published.";
+  if (!settings.accepting_responses) return settings.response_closed_message;
   if (settings.max_responses > 0 && submissionCount >= settings.max_responses) return "This form has reached its response limit.";
   return null;
 }

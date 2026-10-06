@@ -27,6 +27,7 @@ import { currentKigaliYear, databaseDate, kigaliDateKey } from "@/lib/calendar-d
 import { ProfileModalTrigger } from "@/components/profile-modal";
 import { getProbationMonitoring, probationDateSummary } from "@/lib/probation-data";
 import { PROBATION_GOOD_THRESHOLD } from "@/lib/probation-rules";
+import { intercessionFormAvailability, parseIntercessionFormSettings } from "@/lib/intercession-form-domain";
 import {
   DashboardBulletinCarousel,
   type DashboardBulletin,
@@ -506,20 +507,8 @@ async function ProbationMemberDashboardCard({ userId }: { userId: number }) {
   );
 }
 
-function isPublishedForm(settings: unknown) {
-  if (!settings || typeof settings !== "object" || Array.isArray(settings)) return false;
-  return (settings as { is_published?: unknown }).is_published === true;
-}
-
-function formIsStillAvailable(settings: unknown, today: string, submissionCount: number) {
-  if (!isPublishedForm(settings)) return false;
-  const values = settings as { submission_deadline?: unknown; submission_opens_at?: unknown; max_responses?: unknown };
-  const deadline = values.submission_deadline;
-  const opens = values.submission_opens_at;
-  if (typeof opens === "string" && opens && opens.slice(0, 10) > today) return false;
-  const maxResponses = Number(values.max_responses ?? 0);
-  if (Number.isInteger(maxResponses) && maxResponses > 0 && submissionCount >= maxResponses) return false;
-  return typeof deadline !== "string" || !deadline || deadline.slice(0, 10) >= today;
+function formIsStillAvailable(settings: unknown, submissionCount: number) {
+  return intercessionFormAvailability(parseIntercessionFormSettings(settings), true, submissionCount) === null;
 }
 
 async function DashboardTodoPanel({ userId, includeProbation = false }: { userId: number; includeProbation?: boolean }) {
@@ -559,7 +548,7 @@ async function DashboardTodoPanel({ userId, includeProbation = false }: { userId
 
   const submittedFormIds = new Set(submissions.map((submission) => submission.formId));
   const incompleteForms = forms.filter((form) =>
-    !submittedFormIds.has(form.id) && formIsStillAvailable(form.settings, todayValue, form._count.submissions),
+    !submittedFormIds.has(form.id) && formIsStillAvailable(form.settings, form._count.submissions),
   ).length;
   const items: DashboardCard[] = [
     ...(incompleteForms > 0 ? [{

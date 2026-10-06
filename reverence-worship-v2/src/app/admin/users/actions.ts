@@ -658,7 +658,7 @@ export async function runUserTableAction(formData: FormData) {
   const affectedUser = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, email: true, status: true } });
   if (!affectedUser) return { ok: false, message: "User not found." };
   const probation = await prisma.probation.findFirst({
-    where: { userId },
+    where: { userId, state: { in: ["active", "extended"] } },
     orderBy: { createdAt: "desc" },
     select: { state: true },
   });
@@ -669,7 +669,7 @@ export async function runUserTableAction(formData: FormData) {
     return { ok: false, message: "This member has an open probation. Use the probation termination approval workflow." };
   }
   if ((action === "reject" || action === "delete") && probation) {
-    return { ok: false, message: "Accounts with probation history must be preserved and cannot be deleted." };
+    return { ok: false, message: "This account has an open probation and cannot be deleted until it is closed through the probation workflow." };
   }
 
   if (action === "approve" || action === "activate") {
@@ -720,7 +720,12 @@ export async function runUserTableAction(formData: FormData) {
   revalidatePath("/admin/users");
   revalidatePath("/admin/dashboard");
 
-  return { ok: true, message: "User updated successfully." };
+  const successMessage = action === "delete"
+    ? "User deleted successfully."
+    : action === "reject"
+      ? "Account rejected and deleted successfully."
+      : "User updated successfully.";
+  return { ok: true, message: successMessage };
 }
 
 export async function updateUserRoleAction(formData: FormData) {

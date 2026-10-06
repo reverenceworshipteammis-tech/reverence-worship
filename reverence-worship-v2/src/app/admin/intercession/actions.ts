@@ -15,6 +15,7 @@ import { getIntercessionPublishingIssues, parseIntercessionQuestionCondition } f
 import {
   formatIntercessionKigaliTime,
   intercessionFormAvailability,
+  intercessionFormIsPublished,
   intercessionGuestFieldConfigurationIssue,
   isIntercessionAnswerable,
   normalizeIntercessionRespondentName,
@@ -870,7 +871,7 @@ export async function submitSpiritualForm(formId: number, formData: FormData) {
   if (editSubmission?.userId && editSubmission.userId !== user?.id) return { ok: false, message: "Sign in with the account that submitted this response." };
   if (editSubmission && !settings.allow_response_editing) return { ok: false, message: "Response editing is disabled for this form." };
   const availability = editSubmission
-    ? !form.isActive ? "This form is archived." : !settings.is_published ? "This form is not published." : null
+    ? !form.isActive ? "This form is archived." : !intercessionFormIsPublished(settings) ? "This form is not published." : null
     : intercessionFormAvailability(settings, form.isActive, form._count.submissions);
   if (availability) return { ok: false, message: availability };
 
@@ -985,7 +986,7 @@ export async function submitSpiritualForm(formId: number, formData: FormData) {
       if (!freshForm) throw new Error("Form not found.");
       const freshSettings = parseIntercessionFormSettings(freshForm.settings);
       const freshAvailability = editSubmission
-        ? !freshForm.isActive ? "This form is archived." : !freshSettings.is_published ? "This form is not published." : null
+        ? !freshForm.isActive ? "This form is archived." : !intercessionFormIsPublished(freshSettings) ? "This form is not published." : null
         : intercessionFormAvailability(freshSettings, freshForm.isActive, freshForm._count.submissions);
       if (freshAvailability) throw new Error(freshAvailability);
       if (!editSubmission && settings.limit_one_response) {

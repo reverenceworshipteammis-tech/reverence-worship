@@ -105,6 +105,7 @@ type SpiritualForm = {
   questions: Question[];
   questionCount: number;
   isPublished: boolean;
+  publicationStatus: "scheduled" | "published" | "draft" | "closed";
   limitOneResponse: boolean;
   isActive: boolean;
   availabilityMessage: string | null;
@@ -992,7 +993,7 @@ export function IntercessionClient({
                         </div>
                       </div>
                       <span className="shrink-0 rounded-full bg-blue-100 px-2 py-1 text-[11px] font-semibold text-blue-700">
-                        {form.isPublished ? "Published" : "Draft"}
+                        {form.publicationStatus === "scheduled" ? "Scheduled" : form.publicationStatus === "closed" ? "Closed" : form.isPublished ? "Published" : "Draft"}
                       </span>
                     </div>
 
@@ -1024,7 +1025,7 @@ export function IntercessionClient({
                           Edit
                         </Link>
                       )}
-                      {permissions.canPublishForms && form.isActive ? (
+                      {permissions.canPublishForms && form.isActive && !form.previewSettings.submission_opens_at ? (
                         <button
                           type="button"
                           onClick={() => runAction(() => toggleSpiritualFormPublish(form.id))}
@@ -1032,7 +1033,7 @@ export function IntercessionClient({
                         >
                           {form.isPublished ? "Unpublish" : "Publish"}
                         </button>
-                      ) : null}
+                      ) : form.previewSettings.submission_opens_at ? <span className="inline-flex h-8 items-center rounded-lg bg-slate-100 px-3 text-xs font-semibold text-slate-600">Schedule controls publication</span> : null}
                       {permissions.canManageForms || permissions.canEditForms ? <button type="button" onClick={() => runAction(() => setSpiritualFormArchived(form.id, form.isActive))} className="inline-flex h-8 items-center justify-center rounded-lg bg-blue-50 px-3 text-xs font-semibold text-blue-700">{form.isActive ? "Archive" : "Restore"}</button> : null}
                       <button type="button" onClick={() => duplicateForm(form.id)} className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-blue-50 px-3 text-xs font-semibold text-blue-700 transition hover:bg-blue-100">
                         <Copy className="size-3.5" />
@@ -1101,7 +1102,7 @@ export function IntercessionClient({
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          {permissions.canPublishForms && form.isActive ? (
+                          {permissions.canPublishForms && form.isActive && !form.previewSettings.submission_opens_at ? (
                             <button
                               type="button"
                               onClick={(e) => {
@@ -1116,7 +1117,7 @@ export function IntercessionClient({
                             <span
                               className="rounded-full bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-700"
                             >
-                              {form.isPublished ? "Published" : "Draft"}
+                              {form.publicationStatus === "scheduled" ? "Scheduled" : form.publicationStatus === "closed" ? "Closed" : form.isPublished ? "Published" : "Draft"}
                             </span>
                           )}
                         </td>

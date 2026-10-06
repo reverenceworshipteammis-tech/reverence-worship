@@ -10,7 +10,6 @@ import {
 import { prisma } from "@/lib/prisma";
 import { IntercessionRichText } from "@/components/intercession-rich-text";
 import { IntercessionQuestionImages } from "@/components/intercession-question-images";
-import { PrintButton } from "@/components/print-button";
 import { parseQuestionImages, type IntercessionQuestionImage } from "@/lib/intercession-question-images";
 import { formatIntercessionMarks } from "@/lib/intercession-form-domain";
 
@@ -188,9 +187,6 @@ export default async function MemberSubmissionResultPage({
             <ArrowLeft className="size-4" aria-hidden="true" />
             Back to My Results
           </Link>
-          <div className="mb-4 flex justify-end">
-            <PrintButton label="Print response" />
-          </div>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-sky-700">Your submission</p>

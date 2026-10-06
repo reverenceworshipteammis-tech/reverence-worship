@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
 import { parseQuestionImages } from "@/lib/intercession-question-images";
 import { parseIntercessionQuestionCondition } from "@/lib/intercession-form-rules";
-import { intercessionFormAvailability, parseIntercessionFormSettings } from "@/lib/intercession-form-domain";
+import { intercessionFormAvailability, intercessionFormIsPublished, intercessionFormPublicationStatus, parseIntercessionFormSettings } from "@/lib/intercession-form-domain";
 import { kigaliDateKey } from "@/lib/calendar-date";
 
 function formatDate(date: Date) {
@@ -13,6 +13,18 @@ function formatDate(date: Date) {
     month: "short",
     day: "2-digit",
     year: "numeric",
+    timeZone: "Africa/Kigali",
+  }).format(date);
+}
+
+function formatDateTime(date: Date) {
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
     timeZone: "Africa/Kigali",
   }).format(date);
 }
@@ -127,7 +139,8 @@ export default async function IntercessionPage({ searchParams }: { searchParams:
       description: form.description,
       questions,
       questionCount: questions.length,
-      isPublished: Boolean(settings.is_published),
+      isPublished: intercessionFormIsPublished(parsedSettings),
+      publicationStatus: intercessionFormPublicationStatus(parsedSettings),
       limitOneResponse: settings.limit_one_response !== false,
       isActive: form.isActive,
       availabilityMessage: intercessionFormAvailability(parsedSettings, form.isActive, form._count.submissions),
@@ -199,7 +212,7 @@ export default async function IntercessionPage({ searchParams }: { searchParams:
           formTitle: submission.form.title,
           formDescription: submission.form.description,
           questionCount: questions.length,
-          submittedAt: formatDate(submission.submittedAt),
+          submittedAt: formatDateTime(submission.submittedAt),
           score: canViewScore ? submission.score : null,
           earnedPoints: canViewScore && submission.score !== null && totalPoints > 0 ? earnedPoints : null,
           totalPoints: canViewScore && submission.score !== null && totalPoints > 0 ? totalPoints : null,
