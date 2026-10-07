@@ -106,7 +106,7 @@ export function IntercessionTakeForm({
     score: number | null;
     earnedPoints: number | null;
     totalPoints: number | null;
-    responseDetails: Array<{ questionIndex: number; question: string; type: string; answer: string; correctResponse: string | null; correct: boolean | null; earnedPoints: number; points: number }>;
+    responseDetails: Array<{ questionIndex: number; question: string; type: string; answer: string; correctResponse: string | null; correct: boolean | null; partialCreditDeducted: boolean; earnedPoints: number; points: number }>;
     editUrl: string;
   } | null>(null);
   const startedAt = useRef(new Date().toISOString());
@@ -283,7 +283,7 @@ export function IntercessionTakeForm({
                   <p className="whitespace-pre-wrap break-words text-sm leading-6 text-green-900">{detail.correctResponse}</p>
                 </div>
               ) : null}
-              {settings.allow_partial_points !== false && detail.correct === false && ["checkboxes", "checkbox_grid"].includes(detail.type) ? (
+              {detail.partialCreditDeducted ? (
                 <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-5 text-amber-900">
                   Marking rule: If you choose one wrong answer, you lose the credit for one correct answer.
                 </p>

@@ -17,6 +17,7 @@ import {
   intercessionFormAvailability,
   intercessionFormIsPublished,
   intercessionGuestFieldConfigurationIssue,
+  intercessionPartialCreditWasDeducted,
   isIntercessionAnswerable,
   normalizeIntercessionRespondentName,
   parseIntercessionVisitorFields,
@@ -118,7 +119,8 @@ function formatImmediateAnswer(value: IntercessionFormAnswer | undefined, rows: 
 }
 
 function formatCorrectAnswer(question: IntercessionFormQuestion) {
-  if (Array.isArray(question.correctAnswers)) return question.correctAnswers.join(", ");
+  if (question.type === "checkboxes" && Array.isArray(question.correctAnswers)) return question.correctAnswers.join(", ");
+  if (!["multiple_choice_grid", "checkbox_grid"].includes(question.type)) return question.correctAnswer;
   const lines = Object.entries(question.correctAnswers).map(([key, answer], index) => {
     const rowIndex = Number(key.match(/_(\d+)$/)?.[1] ?? index);
     const label = question.rows[rowIndex] ?? `Row ${rowIndex + 1}`;
@@ -216,8 +218,15 @@ function sanitizeBuilderQuestions(value: unknown[]) {
     .map((question): Record<string, unknown> | null => {
       if (!question || typeof question !== "object" || Array.isArray(question)) return null;
       const item = question as Record<string, unknown>;
+      const type = typeof item.type === "string" ? item.type : "short_answer";
       return {
         ...item,
+        correctAnswer: ["checkboxes", "multiple_choice_grid", "checkbox_grid"].includes(type) ? null : item.correctAnswer,
+        correctAnswers: type === "checkboxes"
+          ? (Array.isArray(item.correctAnswers) ? item.correctAnswers : null)
+          : ["multiple_choice_grid", "checkbox_grid"].includes(type)
+            ? (item.correctAnswers && typeof item.correctAnswers === "object" && !Array.isArray(item.correctAnswers) ? item.correctAnswers : null)
+            : null,
         id: typeof item.id === "string" && item.id ? item.id.slice(0, 100) : crypto.randomUUID(),
         images: parseQuestionImages(item.images),
         condition: parseIntercessionQuestionCondition(item.condition),
@@ -1079,6 +1088,7 @@ export async function submitSpiritualForm(formId: number, formData: FormData) {
           answer,
           correctResponse: correctResponse || null,
           correct: grade?.correct ?? null,
+          partialCreditDeducted: settings.allow_partial_points && intercessionPartialCreditWasDeducted(question, rawAnswer, questionIndex),
           earnedPoints: grade?.earnedPoints ?? 0,
           points: grade?.points ?? 0,
         }];

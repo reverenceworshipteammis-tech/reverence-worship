@@ -11,7 +11,7 @@ import { prisma } from "@/lib/prisma";
 import { IntercessionRichText } from "@/components/intercession-rich-text";
 import { IntercessionQuestionImages } from "@/components/intercession-question-images";
 import { parseQuestionImages, type IntercessionQuestionImage } from "@/lib/intercession-question-images";
-import { formatIntercessionMarks } from "@/lib/intercession-form-domain";
+import { formatIntercessionMarks, intercessionPartialCreditWasDeducted } from "@/lib/intercession-form-domain";
 
 type Question = {
   index: number;
@@ -59,7 +59,8 @@ function parseQuestions(value: unknown): Question[] {
 }
 
 function correctAnswerText(question: Question) {
-  if (Array.isArray(question.correctAnswers)) return question.correctAnswers.join(", ");
+  if (question.type === "checkboxes" && Array.isArray(question.correctAnswers)) return question.correctAnswers.join(", ");
+  if (!["multiple_choice_grid", "checkbox_grid"].includes(question.type)) return question.correctAnswer;
   const gridAnswers = Object.entries(question.correctAnswers).map(([key, answer], index) => {
     const rowIndex = Number(key.match(/_(\d+)$/)?.[1] ?? index);
     const rowLabel = question.rows[rowIndex] ?? `Row ${rowIndex + 1}`;
@@ -259,7 +260,7 @@ export default async function MemberSubmissionResultPage({
                           <p className="whitespace-pre-wrap break-words text-sm leading-6 text-green-900">{correctAnswerText(question)}</p>
                         </div>
                       ) : null}
-                      {resultInput.isQuiz && canViewScore && allowPartialPoints && grade === false && ["checkboxes", "checkbox_grid"].includes(question.type) ? (
+                      {resultInput.isQuiz && canViewScore && allowPartialPoints && intercessionPartialCreditWasDeducted(question, answers[`question_${question.index}`], question.index) ? (
                         <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-5 text-amber-900">
                           Marking rule: If you choose one wrong answer, you lose the credit for one correct answer.
                         </p>

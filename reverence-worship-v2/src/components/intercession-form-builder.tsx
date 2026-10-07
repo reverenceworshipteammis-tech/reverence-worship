@@ -190,9 +190,12 @@ function normalizeQuestion(question: Partial<BuilderQuestion & { text?: string; 
   const type = question.type && ["short_answer", "paragraph", "multiple_choice", "checkboxes", "dropdown", "linear_scale", "rating", "multiple_choice_grid", "checkbox_grid", "date", "time", "file_upload", "title_section", "section_break"].includes(question.type)
     ? question.type
     : "short_answer";
-  const correctAnswers = Array.isArray(question.correctAnswers)
+  const correctAnswers = type === "checkboxes" && Array.isArray(question.correctAnswers)
     ? question.correctAnswers.filter((answer): answer is string => typeof answer === "string")
     : [];
+  const gridCorrectAnswers = ["multiple_choice_grid", "checkbox_grid"].includes(type)
+    ? asGridCorrectAnswers(question.correctAnswers)
+    : {};
 
   return {
     id: question.id || crypto.randomUUID(),
@@ -202,11 +205,11 @@ function normalizeQuestion(question: Partial<BuilderQuestion & { text?: string; 
     required: question.required !== false,
     options: Array.isArray(question.options) && question.options.length ? question.options.filter((option): option is string => typeof option === "string") : ["Option 1"],
     points: Number(question.points ?? 1),
-    correctAnswer: typeof question.correctAnswer === "string" ? question.correctAnswer : "",
+    correctAnswer: ["checkboxes", "multiple_choice_grid", "checkbox_grid"].includes(type) ? "" : typeof question.correctAnswer === "string" ? question.correctAnswer : "",
     correctAnswers,
     rows: Array.isArray(question.rows) && question.rows.length ? question.rows.filter((row): row is string => typeof row === "string") : ["Row 1"],
     columns: Array.isArray(question.columns) && question.columns.length ? question.columns.filter((column): column is string => typeof column === "string") : ["Column 1"],
-    gridCorrectAnswers: asGridCorrectAnswers(question.correctAnswers),
+    gridCorrectAnswers,
     min: Number(question.min ?? 1),
     max: Number(question.max ?? 5),
     images: parseQuestionImages(question.images),
@@ -394,10 +397,10 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
         required: question.required,
         options: question.options.filter(Boolean),
         points: question.points,
-        correctAnswer: question.correctAnswer || null,
-        correctAnswers: ["multiple_choice_grid", "checkbox_grid"].includes(question.type)
-          ? question.gridCorrectAnswers
-          : question.correctAnswers.length ? question.correctAnswers : null,
+        correctAnswer: ["checkboxes", "multiple_choice_grid", "checkbox_grid"].includes(question.type) ? null : question.correctAnswer || null,
+        correctAnswers: question.type === "checkboxes"
+          ? question.correctAnswers.length ? question.correctAnswers : null
+          : ["multiple_choice_grid", "checkbox_grid"].includes(question.type) ? question.gridCorrectAnswers : null,
         rows: question.rows.filter(Boolean),
         columns: question.columns.filter(Boolean),
         min: question.min,
@@ -442,10 +445,10 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
       options: question.options.filter(Boolean),
       rows: question.rows.filter(Boolean),
       columns: question.columns.filter(Boolean),
-      correctAnswer: question.correctAnswer || null,
-      correctAnswers: ["multiple_choice_grid", "checkbox_grid"].includes(question.type)
-        ? question.gridCorrectAnswers
-        : question.correctAnswers.length ? question.correctAnswers : null,
+      correctAnswer: ["checkboxes", "multiple_choice_grid", "checkbox_grid"].includes(question.type) ? null : question.correctAnswer || null,
+      correctAnswers: question.type === "checkboxes"
+        ? question.correctAnswers.length ? question.correctAnswers : null
+        : ["multiple_choice_grid", "checkbox_grid"].includes(question.type) ? question.gridCorrectAnswers : null,
     }))));
     formData.set("settings", JSON.stringify(snapshot.settings));
     return formData;

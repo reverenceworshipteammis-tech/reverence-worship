@@ -149,13 +149,14 @@ export function getIntercessionPublishingIssues(
       if (!Number.isFinite(points) || points < 0) {
         issues.push({ id: `${id}-points`, questionId: id, message: `${prefix} needs a point value of zero or greater.` });
       }
-      if (points <= 0) return;
+      const requiresCorrectAnswer = Number.isFinite(points) && points > 0;
       const hasSingleAnswer = typeof question.correctAnswer === "string" && Boolean(question.correctAnswer.trim());
       const correctAnswers = question.correctAnswers;
-      const hasManyAnswers = Array.isArray(correctAnswers)
-        ? asStrings(correctAnswers).length > 0
-        : Object.values(asRecord(correctAnswers)).some((answer) => Array.isArray(answer) ? asStrings(answer).length > 0 : typeof answer === "string" && Boolean(answer.trim()));
-      if (!hasSingleAnswer && !hasManyAnswers) {
+      const hasManyAnswers = type === "checkboxes" && Array.isArray(correctAnswers) && asStrings(correctAnswers).length > 0;
+      const missingCorrectAnswer = ["multiple_choice_grid", "checkbox_grid"].includes(type)
+        ? false
+        : type === "checkboxes" ? !hasManyAnswers : !hasSingleAnswer;
+      if (requiresCorrectAnswer && missingCorrectAnswer) {
         issues.push({ id: `${id}-correct-answer`, questionId: id, message: `${prefix} needs a correct answer for the quiz.` });
       }
       if (["multiple_choice", "dropdown"].includes(type) && hasSingleAnswer && !asStrings(question.options).includes(String(question.correctAnswer))) {
@@ -173,7 +174,7 @@ export function getIntercessionPublishingIssues(
         rows.forEach((_row, rowIndex) => {
           const rowAnswer = gridAnswers[String(rowIndex)] ?? gridAnswers[`row_${rowIndex}`] ?? gridAnswers[`question_${index}_${rowIndex}`];
           const expected = Array.isArray(rowAnswer) ? asStrings(rowAnswer) : typeof rowAnswer === "string" && rowAnswer.trim() ? [rowAnswer] : [];
-          if (expected.length === 0) issues.push({ id: `${id}-correct-row-${rowIndex}`, questionId: id, message: `${prefix}, row ${rowIndex + 1} needs a correct answer.` });
+          if (requiresCorrectAnswer && expected.length === 0) issues.push({ id: `${id}-correct-row-${rowIndex}`, questionId: id, message: `${prefix}, row ${rowIndex + 1} needs a correct answer.` });
           else if (expected.some((answer) => !columns.includes(answer))) issues.push({ id: `${id}-correct-row-option-${rowIndex}`, questionId: id, message: `${prefix}, row ${rowIndex + 1} has a correct answer outside its columns.` });
         });
       }

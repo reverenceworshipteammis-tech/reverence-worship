@@ -346,6 +346,35 @@ function selectionCredit(expected: string[], actual: string[], allowPartial: boo
   return Math.max(0, Math.min(1, (correctSelected - incorrectSelected) / expected.length));
 }
 
+export function intercessionPartialCreditWasDeducted(
+  question: Pick<IntercessionFormQuestion, "type" | "rows" | "correctAnswers">,
+  submitted: unknown,
+  questionIndex: number,
+) {
+  let expected: string[] = [];
+  let actual: string[] = [];
+  if (question.type === "checkboxes") {
+    expected = answerValues(question.correctAnswers);
+    actual = answerValues(submitted);
+  } else if (question.type === "checkbox_grid") {
+    const submittedRows = record(submitted);
+    const correctRows = record(question.correctAnswers);
+    expected = question.rows.flatMap((_, rowIndex) =>
+      answerValues(correctRows[`row_${rowIndex}`] ?? correctRows[String(rowIndex)] ?? correctRows[`question_${questionIndex}_${rowIndex}`])
+        .map((value) => `${rowIndex}:${value}`),
+    );
+    actual = question.rows.flatMap((_, rowIndex) =>
+      answerValues(submittedRows[`row_${rowIndex}`] ?? submittedRows[`question_${questionIndex}_${rowIndex}`])
+        .map((value) => `${rowIndex}:${value}`),
+    );
+  } else {
+    return false;
+  }
+  const correctSelected = actual.filter((item) => expected.includes(item)).length;
+  const incorrectSelected = actual.filter((item) => !expected.includes(item)).length;
+  return correctSelected > 0 && incorrectSelected > 0;
+}
+
 export function scoreIntercessionQuiz(questions: IntercessionFormQuestion[], answers: Record<string, IntercessionFormAnswer>, visibleIndexes: Set<number>, partial: boolean) {
   const grades: Array<{ questionIndex: number; correct: boolean; points: number; earnedPoints: number }> = [];
   let earned = 0;

@@ -11,6 +11,7 @@ import {
   parseIntercessionVisitorFields,
   parseIntercessionFormQuestions,
   parseIntercessionFormSettings,
+  intercessionPartialCreditWasDeducted,
   scoreIntercessionQuiz,
   visibleIntercessionQuestions,
 } from "../src/lib/intercession-form-domain";
@@ -70,6 +71,21 @@ test("quiz scoring supports exact and partial checkbox marks", () => {
   const result = scoreIntercessionQuiz(questions, { question_0: "yes", question_1: ["A"] }, new Set([0, 1]), true);
   assert.equal(result.score, 75);
   assert.equal(result.earnedPoints, 3);
+});
+
+test("partial credit notice only appears when wrong checkbox selections cancel correct selections", () => {
+  const checkbox = parseIntercessionFormQuestions([
+    { id: "check", type: "checkboxes", label: "Select", points: 2, correctAnswers: ["A", "B"] },
+  ])[0];
+  assert.equal(intercessionPartialCreditWasDeducted(checkbox, ["A"], 0), false);
+  assert.equal(intercessionPartialCreditWasDeducted(checkbox, ["A", "C"], 0), true);
+  assert.equal(intercessionPartialCreditWasDeducted(checkbox, ["C"], 0), false);
+
+  const grid = parseIntercessionFormQuestions([
+    { id: "grid", type: "checkbox_grid", label: "Grid", rows: ["Row"], columns: ["A", "B"], correctAnswers: { row_0: ["A", "B"] } },
+  ])[0];
+  assert.equal(intercessionPartialCreditWasDeducted(grid, { row_0: ["A"] }, 0), false);
+  assert.equal(intercessionPartialCreditWasDeducted(grid, { row_0: ["A", "C"] }, 0), true);
 });
 
 test("checkbox partial grading rewards correct choices without subtracting for wrong choices", () => {
