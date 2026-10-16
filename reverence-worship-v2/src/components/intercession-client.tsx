@@ -278,6 +278,7 @@ export function IntercessionClient({
   forms,
   mySubmissions,
   reportRows,
+  reportFormActivity,
   actionPlans,
 }: {
   initialTab: "forms" | "bible";
@@ -287,6 +288,7 @@ export function IntercessionClient({
   forms: SpiritualForm[];
   mySubmissions: FormSubmission[];
   reportRows: ReportRow[];
+  reportFormActivity: Array<{ formId: number; submittedAt: string }>;
   actionPlans: IntercessionActionPlan[];
 }) {
   const router = useRouter();
@@ -313,8 +315,18 @@ export function IntercessionClient({
   const [weekValue] = useState(() => addCalendarDays(kigaliDateKey(), 7));
   const [isPending, startTransition] = useTransition();
 
-  const reportForms = forms.filter((form) => form.isPublished && form.isActive);
-  const publishedForms = permissions.canSubmitForms ? reportForms : [];
+  const reportForms = forms.filter((form) => form.isActive && form.submissionsCount > 0);
+  const reportFormIdsInRange = new Set(
+    reportFormActivity
+      .filter((submission) =>
+        (!reportDateFrom || submission.submittedAt >= reportDateFrom) &&
+        (!reportDateTo || submission.submittedAt <= reportDateTo),
+      )
+      .map((submission) => submission.formId)
+      .filter((formId) => reportForms.some((form) => form.id === formId)),
+  );
+  const filteredReportForms = reportForms.filter((form) => reportFormIdsInRange.has(form.id));
+  const publishedForms = permissions.canSubmitForms ? forms.filter((form) => form.isPublished && form.isActive) : [];
   const filteredForms = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     const byStatus = forms.filter((form) => form.isActive === (manageStatus === "active"));
@@ -342,21 +354,30 @@ export function IntercessionClient({
 
   const filteredReportRows = useMemo(() => {
     const normalized = reportSearch.trim().toLowerCase();
-    return reportRows.filter((row) => {
-      const matchesStatus = reportStatus === "all" || row.status === reportStatus;
+    return reportRows.map((row) => {
+      const inRange = row.submissions.filter((submission) =>
+        (!reportDateFrom || submission.submittedAt >= reportDateFrom) &&
+        (!reportDateTo || submission.submittedAt <= reportDateTo),
+      );
+      const submitted = new Set(inRange.map((submission) => submission.formId)).size;
+      const totalForms = filteredReportForms.length;
+      const status = submitted === 0 ? "Not Started" : submitted >= totalForms ? "Complete" : "Partial";
+      const scopedRow = {
+        ...row,
+        submitted,
+        totalForms,
+        participation: totalForms ? Math.round((submitted / totalForms) * 1000) / 10 : 0,
+        latestSubmittedAt: inRange.map((submission) => submission.submittedAt).sort().at(-1) ?? null,
+        status,
+      };
+      const matchesStatus = reportStatus === "all" || scopedRow.status === reportStatus;
       const membershipType = row.membershipType ?? "unspecified";
       const matchesMembershipType = reportMembershipType === "all" || membershipType === reportMembershipType;
       const matchesSearch = !normalized || row.name.toLowerCase().includes(normalized);
-      const matchesFrom = !reportDateFrom || (row.latestSubmittedAt !== null && row.latestSubmittedAt >= reportDateFrom);
-      const matchesTo = !reportDateTo || (row.latestSubmittedAt !== null && row.latestSubmittedAt <= reportDateTo);
-
-      if (row.status === "Not Started" && (reportDateFrom || reportDateTo)) {
-        return matchesStatus && matchesMembershipType && matchesSearch && false;
-      }
-
-      return matchesStatus && matchesMembershipType && matchesSearch && matchesFrom && matchesTo;
-    });
-  }, [reportRows, reportSearch, reportStatus, reportMembershipType, reportDateFrom, reportDateTo]);
+      const hasRangeSubmission = !reportDateFrom && !reportDateTo || inRange.length > 0;
+      return matchesStatus && matchesMembershipType && matchesSearch && hasRangeSubmission ? scopedRow : null;
+    }).filter((row): row is ReportRow => row !== null);
+  }, [reportRows, reportSearch, reportStatus, reportMembershipType, reportDateFrom, reportDateTo, filteredReportForms.length]);
 
   const reportSummary = useMemo(() => {
     return {
@@ -1301,7 +1322,7 @@ export function IntercessionClient({
                       between <strong>{reportDateFrom || "start"}</strong> and <strong>{reportDateTo || "today"}</strong>
                     </>
                   ) : null}
-                  . <span className="ml-1">Forms found: <strong>{reportForms.length}</strong></span>
+                  . <span className="ml-1">Forms found: <strong>{filteredReportForms.length}</strong></span>
                 </p>
               </div>
 
@@ -1540,7 +1561,7 @@ export function IntercessionClient({
       {reportDetail ? (
         <ReportDetailModal
           row={reportDetail}
-          forms={reportForms}
+          forms={filteredReportForms}
           onClose={() => setReportDetail(null)}
         />
       ) : null}

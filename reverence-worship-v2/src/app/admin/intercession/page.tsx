@@ -168,8 +168,8 @@ export default async function IntercessionPage({ searchParams }: { searchParams:
       },
     };
   });
-  const activePublishedFormIds = new Set(
-    serializedForms.filter((form) => form.isPublished && form.isActive).map((form) => form.id),
+  const reportFormIds = new Set(
+    serializedForms.filter((form) => form.isActive && form.submissionsCount > 0).map((form) => form.id),
   );
   const submissionsByUser = new Map<number, Array<{
     id: number;
@@ -220,17 +220,14 @@ export default async function IntercessionPage({ searchParams }: { searchParams:
         };
       })}
       reportRows={users.map((reportUser) => {
-        const totalForms = activePublishedFormIds.size;
+        const totalForms = reportFormIds.size;
         const submitted = submissionsByUser.get(reportUser.id) ?? [];
-        const submittedPublishedCount = new Set(
-          submitted
-            .filter((submission) => activePublishedFormIds.has(submission.formId))
-            .map((submission) => submission.formId),
-        ).size;
-        const participation = totalForms ? Math.round((submittedPublishedCount / totalForms) * 1000) / 10 : 0;
-        const scores = submitted.map((submission) => submission.score).filter((score): score is number => typeof score === "number");
+        const reportSubmissions = submitted.filter((submission) => reportFormIds.has(submission.formId));
+        const submittedFormCount = new Set(reportSubmissions.map((submission) => submission.formId)).size;
+        const participation = totalForms ? Math.round((submittedFormCount / totalForms) * 1000) / 10 : 0;
+        const scores = reportSubmissions.map((submission) => submission.score).filter((score): score is number => typeof score === "number");
         const averageScore = scores.length ? Math.round((scores.reduce((sum, score) => sum + score, 0) / scores.length) * 10) / 10 : null;
-        const latestSubmittedAt = submitted
+        const latestSubmittedAt = reportSubmissions
           .map((submission) => submission.submittedAt)
           .sort((a, b) => b.getTime() - a.getTime())[0];
 
@@ -238,19 +235,23 @@ export default async function IntercessionPage({ searchParams }: { searchParams:
           id: reportUser.id,
           name: reportUser.name,
           membershipType: reportUser.membershipType,
-          submissions: submitted.map((submission) => ({
+          submissions: reportSubmissions.map((submission) => ({
             formId: submission.formId,
             score: submission.score,
             submittedAt: kigaliDateKey(submission.submittedAt),
           })),
-          submitted: submittedPublishedCount,
+          submitted: submittedFormCount,
           totalForms,
           participation,
           averageScore,
           latestSubmittedAt: latestSubmittedAt ? kigaliDateKey(latestSubmittedAt) : null,
-          status: totalForms === 0 || submittedPublishedCount === 0 ? "Not Started" : submittedPublishedCount === totalForms ? "Complete" : "Partial",
+          status: totalForms === 0 || submittedFormCount === 0 ? "Not Started" : submittedFormCount === totalForms ? "Complete" : "Partial",
         };
       })}
+      reportFormActivity={allSubmissions.map((submission) => ({
+        formId: submission.formId,
+        submittedAt: kigaliDateKey(submission.submittedAt),
+      }))}
       actionPlans={actionPlans.map((plan) => ({
         id: plan.id,
         title: plan.title,

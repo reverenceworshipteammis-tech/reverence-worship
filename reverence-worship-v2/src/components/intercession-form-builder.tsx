@@ -45,6 +45,8 @@ import { IntercessionTakeForm } from "@/components/intercession-take-form";
 import { intercessionRichTextToPlainText } from "@/lib/intercession-rich-text";
 import {
   DEFAULT_INTERCESSION_VISITOR_FIELDS,
+  formatIntercessionMarks,
+  isIntercessionAnswerable,
   parseIntercessionVisitorFields,
   type IntercessionVisitorField,
 } from "@/lib/intercession-form-domain";
@@ -165,7 +167,7 @@ function asGridCorrectAnswers(value: unknown): Record<string, string | string[]>
   return Object.fromEntries(entries);
 }
 
-function newQuestion(type: QuestionType = "short_answer", required = true): BuilderQuestion {
+function newQuestion(type: QuestionType = "multiple_choice", required = true): BuilderQuestion {
   return {
     id: crypto.randomUUID(),
     type,
@@ -366,7 +368,7 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
   const [title, setTitle] = useState(initialData?.title ?? "");
   const [description, setDescription] = useState(initialData?.description ?? "");
   const [questions, setQuestions] = useState<BuilderQuestion[]>(
-    initialData?.questions ? initialData.questions.map(normalizeQuestion) : [newQuestion("short_answer", defaultSettings.default_required)],
+    initialData?.questions ? initialData.questions.map(normalizeQuestion) : [newQuestion("multiple_choice", defaultSettings.default_required)],
   );
   const [selectedQuestionId, setSelectedQuestionId] = useState<string | null>(null);
   const [draggingQuestionId, setDraggingQuestionId] = useState<string | null>(null);
@@ -385,6 +387,10 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
   const [isPending, startTransition] = useTransition();
 
   const [settings, setSettings] = useState<BuilderSettings>(normalizeBuilderSettings(initialData?.settings));
+  const totalMarks = questions.reduce(
+    (total, question) => total + (isIntercessionAnswerable(question.type) && question.type !== "file_upload" ? Math.max(0, question.points || 0) : 0),
+    0,
+  );
 
   const savableQuestions = useMemo(
     () =>
@@ -480,7 +486,7 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
             const restored: BuilderSnapshot = {
               title: typeof parsed.title === "string" ? parsed.title : "",
               description: typeof parsed.description === "string" ? parsed.description : "",
-              questions: Array.isArray(parsed.questions) ? parsed.questions.map(normalizeQuestion) : [newQuestion("short_answer", Boolean(parsed.settings?.default_required))],
+              questions: Array.isArray(parsed.questions) ? parsed.questions.map(normalizeQuestion) : [newQuestion("multiple_choice", Boolean(parsed.settings?.default_required))],
               settings: normalizeBuilderSettings(parsed.settings),
             };
             applySnapshot(restored);
@@ -552,7 +558,7 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
     )));
   }
 
-  function addQuestion(type: QuestionType = "short_answer", afterId = selectedQuestionId) {
+  function addQuestion(type: QuestionType = "multiple_choice", afterId = selectedQuestionId) {
     const question = newQuestion(type, ["title_section", "section_break"].includes(type) ? false : settings.default_required);
     setQuestions((current) => {
       if (!afterId) return [...current, question];
@@ -674,7 +680,7 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
   return (
     <div className="min-h-screen bg-slate-50 px-3 py-5 sm:px-5">
       <form onSubmit={submit}>
-        <div className="mx-auto mb-5 max-w-5xl overflow-hidden rounded-xl border border-gray-200 bg-white shadow-[0_8px_28px_rgba(15,23,42,0.05)]">
+        <div className="sticky top-0 z-40 mx-auto mb-5 max-w-5xl rounded-xl border border-gray-200 bg-white shadow-[0_8px_28px_rgba(15,23,42,0.05)]">
           <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
             <div>
               <Link href="/admin/intercession?section=manage" onClick={async (event) => {
@@ -691,8 +697,7 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
                 <ArrowLeft className="size-4" aria-hidden="true" />
                 Manage Forms
               </Link>
-              <h1 className="mt-1 text-xl font-bold text-gray-900">{isEditing ? "Edit form" : "Create a new form"}</h1>
-
+              {!isEditing ? <h1 className="mt-1 text-xl font-bold text-gray-900">Create a new form</h1> : null}
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
               <button type="button" onClick={undo} disabled={pastSnapshots.length === 0} className="inline-flex size-10 items-center justify-center rounded-lg border border-blue-200 text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-35" title="Undo" aria-label="Undo last change">
@@ -718,6 +723,11 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
                 <Check className="size-4" aria-hidden="true" />
                 {activeImageUploads > 0 ? "Uploading images…" : isPending ? "Saving…" : isEditing ? "Save form" : "Create form"}
               </button>
+              {settings.is_quiz ? (
+                <span className="inline-flex min-h-10 items-center rounded-lg border border-green-200 bg-green-50 px-3 text-sm font-semibold text-green-800" aria-live="polite">
+                  {formatIntercessionMarks(totalMarks)} Points
+                </span>
+              ) : null}
             </div>
           </div>
           <div className="flex gap-6 border-t border-gray-100 px-4 text-sm font-semibold text-gray-500 sm:px-5">
@@ -848,7 +858,7 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
                       updateQuestion(question.id, { images: question.images.filter((_, imageIndex) => imageIndex !== index) });
                       removedImagePathsRef.current.add(image.path);
                     }}
-                    onAddQuestion={() => addQuestion("short_answer", question.id)}
+                    onAddQuestion={() => addQuestion("multiple_choice", question.id)}
                     onAddTitle={() => addQuestion("title_section", question.id)}
                     onAddSection={() => addQuestion("section_break", question.id)}
                     onDuplicate={() => duplicateQuestion(question.id)}
