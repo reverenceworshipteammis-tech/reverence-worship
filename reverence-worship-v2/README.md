@@ -16,6 +16,22 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Annual membership commitments
+
+Open **Intercession → Forms → Manage → Create form → Templates → Annual commitment**. Set the year, member fields and editing permissions. Add the description and extra questions with the existing builder, preview, and publish. Submitting the form records the member's commitment; there is no separate terms or acceptance section. Duplicate a previous commitment to prepare the following year.
+
+Members use their existing accounts to review prefilled information and submit their commitment. Submitted profile information, answers, and submission times are preserved independently of later profile or form changes. **My Results → My annual commitments** opens a member's history. **Reports → Annual membership commitments** shows accepted and pending members, reminders, and Excel/PDF exports.
+
+To let members choose their membership in a commitment question, select **Membership type** from the question type menu. A new question starts with three bilingual answer choices mapped to **Permanent**, **Temporary**, and **Partner**. You can edit the answer wording and use the dropdown beside each answer to change its mapping. The question starts optional; the administrator can turn on **Required**. One unconditional question can control membership per form. On submission, a selected answer updates a signed-in member's account in the same transaction as their response and commitment. An unanswered optional question leaves the member's current type unchanged. The profile membership field shows the current type; the question supplies the new type. Translated labels are independent of stored membership values. The submitted snapshot and audit record preserve the choice and any change. Other editable profile fields are applied on submission too.
+
+Before deploying this version, run `npm run db:deploy`, then `npm run build`. The database migration adds the annual commitment records without changing existing membership enum values. `npm test` runs the regular regression suite. To run the database concurrency and history checks in an isolated schema using PowerShell:
+
+```powershell
+$env:RUN_COMMITMENT_DATABASE_TEST = '1'
+npx tsx --test tests/membership-commitment-database.test.ts
+Remove-Item Env:RUN_COMMITMENT_DATABASE_TEST
+```
+
 ## Projection
 
 Open **Music → Playlist → Projection** to present song lyrics or Bible passages. The operator screen includes playlist selection, Bible translation comparison, slide previews, themes, overlays, blanking, keyboard controls, display detection, and a dedicated audience-only output.

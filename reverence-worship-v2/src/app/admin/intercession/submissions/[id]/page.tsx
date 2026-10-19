@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, CalendarDays, CheckCircle2, FileText, Lock } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import {
@@ -155,10 +155,11 @@ export default async function MemberSubmissionResultPage({
 
   const submission = await prisma.formSubmission.findFirst({
     where: { id: submissionId, userId: user.id, deletedAt: null },
-    include: { form: true },
+    include: { form: true, commitment: { select: { id: true } } },
   });
 
   if (!submission) notFound();
+  if (submission.commitment) redirect(`/admin/intercession/commitments/${submission.commitment.id}`);
 
   const settings = asObject(submission.form.settings);
   const answers = asObject(submission.answers);

@@ -64,6 +64,7 @@ import { bibleBooks, bibleVersions } from "@/lib/bible-data";
 import type { IntercessionQuestionImage } from "@/lib/intercession-question-images";
 import type { IntercessionQuestionCondition } from "@/lib/intercession-form-rules";
 import { formatIntercessionMarks } from "@/lib/intercession-form-domain";
+import type { CommitmentSettings } from "@/lib/membership-commitment";
 import { useDialogFocusTrap } from "@/hooks/use-dialog-focus-trap";
 
 type Question = {
@@ -82,6 +83,7 @@ type Question = {
 };
 
 type FormPreviewSettings = {
+  commitment?: CommitmentSettings | null;
   limit_one_response: boolean;
   show_progress_bar: boolean;
   shuffle_questions: boolean;
@@ -943,7 +945,7 @@ export function IntercessionClient({
 
           {activeFormSection === "results" && (
             <section>
-              <h2 className="mx-auto mb-4 max-w-5xl text-lg font-bold text-gray-900">My Results</h2>
+              <div className="mx-auto mb-4 flex max-w-5xl flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-bold text-gray-900">My Results</h2><Link href="/admin/intercession/commitments/mine" className="text-sm font-semibold text-blue-700">My annual commitments</Link></div>
               <div className="mx-auto max-w-5xl space-y-3">
                 {submissionGroups.length ? (
                   submissionGroups.map((group) => (
@@ -1227,6 +1229,7 @@ export function IntercessionClient({
 
           {canViewReports && activeFormSection === "reports" && (
             <section className="space-y-5">
+              <Link href="/admin/intercession/commitments" className="flex items-center justify-between gap-4 rounded-xl border border-blue-200 bg-blue-50 p-5 text-blue-800 transition hover:bg-blue-100"><span><strong className="block">Annual membership commitments</strong><span className="mt-1 block text-sm">Accepted and pending members, profile changes, previous years, reminders, and exports.</span></span><ChevronRight className="size-5 shrink-0" aria-hidden="true" /></Link>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <h2 className="text-lg font-bold text-gray-900">Reports</h2>
                 <div className="text-sm text-gray-500">Participation across published forms</div>

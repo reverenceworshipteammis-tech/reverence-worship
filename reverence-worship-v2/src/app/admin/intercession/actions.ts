@@ -3,8 +3,10 @@
 import { createHash, randomBytes } from "crypto";
 import { mkdir, unlink, writeFile } from "fs/promises";
 import path from "path";
+import { isDeepStrictEqual } from "node:util";
 import { del as deleteBlob, put } from "@vercel/blob";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import type { Prisma } from "@/generated/prisma/client";
 import { getCurrentUser, requireAnyPermission, requirePermission } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -36,6 +38,9 @@ import {
   questionImagePaths,
 } from "@/lib/intercession-question-images";
 import { intercessionAnswerForQuestion, intercessionSubmissionQuestions } from "@/lib/intercession-response-data";
+import { commitmentAcceptanceLabel, parseCommitmentSettings } from "@/lib/membership-commitment";
+import { prepareCommitmentFormSettings } from "@/lib/membership-commitment-service";
+import { recordMembershipCommitment } from "@/lib/membership-commitment-record";
 
 const QUESTION_IMAGE_MIME_EXTENSIONS: Record<string, string> = {
   "image/jpeg": ".jpg",
@@ -71,9 +76,12 @@ function publicAppUrl(pathname: string) {
   return base ? `${base}${pathname}` : pathname;
 }
 
-async function notifyFormPublished(form: { id: number; title: string }, event: string) {
+async function notifyFormPublished(form: { id: number; title: string; settings?: unknown }, event: string) {
+  const commitment = parseCommitmentSettings((form.settings as Record<string, unknown> | null)?.commitment);
+  const permittedIds = await userIdsWithPermission("intercession", "submit-forms");
+  const userIds = commitment ? (await prisma.user.findMany({ where: { id: { in: permittedIds }, status: "active", membershipType: { in: commitment.membershipTypes } }, select: { id: true } })).map((user) => user.id) : permittedIds;
   await notifyUsers({
-    userIds: await userIdsWithPermission("intercession", "submit-forms"),
+    userIds,
     type: "form", title: "New form published", message: `${intercessionRichTextToPlainText(form.title)} is now available for submission.`,
     link: `/admin/intercession/forms/${form.id}/take`, sourceType: "spiritual_form", sourceId: form.id,
     dedupeKey: `form:${form.id}:published:${event}`,
@@ -291,6 +299,10 @@ async function deleteQuestionImagesIfUnreferenced(paths: string[]) {
 
   const forms = await prisma.spiritualForm.findMany({ select: { questions: true } });
   const referencedPaths = new Set(forms.flatMap((form) => questionImagePaths(form.questions)));
+  const snapshots = await prisma.formSubmission.findMany({ select: { questionSnapshot: true } });
+  snapshots.flatMap((submission) => questionImagePaths(submission.questionSnapshot)).forEach((imagePath) => referencedPaths.add(imagePath));
+  const commitments = await prisma.membershipCommitment.findMany({ select: { snapshot: true } });
+  commitments.flatMap((record) => questionImagePaths((record.snapshot as Record<string, unknown> | null)?.questions)).forEach((imagePath) => referencedPaths.add(imagePath));
   await Promise.all(candidates.filter((imagePath) => !referencedPaths.has(imagePath)).map(deleteQuestionImageFile));
 }
 
@@ -607,7 +619,7 @@ export async function createSpiritualFormFromBuilder(formData: FormData) {
   const incomingSettings = readJsonObject(formData, "settings");
   const rawVisitorSettingsIssue = incomingSettings.require_login === false ? intercessionGuestFieldConfigurationIssue(incomingSettings.visitor_fields) : null;
   if (rawVisitorSettingsIssue) return { ok: false, message: rawVisitorSettingsIssue };
-  const settings = {
+  const rawSettings = {
     is_published: false,
     limit_one_response: true,
     release_grade: "never",
@@ -615,9 +627,13 @@ export async function createSpiritualFormFromBuilder(formData: FormData) {
     ...incomingSettings,
     visitor_fields: parseIntercessionVisitorFields(incomingSettings.visitor_fields),
   };
+  const prepared = await prepareCommitmentFormSettings(rawSettings);
+  if (!prepared.ok) return prepared;
+  const settings = prepared.settings;
+  if (settings.commitment && (settings.is_published || settings.submission_opens_at)) await requireAnyPermission("intercession", ["publish-forms", "edit-forms"], "/admin/intercession");
   const visitorSettingsIssue = getVisitorSettingsIssue(settings);
   if (visitorSettingsIssue) return { ok: false, message: visitorSettingsIssue };
-  if (Boolean((settings as Record<string, unknown>).is_published)) {
+  if (settings.is_published || settings.commitment && settings.submission_opens_at) {
     const publishingIssues = getIntercessionPublishingIssues(title, questions, settings);
     if (publishingIssues.length > 0) return { ok: false, message: publishingIssues[0].message };
   }
@@ -633,9 +649,14 @@ export async function createSpiritualFormFromBuilder(formData: FormData) {
     },
   });
 
-  if (Boolean((settings as Record<string, unknown>).is_published)) await notifyFormPublished(form, String(form.createdAt.getTime()));
-
-  revalidatePath("/admin/intercession");
+  const discardedImages = readJsonArray(formData, "discardedImages").filter(isManagedQuestionImagePath).slice(0, 100);
+  after(async () => {
+    revalidatePath("/admin/intercession");
+    const tasks = [deleteQuestionImagesIfUnreferenced(discardedImages)];
+    if (Boolean(settings.is_published)) tasks.push(notifyFormPublished(form, String(form.createdAt.getTime())));
+    const results = await Promise.allSettled(tasks);
+    if (results.some((result) => result.status === "rejected")) console.error("Form created, but a background notification or cleanup failed.", { formId: form.id });
+  });
 
   return { ok: true, message: "Form created successfully.", formId: form.id };
 }
@@ -655,16 +676,22 @@ export async function duplicateSpiritualForm(formId: number) {
     return { ok: false, message: "Form not found." };
   }
 
+  const originalSettings = (original.settings as Record<string, unknown> | null) ?? {};
+  const commitment = parseCommitmentSettings(originalSettings.commitment);
+  if (commitment && commitment.year >= 2200) return { ok: false, message: "Choose a commitment year between 2000 and 2200." };
+  const nextYear = commitment ? commitment.year + 1 : null;
+
   const copy = await prisma.spiritualForm.create({
     data: {
-      title: `Copy of ${original.title}`,
+      title: commitment ? original.title.includes(String(commitment.year)) ? original.title.replaceAll(String(commitment.year), String(nextYear)) : `${original.title} (${nextYear})` : `Copy of ${original.title}`,
       description: original.description,
       questions: (original.questions ?? []) as Prisma.InputJsonValue,
       settings: {
-        ...((original.settings as Record<string, unknown> | null) ?? {}),
+        ...originalSettings,
         is_published: false,
+        ...(commitment ? { commitment: { ...commitment, year: nextYear, acceptanceLabel: commitmentAcceptanceLabel(nextYear!) }, commitment_audience: [], submission_opens_at: "", submission_deadline: "" } : {}),
       } as Prisma.InputJsonValue,
-      isActive: original.isActive,
+      isActive: commitment ? true : original.isActive,
       createdBy: user.id,
     },
   });
@@ -684,7 +711,7 @@ export async function updateSpiritualFormFromBuilder(formId: number, formData: F
 
   const current = await prisma.spiritualForm.findUnique({
     where: { id: formId },
-    select: { questions: true, settings: true, version: true },
+    select: { questions: true, settings: true, version: true, title: true, description: true },
   });
 
   if (!current) {
@@ -700,40 +727,52 @@ export async function updateSpiritualFormFromBuilder(formId: number, formData: F
     ...rawIncomingSettings,
     visitor_fields: parseIntercessionVisitorFields(rawIncomingSettings.visitor_fields),
   };
-  const mergedSettings = {
+  const rawMergedSettings = {
     ...((current.settings as Record<string, unknown> | null) ?? {}),
     ...incomingSettings,
     ...(isAutosave ? { is_published: Boolean((current.settings as Record<string, unknown> | null)?.is_published) } : {}),
   };
+  const prepared = await prepareCommitmentFormSettings(rawMergedSettings, current.settings, formId);
+  if (!prepared.ok) return prepared;
+  const mergedSettings = prepared.settings;
+  if (mergedSettings.commitment && (mergedSettings.is_published || mergedSettings.submission_opens_at)) await requireAnyPermission("intercession", ["publish-forms", "edit-forms"], "/admin/intercession");
   const visitorSettingsIssue = getVisitorSettingsIssue(mergedSettings);
   if (visitorSettingsIssue) return { ok: false, message: visitorSettingsIssue };
-  if (Boolean(mergedSettings.is_published)) {
+  if (mergedSettings.is_published || mergedSettings.commitment && mergedSettings.submission_opens_at) {
     const publishingIssues = getIntercessionPublishingIssues(title, questions, mergedSettings);
     if (publishingIssues.length > 0) return { ok: false, message: publishingIssues[0].message };
   }
   const removedImagePaths = questionImagePaths(current.questions).filter((imagePath) => !questionImagePaths(questions).includes(imagePath));
-  const questionsChanged = JSON.stringify(current.questions) !== JSON.stringify(questions);
-  const updated = await prisma.spiritualForm.update({
-    where: { id: formId },
-    data: {
-      title,
-      description: readString(formData, "description"),
-      questions: questions as Prisma.InputJsonValue,
-      settings: mergedSettings,
+  const questionsChanged = !isDeepStrictEqual(current.questions, questions)
+    || !isDeepStrictEqual(current.settings, mergedSettings) || current.title !== title || current.description !== readString(formData, "description");
+  const updateResult = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "forms" WHERE "id" = ${formId} FOR UPDATE`;
+    const fresh = await tx.spiritualForm.findUnique({ where: { id: formId }, select: { version: true, settings: true } });
+    if (!fresh || fresh.version !== current.version) return { ok: false as const, message: "The form was updated in another window. Reload before saving your changes." };
+    const oldCommitment = parseCommitmentSettings((fresh.settings as Record<string, unknown> | null)?.commitment);
+    const newCommitment = parseCommitmentSettings(mergedSettings.commitment);
+    if (oldCommitment && oldCommitment.year !== newCommitment?.year && await tx.membershipCommitment.count({ where: { formId } })) return { ok: false as const, message: "Accepted commitments must keep their year. Duplicate this form to start a different year." };
+    const form = await tx.spiritualForm.update({ where: { id: formId }, data: {
+      title, description: readString(formData, "description"), questions: questions as Prisma.InputJsonValue, settings: mergedSettings,
       ...(questionsChanged ? { version: { increment: 1 } } : {}),
-    },
+    } });
+    return { ok: true as const, form };
   });
+  if (!updateResult.ok) return updateResult;
+  const updated = updateResult.form;
 
   const wasPublished = Boolean((current.settings as Record<string, unknown> | null)?.is_published);
   const isPublished = Boolean((updated.settings as Record<string, unknown> | null)?.is_published);
-  if (!wasPublished && isPublished) {
-    await notifyFormPublished(updated, String(updated.updatedAt.getTime()));
-  } else if (wasPublished && !isPublished) {
-    await prisma.notification.deleteMany({ where: { sourceType: "spiritual_form", sourceId: formId } });
-  }
-
-  revalidateSpiritualFormPaths(formId);
-  if (!isAutosave) await deleteQuestionImagesIfUnreferenced(removedImagePaths);
+  const discardedImages = readJsonArray(formData, "discardedImages").filter(isManagedQuestionImagePath).slice(0, 100);
+  after(async () => {
+    revalidateSpiritualFormPaths(formId);
+    const tasks: Promise<unknown>[] = [];
+    if (!wasPublished && isPublished) tasks.push(notifyFormPublished(updated, String(updated.updatedAt.getTime())));
+    else if (wasPublished && !isPublished) tasks.push(prisma.notification.deleteMany({ where: { sourceType: "spiritual_form", sourceId: formId } }));
+    if (!isAutosave) tasks.push(deleteQuestionImagesIfUnreferenced([...removedImagePaths, ...discardedImages]));
+    const results = await Promise.allSettled(tasks);
+    if (results.some((result) => result.status === "rejected")) console.error("Form updated, but a background notification or cleanup failed.", { formId });
+  });
 
   return { ok: true, message: "Form updated successfully." };
 }
@@ -750,6 +789,7 @@ export async function updateSpiritualForm(formId: number, formData: FormData) {
     where: { id: formId },
     select: { settings: true, questions: true },
   });
+  if (parseCommitmentSettings((current?.settings as Record<string, unknown> | null)?.commitment)) return { ok: false, message: "Use the form builder to update an annual commitment." };
 
   const settings = {
     ...((current?.settings as Record<string, unknown> | null) ?? {}),
@@ -804,18 +844,19 @@ export async function toggleSpiritualFormPublish(formId: number) {
     }
   }
 
+  const prepared = await prepareCommitmentFormSettings({ ...settings, is_published: nextPublished, ...(!nextPublished && settings.commitment ? { submission_opens_at: "" } : {}) }, form.settings, formId);
+  if (!prepared.ok) return prepared;
   const updated = await prisma.spiritualForm.update({
     where: { id: formId },
     data: {
-      settings: {
-        ...settings,
-        is_published: nextPublished,
-      },
+      settings: prepared.settings,
+      ...(settings.commitment ? { version: { increment: 1 } } : {}),
       ...(nextPublished ? { isActive: true } : {}),
     },
   });
 
-  if (nextPublished) await notifyFormPublished(updated, String(updated.updatedAt.getTime()));
+  if (nextPublished && settings.commitment) after(() => notifyFormPublished(updated, String(updated.updatedAt.getTime())));
+  else if (nextPublished) await notifyFormPublished(updated, String(updated.updatedAt.getTime()));
   else await prisma.notification.deleteMany({ where: { sourceType: "spiritual_form", sourceId: formId } });
 
   revalidateSpiritualFormPaths(formId);
@@ -843,12 +884,17 @@ export async function deleteSpiritualForm(formId: number) {
 
   const form = await prisma.spiritualForm.findUnique({ where: { id: formId }, select: { questions: true, submissions: { select: { answers: true } } } });
   if (!form) return { ok: false, message: "Form not found." };
+  if (await prisma.membershipCommitment.count({ where: { formId } })) return { ok: false, message: "Accepted commitments must be preserved. Archive this form instead." };
   const imagePaths = questionImagePaths(form.questions);
 
-  await prisma.$transaction([
-    prisma.notification.deleteMany({ where: { sourceType: "spiritual_form", sourceId: formId } }),
-    prisma.spiritualForm.delete({ where: { id: formId } }),
-  ]);
+  const deleted = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "forms" WHERE "id" = ${formId} FOR UPDATE`;
+    if (await tx.membershipCommitment.count({ where: { formId } })) return false;
+    await tx.notification.deleteMany({ where: { sourceType: "spiritual_form", sourceId: formId } });
+    await tx.spiritualForm.delete({ where: { id: formId } });
+    return true;
+  });
+  if (!deleted) return { ok: false, message: "Accepted commitments must be preserved. Archive this form instead." };
 
   revalidateSpiritualFormPaths(formId);
   await deleteQuestionImagesIfUnreferenced(imagePaths);
@@ -860,7 +906,7 @@ export async function deleteSpiritualForm(formId: number) {
 export async function submitSpiritualForm(formId: number, formData: FormData) {
   const form = await prisma.spiritualForm.findUnique({
     where: { id: formId },
-    select: { id: true, title: true, questions: true, settings: true, isActive: true, version: true, _count: { select: { submissions: { where: { deletedAt: null } } } } },
+    select: { id: true, title: true, description: true, questions: true, settings: true, isActive: true, version: true, _count: { select: { submissions: { where: { deletedAt: null } } } } },
   });
   if (!form) return { ok: false, message: "Form not found." };
 
@@ -877,6 +923,11 @@ export async function submitSpiritualForm(formId: number, formData: FormData) {
   const user = settings.require_login
     ? await requirePermission("intercession", "submit-forms", "/admin/intercession")
     : await getCurrentUser();
+  if (settings.commitment) {
+    if (requestedEditToken) return { ok: false, message: "An accepted commitment cannot be edited." };
+    if (Number(formData.get("commitment_version")) !== form.version) return { ok: false, message: "This commitment form has changed. Reload it before submitting." };
+  }
+  if (editSubmission && await prisma.membershipCommitment.findUnique({ where: { submissionId: editSubmission.id }, select: { id: true } })) return { ok: false, message: "An accepted commitment cannot be edited." };
   if (editSubmission?.userId && editSubmission.userId !== user?.id) return { ok: false, message: "Sign in with the account that submitted this response." };
   if (editSubmission && !settings.allow_response_editing) return { ok: false, message: "Response editing is disabled for this form." };
   const availability = editSubmission
@@ -884,11 +935,11 @@ export async function submitSpiritualForm(formId: number, formData: FormData) {
     : intercessionFormAvailability(settings, form.isActive, form._count.submissions);
   if (availability) return { ok: false, message: availability };
 
-  const respondentName = user?.name ?? normalizeIntercessionRespondentName(formData.get("respondent_name"));
-  const visitorDetails = !user ? validateVisitorDetails(settings.visitor_fields, formData) : { ok: true as const, details: [] };
+  const respondentName = user?.name ?? normalizeIntercessionRespondentName(formData.get("profile_name") ?? formData.get("respondent_name"));
+  const visitorDetails = !user && !settings.commitment ? validateVisitorDetails(settings.visitor_fields, formData) : { ok: true as const, details: [] };
   if (!visitorDetails.ok) return { ok: false, message: visitorDetails.message };
   const visitorName = !user
-    ? normalizeIntercessionRespondentName(visitorDetails.details.find((detail) => detail.fieldId === "full_name")?.value)
+    ? settings.commitment ? normalizeIntercessionRespondentName(formData.get("profile_name")) : normalizeIntercessionRespondentName(visitorDetails.details.find((detail) => detail.fieldId === "full_name")?.value)
     : respondentName;
   if (!user && visitorName.length < 2) return { ok: false, message: "Enter your full name before submitting the form." };
 
@@ -930,7 +981,7 @@ export async function submitSpiritualForm(formId: number, formData: FormData) {
         : [answer];
     const nonEmpty = values.some((value) => String(value ?? "").trim());
     if (question.required && !nonEmpty) return { ok: false, message: `Please answer required question ${index + 1}.` };
-    if (["multiple_choice", "dropdown", "checkboxes"].includes(question.type)) {
+    if (["multiple_choice", "membership_type", "dropdown", "checkboxes"].includes(question.type)) {
       if (values.some((value) => value && !question.options.includes(String(value)))) return { ok: false, message: `Question ${index + 1} contains an invalid option.` };
     }
     if (["linear_scale", "rating"].includes(question.type) && nonEmpty) {
@@ -983,7 +1034,7 @@ export async function submitSpiritualForm(formId: number, formData: FormData) {
   const now = new Date();
   const startedAt = parsedStartedAt && !Number.isNaN(parsedStartedAt.getTime()) && parsedStartedAt <= now && now.getTime() - parsedStartedAt.getTime() <= 7 * 86_400_000 ? parsedStartedAt : null;
   const completionSeconds = startedAt ? Math.max(1, Math.round((now.getTime() - startedAt.getTime()) / 1000)) : null;
-  const generatedEditToken = !editSubmission && settings.allow_response_editing ? newFormToken() : null;
+  const generatedEditToken = !editSubmission && !settings.commitment && settings.allow_response_editing ? newFormToken() : null;
   const activeEditToken = requestedEditToken || generatedEditToken || "";
   const editUntil = generatedEditToken ? new Date(now.getTime() + settings.response_edit_hours * 3_600_000) : editSubmission?.editUntil ?? null;
 
@@ -991,9 +1042,11 @@ export async function submitSpiritualForm(formId: number, formData: FormData) {
     const submission = await prisma.$transaction(async (tx) => {
       const lockKey = `intercession-form:${formId}`;
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))::text AS "lock"`;
-      const freshForm = await tx.spiritualForm.findUnique({ where: { id: formId }, select: { settings: true, isActive: true, _count: { select: { submissions: { where: { deletedAt: null } } } } } });
+      await tx.$queryRaw`SELECT "id" FROM "forms" WHERE "id" = ${formId} FOR UPDATE`;
+      const freshForm = await tx.spiritualForm.findUnique({ where: { id: formId }, select: { id: true, title: true, description: true, questions: true, version: true, settings: true, isActive: true, _count: { select: { submissions: { where: { deletedAt: null } } } } } });
       if (!freshForm) throw new Error("Form not found.");
       const freshSettings = parseIntercessionFormSettings(freshForm.settings);
+      if ((settings.commitment || freshSettings.commitment) && freshForm.version !== form.version) throw new Error("This commitment form has changed. Reload it before submitting.");
       const freshAvailability = editSubmission
         ? !freshForm.isActive ? "This form is archived." : !intercessionFormIsPublished(freshSettings) ? "This form is not published." : null
         : intercessionFormAvailability(freshSettings, freshForm.isActive, freshForm._count.submissions);
@@ -1024,9 +1077,27 @@ export async function submitSpiritualForm(formId: number, formData: FormData) {
       const created = editSubmission
         ? await tx.formSubmission.update({ where: { id: editSubmission.id }, data: submissionData })
         : await tx.formSubmission.create({ data: submissionData });
+      if (freshSettings.commitment) {
+        await recordMembershipCommitment(tx, { form: freshForm, userId: user?.id ?? null, submissionId: created.id, formData, answers: storedAnswers });
+      }
       if (user) await tx.notification.deleteMany({ where: { userId: user.id, sourceType: "spiritual_form", sourceId: formId } });
       return created;
     }, { isolationLevel: "ReadCommitted" });
+
+    if (settings.commitment) {
+      after(async () => {
+        await Promise.allSettled([
+          ...(user ? [notifyUsers({ userIds: [user.id], type: "form", title: "Commitment accepted", message: `Your membership commitment for ${settings.commitment!.year} has been received.`, link: settings.allow_view_response ? "/admin/intercession/commitments/mine" : "/admin/intercession?section=results", sourceType: "form_submission", sourceId: submission.id, dedupeKey: `commitment:${submission.id}:receipt` })] : []),
+          ...(settings.notify_on_submit ? [userIdsWithPermission("intercession", "view-submissions").then((userIds) => notifyUsers({ userIds, type: "form", title: "Membership commitment received", message: `${visitorName} accepted the membership commitment for ${settings.commitment!.year}.`, link: "/admin/intercession/commitments", sourceType: "form_submission", sourceId: submission.id, dedupeKey: `commitment:${submission.id}:admin` }))] : []),
+        ]);
+      });
+      revalidatePath("/admin/intercession");
+      revalidatePath("/admin/intercession/commitments");
+      revalidatePath("/admin/intercession/commitments/mine");
+      revalidatePath("/admin/profile");
+      revalidatePath("/admin/users");
+      return { ok: true, message: settings.thank_you_message, redirectUrl: user && settings.allow_view_response ? "/admin/intercession/commitments/mine" : "" };
+    }
 
     if (settings.notify_on_submit) {
       const adminIds = [...new Set([
@@ -1260,6 +1331,7 @@ export async function deleteFormSubmission(submissionId: number) {
   if (!Number.isInteger(submissionId) || submissionId <= 0) {
     return { ok: false, message: "Invalid submission." };
   }
+  if (await prisma.membershipCommitment.findUnique({ where: { submissionId }, select: { id: true } })) return { ok: false, message: "Accepted commitments must be preserved." };
 
   const existing = await prisma.formSubmission.findUnique({ where: { id: submissionId }, select: { formId: true, deletedAt: true } });
   if (!existing) return { ok: false, message: "Submission not found." };
@@ -1290,6 +1362,7 @@ export async function restoreFormSubmission(submissionId: number) {
 export async function permanentlyDeleteFormSubmission(submissionId: number) {
   const user = await requirePermission("intercession", "delete-forms", "/admin/intercession");
   if (!Number.isInteger(submissionId) || submissionId <= 0) return { ok: false, message: "Invalid submission." };
+  if (await prisma.membershipCommitment.findUnique({ where: { submissionId }, select: { id: true } })) return { ok: false, message: "Accepted commitments must be preserved." };
   const submission = await prisma.formSubmission.findUnique({ where: { id: submissionId }, select: { formId: true, answers: true, deletedAt: true } });
   if (!submission) return { ok: false, message: "Submission not found." };
   if (!submission.deletedAt) return { ok: false, message: "Move the submission to trash before deleting it permanently." };
@@ -1307,6 +1380,7 @@ export async function bulkUpdateFormSubmissions(formId: number, submissionIds: n
     : await requirePermission("intercession", "view-results", "/admin/intercession");
   const ids = [...new Set(submissionIds.filter((id) => Number.isInteger(id) && id > 0))].slice(0, 500);
   if (!Number.isInteger(formId) || formId <= 0 || ids.length === 0) return { ok: false, message: "Select at least one valid submission." };
+  if (action === "trash" && await prisma.membershipCommitment.count({ where: { submissionId: { in: ids }, formId } })) return { ok: false, message: "Accepted commitments must be preserved. Remove them from the selection." };
   const now = new Date();
   const data = action === "release" ? { isReleased: true, releasedAt: now }
     : action === "hide" ? { isReleased: false, releasedAt: null }
@@ -1342,7 +1416,7 @@ export async function updateFormResponsePreferences(formId: number, formData: Fo
     ...settings,
     notify_on_submit: readBoolean(formData, "notifyOnSubmit"),
     send_response_receipt: readBoolean(formData, "sendResponseReceipt"),
-    allow_response_editing: readBoolean(formData, "allowResponseEditing"),
+    allow_response_editing: !parseCommitmentSettings(settings.commitment) && readBoolean(formData, "allowResponseEditing"),
     response_edit_hours: responseEditHours,
     response_closed_message: (readString(formData, "responseClosedMessage") ?? "This form is no longer accepting responses.").slice(0, 500),
   };

@@ -107,6 +107,7 @@ model User {
   createdFeaturedImages       LandingFeaturedImage[]     @relation("CreatedFeaturedImages")
   createdSpiritualForms       SpiritualForm[]            @relation("CreatedSpiritualForms")
   formSubmissions             FormSubmission[]
+  membershipCommitments       MembershipCommitment[]
   contributions               Contribution[]             @relation("ContributionUser")
   createdContributions        Contribution[]             @relation("ContributionCreator")
   payments                    Payment[]                  @relation("PaymentUser")
@@ -907,6 +908,7 @@ model SpiritualForm {
   creator       User?              @relation("CreatedSpiritualForms", fields: [createdBy], references: [id], onDelete: SetNull)
   submissions   FormSubmission[]
   summaryShares FormSummaryShare[]
+  commitments   MembershipCommitment[]
 
   @@index([createdBy])
   @@index([isActive])
@@ -941,12 +943,37 @@ model FormSubmission {
 
   form SpiritualForm @relation(fields: [formId], references: [id], onDelete: Cascade)
   user User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  commitment MembershipCommitment?
 
   @@index([formId])
   @@index([userId])
   @@index([formId, deletedAt])
   @@index([formId, submittedAt])
   @@map("form_submissions")
+}
+
+model MembershipCommitment {
+  id             Int       @id @default(autoincrement())
+  userId         Int?      @map("user_id")
+  formId         Int       @map("form_id")
+  submissionId   Int?      @unique @map("submission_id")
+  year           Int
+  acceptedAt     DateTime  @default(now()) @map("accepted_at")
+  formVersion    Int       @map("form_version")
+  snapshot       Json
+  profileChanges Json      @default("[]") @map("profile_changes")
+  reviewStatus   String    @default("none") @map("review_status")
+  reviewedAt     DateTime? @map("reviewed_at")
+  reviewedBy     Int?      @map("reviewed_by")
+
+  user       User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  form       SpiritualForm   @relation(fields: [formId], references: [id], onDelete: Restrict)
+  submission FormSubmission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
+
+  @@index([userId, year])
+  @@index([year, reviewStatus])
+  @@index([formId])
+  @@map("membership_commitments")
 }
 
 model FormSummaryShare {

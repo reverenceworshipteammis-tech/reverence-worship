@@ -149,6 +149,7 @@ export default async function IntercessionPage({ searchParams }: { searchParams:
       submissionsCount: form._count.submissions,
       hasSubmitted: mySubmittedFormIds.has(form.id),
       previewSettings: {
+        commitment: parsedSettings.commitment,
         limit_one_response: settings.limit_one_response !== false,
         show_progress_bar: Boolean(settings.show_progress_bar),
         shuffle_questions: Boolean(settings.shuffle_questions),

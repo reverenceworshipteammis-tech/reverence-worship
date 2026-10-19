@@ -1,4 +1,6 @@
 import { intercessionRichTextToPlainText } from "@/lib/intercession-rich-text";
+import { commitmentConfigurationIssue } from "@/lib/membership-commitment";
+import { membershipQuestionConfigurationIssue } from "@/lib/membership-question";
 
 export type IntercessionConditionOperator = "equals" | "not_equals" | "answered";
 
@@ -70,13 +72,17 @@ export function getIntercessionPublishingIssues(
   const questions = Array.isArray(questionsValue) ? questionsValue.map(asRecord) : [];
   const settings = asRecord(settingsValue);
   const issues: IntercessionPublishingIssue[] = [];
+  const commitmentIssue = commitmentConfigurationIssue(settings.commitment, true);
+  if (commitmentIssue) issues.push({ id: "membership-commitment", message: commitmentIssue });
+  const membershipQuestionIssue = membershipQuestionConfigurationIssue(questionsValue, Boolean(settings.commitment));
+  if (membershipQuestionIssue) issues.push({ id: "membership-question", ...membershipQuestionIssue });
 
   if (!intercessionRichTextToPlainText(typeof title === "string" ? title : "").trim()) {
     issues.push({ id: "form-title", message: "Add a form title." });
   }
 
   const answerable = questions.filter((question) => !["title_section", "section_break"].includes(String(question.type)));
-  if (answerable.length === 0 && !settings.allow_empty_submission) {
+  if (answerable.length === 0 && !settings.allow_empty_submission && !settings.commitment) {
     issues.push({ id: "no-questions", message: "Add at least one answerable question." });
   }
 
@@ -104,7 +110,7 @@ export function getIntercessionPublishingIssues(
       issues.push({ id: `${id}-title`, questionId: id, message: `${prefix} needs a clear title.` });
     }
 
-    if (["multiple_choice", "checkboxes", "dropdown"].includes(type) && asStrings(question.options).length < 2) {
+    if (["multiple_choice", "membership_type", "checkboxes", "dropdown"].includes(type) && asStrings(question.options).length < 2) {
       issues.push({ id: `${id}-options`, questionId: id, message: `${prefix} needs at least two answer options.` });
     }
 

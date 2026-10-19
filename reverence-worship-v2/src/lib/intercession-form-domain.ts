@@ -5,9 +5,11 @@ import {
   type IntercessionQuestionCondition,
 } from "@/lib/intercession-form-rules";
 import { parseQuestionImages, type IntercessionQuestionImage } from "@/lib/intercession-question-images";
+import { parseCommitmentSettings, type CommitmentSettings } from "@/lib/membership-commitment";
+import { parseMembershipTypeMapping, type MembershipTypeMapping } from "@/lib/membership-question";
 
 export const INTERCESSION_ANSWERABLE_TYPES = [
-  "short_answer", "paragraph", "multiple_choice", "checkboxes", "dropdown", "linear_scale", "rating",
+  "short_answer", "paragraph", "multiple_choice", "membership_type", "checkboxes", "dropdown", "linear_scale", "rating",
   "multiple_choice_grid", "checkbox_grid", "date", "time", "file_upload",
 ] as const;
 
@@ -112,6 +114,7 @@ export function intercessionGuestFieldConfigurationIssue(value: unknown) {
 }
 
 export type IntercessionFormQuestion = {
+  membershipTypeMapping?: MembershipTypeMapping | null;
   id: string;
   type: string;
   label: string;
@@ -130,6 +133,7 @@ export type IntercessionFormQuestion = {
 };
 
 export type IntercessionFormSettings = {
+  commitment: CommitmentSettings | null;
   is_published: boolean;
   accepting_responses: boolean;
   is_quiz: boolean;
@@ -197,6 +201,7 @@ export function parseIntercessionFormQuestions(value: unknown): IntercessionForm
       correctAnswers,
       images: parseQuestionImages(item.images),
       condition: parseIntercessionQuestionCondition(item.condition),
+      membershipTypeMapping: parseMembershipTypeMapping(item.membershipTypeMapping),
     };
   });
 }
@@ -210,6 +215,7 @@ export function parseIntercessionFormSettings(value: unknown): IntercessionFormS
   const legacyAttendanceStyle = item.allow_empty_submission === true
     && submitButtonLabel.toLowerCase() === "mark attendance";
   return {
+    commitment: parseCommitmentSettings(item.commitment),
     is_published: Boolean(item.is_published), is_quiz: Boolean(item.is_quiz),
     accepting_responses: item.accepting_responses !== false,
     release_grade: typeof item.release_grade === "string" ? item.release_grade : "never",

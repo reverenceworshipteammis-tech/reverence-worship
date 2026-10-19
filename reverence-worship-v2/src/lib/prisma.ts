@@ -7,7 +7,7 @@ const globalForPrisma = globalThis as unknown as {
   prismaSchemaVersion?: string;
 };
 
-const PRISMA_SCHEMA_VERSION = "2026-10-19-compatible-partner-mapping-v10";
+const PRISMA_SCHEMA_VERSION = "2026-10-19-annual-commitments-v11";
 
 function databaseUrl() {
   // The application should use the pooled URL. DIRECT_URL is reserved for
@@ -35,6 +35,7 @@ const canReusePrisma =
   existingPrisma &&
   globalForPrisma.prismaSchemaVersion === PRISMA_SCHEMA_VERSION &&
   "formSummaryShare" in existingPrisma &&
+  "membershipCommitment" in existingPrisma &&
   "familyMember" in existingPrisma &&
   "actionPlan" in existingPrisma &&
   "actionPlanTask" in existingPrisma &&

@@ -32,8 +32,6 @@ import {
 } from "lucide-react";
 import {
   createSpiritualFormFromBuilder,
-  discardSpiritualFormQuestionImage,
-  getSpiritualFormQuestionLibrary,
   removeSpiritualFormQuestionFromLibrary,
   saveSpiritualFormQuestionToLibrary,
   updateSpiritualFormFromBuilder,
@@ -42,6 +40,10 @@ import {
 import { MobileTabScroller } from "@/components/mobile-tab-scroller";
 import { IntercessionRichTextEditor } from "@/components/intercession-rich-text-editor";
 import { IntercessionTakeForm } from "@/components/intercession-take-form";
+import { CommitmentFormConfiguration } from "@/components/commitment-form-fields";
+import { defaultCommitmentSettings, parseCommitmentSettings, type CommitmentSettings } from "@/lib/membership-commitment";
+import { parseMembershipTypeMapping, type MembershipTypeMapping } from "@/lib/membership-question";
+import { membershipTypeOptions, type MembershipType } from "@/lib/membership-types";
 import { intercessionRichTextToPlainText } from "@/lib/intercession-rich-text";
 import {
   DEFAULT_INTERCESSION_VISITOR_FIELDS,
@@ -67,6 +69,7 @@ type QuestionType =
   | "short_answer"
   | "paragraph"
   | "multiple_choice"
+  | "membership_type"
   | "checkboxes"
   | "dropdown"
   | "linear_scale"
@@ -80,6 +83,7 @@ type QuestionType =
   | "section_break";
 
 type BuilderQuestion = {
+  membershipTypeMapping?: MembershipTypeMapping | null;
   id: string;
   type: QuestionType;
   label: string;
@@ -101,6 +105,7 @@ type BuilderQuestion = {
 type SettingsTab = "quiz" | "responses" | "presentation" | "defaults" | "advanced";
 
 type BuilderSettings = {
+  commitment: CommitmentSettings | null;
   is_quiz: boolean;
   accepting_responses: boolean;
   release_grade: string;
@@ -147,6 +152,7 @@ const questionTypes: Array<{ value: QuestionType; label: string }> = [
   { value: "short_answer", label: "Short answer" },
   { value: "paragraph", label: "Paragraph" },
   { value: "multiple_choice", label: "Multiple choice" },
+  { value: "membership_type", label: "Membership type" },
   { value: "checkboxes", label: "Checkboxes" },
   { value: "dropdown", label: "Dropdown" },
   { value: "linear_scale", label: "Linear scale" },
@@ -168,13 +174,15 @@ function asGridCorrectAnswers(value: unknown): Record<string, string | string[]>
 }
 
 function newQuestion(type: QuestionType = "multiple_choice", required = true): BuilderQuestion {
+  const membershipTypeQuestion = type === "membership_type";
   return {
     id: crypto.randomUUID(),
     type,
     label: type === "title_section" ? "Title and description" : type === "section_break" ? "New section" : "Untitled question",
     description: "",
-    required,
-    options: ["Option 1"],
+    required: membershipTypeQuestion ? false : required,
+    options: membershipTypeQuestion ? ["Umunyamuryango uhoraho / Permanent member", "Umunyamuryango udahoraho / Temporary member", "Umufatanyabikorwa / Partner"] : ["Option 1"],
+    membershipTypeMapping: membershipTypeQuestion ? ["permanent", "temporary", "partner"] : null,
     points: 1,
     correctAnswer: "",
     correctAnswers: [],
@@ -189,7 +197,8 @@ function newQuestion(type: QuestionType = "multiple_choice", required = true): B
 }
 
 function normalizeQuestion(question: Partial<BuilderQuestion & { text?: string; correctAnswers?: unknown; rows?: unknown; columns?: unknown; images?: unknown }>): BuilderQuestion {
-  const type = question.type && ["short_answer", "paragraph", "multiple_choice", "checkboxes", "dropdown", "linear_scale", "rating", "multiple_choice_grid", "checkbox_grid", "date", "time", "file_upload", "title_section", "section_break"].includes(question.type)
+  const type = question.type === "multiple_choice" && question.membershipTypeMapping != null ? "membership_type"
+    : question.type && ["short_answer", "paragraph", "multiple_choice", "membership_type", "checkboxes", "dropdown", "linear_scale", "rating", "multiple_choice_grid", "checkbox_grid", "date", "time", "file_upload", "title_section", "section_break"].includes(question.type)
     ? question.type
     : "short_answer";
   const correctAnswers = type === "checkboxes" && Array.isArray(question.correctAnswers)
@@ -205,7 +214,7 @@ function normalizeQuestion(question: Partial<BuilderQuestion & { text?: string; 
     label: question.label || question.text || "Untitled question",
     description: question.description || "",
     required: question.required !== false,
-    options: Array.isArray(question.options) && question.options.length ? question.options.filter((option): option is string => typeof option === "string") : ["Option 1"],
+    options: Array.isArray(question.options) && question.options.length ? question.options.filter((option): option is string => typeof option === "string") : type === "membership_type" ? newQuestion("membership_type").options : ["Option 1"],
     points: Number(question.points ?? 1),
     correctAnswer: ["checkboxes", "multiple_choice_grid", "checkbox_grid"].includes(type) ? "" : typeof question.correctAnswer === "string" ? question.correctAnswer : "",
     correctAnswers,
@@ -216,6 +225,7 @@ function normalizeQuestion(question: Partial<BuilderQuestion & { text?: string; 
     max: Number(question.max ?? 5),
     images: parseQuestionImages(question.images),
     condition: parseIntercessionQuestionCondition(question.condition),
+    membershipTypeMapping: type === "membership_type" ? parseMembershipTypeMapping(question.membershipTypeMapping) ?? (question.options?.length ? question.options : newQuestion("membership_type").options).map(() => "") : null,
   };
 }
 
@@ -292,6 +302,11 @@ const formTemplates: Array<{ id: string; name: string; description: string; titl
       { ...newQuestion("short_answer"), label: "Enter a short-answer question", correctAnswer: "Correct answer", required: true },
     ],
   },
+  {
+    id: "commitment", name: "Annual commitment", description: "Prefilled member details and required annual membership acceptance.",
+    title: `Membership commitment ${new Date().getUTCFullYear() + 1}`, questions: [],
+    settings: { commitment: defaultCommitmentSettings(new Date().getUTCFullYear() + 1), allow_empty_submission: true, require_login: true, limit_one_response: true, allow_response_editing: false, submit_button_label: "Confirm and Accept Commitment", max_responses: 0, thank_you_message: "Your membership commitment has been successfully submitted." },
+  },
 ];
 
 function cloneQuestion(question: BuilderQuestion): BuilderQuestion {
@@ -309,6 +324,7 @@ function cloneQuestion(question: BuilderQuestion): BuilderQuestion {
 }
 
 const defaultSettings: BuilderSettings = {
+  commitment: null,
   is_quiz: false,
   accepting_responses: true,
   release_grade: "never",
@@ -349,6 +365,7 @@ function normalizeBuilderSettings(value: Partial<BuilderSettings> | undefined): 
     : defaultSettings.submit_button_label;
   const legacyAttendanceStyle = value?.allow_empty_submission === true
     && submitButtonLabel.toLowerCase() === "mark attendance";
+  const commitment = parseCommitmentSettings(value?.commitment);
   return {
     ...defaultSettings,
     ...(value ?? {}),
@@ -356,13 +373,17 @@ function normalizeBuilderSettings(value: Partial<BuilderSettings> | undefined): 
     submit_button_label: submitButtonLabel,
     submit_button_style: value?.submit_button_style === "attendance" || legacyAttendanceStyle ? "attendance" : "default",
     visitor_fields: parseIntercessionVisitorFields(value?.visitor_fields),
+    commitment,
+    ...(commitment ? { is_quiz: false, allow_response_editing: false, allow_empty_submission: true, submit_button_label: "Confirm and Accept Commitment", submit_button_style: "default" as const, max_responses: 0, redirect_url: "" } : {}),
   };
 }
 
 export function IntercessionFormBuilder({ initialData }: { initialData?: IntercessionBuilderInitialData }) {
   const router = useRouter();
   const { confirm } = useAppDialog();
-  const isEditing = Boolean(initialData?.id);
+  const [savedFormId, setSavedFormId] = useState(initialData?.id);
+  const savedFormIdRef = useRef(initialData?.id);
+  const isEditing = Boolean(savedFormId);
   const [activeArea, setActiveArea] = useState<"questions" | "settings">("questions");
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("quiz");
   const [title, setTitle] = useState(initialData?.title ?? "");
@@ -382,11 +403,16 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
   const [showLibrary, setShowLibrary] = useState(false);
   const [previewDevice, setPreviewDevice] = useState<"desktop" | "mobile">("desktop");
   const [questionLibrary, setQuestionLibrary] = useState<BuilderQuestion[]>([]);
+  const [libraryLoaded, setLibraryLoaded] = useState(false);
+  const [libraryLoading, setLibraryLoading] = useState(false);
   const [pastSnapshots, setPastSnapshots] = useState<BuilderSnapshot[]>([]);
   const [futureSnapshots, setFutureSnapshots] = useState<BuilderSnapshot[]>([]);
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
+  const [isSaving, setIsSaving] = useState(false);
+  const saveInFlightRef = useRef(false);
 
   const [settings, setSettings] = useState<BuilderSettings>(normalizeBuilderSettings(initialData?.settings));
+  const membershipQuestionLinked = questions.some((question) => question.type === "membership_type");
   const totalMarks = questions.reduce(
     (total, question) => total + (isIntercessionAnswerable(question.type) && question.type !== "file_upload" ? Math.max(0, question.points || 0) : 0),
     0,
@@ -401,7 +427,8 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
         text: question.label,
         description: question.description,
         required: question.required,
-        options: question.options.filter(Boolean),
+        options: question.type === "membership_type" ? question.options : question.options.filter(Boolean),
+        membershipTypeMapping: question.membershipTypeMapping ?? null,
         points: question.points,
         correctAnswer: ["checkboxes", "multiple_choice_grid", "checkbox_grid"].includes(question.type) ? null : question.correctAnswer || null,
         correctAnswers: question.type === "checkboxes"
@@ -429,12 +456,24 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
   }, [currentSnapshot]);
 
   useEffect(() => {
+    if (!showLibrary || libraryLoaded) return;
     let active = true;
-    getSpiritualFormQuestionLibrary().then((library) => {
-      if (active) setQuestionLibrary(library.map(normalizeQuestion));
-    }).catch(() => setMessage("The shared question library could not be loaded."));
-    return () => { active = false; };
-  }, []);
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 15000);
+    fetch("/api/intercession/question-library", { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok || response.redirected) throw new Error("Question library unavailable");
+        const library: unknown = await response.json();
+        if (!Array.isArray(library)) throw new Error("Invalid question library");
+        if (active) {
+          setQuestionLibrary(library.map(normalizeQuestion));
+          setLibraryLoading(false);
+          setLibraryLoaded(true);
+        }
+      }).catch(() => { if (active) { setLibraryLoading(false); setMessage("The shared question library could not be loaded. Close and reopen Library to try again."); } })
+      .finally(() => window.clearTimeout(timeout));
+    return () => { active = false; window.clearTimeout(timeout); controller.abort(); };
+  }, [showLibrary, libraryLoaded]);
 
   const publishingIssues = useMemo(
     () => getIntercessionPublishingIssues(title, savableQuestions, settings),
@@ -448,7 +487,7 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
     formData.set("questions", JSON.stringify(snapshot.questions.map((question) => ({
       ...question,
       text: question.label,
-      options: question.options.filter(Boolean),
+      options: question.type === "membership_type" ? question.options : question.options.filter(Boolean),
       rows: question.rows.filter(Boolean),
       columns: question.columns.filter(Boolean),
       correctAnswer: ["checkboxes", "multiple_choice_grid", "checkbox_grid"].includes(question.type) ? null : question.correctAnswer || null,
@@ -457,6 +496,8 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
         : ["multiple_choice_grid", "checkbox_grid"].includes(question.type) ? question.gridCorrectAnswers : null,
     }))));
     formData.set("settings", JSON.stringify(snapshot.settings));
+    const retainedImagePaths = new Set(snapshot.questions.flatMap((question) => question.images.map((image) => image.path)));
+    formData.set("discardedImages", JSON.stringify([...removedImagePathsRef.current].filter((imagePath) => !retainedImagePaths.has(imagePath))));
     return formData;
   }, []);
 
@@ -471,12 +512,11 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
   }, []);
 
   useEffect(() => {
-    if (initialData?.id) return;
     const timer = window.setTimeout(async () => {
       try {
-        const storedDraft = localStorage.getItem(NEW_FORM_DRAFT_KEY);
+        const storedDraft = localStorage.getItem(initialData?.id ? `${NEW_FORM_DRAFT_KEY}-${initialData.id}` : NEW_FORM_DRAFT_KEY);
         if (storedDraft) {
-          const parsed = JSON.parse(storedDraft) as Partial<BuilderSnapshot>;
+          const parsed = JSON.parse(storedDraft) as Partial<BuilderSnapshot> & { persistedFormId?: number };
           const hasContent = typeof parsed.title === "string" || Array.isArray(parsed.questions);
           if (hasContent && await confirm({
             title: "Restore saved draft?",
@@ -490,6 +530,10 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
               settings: normalizeBuilderSettings(parsed.settings),
             };
             applySnapshot(restored);
+            if (!initialData?.id && Number.isInteger(parsed.persistedFormId) && Number(parsed.persistedFormId) > 0) {
+              savedFormIdRef.current = parsed.persistedFormId;
+              setSavedFormId(parsed.persistedFormId);
+            }
             setMessage("Your saved draft was restored.");
           }
         }
@@ -517,13 +561,15 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
     const timer = window.setTimeout(() => {
       const snapshot = latestSnapshotRef.current;
       try {
-        localStorage.setItem(initialData?.id ? `${NEW_FORM_DRAFT_KEY}-${initialData.id}` : NEW_FORM_DRAFT_KEY, JSON.stringify(snapshot));
+        const draft = JSON.stringify({ ...snapshot, persistedFormId: savedFormIdRef.current });
+        localStorage.setItem(savedFormId ? `${NEW_FORM_DRAFT_KEY}-${savedFormId}` : NEW_FORM_DRAFT_KEY, draft);
+        if (!initialData?.id) localStorage.setItem(NEW_FORM_DRAFT_KEY, draft);
       } catch {
         setMessage("The recovery draft could not be saved on this device. Use Save form before leaving.");
       }
     }, 1200);
     return () => window.clearTimeout(timer);
-  }, [activeImageUploads, draftStatus, initialData?.id, serializedSnapshot]);
+  }, [activeImageUploads, draftStatus, initialData?.id, savedFormId, serializedSnapshot]);
 
   useEffect(() => {
     function warnBeforeLeaving(event: BeforeUnloadEvent) {
@@ -603,6 +649,7 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
     setQuestions(template.questions.map(cloneQuestion));
     setSettings((current) => ({
       ...current,
+      commitment: null,
       is_quiz: template.id === "quiz",
       allow_empty_submission: false,
       submit_button_label: "Submit",
@@ -645,6 +692,7 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (saveInFlightRef.current) return;
     if (activeImageUploads > 0) {
       setMessage("Wait for the question images to finish uploading before saving the form.");
       return;
@@ -654,27 +702,63 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
       setMessage(`Cannot publish: ${publishingIssues[0].message}`);
       return;
     }
-    const formData = buildFormData(latestSnapshotRef.current);
+    const snapshot = latestSnapshotRef.current;
+    const formData = buildFormData(snapshot);
+    const formId = savedFormIdRef.current;
+    saveInFlightRef.current = true;
+    setIsSaving(true);
+    setDraftStatus("saving");
+    setMessage(null);
+    const preserveRecoveryDraft = () => {
+      try {
+        const id = savedFormIdRef.current;
+        const recovery = JSON.stringify({ ...latestSnapshotRef.current, persistedFormId: id });
+        localStorage.setItem(id ? `${NEW_FORM_DRAFT_KEY}-${id}` : NEW_FORM_DRAFT_KEY, recovery);
+        if (!initialData?.id && id) localStorage.setItem(NEW_FORM_DRAFT_KEY, recovery);
+        return true;
+      } catch { return false; }
+    };
+    preserveRecoveryDraft();
 
-    startTransition(async () => {
-      const result = initialData?.id
-        ? await updateSpiritualFormFromBuilder(initialData.id, formData)
-        : await createSpiritualFormFromBuilder(formData);
-      setMessage(result.message);
-      if (result.ok) {
-        const retainedImagePaths = new Set(latestSnapshotRef.current.questions.flatMap((question) => question.images.map((image) => image.path)));
-        const discardedImagePaths = [...removedImagePathsRef.current].filter((imagePath) => !retainedImagePaths.has(imagePath));
-        await Promise.allSettled(discardedImagePaths.map((imagePath) => discardSpiritualFormQuestionImage(imagePath)));
-        discardedImagePaths.forEach((imagePath) => removedImagePathsRef.current.delete(imagePath));
-        localStorage.removeItem(initialData?.id ? `${NEW_FORM_DRAFT_KEY}-${initialData.id}` : NEW_FORM_DRAFT_KEY);
-        setDraftStatus("saved");
-        if (initialData?.id) {
-          router.refresh();
-        } else if ("formId" in result) {
-          router.replace(`/admin/intercession/forms/${result.formId}/edit`);
-        }
+    void (async () => {
+      let navigateTo: string | null = null;
+      try {
+        const result = formId
+          ? await updateSpiritualFormFromBuilder(formId, formData)
+          : await createSpiritualFormFromBuilder(formData);
+        setMessage(result.message);
+        if (!result.ok) { preserveRecoveryDraft(); setDraftStatus("error"); return; }
+        const confirmedId = formId ?? ("formId" in result ? result.formId : undefined);
+        if (typeof confirmedId !== "number") throw new Error("Missing saved form ID");
+        savedFormIdRef.current = confirmedId;
+        setSavedFormId(confirmedId);
+        const unchanged = JSON.stringify(latestSnapshotRef.current) === JSON.stringify(snapshot);
+        setDraftStatus(unchanged ? "saved" : "unsaved");
+        if (!unchanged) setMessage("Form saved. You have newer changes to save.");
+        try {
+          if (unchanged) {
+            localStorage.removeItem(`${NEW_FORM_DRAFT_KEY}-${confirmedId}`);
+            if (!initialData?.id) localStorage.removeItem(NEW_FORM_DRAFT_KEY);
+          } else {
+            const recovery = JSON.stringify({ ...latestSnapshotRef.current, persistedFormId: confirmedId });
+            localStorage.setItem(`${NEW_FORM_DRAFT_KEY}-${confirmedId}`, recovery);
+            if (!initialData?.id) localStorage.setItem(NEW_FORM_DRAFT_KEY, recovery);
+          }
+        } catch { /* A confirmed database save must not fail because browser storage is full. */ }
+        const discarded = JSON.parse(String(formData.get("discardedImages") ?? "[]")) as string[];
+        discarded.forEach((imagePath) => removedImagePathsRef.current.delete(imagePath));
+        if (!initialData?.id && unchanged) navigateTo = `/admin/intercession/forms/${confirmedId}/edit`;
+      } catch {
+        const recoverySaved = preserveRecoveryDraft();
+        setDraftStatus("error");
+        setMessage(recoverySaved ? "The save could not be confirmed. Your draft is kept on this device. Check Manage Forms before retrying if the connection was interrupted." : "The save could not be confirmed. Your changes are still open in the editor. Check your connection and try again.");
+      } finally {
+        saveInFlightRef.current = false;
+        setIsSaving(false);
       }
-    });
+      // Navigation can suspend while the next page loads; the database save is complete.
+      if (navigateTo) startTransition(() => router.replace(navigateTo));
+    })();
   }
 
   return (
@@ -709,7 +793,7 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
               <button type="button" onClick={() => setShowTemplates(true)} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-blue-200 px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50">
                 <Layers className="size-4" aria-hidden="true" /> Templates
               </button>
-              <button type="button" onClick={() => setShowLibrary(true)} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-blue-200 px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50">
+              <button type="button" onClick={() => { setLibraryLoading(!libraryLoaded); setShowLibrary(true); }} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-blue-200 px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50">
                 <BookOpen className="size-4" aria-hidden="true" /> Library
               </button>
               <button type="button" onClick={() => setShowChecklist(true)} className="relative inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-blue-200 px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50">
@@ -719,9 +803,9 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
               <button type="button" onClick={() => setShowPreview(true)} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-blue-200 px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50">
                 <Presentation className="size-4" aria-hidden="true" /> Preview
               </button>
-              <button disabled={isPending || activeImageUploads > 0} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60">
+              <button disabled={isSaving || activeImageUploads > 0} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60">
                 <Check className="size-4" aria-hidden="true" />
-                {activeImageUploads > 0 ? "Uploading images…" : isPending ? "Saving…" : isEditing ? "Save form" : "Create form"}
+                {activeImageUploads > 0 ? "Uploading images…" : isSaving ? "Saving…" : isEditing ? "Save form" : "Create form"}
               </button>
               {settings.is_quiz ? (
                 <span className="inline-flex min-h-10 items-center rounded-lg border border-green-200 bg-green-50 px-3 text-sm font-semibold text-green-800" aria-live="polite">
@@ -772,8 +856,7 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
                 <IntercessionRichTextEditor
                   value={description}
                   onChange={setDescription}
-                  maxLength={500}
-                  placeholder="Add a short description (optional)"
+                  placeholder="Add a description (optional)"
                   ariaLabel="Form description"
                   className="block min-h-7 w-full border-none text-lg leading-relaxed text-gray-900 outline-none focus:ring-0 sm:text-xl"
                 />
@@ -783,6 +866,10 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
 
             <div className="relative mx-auto max-w-5xl">
               <div className="space-y-4">
+                {settings.commitment ? <CommitmentFormConfiguration value={settings.commitment} membershipQuestionLinked={membershipQuestionLinked} onChange={(commitment) => {
+                  if (commitment.year >= 2000 && settings.commitment!.year >= 2000 && commitment.year !== settings.commitment?.year) setTitle((current) => current.replaceAll(String(settings.commitment!.year), String(commitment.year)));
+                  setSettings((current) => ({ ...current, commitment }));
+                }} /> : null}
                 {settings.submit_button_style === "attendance" ? (
                   <section className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-5 shadow-sm">
                     <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
@@ -843,7 +930,8 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
                     dragging={draggingQuestionId === question.id}
                     collapsed={collapsedQuestionIds.has(question.id)}
                     showPoints={settings.is_quiz}
-                    actionsDisabled={isPending || activeImageUploads > 0}
+                    membershipMappingAvailable={Boolean(settings.commitment) && (!membershipQuestionLinked || question.type === "membership_type")}
+                    actionsDisabled={isSaving || activeImageUploads > 0}
                     onUploadingChange={(uploading) => setActiveImageUploads((count) => Math.max(0, count + (uploading ? 1 : -1)))}
                     onSelect={() => setSelectedQuestionId(question.id)}
                     onToggleCollapsed={() => setCollapsedQuestionIds((current) => {
@@ -888,7 +976,7 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
             </div>
           </div>
         ) : (
-          <SettingsPanel settings={settings} setSettings={setSettings} activeTab={settingsTab} setActiveTab={setSettingsTab} hasOrderedQuestions={questions.some((question) => question.condition || ["title_section", "section_break"].includes(question.type))} />
+          <SettingsPanel settings={settings} setSettings={(updater) => setSettings((current) => normalizeBuilderSettings(typeof updater === "function" ? updater(current) : updater))} activeTab={settingsTab} setActiveTab={setSettingsTab} hasOrderedQuestions={questions.some((question) => question.condition || ["title_section", "section_break"].includes(question.type))} />
         )}
       </form>
       {showChecklist ? <PublishingChecklistModal issues={publishingIssues} onClose={() => setShowChecklist(false)} onGoToQuestion={(id) => {
@@ -899,7 +987,7 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
         window.setTimeout(() => document.getElementById(`builder-question-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
       }} /> : null}
       {showTemplates ? <TemplatesModal onClose={() => setShowTemplates(false)} onApply={applyTemplate} /> : null}
-      {showLibrary ? <QuestionLibraryModal questions={questionLibrary} onClose={() => setShowLibrary(false)} onAdd={(question) => { addQuestionCopy(question); setShowLibrary(false); }} onRemove={removeLibraryQuestion} /> : null}
+      {showLibrary ? <QuestionLibraryModal questions={questionLibrary} loading={libraryLoading} onClose={() => setShowLibrary(false)} onAdd={(question) => { addQuestionCopy(question); setShowLibrary(false); }} onRemove={removeLibraryQuestion} /> : null}
       {showPreview ? <BuilderPreviewModal title={title} description={description} questions={questions} settings={settings} device={previewDevice} setDevice={setPreviewDevice} onClose={() => setShowPreview(false)} /> : null}
     </div>
   );
@@ -925,6 +1013,7 @@ function QuestionCard({
   dragging,
   collapsed,
   showPoints,
+  membershipMappingAvailable,
   actionsDisabled,
   onUploadingChange,
   onSelect,
@@ -948,6 +1037,7 @@ function QuestionCard({
   dragging: boolean;
   collapsed: boolean;
   showPoints: boolean;
+  membershipMappingAvailable: boolean;
   actionsDisabled: boolean;
   onUploadingChange: (uploading: boolean) => void;
   onSelect: () => void;
@@ -967,7 +1057,7 @@ function QuestionCard({
   onDragEnd: () => void;
 }) {
   const isDisplayOnly = question.type === "title_section" || question.type === "section_break";
-  const conditionSourceQuestions = precedingQuestions.filter((candidate) => ["short_answer", "paragraph", "multiple_choice", "checkboxes", "dropdown", "linear_scale", "rating", "multiple_choice_grid", "checkbox_grid", "date", "time"].includes(candidate.type));
+  const conditionSourceQuestions = precedingQuestions.filter((candidate) => ["short_answer", "paragraph", "multiple_choice", "membership_type", "checkboxes", "dropdown", "linear_scale", "rating", "multiple_choice_grid", "checkbox_grid", "date", "time"].includes(candidate.type));
 
   return (
     <div
@@ -1026,8 +1116,17 @@ function QuestionCard({
           />
         </div>
         <select
-          value={isDisplayOnly ? question.type : question.type}
-          onChange={(event) => onChange({ type: event.target.value as QuestionType })}
+          aria-label="Question type"
+          value={question.type}
+          onChange={(event) => {
+            const type = event.target.value as QuestionType;
+            if (type !== "membership_type") return onChange({ type, membershipTypeMapping: null });
+            const usePreset = question.options.length === 1 && question.options[0] === "Option 1";
+            const options = usePreset ? newQuestion("membership_type").options : question.options;
+            onChange({ type, options, required: false, condition: null,
+              membershipTypeMapping: usePreset ? ["permanent", "temporary", "partner"] : question.membershipTypeMapping?.length === options.length ? question.membershipTypeMapping : options.map(() => ""),
+            });
+          }}
           className="h-10 rounded-lg border border-gray-300 px-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
         >
           {isDisplayOnly ? (
@@ -1036,7 +1135,7 @@ function QuestionCard({
               <option value="section_break">Section break</option>
             </>
           ) : (
-            questionTypes.map((type) => (
+            questionTypes.filter((type) => type.value !== "membership_type" || membershipMappingAvailable || question.type === "membership_type").map((type) => (
               <option key={type.value} value={type.value}>
                 {type.label}
               </option>
@@ -1048,7 +1147,7 @@ function QuestionCard({
       {!isDisplayOnly && (
         <div className="mt-4 space-y-3 pl-0 sm:pl-7">
           <QuestionImageEditor question={question} disabled={actionsDisabled} onChange={onChange} onRemoveImage={onRemoveImage} onUploadingChange={onUploadingChange} />
-          {["multiple_choice", "checkboxes", "dropdown"].includes(question.type) && (
+          {["multiple_choice", "membership_type", "checkboxes", "dropdown"].includes(question.type) && (
             <div className="space-y-2">
               {(question.options.length ? question.options : [""]).map((option, index) => (
                 <div key={`${question.id}-option-${index}`} className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -1067,6 +1166,16 @@ function QuestionCard({
                     className="min-w-0 flex-1 border-0 border-b border-gray-300 px-2 py-1 text-base text-gray-900 outline-none focus:border-indigo-500 focus:ring-0"
                     placeholder={`Option ${index + 1}`}
                   />
+                  {question.membershipTypeMapping != null ? <select
+                    aria-label={`Membership type for option ${index + 1}`}
+                    value={question.membershipTypeMapping[index] ?? ""}
+                    onChange={(event) => {
+                      const mapping = [...question.membershipTypeMapping!];
+                      mapping[index] = event.target.value as MembershipType | "";
+                      onChange({ membershipTypeMapping: mapping });
+                    }}
+                    className="rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm text-slate-800"
+                  ><option value="">Map to membership type</option>{membershipTypeOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select> : null}
                   {showPoints ? <label className="flex items-center gap-1 text-xs text-gray-500">
                     {question.type === "checkboxes" ? (
                       <input
@@ -1098,6 +1207,7 @@ function QuestionCard({
                       const nextOptions = question.options.filter((_, optionIndex) => optionIndex !== index);
                       onChange({
                         options: nextOptions.length ? nextOptions : [""],
+                        membershipTypeMapping: question.membershipTypeMapping != null ? nextOptions.length ? question.membershipTypeMapping.filter((_, optionIndex) => optionIndex !== index) : [""] : null,
                         correctAnswer: question.correctAnswer === removed ? "" : question.correctAnswer,
                         correctAnswers: question.correctAnswers.filter((answer) => answer !== removed),
                       });
@@ -1110,7 +1220,7 @@ function QuestionCard({
               ))}
               <button
                 type="button"
-                onClick={() => onChange({ options: [...question.options, `Option ${question.options.length + 1}`] })}
+                onClick={() => onChange({ options: [...question.options, `Option ${question.options.length + 1}`], membershipTypeMapping: question.membershipTypeMapping != null ? [...question.membershipTypeMapping, ""] : null })}
                 className="text-xs font-semibold text-indigo-600 hover:underline"
               >
                 Add option
@@ -1169,7 +1279,7 @@ function QuestionCard({
           {["multiple_choice_grid", "checkbox_grid"].includes(question.type) && (
             <GridQuestionEditor question={question} showCorrectAnswers={showPoints} onChange={onChange} />
           )}
-          <ConditionalQuestionEditor question={question} precedingQuestions={precedingQuestions} onChange={onChange} />
+          {question.membershipTypeMapping == null ? <ConditionalQuestionEditor question={question} precedingQuestions={precedingQuestions} onChange={onChange} /> : null}
         </div>
       )}
 
@@ -1181,7 +1291,7 @@ function QuestionCard({
                 <input type="checkbox" checked={question.required} onChange={(event) => onChange({ required: event.target.checked })} className="size-4 rounded border-gray-300" />
                 Required
               </label>
-              {conditionSourceQuestions.length > 0 ? (
+              {conditionSourceQuestions.length > 0 && question.membershipTypeMapping == null ? (
                 <label className="flex items-center gap-2" title="Show this question based on an earlier answer">
                   <input
                     type="checkbox"
@@ -1399,11 +1509,11 @@ function ConditionalQuestionEditor({
   precedingQuestions: BuilderQuestion[];
   onChange: (patch: Partial<BuilderQuestion>) => void;
 }) {
-  const eligibleQuestions = precedingQuestions.filter((candidate) => ["short_answer", "paragraph", "multiple_choice", "checkboxes", "dropdown", "linear_scale", "rating", "multiple_choice_grid", "checkbox_grid", "date", "time"].includes(candidate.type));
+  const eligibleQuestions = precedingQuestions.filter((candidate) => ["short_answer", "paragraph", "multiple_choice", "membership_type", "checkboxes", "dropdown", "linear_scale", "rating", "multiple_choice_grid", "checkbox_grid", "date", "time"].includes(candidate.type));
   const condition = question.condition;
   if (eligibleQuestions.length === 0 || !condition) return null;
   const sourceQuestion = eligibleQuestions.find((candidate) => candidate.id === condition?.questionId);
-  const sourceOptions = sourceQuestion && ["multiple_choice", "checkboxes", "dropdown"].includes(sourceQuestion.type) ? sourceQuestion.options.filter(Boolean) : [];
+  const sourceOptions = sourceQuestion && ["multiple_choice", "membership_type", "checkboxes", "dropdown"].includes(sourceQuestion.type) ? sourceQuestion.options.filter(Boolean) : [];
   const sourceIsGrid = sourceQuestion ? ["multiple_choice_grid", "checkbox_grid"].includes(sourceQuestion.type) : false;
   const gridRowIndex = sourceIsGrid ? Math.min(condition.rowIndex ?? 0, Math.max(0, (sourceQuestion?.rows.length ?? 1) - 1)) : undefined;
   const conditionOptions = sourceIsGrid ? sourceQuestion?.columns.filter(Boolean) ?? [] : sourceOptions;
@@ -1670,8 +1780,8 @@ function TemplatesModal({ onClose, onApply }: { onClose: () => void; onApply: (t
   return <ModalShell title="Start from a template" onClose={onClose}><div className="grid gap-3 overflow-y-auto p-5 sm:grid-cols-2">{formTemplates.map((template) => <button key={template.id} type="button" onClick={() => onApply(template)} className="rounded-xl border border-slate-200 p-4 text-left transition hover:border-blue-300 hover:bg-blue-50 focus:outline-none focus:ring-4 focus:ring-blue-100"><span className="font-semibold text-slate-900">{template.name}</span><span className="mt-1 block text-sm text-slate-500">{template.description}</span><span className="mt-3 block text-xs font-semibold text-blue-700">Use template</span></button>)}</div></ModalShell>;
 }
 
-function QuestionLibraryModal({ questions, onClose, onAdd, onRemove }: { questions: BuilderQuestion[]; onClose: () => void; onAdd: (question: BuilderQuestion) => void; onRemove: (id: string) => void }) {
-  return <ModalShell title="Question library" onClose={onClose}><div className="overflow-y-auto p-5">{questions.length === 0 ? <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">Use the book button on a question to save it here for reuse.</div> : <ul className="space-y-2">{questions.map((question) => <li key={question.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3"><div className="min-w-0"><p className="truncate font-medium text-slate-800">{intercessionRichTextToPlainText(question.label) || "Untitled question"}</p><p className="text-xs text-slate-500">{questionTypes.find((type) => type.value === question.type)?.label ?? question.type}</p></div><div className="flex shrink-0 gap-2"><button type="button" onClick={() => onAdd(question)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700">Add</button><button type="button" onClick={() => onRemove(question.id)} className="inline-flex size-8 items-center justify-center rounded-lg border border-red-100 text-red-600 hover:bg-red-50" aria-label="Remove from library"><Trash2 className="size-4" aria-hidden="true" /></button></div></li>)}</ul>}</div></ModalShell>;
+function QuestionLibraryModal({ questions, loading, onClose, onAdd, onRemove }: { questions: BuilderQuestion[]; loading: boolean; onClose: () => void; onAdd: (question: BuilderQuestion) => void; onRemove: (id: string) => void }) {
+  return <ModalShell title="Question library" onClose={onClose}><div className="overflow-y-auto p-5">{loading ? <p role="status" className="p-8 text-center text-sm text-slate-500">Loading question library…</p> : questions.length === 0 ? <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">Use the book button on a question to save it here for reuse.</div> : <ul className="space-y-2">{questions.map((question) => <li key={question.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3"><div className="min-w-0"><p className="truncate font-medium text-slate-800">{intercessionRichTextToPlainText(question.label) || "Untitled question"}</p><p className="text-xs text-slate-500">{questionTypes.find((type) => type.value === question.type)?.label ?? question.type}</p></div><div className="flex shrink-0 gap-2"><button type="button" onClick={() => onAdd(question)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700">Add</button><button type="button" onClick={() => onRemove(question.id)} className="inline-flex size-8 items-center justify-center rounded-lg border border-red-100 text-red-600 hover:bg-red-50" aria-label="Remove from library"><Trash2 className="size-4" aria-hidden="true" /></button></div></li>)}</ul>}</div></ModalShell>;
 }
 
 function BuilderPreviewModal({ title, description, questions, settings, device, setDevice, onClose }: { title: string; description: string; questions: BuilderQuestion[]; settings: BuilderSettings; device: "desktop" | "mobile"; setDevice: (device: "desktop" | "mobile") => void; onClose: () => void }) {
@@ -1681,7 +1791,7 @@ function BuilderPreviewModal({ title, description, questions, settings, device, 
         <button type="button" onClick={() => setDevice("desktop")} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold ${device === "desktop" ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-white"}`} aria-pressed={device === "desktop"}><Monitor className="size-4" aria-hidden="true" /> Desktop</button>
         <button type="button" onClick={() => setDevice("mobile")} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold ${device === "mobile" ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-white"}`} aria-pressed={device === "mobile"}><Smartphone className="size-4" aria-hidden="true" /> Mobile</button>
       </div>
-      <div className="overflow-y-auto bg-slate-100 p-3 sm:p-5"><div className={`mx-auto transition-all ${device === "mobile" ? "max-w-[390px]" : "max-w-5xl"}`}><IntercessionTakeForm form={{ id: 0, title: title || "Untitled form", description }} questions={questions} settings={settings} alreadySubmitted={false} requireRespondentName={!settings.require_login} preview embedded onPreviewClose={onClose} /></div></div>
+      <div className="overflow-y-auto bg-slate-100 p-3 sm:p-5"><div className={`mx-auto transition-all ${device === "mobile" ? "max-w-[390px]" : "max-w-5xl"}`}>      <IntercessionTakeForm form={{ id: 0, title: title || "Untitled form", description }} questions={questions} settings={settings} alreadySubmitted={false} requireRespondentName={!settings.require_login && !settings.commitment} preview embedded onPreviewClose={onClose} /></div></div>
     </ModalShell>
   );
 }
@@ -1736,7 +1846,7 @@ function SettingsPanel({
       <div className="space-y-4 p-5">
         {activeTab === "quiz" && (
           <>
-            <SettingToggle title="Make this a quiz" description="Assign point values, set correct answers" checked={Boolean(settings.is_quiz)} onChange={(value) => update("is_quiz", value)} />
+            <SettingToggle title="Make this a quiz" description={settings.commitment ? "Annual commitments record acceptance without scoring" : "Assign point values, set correct answers"} disabled={Boolean(settings.commitment)} checked={Boolean(settings.is_quiz)} onChange={(value) => update("is_quiz", value)} />
             <SettingSelect title="Release grade" value={String(settings.release_grade)} onChange={(value) => update("release_grade", value)} options={[
               ["immediately", "Immediately after submission"],
               ["later", "Later, after manual review"],
@@ -1749,14 +1859,14 @@ function SettingsPanel({
         {activeTab === "responses" && (
           <>
             <SettingToggle title="Accept responses" description="Temporarily open or close this form without archiving it" checked={Boolean(settings.accepting_responses)} onChange={(value) => update("accepting_responses", value)} />
-            <SettingToggle title="User can view their responses" description="Allow users to see their submitted answers" checked={Boolean(settings.allow_view_response)} onChange={(value) => update("allow_view_response", value)} />
-            <SettingToggle title="Limit to 1 response" description="Prevent users from submitting more than once" checked={Boolean(settings.limit_one_response)} onChange={(value) => update("limit_one_response", value)} />
-            <SettingToggle title="Require login to submit" description="Only authenticated users can submit responses" checked={Boolean(settings.require_login)} onChange={(value) => update("require_login", value)} />
-            {!settings.require_login ? <VisitorFieldsEditor fields={settings.visitor_fields} onChange={(visitor_fields) => setSettings((current) => ({ ...current, visitor_fields }))} /> : null}
+            <SettingToggle title="User can view their responses" description={settings.commitment ? "Allow signed-in members to view accepted commitment details. Anonymous submissions are not linked to a member history." : "Allow users to see their submitted answers"} checked={Boolean(settings.allow_view_response)} onChange={(value) => update("allow_view_response", value)} />
+            <SettingToggle title="Limit to 1 response" description={settings.commitment ? settings.require_login ? "One acceptance per member per commitment year" : "Limit anonymous repeats from the same browser; anonymous submissions cannot be matched across devices" : "Prevent users from submitting more than once"} checked={Boolean(settings.limit_one_response)} onChange={(value) => update("limit_one_response", value)} />
+            <SettingToggle title="Require login to submit" description={settings.commitment ? "Link the acceptance to a member account and update permitted profile fields. Without login, name and membership type are recorded without profile updates." : "Only authenticated users can submit responses"} checked={Boolean(settings.require_login)} onChange={(value) => update("require_login", value)} />
+            {!settings.require_login && !settings.commitment ? <VisitorFieldsEditor fields={settings.visitor_fields} onChange={(visitor_fields) => setSettings((current) => ({ ...current, visitor_fields }))} /> : null}
             <div className="grid gap-3 border-b border-gray-100 py-3 sm:grid-cols-2"><label className="text-sm font-medium text-gray-800">Opens at<input type="datetime-local" value={String(settings.submission_opens_at ?? "")} onChange={(event) => update("submission_opens_at", event.target.value)} className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label><label className="text-sm font-medium text-gray-800">Closes at<input type="datetime-local" value={String(settings.submission_deadline ?? "")} onChange={(event) => update("submission_deadline", event.target.value)} className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label></div>
             <div className="border-b border-gray-100 py-3">
               <h3 className="mb-2 text-sm font-medium text-gray-800">Maximum responses</h3>
-              <input type="number" min={0} value={settings.max_responses ?? 200} onChange={(event) => update("max_responses", Math.max(0, Number(event.target.value) || 0))} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              <input type="number" min={0} disabled={Boolean(settings.commitment)} value={settings.max_responses ?? 200} onChange={(event) => update("max_responses", Math.max(0, Number(event.target.value) || 0))} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-slate-100" />
               <p className="mt-1 text-xs text-gray-500">Use 0 for no response limit.</p>
             </div>
             <label className="block border-b border-gray-100 py-3 text-sm font-medium text-gray-800">Thank-you message<textarea value={settings.thank_you_message} onChange={(event) => update("thank_you_message", event.target.value)} rows={3} className="mt-2 w-full resize-y rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
@@ -1784,11 +1894,11 @@ function SettingsPanel({
             <SettingToggle title="Notify admin on submission" description="Send notification when someone submits" checked={Boolean(settings.notify_on_submit)} onChange={(value) => update("notify_on_submit", value)} />
             <SettingToggle title="Notify user when reviewed" description="Notify when score is released" checked={Boolean(settings.notify_user_on_review)} onChange={(value) => update("notify_user_on_review", value)} />
             <SettingToggle title="Send response receipt" description="Send members or guests with an email address a submission receipt" checked={Boolean(settings.send_response_receipt)} onChange={(value) => update("send_response_receipt", value)} />
-            <SettingToggle title="Allow response editing" description="Give respondents a secure, time-limited edit link after submission" checked={Boolean(settings.allow_response_editing)} onChange={(value) => update("allow_response_editing", value)} />
+            <SettingToggle title="Allow response editing" description={settings.commitment ? "Accepted annual commitments are preserved and cannot be edited" : "Give respondents a secure, time-limited edit link after submission"} disabled={Boolean(settings.commitment)} checked={Boolean(settings.allow_response_editing)} onChange={(value) => update("allow_response_editing", value)} />
             {settings.allow_response_editing ? <SettingNumber title="Editing window (hours)" value={Number(settings.response_edit_hours)} onChange={(value) => update("response_edit_hours", Math.min(720, Math.max(1, value)))} /> : null}
             <SettingToggle title="Allow response export" description="Admin can download CSV or Excel workbooks" checked={Boolean(settings.allow_export)} onChange={(value) => update("allow_export", value)} />
             <SettingToggle title="Include timestamps in export" description="Show submission time in downloaded files" checked={Boolean(settings.include_timestamps)} onChange={(value) => update("include_timestamps", value)} />
-            <SettingToggle title="Allow submission without questions" description="Let this form record the respondent and submission time without requiring an answer" checked={Boolean(settings.allow_empty_submission)} onChange={(value) => update("allow_empty_submission", value)} />
+            <SettingToggle title="Allow submission without questions" description={settings.commitment ? "Commitment submissions always record member information" : "Let this form record the respondent and submission time without requiring an answer"} disabled={Boolean(settings.commitment)} checked={Boolean(settings.allow_empty_submission)} onChange={(value) => update("allow_empty_submission", value)} />
           </>
         )}
       </div>

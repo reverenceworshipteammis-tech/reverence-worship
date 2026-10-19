@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { intercessionFormAvailability, parseIntercessionFormQuestions, parseIntercessionFormSettings } from "@/lib/intercession-form-domain";
 import { prisma } from "@/lib/prisma";
 import { withDatabaseRetry } from "@/lib/database-retry";
+import { commitmentProfileValues } from "@/lib/membership-commitment";
 
 export default async function PublicIntercessionFormPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -16,10 +17,17 @@ export default async function PublicIntercessionFormPage({ params }: { params: P
   if (!form) notFound();
   const settings = parseIntercessionFormSettings(form.settings);
   if (settings.require_login) notFound();
+  if (user && settings.commitment && (user.status !== "active" || !user.membershipType || !settings.commitment.membershipTypes.includes(user.membershipType))) {
+    return <main className="min-h-screen bg-slate-50 p-6"><div className="mx-auto max-w-2xl rounded-xl border border-amber-200 bg-amber-50 p-6 text-center text-amber-900">This commitment is not available for your membership type.</div></main>;
+  }
   const availability = intercessionFormAvailability(settings, form.isActive, form._count.submissions);
   if (availability) return <main className="min-h-screen bg-slate-50 p-6"><div className="mx-auto max-w-2xl rounded-xl border border-amber-200 bg-amber-50 p-6 text-center text-amber-900">{availability}</div></main>;
-  const existingSubmission = user && settings.limit_one_response
+  const commitmentYear = settings.commitment?.year;
+  const existingCommitment = user && commitmentYear && settings.limit_one_response
+    ? await withDatabaseRetry(() => prisma.membershipCommitment.findFirst({ where: { userId: user.id, year: commitmentYear }, select: { id: true } }), 3)
+    : null;
+  const existingSubmission = !existingCommitment && user && settings.limit_one_response
     ? await withDatabaseRetry(() => prisma.formSubmission.findFirst({ where: { formId, userId: user.id, deletedAt: null }, select: { id: true } }), 3)
     : null;
-  return <main className="min-h-screen bg-slate-50"><IntercessionTakeForm form={{ id: form.id, title: form.title, description: form.description }} questions={parseIntercessionFormQuestions(form.questions)} settings={settings} alreadySubmitted={Boolean(existingSubmission)} requireRespondentName={!user} backHref="/" /></main>;
+  return <main className="min-h-screen bg-slate-50"><IntercessionTakeForm form={{ id: form.id, title: form.title, description: form.description }} questions={parseIntercessionFormQuestions(form.questions)} settings={settings} alreadySubmitted={Boolean(existingCommitment || existingSubmission)} requireRespondentName={!user && !settings.commitment} memberProfile={user && settings.commitment ? commitmentProfileValues(user) : undefined} backHref="/" /></main>;
 }

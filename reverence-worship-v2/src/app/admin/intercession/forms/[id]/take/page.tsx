@@ -8,6 +8,7 @@ import { parseQuestionImages } from "@/lib/intercession-question-images";
 import { parseIntercessionQuestionCondition } from "@/lib/intercession-form-rules";
 import { intercessionFormAvailability, parseIntercessionFormSettings } from "@/lib/intercession-form-domain";
 import { withDatabaseRetry } from "@/lib/database-retry";
+import { commitmentProfileValues } from "@/lib/membership-commitment";
 
 function asObject(value: unknown) {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
@@ -64,6 +65,15 @@ export default async function TakeIntercessionFormPage({
   }
 
   const formSettings = parseIntercessionFormSettings(form.settings);
+  if (formSettings.commitment) {
+    const accepted = formSettings.limit_one_response
+      ? await prisma.membershipCommitment.findFirst({ where: { userId: user.id, year: formSettings.commitment.year }, select: { id: true } })
+      : null;
+    if (accepted) {
+      return <div className="mx-auto max-w-2xl p-6 text-center"><h1 className="text-xl font-bold">Commitment already accepted</h1><p className="my-4">You have accepted your membership commitment for {formSettings.commitment.year}.</p>{formSettings.allow_view_response ? <Link href={`/admin/intercession/commitments/${accepted.id}`} className="font-semibold text-blue-700">View accepted commitment</Link> : null}</div>;
+    }
+    if (!user.membershipType || !formSettings.commitment.membershipTypes.includes(user.membershipType)) return <div className="p-6 text-center">This commitment is not available for your membership type.</div>;
+  }
   const availability = intercessionFormAvailability(formSettings, form.isActive, await withDatabaseRetry(() => prisma.formSubmission.count({ where: { formId, deletedAt: null } }), 3));
   if (availability) return (
     <div className="mx-auto max-w-2xl p-6">
@@ -77,10 +87,10 @@ export default async function TakeIntercessionFormPage({
     </div>
   );
 
-  const existingSubmission = await withDatabaseRetry(() => prisma.formSubmission.findFirst({
+  const existingSubmission = formSettings.limit_one_response ? await withDatabaseRetry(() => prisma.formSubmission.findFirst({
     where: { formId, userId: user.id, deletedAt: null },
     select: { id: true },
-  }), 3);
+  }), 3) : null;
 
   return (
     <IntercessionTakeForm
@@ -88,10 +98,12 @@ export default async function TakeIntercessionFormPage({
         id: form.id,
         title: form.title,
         description: form.description,
+        version: form.version,
       }}
       questions={asQuestions(form.questions)}
       settings={formSettings}
       alreadySubmitted={Boolean(existingSubmission)}
+      memberProfile={formSettings.commitment ? commitmentProfileValues(user) : undefined}
     />
   );
 }

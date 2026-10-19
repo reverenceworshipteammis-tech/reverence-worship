@@ -7,6 +7,9 @@ import { ArrowLeft, CheckCircle2, Clock, FileText, Info, Lock, Paperclip, Presen
 import { submitSpiritualForm } from "@/app/admin/intercession/actions";
 import { IntercessionRichText } from "@/components/intercession-rich-text";
 import { IntercessionQuestionImages } from "@/components/intercession-question-images";
+import { CommitmentMemberInformation } from "@/components/commitment-form-fields";
+import type { CommitmentProfileValues, CommitmentSettings } from "@/lib/membership-commitment";
+import type { MembershipTypeMapping } from "@/lib/membership-question";
 import type { IntercessionQuestionImage } from "@/lib/intercession-question-images";
 import type { IntercessionQuestionCondition } from "@/lib/intercession-form-rules";
 import {
@@ -18,6 +21,7 @@ import {
 } from "@/lib/intercession-form-domain";
 
 type TakeQuestion = {
+  membershipTypeMapping?: MembershipTypeMapping | null;
   id: string;
   type: string;
   label: string;
@@ -36,7 +40,10 @@ type TakeQuestion = {
 };
 
 type TakeSettings = {
+  commitment?: CommitmentSettings | null;
   limit_one_response?: boolean;
+  allow_view_response?: boolean;
+  require_login?: boolean;
   show_question_numbers?: boolean;
   show_progress_bar?: boolean;
   shuffle_questions?: boolean;
@@ -83,8 +90,9 @@ export function IntercessionTakeForm({
   requireRespondentName = false,
   editToken = "",
   initialValues,
+  memberProfile,
 }: {
-  form: { id: number; title: string; description: string | null };
+  form: { id: number; title: string; description: string | null; version?: number };
   questions: TakeQuestion[];
   settings: TakeSettings;
   alreadySubmitted: boolean;
@@ -95,6 +103,7 @@ export function IntercessionTakeForm({
   requireRespondentName?: boolean;
   editToken?: string;
   initialValues?: Record<string, string | string[]>;
+  memberProfile?: CommitmentProfileValues;
 }) {
   const [message, setMessage] = useState<string | null>(null);
   const [messageIsError, setMessageIsError] = useState(false);
@@ -168,7 +177,7 @@ export function IntercessionTakeForm({
     ? Math.round((answeredVisibleQuestions / answerableQuestions.length) * 100)
     : 0;
 
-  const draftKey = `intercession-response-draft:${form.id}:${editToken ? "edit" : "new"}`;
+  const draftKey = `intercession-response-draft:${form.id}:${settings.commitment ? `commitment-v${form.version ?? 0}` : editToken ? "edit" : "new"}`;
   useEffect(() => {
     if (preview || form.id <= 0 || draftRestored.current) return;
     draftRestored.current = true;
@@ -255,7 +264,7 @@ export function IntercessionTakeForm({
   }
 
   if (submitted) return (
-    <TakeShell title={editToken ? "Response updated" : isAttendanceAction ? "Attendance recorded" : "Response recorded"} tone="green">
+    <TakeShell title={settings.commitment ? "Commitment accepted" : editToken ? "Response updated" : isAttendanceAction ? "Attendance recorded" : "Response recorded"} tone="green">
       <CheckCircle2 className="mx-auto mb-3 size-10 text-emerald-600" aria-hidden="true" />
       <p className="mb-2 text-slate-700">{submitted.message}</p>
       {submitted.earnedPoints !== null && submitted.totalPoints !== null ? <p className="mb-4 text-lg font-bold text-blue-700">Score: {formatIntercessionMarks(submitted.earnedPoints)} / {formatIntercessionMarks(submitted.totalPoints)}</p> : null}
@@ -301,9 +310,10 @@ export function IntercessionTakeForm({
 
   if (!preview && !editToken && alreadySubmitted && limitOneResponse) {
     return (
-      <TakeShell title="Already Submitted" tone="yellow">
+      <TakeShell title={settings.commitment ? "Commitment already accepted" : "Already Submitted"} tone="yellow">
         <Info className="mx-auto mb-3 size-10 text-yellow-500" aria-hidden="true" />
-        <p className="mb-4 text-gray-600">You have already submitted this form. Only one response is allowed per user.</p>
+        <p className="mb-4 text-gray-600">{settings.commitment ? `You have already accepted your membership commitment for ${settings.commitment.year}.` : "You have already submitted this form. Only one response is allowed per user."}</p>
+        {settings.commitment && settings.allow_view_response !== false ? <Link href="/admin/intercession/commitments/mine" className="mb-4 block font-semibold text-blue-700">View my accepted commitments</Link> : null}
         <Link href={backHref} className="inline-flex rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
           Back to Forms
         </Link>
@@ -360,9 +370,11 @@ export function IntercessionTakeForm({
         {message && <ActionNotice message={message} tone={messageIsError ? "error" : "info"} onClose={() => setMessage(null)} className="mx-5 mt-4 sm:mx-8" />}
 
         <form ref={formRef} onSubmit={submit} noValidate onInput={(event) => saveDraft(event.currentTarget)}>
+          {settings.commitment ? <input type="hidden" name="commitment_version" value={form.version ?? 0} /> : null}
+          {settings.commitment ? <div className="bg-slate-50 px-5 pt-5 sm:px-8 sm:pt-8"><CommitmentMemberInformation config={settings.commitment} values={memberProfile} preview={preview} membershipQuestionLinked={questions.some((question) => question.membershipTypeMapping != null)} anonymous={!settings.require_login && !memberProfile} /></div> : null}
           {requireRespondentName || displayQuestions.length > 0 || !settings.allow_empty_submission ? (
             <div className="space-y-6 bg-slate-50 p-5 sm:p-8">
-              {requireRespondentName ? <VisitorInformationFields fields={parseIntercessionVisitorFields(settings.visitor_fields)} formId={form.id} /> : null}
+              {requireRespondentName && !settings.commitment ? <VisitorInformationFields fields={parseIntercessionVisitorFields(settings.visitor_fields)} formId={form.id} /> : null}
               {displayQuestions.length ? (
                 displayQuestions.map(({ question, index }) => (
                   <div key={`${question.id}-${index}`}>
@@ -377,14 +389,14 @@ export function IntercessionTakeForm({
                   </div>
                 ))
               ) : (
-                <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-sm text-gray-500">This form has no questions yet.</div>
+                !settings.commitment ? <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-sm text-gray-500">This form has no questions yet.</div> : null
               )}
             </div>
           ) : null}
 
           <div className={isAttendanceAction ? "relative overflow-hidden border-t border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-cyan-50 px-5 py-8 sm:px-8 sm:py-10" : "border-t border-gray-200 bg-white px-5 py-5 sm:px-8"}>
             {isAttendanceAction ? <><div className="pointer-events-none absolute -left-20 -top-20 size-56 rounded-full bg-emerald-200/30 blur-3xl" /><div className="pointer-events-none absolute -bottom-24 -right-20 size-64 rounded-full bg-cyan-200/30 blur-3xl" /></> : null}
-            <div className={isAttendanceAction ? "flex flex-col items-center gap-4" : "flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end"}>
+            <div className={isAttendanceAction || settings.commitment ? "flex flex-col items-center gap-4" : "flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end"}>
               {isAttendanceAction ? (
                 <>
                   <section className="relative z-10 w-full max-w-2xl overflow-hidden rounded-3xl border border-white/80 bg-white/90 p-5 shadow-[0_20px_60px_rgba(5,150,105,0.14)] backdrop-blur sm:p-8">
@@ -436,7 +448,7 @@ export function IntercessionTakeForm({
                   </button>
               ) : (
                 <button
-                  disabled={isPending || answerableQuestions.length === 0}
+                  disabled={isPending || answerableQuestions.length === 0 && !settings.allow_empty_submission && !settings.commitment}
                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-8 py-3 font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60"
                 >
                   {isPending ? <CheckCircle2 className="size-5" /> : <Send className="size-4" />}
@@ -550,6 +562,7 @@ function QuestionField({
           {question.required && <span className="ml-1 text-red-500">*</span>}
         </h3>
         {question.description && <p className="mt-1 text-sm text-gray-500"><IntercessionRichText value={question.description} /></p>}
+        {question.membershipTypeMapping != null ? <p className="mt-2 text-sm text-blue-700">Your selection will update your membership type when you submit and accept this commitment.</p> : null}
       </div>
 
       <IntercessionQuestionImages images={question.images} className="mb-5" />
@@ -581,7 +594,7 @@ function QuestionField({
           className="w-full resize-none overflow-hidden rounded-lg border border-gray-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
         />
       )}
-      {question.type === "multiple_choice" && (
+      {["multiple_choice", "membership_type"].includes(question.type) && (
         <div className="space-y-3">
           {options.map((option) => (
             <label key={option} className="flex cursor-pointer items-center gap-3 rounded-lg border border-gray-200 p-3 text-slate-800 hover:bg-indigo-50">
@@ -650,7 +663,7 @@ function QuestionField({
           <input type="file" name={name} required={question.required && !editing} accept="image/jpeg,image/png,image/webp,application/pdf,.doc,.docx" onChange={(event) => { const file = event.target.files?.[0]; onAnswered(Boolean(file)); onAnswerChange(file?.name ?? ""); }} className="sr-only" />
         </label>
       )}
-      {!["short_answer", "paragraph", "multiple_choice", "checkboxes", "dropdown", "linear_scale", "rating", "multiple_choice_grid", "checkbox_grid", "date", "time", "file_upload"].includes(question.type) && (
+      {!["short_answer", "paragraph", "multiple_choice", "membership_type", "checkboxes", "dropdown", "linear_scale", "rating", "multiple_choice_grid", "checkbox_grid", "date", "time", "file_upload"].includes(question.type) && (
         <div className="flex items-center gap-2 rounded-lg bg-gray-50 p-3 text-sm text-gray-500">
           <Lock className="size-4" aria-hidden="true" />
           Unsupported question type.
