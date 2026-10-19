@@ -1,13 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { ProjectionAutoFitText } from "@/components/projection-auto-fit-text";
-import { ProjectionBackgroundLayer } from "@/components/projection-background-layer";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { ProjectionFrame } from "@/components/projection-frame";
 import {
   PROJECTION_CHANNEL_NAME,
-  projectionOverlaySafeInsets,
-  projectionOverlayTextSizePx,
-  projectionTextSizePx,
   type ProjectionChannelMessage,
   type ProjectionControlKey,
   type ProjectionOutputState,
@@ -15,79 +11,6 @@ import {
 } from "@/lib/projection-runtime";
 
 const OUTPUT_KEYS = new Set(["ArrowRight", "ArrowLeft", "PageDown", "PageUp", "Home", "End", "Enter", " ", "b", "o"]);
-
-function slideContentLength(state: ProjectionOutputState) {
-  if (!state.slide) return 0;
-  return state.slide.sections?.reduce((total, section) => total + section.text.length, 0) ?? state.slide.text.length;
-}
-
-function ProjectionFrame({ state, animate }: { state: ProjectionOutputState; animate: boolean }) {
-  const frameRef = useRef<HTMLDivElement | null>(null);
-  const overlayRef = useRef<HTMLElement | null>(null);
-  const [frameHeight, setFrameHeight] = useState(0);
-  const [overlayHeight, setOverlayHeight] = useState(0);
-  const maximumFontSize = projectionTextSizePx(state.fontSize);
-  const overlayFontSize = projectionOverlayTextSizePx(state.overlay.fontSize);
-  const showOverlay = Boolean(state.overlay.visible && !state.blanked && (state.overlay.title || state.overlay.text));
-  const transitionName = state.transition.type === "dissolve" ? "projection-dissolve-in" : "projection-fade-in";
-  const animation = animate && state.transition.type !== "cut" ? `${transitionName} ${state.transition.durationMs}ms ease-out both` : undefined;
-  const safeInsets = projectionOverlaySafeInsets(frameHeight, overlayHeight, state.overlay.position, showOverlay);
-
-  useLayoutEffect(() => {
-    const frame = frameRef.current;
-    if (!frame) return;
-    const measure = () => {
-      setFrameHeight(frame.clientHeight);
-      setOverlayHeight(showOverlay ? overlayRef.current?.offsetHeight ?? 0 : 0);
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(frame);
-    if (showOverlay && overlayRef.current) observer.observe(overlayRef.current);
-    return () => observer.disconnect();
-  }, [showOverlay, state.overlay.position, state.overlay.fontSize, state.overlay.title, state.overlay.text, state.overlay.width]);
-
-  return (
-    <div ref={frameRef} className="absolute inset-0 isolate overflow-hidden bg-black" style={{ color: state.textColor, animation }}>
-      {!state.blanked ? <ProjectionBackgroundLayer background={state.background} media={state.media} effects={state.effects} contentLength={slideContentLength(state)} className="-z-10" /> : null}
-
-      {!state.blanked ? (
-        <section className="relative z-0 flex h-full min-h-0 flex-col items-center px-[3.5vw] text-center" style={safeInsets}>
-          {state.slide?.label ? <p className="mb-[1vh] text-[clamp(16px,1.8vw,30px)] font-bold uppercase tracking-[0.12em]" style={{ color: state.mutedTextColor }}>{state.slide.label}</p> : null}
-          {state.slide?.sections?.length ? (
-            <div className="grid min-h-0 w-full flex-1 items-stretch" style={{ gridTemplateColumns: `repeat(${state.slide.sections.length}, minmax(0, 1fr))` }}>
-              {state.slide.sections.map((section, index) => (
-                <section key={`${section.label}-${index}`} className="flex min-h-0 min-w-0 flex-col px-[2vw] py-[0.5vh]" style={{ borderLeft: index ? `1px solid ${state.mutedTextColor}` : undefined }}>
-                  <h2 className="mb-[0.75vh] text-[clamp(16px,1.7vw,28px)] font-extrabold uppercase tracking-[0.14em]" style={{ color: state.mutedTextColor }}>{section.label}</h2>
-                  {state.uniformTextSize ? <p className="flex min-h-0 flex-1 items-center justify-center whitespace-pre-line font-bold leading-[1.08] tracking-[0.003em] [text-wrap:balance]" style={{ color: state.textColor, fontSize: maximumFontSize, textShadow: state.textShadow }}>{section.text}</p> : <ProjectionAutoFitText text={section.text} maximumFontSize={maximumFontSize} className="font-bold leading-[1.08] tracking-[0.003em]" style={{ color: state.textColor, textShadow: state.textShadow }} />}
-                </section>
-              ))}
-            </div>
-          ) : (
-            <div className="min-h-0 w-full flex-1">
-              {state.uniformTextSize ? <p className="flex size-full items-center justify-center whitespace-pre-line font-bold leading-[1.08] tracking-[0.003em] [text-wrap:balance]" style={{ color: state.textColor, fontSize: maximumFontSize, textShadow: state.textShadow }}>{state.slide?.text ?? ""}</p> : <ProjectionAutoFitText text={state.slide?.text ?? ""} maximumFontSize={maximumFontSize} className="font-bold leading-[1.08] tracking-[0.003em]" style={{ color: state.textColor, textShadow: state.textShadow }} />}
-            </div>
-          )}
-          <p className="mt-[0.75vh] w-full shrink-0 truncate text-center text-[clamp(12px,1.15vw,20px)]" style={{ color: state.mutedTextColor }}>{state.footer}</p>
-        </section>
-      ) : null}
-
-      {showOverlay ? (
-        <aside ref={overlayRef} className="absolute left-1/2 z-10 max-w-[94vw] whitespace-pre-line rounded-2xl border font-bold leading-[1.22] [text-wrap:balance]" style={{
-          top: state.overlay.position === "top" ? "6vh" : state.overlay.position === "center" ? "50%" : "auto",
-          bottom: state.overlay.position === "bottom" ? "7vh" : "auto",
-          transform: state.overlay.position === "center" ? "translate(-50%, -50%)" : "translateX(-50%)",
-          width: `${state.overlay.width}vw`, opacity: state.overlay.opacity / 100, textAlign: state.overlay.alignment,
-          background: state.overlay.background, color: state.overlay.color, borderColor: state.overlay.borderColor,
-          boxShadow: state.overlay.boxShadow, textShadow: state.overlay.textShadow, padding: state.overlay.padding,
-        }}>
-          {state.overlay.title ? <h2 className="mb-[0.65em] [overflow-wrap:anywhere] font-extrabold uppercase tracking-[0.1em] opacity-70" style={{ fontSize: `${Math.max(10, Math.round(overlayFontSize * 0.5))}px` }}>{state.overlay.title}</h2> : null}
-          {state.overlay.text ? <ProjectionAutoFitText text={state.overlay.text} maximumFontSize={overlayFontSize} minimumFontSize={10} fit="width" className="font-bold leading-[1.22]" /> : null}
-        </aside>
-      ) : null}
-    </div>
-  );
-}
 
 export function ProjectionOutput({ nativeFullscreen = false }: { nativeFullscreen?: boolean }) {
   const [state, setState] = useState<ProjectionOutputState | null>(() => typeof window === "undefined" ? null : readProjectionState(window.localStorage));

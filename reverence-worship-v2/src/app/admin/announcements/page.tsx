@@ -3,6 +3,7 @@ import { getUserPermissionSet, permissionSetHas, requirePageAccess } from "@/lib
 import { prisma } from "@/lib/prisma";
 import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
 import { databaseDate, kigaliDateKey } from "@/lib/calendar-date";
+import { membershipTypeLabel, parseMembershipTypeFilters } from "@/lib/membership-types";
 
 function formatDate(date: Date | null) {
   if (!date) return "-";
@@ -51,7 +52,7 @@ function parseRecipientFilters(value: string | null): RecipientFilters {
       statuses: Array.isArray(parsed.statuses) ? parsed.statuses.filter((item): item is string => typeof item === "string") : [],
       genders: Array.isArray(parsed.genders) ? parsed.genders.filter((item): item is string => typeof item === "string") : [],
       maritalStatuses: Array.isArray(parsed.maritalStatuses) ? parsed.maritalStatuses.filter((item): item is string => typeof item === "string") : [],
-      membershipTypes: Array.isArray(parsed.membershipTypes) ? parsed.membershipTypes.filter((item): item is string => typeof item === "string") : [],
+      membershipTypes: parseMembershipTypeFilters(parsed.membershipTypes),
     };
   } catch {
     return emptyRecipientFilters;
@@ -59,7 +60,7 @@ function parseRecipientFilters(value: string | null): RecipientFilters {
 }
 
 function recipientFilterLabel(filters: RecipientFilters) {
-  const labels = [...filters.statuses, ...filters.genders, ...filters.maritalStatuses, ...filters.membershipTypes];
+  const labels = [...filters.statuses, ...filters.genders, ...filters.maritalStatuses, ...filters.membershipTypes.map((type) => membershipTypeLabel(type))];
   return labels.length ? `Filtered: ${labels.map((label) => label.slice(0, 1).toUpperCase() + label.slice(1)).join(", ")}` : "Filtered users";
 }
 

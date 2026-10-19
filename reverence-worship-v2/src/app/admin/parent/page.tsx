@@ -2,6 +2,7 @@ import { ParentDashboardClient } from "@/components/parent-dashboard-client";
 import { requirePageAccess } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { currentKigaliYear } from "@/lib/calendar-date";
+import { membershipTypeLabel } from "@/lib/membership-types";
 
 function formatDate(date: Date | null) {
   if (!date) return "";
@@ -94,7 +95,7 @@ export default async function ParentDashboardPage() {
       sector: displayValue(member.user.sector),
       village: displayValue(member.user.village),
       occupation: displayValue(member.user.occupation),
-      membershipType: displayValue(member.user.membershipType),
+      membershipType: membershipTypeLabel(member.user.membershipType, "N/A"),
       ministryRole: displayValue(member.user.ministryRole),
       emergencyName: displayValue(member.user.emergencyName),
       emergencyPhone: displayValue(member.user.emergencyPhone),

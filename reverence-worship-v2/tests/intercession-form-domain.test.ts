@@ -88,12 +88,14 @@ test("partial credit notice only appears when wrong checkbox selections cancel c
   assert.equal(intercessionPartialCreditWasDeducted(grid, { row_0: ["A", "C"] }, 0), true);
 });
 
-test("checkbox partial grading rewards correct choices without subtracting for wrong choices", () => {
+test("checkbox partial grading subtracts one correct selection for each wrong choice without going below zero", () => {
   const questions = parseIntercessionFormQuestions([
     { id: "check", type: "checkboxes", label: "Select", points: 4, correctAnswers: ["A", "B"] },
   ]);
   assert.equal(scoreIntercessionQuiz(questions, { question_0: ["A"] }, new Set([0]), true).earnedPoints, 2);
-  assert.equal(scoreIntercessionQuiz(questions, { question_0: ["A", "C"] }, new Set([0]), true).earnedPoints, 2);
+  assert.equal(scoreIntercessionQuiz(questions, { question_0: ["A", "C"] }, new Set([0]), true).earnedPoints, 0);
+  assert.equal(scoreIntercessionQuiz(questions, { question_0: ["A", "B", "C"] }, new Set([0]), true).earnedPoints, 2);
+  assert.equal(scoreIntercessionQuiz(questions, { question_0: ["A", "C", "D"] }, new Set([0]), true).earnedPoints, 0);
   assert.equal(scoreIntercessionQuiz(questions, { question_0: ["A"] }, new Set([0]), false).earnedPoints, 0);
   assert.equal(scoreIntercessionQuiz(questions, { question_0: ["A", "B"] }, new Set([0]), false).earnedPoints, 4);
 });
@@ -120,11 +122,14 @@ test("checkbox grids combine all correct cells across the whole question", () =>
   assert.equal(scoreIntercessionQuiz(questions, { question_0: { row_0: ["A"], row_1: ["C"] } }, new Set([0]), false).earnedPoints, 0);
 });
 
-test("wrong checkbox-grid choices do not subtract credit for correct cells", () => {
+test("checkbox grids deduct wrong selections from correct cells and retain remaining partial credit", () => {
   const questions = parseIntercessionFormQuestions([
     { id: "grid", type: "checkbox_grid", label: "Grid", points: 4, rows: ["Row"], columns: ["A", "B", "C"], correctAnswers: { row_0: ["A", "B"] } },
   ]);
-  assert.equal(scoreIntercessionQuiz(questions, { question_0: { row_0: ["A", "C"] } }, new Set([0]), true).earnedPoints, 2);
+  assert.equal(scoreIntercessionQuiz(questions, { question_0: { row_0: ["A"] } }, new Set([0]), true).earnedPoints, 2);
+  assert.equal(scoreIntercessionQuiz(questions, { question_0: { row_0: ["A", "C"] } }, new Set([0]), true).earnedPoints, 0);
+  assert.equal(scoreIntercessionQuiz(questions, { question_0: { row_0: ["A", "B", "C"] } }, new Set([0]), true).earnedPoints, 2);
+  assert.equal(scoreIntercessionQuiz(questions, { question_0: { row_0: ["A", "B", "C", "C"] } }, new Set([0]), true).earnedPoints, 2);
   assert.equal(scoreIntercessionQuiz(questions, { question_0: { row_0: ["C"] } }, new Set([0]), true).earnedPoints, 0);
 });
 

@@ -3,6 +3,7 @@ import { requirePageAccess } from "@/lib/auth";
 import { withDatabaseRetry } from "@/lib/database-retry";
 import { prisma } from "@/lib/prisma";
 import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
+import { parseMembershipTypeFilters } from "@/lib/membership-types";
 
 type UsersPageProps = {
   searchParams: Promise<{
@@ -18,7 +19,6 @@ type UsersPageProps = {
 type AccountStatus = "active" | "pending" | "inactive";
 type Gender = "male" | "female";
 type MaritalStatus = "Single" | "Married" | "Divorced" | "Widowed";
-type MembershipType = "permanent" | "temporary" | "visitor";
 
 function selectedValues<T extends string>(value: string | undefined, allowed: readonly T[]): T[] {
   return [...new Set((value ?? "").split(",").filter((item): item is T => allowed.includes(item as T)))];
@@ -53,7 +53,7 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
   const statuses = selectedValues<AccountStatus>(params.status, ["active", "pending", "inactive"]);
   const genders = selectedValues<Gender>(params.gender, ["male", "female"]);
   const maritalStatuses = selectedValues<MaritalStatus>(params.maritalStatus, ["Single", "Married", "Divorced", "Widowed"]);
-  const membershipTypes = selectedValues<MembershipType>(params.membershipType, ["permanent", "temporary", "visitor"]);
+  const membershipTypes = parseMembershipTypeFilters(params.membershipType);
 
   const where = {
     ...(search

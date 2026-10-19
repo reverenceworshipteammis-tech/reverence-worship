@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
+import { membershipTypeLabel, parseMembershipTypeFilters } from "@/lib/membership-types";
 
 type UserExportFilters = {
   search?: string | null;
@@ -13,7 +14,6 @@ type UserExportFilters = {
 type AccountStatus = "active" | "pending" | "inactive";
 type Gender = "male" | "female";
 type MaritalStatus = "Single" | "Married" | "Divorced" | "Widowed";
-type MembershipType = "permanent" | "temporary" | "visitor";
 
 function selectedValues<T extends string>(value: string | null | undefined, allowed: readonly T[]): T[] {
   return [...new Set((value ?? "").split(",").filter((item): item is T => allowed.includes(item as T)))];
@@ -96,7 +96,7 @@ export async function getUserExportRows(filters: UserExportFilters) {
   const statuses = selectedValues<AccountStatus>(filters.status, ["active", "pending", "inactive"]);
   const genders = selectedValues<Gender>(filters.gender, ["male", "female"]);
   const maritalStatuses = selectedValues<MaritalStatus>(filters.maritalStatus, ["Single", "Married", "Divorced", "Widowed"]);
-  const membershipTypes = selectedValues<MembershipType>(filters.membershipType, ["permanent", "temporary", "visitor"]);
+  const membershipTypes = parseMembershipTypeFilters(filters.membershipType);
 
   const users = await prisma.user.findMany({
     where: {
@@ -156,7 +156,7 @@ export async function getUserExportRows(filters: UserExportFilters) {
       village: user.village || "N/A",
       family: user.familyMembership?.family.name || "N/A",
       occupation: user.occupation || "N/A",
-      membershipType: titleCase(user.membershipType),
+      membershipType: membershipTypeLabel(user.membershipType, "N/A"),
       profileComplete: profileComplete(user),
       approvalStatus: approvalStatus(user.status),
     };

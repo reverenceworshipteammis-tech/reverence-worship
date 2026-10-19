@@ -5,6 +5,7 @@ import { z } from "zod";
 import { requirePermission } from "@/lib/auth";
 import { notifyEmailAddress, notifyUsers } from "@/lib/notifications";
 import { prisma } from "@/lib/prisma";
+import { MEMBERSHIP_TYPES } from "@/lib/membership-types";
 
 const optionalText = (max: number) => z.string().trim().max(max).optional();
 
@@ -15,7 +16,7 @@ const profileSchema = z.object({
   gender: z.enum(["", "male", "female", "other"]).optional(),
   dateOfBirth: z.string().trim().optional(),
   maritalStatus: optionalText(50),
-  membershipType: z.enum(["", "permanent", "temporary", "visitor"]).optional(),
+  membershipType: z.enum(MEMBERSHIP_TYPES),
   occupation: optionalText(120),
   province: optionalText(100),
   district: optionalText(100),

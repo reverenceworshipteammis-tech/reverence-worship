@@ -24,17 +24,33 @@ test("conditions match scalar and checkbox answers", () => {
   assert.equal(intercessionConditionMatches({ questionId: "q1", operator: "not_equals", value: "Yes" }, { q1: "No" }), true);
 });
 
-test("quiz publishing requires valid positive marks and a correct answer for every grid row", () => {
+test("quiz publishing rejects negative marks and answers outside the grid columns", () => {
   const issues = getIntercessionPublishingIssues("Grid quiz", [{
     id: "grid",
     type: "checkbox_grid",
     label: "Choose",
-    points: 0,
+    points: -1,
     rows: ["First", "Second"],
     columns: ["A", "B"],
     correctAnswers: { row_0: ["A"], row_1: ["Outside"] },
   }], { is_quiz: true });
   assert.deepEqual(issues.map((issue) => issue.id), ["grid-points", "grid-correct-row-option-1"]);
+});
+
+test("zero-point quiz questions can publish without a correct answer", () => {
+  const issues = getIntercessionPublishingIssues("Unmarked questions", [
+    { id: "check", type: "checkboxes", label: "Choose", points: 0, options: ["A", "B"] },
+    { id: "grid", type: "checkbox_grid", label: "Choose", points: 0, rows: ["First", "Second"], columns: ["A", "B"] },
+  ], { is_quiz: true });
+  assert.deepEqual(issues, []);
+});
+
+test("graded quiz grids require a correct answer for every row", () => {
+  const issues = getIntercessionPublishingIssues("Graded grid", [{
+    id: "grid", type: "checkbox_grid", label: "Choose", points: 2,
+    rows: ["First", "Second"], columns: ["A", "B"], correctAnswers: { row_0: ["A"] },
+  }], { is_quiz: true });
+  assert.deepEqual(issues.map((issue) => issue.id), ["grid-correct-row-1"]);
 });
 
 test("quiz publishing rejects checkbox answer keys outside the options", () => {

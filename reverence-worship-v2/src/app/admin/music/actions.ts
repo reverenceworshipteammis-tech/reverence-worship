@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { mkdir, unlink, writeFile } from "fs/promises";
 import path from "path";
 import { del as deleteBlob, put } from "@vercel/blob";
@@ -39,10 +40,15 @@ async function storedProjectionOverlayPresets() {
 }
 
 export async function saveProjectionOverlayPreset(input: ProjectionOverlayPresetInput) {
-  await requirePageAccess("music-ministry");
   const parsed = validateProjectionOverlayPresetInput(input);
-  if (!parsed.ok) return parsed;
-  const presets = await storedProjectionOverlayPresets();
+  if (!parsed.ok) {
+    await requirePageAccess("music-ministry");
+    return parsed;
+  }
+  const [, presets] = await Promise.all([
+    requirePageAccess("music-ministry"),
+    storedProjectionOverlayPresets(),
+  ]);
   const duplicateName = presets.find((preset) => preset.name.toLowerCase() === parsed.value.name.toLowerCase() && preset.id !== parsed.value.id);
   if (duplicateName) return { ok: false as const, message: `An overlay named “${duplicateName.name}” already exists.` };
   const existingIndex = parsed.value.id ? presets.findIndex((preset) => preset.id === parsed.value.id) : -1;
@@ -624,7 +630,9 @@ export async function updateProjectionSongLyrics(songId: number, input: unknown)
   });
   if (result.count === 0) return { ok: false as const, message: "That song no longer exists or has been archived." };
 
-  revalidatePath("/admin/music");
+  // The studio applies the saved lyrics locally. Invalidate after returning so
+  // this write does not wait for the entire music workspace to render again.
+  after(() => revalidatePath("/admin/music"));
   return { ok: true as const, message: "Song lyrics saved and projection slides regenerated.", lyrics: parsed.lyrics };
 }
 

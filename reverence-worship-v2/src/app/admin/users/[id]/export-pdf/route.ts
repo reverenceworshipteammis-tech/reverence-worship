@@ -3,6 +3,7 @@ import { requirePermission } from "@/lib/auth";
 import { createSimplePdf, type PdfTextLine } from "@/lib/simple-pdf";
 import { prisma } from "@/lib/prisma";
 import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
+import { membershipTypeLabel } from "@/lib/membership-types";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -30,7 +31,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     ["Joined Date", user.createdAt.toDateString()],
     ["Date of Birth", user.dateOfBirth ? user.dateOfBirth.toDateString() : "-"],
     ["Marital Status", user.maritalStatus || "-"],
-    ["Membership Type", user.membershipType || "-"],
+    ["Membership Type", membershipTypeLabel(user.membershipType, "-")],
     ["Occupation", user.occupation || "-"],
     ["Province", user.province || "-"],
     ["District", user.district || "-"],

@@ -1,5 +1,12 @@
 export const PROJECTION_OVERLAY_PRESETS_SETTING_KEY = "music_projection_overlay_presets";
 export const MAX_PROJECTION_OVERLAY_PRESETS = 50;
+export const MIN_PROJECTION_OVERLAY_FONT_SCALE = 25;
+export const MAX_PROJECTION_OVERLAY_FONT_SCALE = 300;
+
+export function normalizeProjectionOverlayFontScale(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 100;
+  return Math.min(MAX_PROJECTION_OVERLAY_FONT_SCALE, Math.max(MIN_PROJECTION_OVERLAY_FONT_SCALE, Math.round(value)));
+}
 
 export type ProjectionOverlayPreset = {
   id: string;
@@ -9,6 +16,8 @@ export type ProjectionOverlayPreset = {
   tone: "blue" | "dark" | "light" | "minimal";
   position: "top" | "center" | "bottom";
   fontSize: number;
+  titleFontScale?: number;
+  textFontScale?: number;
   updatedAt: string;
 };
 
@@ -43,6 +52,8 @@ export function parseProjectionOverlayPresets(value: unknown): ProjectionOverlay
       tone,
       position,
       fontSize: Math.min(100, Math.max(5, Math.round(Number(candidate.fontSize) || 35))),
+      titleFontScale: normalizeProjectionOverlayFontScale(candidate.titleFontScale),
+      textFontScale: normalizeProjectionOverlayFontScale(candidate.textFontScale),
       updatedAt: boundedText(candidate.updatedAt, 40) || new Date(0).toISOString(),
     });
     if (presets.length >= MAX_PROJECTION_OVERLAY_PRESETS) break;
@@ -69,6 +80,8 @@ export function validateProjectionOverlayPresetInput(input: unknown) {
       tone: candidate.tone && tones.has(candidate.tone) ? candidate.tone : "blue" as const,
       position: candidate.position && positions.has(candidate.position) ? candidate.position : "bottom" as const,
       fontSize: Math.min(100, Math.max(5, Math.round(Number(candidate.fontSize) || 35))),
+      titleFontScale: normalizeProjectionOverlayFontScale(candidate.titleFontScale),
+      textFontScale: normalizeProjectionOverlayFontScale(candidate.textFontScale),
     },
   };
 }

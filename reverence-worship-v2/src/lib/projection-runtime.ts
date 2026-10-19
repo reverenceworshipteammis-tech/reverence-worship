@@ -1,4 +1,5 @@
 import type { SongProjectionSlide } from "@/lib/song-projection";
+import { normalizeProjectionOverlayFontScale } from "./projection-overlays";
 
 export const PROJECTION_CHANNEL_NAME = "reverence-worship-projection-v2";
 export const PROJECTION_STORAGE_KEY = "reverence-worship:projection-state:v2";
@@ -102,6 +103,30 @@ export function projectionOverlayPreviewTextSizePx(percent: number) {
   return Math.round(6 + projectionTextSizeProgress(percent) * 58);
 }
 
+export function projectionOverlayFontSizes(
+  fontSize: number,
+  titleFontScale?: number,
+  textFontScale?: number,
+): { title: number; text: number } {
+  const base = projectionOverlayTextSizePx(fontSize);
+  return {
+    title: Math.max(10, Math.round(base * 0.5 * normalizeProjectionOverlayFontScale(titleFontScale) / 100)),
+    text: base * normalizeProjectionOverlayFontScale(textFontScale) / 100,
+  };
+}
+
+export function projectionOverlayPreviewFontSizes(
+  fontSize: number,
+  titleFontScale?: number,
+  textFontScale?: number,
+): { title: number; text: number } {
+  const base = projectionOverlayPreviewTextSizePx(fontSize);
+  return {
+    title: base * 0.45 * normalizeProjectionOverlayFontScale(titleFontScale) / 100,
+    text: base * normalizeProjectionOverlayFontScale(textFontScale) / 100,
+  };
+}
+
 export function projectionOverlayWidthPercent(percent: number) {
   return Math.round(36 + projectionTextSizeProgress(percent) * 58);
 }
@@ -150,6 +175,8 @@ export type ProjectionOverlayState = {
   position: "top" | "center" | "bottom";
   alignment: "left" | "center" | "right";
   fontSize: number;
+  titleFontScale?: number;
+  textFontScale?: number;
   width: number;
   opacity: number;
   background: string;
@@ -179,6 +206,31 @@ export type ProjectionOutputState = {
   effects?: ProjectionBackgroundEffects;
   overlay: ProjectionOverlayState;
 };
+
+export function projectionOverlayIsLive(
+  liveOverlay: ProjectionOverlayState | undefined,
+  overlay: ProjectionOverlayState,
+): boolean {
+  return Boolean(liveOverlay?.visible
+    && normalizeProjectionOverlayFontScale(liveOverlay.titleFontScale) === normalizeProjectionOverlayFontScale(overlay.titleFontScale)
+    && normalizeProjectionOverlayFontScale(liveOverlay.textFontScale) === normalizeProjectionOverlayFontScale(overlay.textFontScale)
+    && (Object.keys(overlay) as Array<keyof ProjectionOverlayState>)
+      .every((key) => key === "visible" || key === "titleFontScale" || key === "textFontScale" || liveOverlay[key] === overlay[key]));
+}
+
+export function projectionOverlayToggleState(
+  liveState: ProjectionOutputState | null,
+  draftState: ProjectionOutputState,
+  overlay: ProjectionOverlayState = draftState.overlay,
+): ProjectionOutputState {
+  const base = liveState ?? { ...draftState, slide: null, footer: "" };
+  const visible = !projectionOverlayIsLive(liveState?.overlay, overlay)
+    && Boolean(overlay.title.trim() || overlay.text.trim());
+  return {
+    ...base,
+    overlay: visible ? { ...overlay, visible: true } : { ...base.overlay, visible: false },
+  };
+}
 
 /**
  * Moving through a deck is a live action, but it must not accidentally publish

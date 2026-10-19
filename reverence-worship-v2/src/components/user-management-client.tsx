@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useActionState, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { ActionNotice } from "@/components/action-notice";
+import { membershipTypeFilterOptions, membershipTypeLabel, membershipTypeOptions, normalizeMembershipType, parseMembershipTypeFilters } from "@/lib/membership-types";
 import {
   AlertTriangle,
   ArrowDown,
@@ -271,7 +272,7 @@ export function UserManagementClient({
       status: searchParams.get("status") ?? "",
       gender: searchParams.get("gender") ?? "",
       maritalStatus: searchParams.get("maritalStatus") ?? "",
-      membershipType: searchParams.get("membershipType") ?? "",
+      membershipType: parseMembershipTypeFilters(searchParams.get("membershipType")).join(","),
     }),
     [searchParams],
   );
@@ -671,7 +672,7 @@ export function UserManagementClient({
                   <FilterCheckboxGroup
                     label="Membership type"
                     name="membershipType"
-                    options={[["permanent", "Permanent"], ["temporary", "Temporary Member"], ["visitor", "Partner"]]}
+                    options={membershipTypeFilterOptions}
                     selected={filterValues(currentFilters.membershipType)}
                     onChange={(value, checked) => toggleFilter("membershipType", value, checked)}
                   />
@@ -980,7 +981,7 @@ export function UserManagementClient({
                   ["Joined Date", viewUser.createdAt],
                   ["Date of Birth", viewUser.dateOfBirth || "-"],
                   ["Marital Status", viewUser.maritalStatus || "-"],
-                  ["Membership Type", viewUser.membershipType || "-"],
+                  ["Membership Type", membershipTypeLabel(viewUser.membershipType, "-")],
                   ["Occupation", viewUser.occupation || "-"],
                 ]],
                 ["Address Information", [
@@ -1118,8 +1119,9 @@ export function UserManagementClient({
                   <option value="active">Active</option><option value="pending">Pending</option><option value="inactive">Inactive</option>
                 </select>
                 <input name="maritalStatus" defaultValue={editUser.maritalStatus || ""} placeholder="Marital Status" className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                <select name="membershipType" defaultValue={editUser.membershipType || ""} className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="">Membership Type</option><option value="permanent">Permanent</option><option value="temporary">Temporary Member</option><option value="visitor">Partner</option>
+                <select name="membershipType" required defaultValue={normalizeMembershipType(editUser.membershipType) ?? ""} className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="" disabled hidden>Select membership type</option>
+                  {membershipTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
                 <input name="occupation" defaultValue={editUser.occupation || ""} placeholder="Occupation" className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 <textarea name="skills" defaultValue={editUser.skills || ""} placeholder="Skills / Talents" rows={2} className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 sm:col-span-2" />
@@ -1255,10 +1257,8 @@ export function UserManagementClient({
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-gray-700">Membership Type</label>
-                  <select name="membershipType" defaultValue="permanent" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="permanent">Permanent</option>
-                    <option value="temporary">Temporary Member</option>
-                    <option value="visitor">Partner</option>
+                  <select name="membershipType" required defaultValue="permanent" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    {membershipTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                   </select>
                 </div>
                 <div>

@@ -1,11 +1,15 @@
 "use client";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { deleteProjectionOverlayPreset, saveProjectionOverlayPreset, updateProjectionSongLyrics } from "@/app/admin/music/actions";
 import { ProjectionAutoFitText } from "@/components/projection-auto-fit-text";
 import { ProjectionBackgroundLayer } from "@/components/projection-background-layer";
 import { ProjectionSlideEditor, type ProjectionSlideEditorItem } from "@/components/projection-slide-editor";
+import { ProjectionOverlayContextMenu } from "@/components/projection-overlay-context-menu";
+import { ProjectionFrame, ProjectionOverlayLayer } from "@/components/projection-frame";
+import { ProjectionViewportPreview } from "@/components/projection-viewport-preview";
+import { normalizeProjectionViewport } from "@/lib/projection-layout";
 import {
   BookOpen,
   Check,
@@ -30,7 +34,6 @@ import {
   Search,
   Save,
   Send,
-  Trash2,
   Upload,
   Video,
   X,
@@ -49,11 +52,10 @@ import {
   normalizeProjectionBackgroundEffects,
   projectionMediaBrightnessPercent,
   projectionNavigationState,
-  projectionOverlayPreviewTextSizePx,
+  projectionOverlayIsLive,
   projectionOverlaySafeInsets,
-  projectionOverlayTextSizePx,
+  projectionOverlayToggleState,
   projectionOverlayWidthPercent,
-  projectionPreviewTextSizePx,
   projectionTextSizePx,
   readProjectionState,
   sanitizeProjectionMediaUrl,
@@ -67,7 +69,8 @@ import {
   writeProjectionState,
 } from "@/lib/projection-runtime";
 import { MAX_EDITABLE_SONG_LYRICS_LENGTH, songProjectionSlides, type SongProjectionSlide } from "@/lib/song-projection";
-import type { ProjectionOverlayPreset } from "@/lib/projection-overlays";
+import { MAX_PROJECTION_OVERLAY_FONT_SCALE, MIN_PROJECTION_OVERLAY_FONT_SCALE, normalizeProjectionOverlayFontScale, type ProjectionOverlayPreset } from "@/lib/projection-overlays";
+import { createProjectionOverlayAutosave, type OverlayAutosaveDraft, type OverlayAutosaveStatus } from "@/lib/projection-overlay-autosave";
 
 type ProjectionSong = {
   id: number;
@@ -137,15 +140,13 @@ function ProjectionEffectRange({ label, value, minimum, maximum, unit = "%", onC
   );
 }
 
-function ProjectionOutputFitMeasurement({ slide, footer, viewport, scale, overlay, onFit }: {
+function ProjectionOutputFitMeasurement({ slide, viewport, scale, overlay, onFit }: {
   slide: SongProjectionSlide;
-  footer: string;
   viewport: ProjectionViewport;
   scale: number;
   overlay: ProjectionOutputState["overlay"];
   onFit: (sectionIndex: number | null, fittedFontSize: number) => void;
 }) {
-  const overlayRef = useRef<HTMLElement | null>(null);
   const [overlayHeight, setOverlayHeight] = useState(0);
   const width = Math.max(1, Math.round(viewport.width * scale));
   const height = Math.max(1, Math.round(viewport.height * scale));
@@ -155,20 +156,8 @@ function ProjectionOutputFitMeasurement({ slide, footer, viewport, scale, overla
   const minimumFontSize = Math.max(1, projectionTextSizePx(PROJECTION_TEXT_SIZE_MIN_PERCENT) * scale);
   const labelFontSize = Math.min(30, Math.max(16, viewport.width * 0.018)) * scale;
   const sectionLabelFontSize = Math.min(28, Math.max(16, viewport.width * 0.017)) * scale;
-  const footerFontSize = Math.min(20, Math.max(12, viewport.width * 0.0115)) * scale;
-  const overlayFontSize = projectionOverlayTextSizePx(overlay.fontSize) * scale;
-  const [overlayPaddingYVh = 0, overlayPaddingXVw = 0] = overlay.padding.match(/[\d.]+/g)?.map(Number) ?? [];
   const readyToMeasure = !overlayVisible || overlayHeight > 0;
-
-  useLayoutEffect(() => {
-    const element = overlayRef.current;
-    if (!overlayVisible || !element) { setOverlayHeight(0); return; }
-    const measure = () => setOverlayHeight(element.offsetHeight);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [overlay.text, overlay.title, overlayVisible, width]);
+  const measureOverlayHeight = useCallback((logicalHeight: number) => setOverlayHeight(logicalHeight * scale), [scale]);
 
   return (
     <div className="relative isolate flex flex-col items-center overflow-hidden bg-black text-center" style={{ width, height, paddingLeft: width * 0.035, paddingRight: width * 0.035, ...safeInsets }}>
@@ -178,8 +167,9 @@ function ProjectionOutputFitMeasurement({ slide, footer, viewport, scale, overla
           {slide.sections.map((section, index) => <section key={index} className="flex min-h-0 min-w-0 flex-col" style={{ padding: `${height * 0.005}px ${width * 0.02}px` }}><h2 className="shrink-0 font-extrabold uppercase tracking-[0.14em]" style={{ marginBottom: height * 0.0075, fontSize: sectionLabelFontSize }}>{section.label}</h2><ProjectionAutoFitText text={section.text} maximumFontSize={maximumFontSize} minimumFontSize={minimumFontSize} onFontSizeFit={readyToMeasure ? (fittedFontSize) => onFit(index, fittedFontSize / scale) : undefined} className="font-bold leading-[1.08] tracking-[0.003em]" /></section>)}
         </div>
       ) : <div className="min-h-0 w-full flex-1"><ProjectionAutoFitText text={slide.text} maximumFontSize={maximumFontSize} minimumFontSize={minimumFontSize} onFontSizeFit={readyToMeasure ? (fittedFontSize) => onFit(null, fittedFontSize / scale) : undefined} className="font-bold leading-[1.08] tracking-[0.003em]" /></div>}
-      <p className="w-full shrink-0 truncate" style={{ marginTop: height * 0.0075, fontSize: footerFontSize }}>{footer}</p>
-      {overlayVisible ? <aside ref={overlayRef} className="absolute left-1/2 max-w-[94%] whitespace-pre-line rounded-lg border font-bold leading-[1.22]" style={{ top: overlay.position === "top" ? height * 0.06 : overlay.position === "center" ? "50%" : "auto", bottom: overlay.position === "bottom" ? height * 0.07 : "auto", transform: overlay.position === "center" ? "translate(-50%,-50%)" : "translateX(-50%)", width: width * overlay.width / 100, padding: `${height * overlayPaddingYVh / 100}px ${width * overlayPaddingXVw / 100}px` }}>{overlay.title ? <strong className="block uppercase opacity-70" style={{ fontSize: Math.max(1, overlayFontSize * 0.5) }}>{overlay.title}</strong> : null}{overlay.text ? <ProjectionAutoFitText text={overlay.text} maximumFontSize={overlayFontSize} minimumFontSize={Math.max(1, 10 * scale)} fit="width" className="font-bold leading-[1.22]" /> : null}</aside> : null}
+      <div className="pointer-events-none absolute left-0 top-0 origin-top-left" style={{ width: viewport.width, height: viewport.height, transform: `scale(${scale})` }}>
+        <ProjectionOverlayLayer overlay={overlay} viewport={viewport} onHeightChange={measureOverlayHeight} />
+      </div>
     </div>
   );
 }
@@ -192,56 +182,17 @@ function projectionSlidesMatch(left: SongProjectionSlide | null, right: SongProj
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
-function projectionSlideContentLength(slide: SongProjectionSlide | null) {
-  if (!slide) return 0;
-  return slide.sections?.reduce((total, section) => total + section.text.length, 0) ?? slide.text.length;
-}
-
 function songFooterForSlide(song: ProjectionSong, index: number, slideCount: number) {
   return `${song.title}${song.artist ? ` · ${song.artist}` : ""} — ${slideCount ? `${index + 1}/${slideCount}` : "No lyrics"}`;
 }
 
-function ProjectionLiveMonitor({ state }: { state: ProjectionOutputState | null }) {
-  const frameRef = useRef<HTMLDivElement | null>(null);
-  const overlayRef = useRef<HTMLDivElement | null>(null);
-  const [frameWidth, setFrameWidth] = useState(0);
-  const [frameHeight, setFrameHeight] = useState(0);
-  const [overlayHeight, setOverlayHeight] = useState(0);
-  const showOverlay = Boolean(state?.overlay.visible && !state.blanked && (state.overlay.title || state.overlay.text));
-  const safeInsets = state ? projectionOverlaySafeInsets(frameHeight, overlayHeight, state.overlay.position, showOverlay) : undefined;
-  const overlayPosition = state?.overlay.position === "top" ? "top-3" : state?.overlay.position === "center" ? "top-1/2 -translate-y-1/2" : "bottom-3";
-  const uniformMonitorFontSize = state?.uniformTextSize && state.uniformTextViewport
-    ? projectionTextSizePx(state.fontSize) * frameWidth / state.uniformTextViewport.width
-    : 0;
-
-  useLayoutEffect(() => {
-    const frame = frameRef.current;
-    if (!frame) return;
-    const measure = () => {
-      setFrameWidth(frame.clientWidth);
-      setFrameHeight(frame.clientHeight);
-      setOverlayHeight(showOverlay ? overlayRef.current?.offsetHeight ?? 0 : 0);
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(frame);
-    if (showOverlay && overlayRef.current) observer.observe(overlayRef.current);
-    return () => observer.disconnect();
-  }, [showOverlay, state?.overlay.position, state?.overlay.fontSize, state?.overlay.title, state?.overlay.text]);
-
+function ProjectionLiveMonitor({ state, viewport }: { state: ProjectionOutputState | null; viewport: ProjectionViewport }) {
   return (
-    <div ref={frameRef} className="relative isolate overflow-hidden rounded-lg border border-slate-700 bg-black shadow-inner" style={{ color: state?.textColor ?? "#fff", aspectRatio: state?.uniformTextViewport ? `${state.uniformTextViewport.width} / ${state.uniformTextViewport.height}` : "16 / 9" }}>
-      {!state ? <div className="flex size-full items-center justify-center px-6 text-center text-xs font-semibold text-white/45">Nothing has been presented yet.</div> : state.blanked ? <div className="flex size-full items-center justify-center text-center"><div><EyeOff className="mx-auto size-7 text-white/35" /><p className="mt-2 text-xs font-bold text-white/50">Output blanked</p></div></div> : (
-        <>
-          <ProjectionBackgroundLayer background={state.background} media={state.media} effects={state.effects} contentLength={projectionSlideContentLength(state.slide)} className="-z-10" />
-          <div className="flex h-full min-h-0 flex-col items-center px-[4%] text-center" style={safeInsets}>
-            {state.slide?.label ? <p className="mb-1 text-[8px] font-bold uppercase tracking-[0.12em]" style={{ color: state.mutedTextColor }}>{state.slide.label}</p> : null}
-            {state.slide?.sections?.length ? <div className="grid min-h-0 w-full flex-1" style={{ gridTemplateColumns: `repeat(${state.slide.sections.length},minmax(0,1fr))` }}>{state.slide.sections.map((section, index) => <div key={`${section.label}-${index}`} className="flex min-h-0 min-w-0 flex-col px-1.5" style={{ borderLeft: index ? `1px solid ${state.mutedTextColor}` : undefined }}><strong className="mb-0.5 block text-[7px] uppercase tracking-widest" style={{ color: state.mutedTextColor }}>{section.label}</strong>{uniformMonitorFontSize ? <p className="flex min-h-0 flex-1 items-center justify-center whitespace-pre-line font-bold leading-[1.08] [text-wrap:balance]" style={{ fontSize: uniformMonitorFontSize, textShadow: state.textShadow }}>{section.text}</p> : <ProjectionAutoFitText text={section.text} maximumFontSize={Math.max(8, projectionPreviewTextSizePx(state.fontSize) * 0.82)} minimumFontSize={5} className="font-bold leading-[1.08]" style={{ textShadow: state.textShadow }} />}</div>)}</div> : <div className="min-h-0 w-full flex-1">{uniformMonitorFontSize ? <p className="flex size-full items-center justify-center whitespace-pre-line font-bold leading-[1.08] [text-wrap:balance]" style={{ fontSize: uniformMonitorFontSize, textShadow: state.textShadow }}>{state.slide?.text ?? ""}</p> : <ProjectionAutoFitText text={state.slide?.text ?? ""} maximumFontSize={projectionPreviewTextSizePx(state.fontSize)} minimumFontSize={5} className="font-bold leading-[1.08]" style={{ textShadow: state.textShadow }} />}</div>}
-            <p className="mt-0.5 w-full shrink-0 truncate text-[7px]" style={{ color: state.mutedTextColor }}>{state.footer}</p>
-          </div>
-          {showOverlay ? <div ref={overlayRef} className={`absolute left-1/2 max-w-[calc(100%_-_16px)] -translate-x-1/2 overflow-hidden rounded-md border text-center ${overlayPosition}`} style={{ width: `${state.overlay.width}%`, padding: `${Math.max(4, state.overlay.fontSize * 0.08)}px ${Math.max(7, state.overlay.fontSize * 0.12)}px`, background: state.overlay.background, color: state.overlay.color, borderColor: state.overlay.borderColor, boxShadow: state.overlay.boxShadow, textShadow: state.overlay.textShadow }}><strong className="block [overflow-wrap:anywhere] uppercase tracking-widest opacity-70" style={{ fontSize: `${Math.max(5, Math.round(projectionOverlayPreviewTextSizePx(state.overlay.fontSize) * 0.45))}px` }}>{state.overlay.title}</strong>{state.overlay.text ? <ProjectionAutoFitText text={state.overlay.text} maximumFontSize={projectionOverlayPreviewTextSizePx(state.overlay.fontSize)} minimumFontSize={5} fit="width" className="font-bold" /> : null}</div> : null}
-        </>
-      )}
+    <div className="relative overflow-hidden rounded-lg border border-slate-700 bg-black shadow-inner">
+      <ProjectionViewportPreview viewport={viewport} label="Live projector preview">
+        {state ? <ProjectionFrame state={state} /> : null}
+      </ProjectionViewportPreview>
+      {!state ? <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-xs font-semibold text-white/45">Nothing has been presented yet.</div> : null}
     </div>
   );
 }
@@ -257,65 +208,62 @@ function overlayAppearance(tone: OverlayTone) {
   return { background: "linear-gradient(135deg,rgba(37,99,235,.97),rgba(8,145,178,.97))", color: "#fff", border: "rgba(255,255,255,.22)", shadow: "0 18px 60px rgba(0,0,0,.36)", textShadow: "none", padding: "2.2vh 3.2vw" };
 }
 
-function ProjectionOverlayPreview({ title, text, tone, position, fontSize, className = "" }: {
+function buildOverlayState({ title, text, tone, position, fontSize, titleFontScale, textFontScale, visible = false }: Pick<ProjectionOverlayPreset, "title" | "text" | "tone" | "position" | "fontSize" | "titleFontScale" | "textFontScale"> & { visible?: boolean }): ProjectionOutputState["overlay"] {
+  const style = overlayAppearance(tone);
+  return {
+    visible,
+    title: title.trim(),
+    text: text.trim(),
+    position,
+    alignment: "center",
+    fontSize,
+    titleFontScale: normalizeProjectionOverlayFontScale(titleFontScale),
+    textFontScale: normalizeProjectionOverlayFontScale(textFontScale),
+    width: projectionOverlayWidthPercent(fontSize),
+    opacity: 96,
+    background: style.background,
+    color: style.color,
+    borderColor: style.border,
+    boxShadow: style.shadow,
+    textShadow: style.textShadow,
+    padding: `${(0.8 + fontSize * 0.014).toFixed(2)}vh ${(1.2 + fontSize * 0.02).toFixed(2)}vw`,
+  };
+}
+
+function OverlayTextSizeControl({ label, value, disabled, onChange }: { label: "title" | "message"; value: number; disabled: boolean; onChange: (value: number) => void }) {
+  return (
+    <div role="group" aria-label={`Overlay ${label} size`} className="flex h-9 w-9 shrink-0 flex-col divide-y divide-slate-200 overflow-hidden rounded-md border border-slate-300 bg-white">
+      <button type="button" onClick={() => onChange(normalizeProjectionOverlayFontScale(value + 5))} disabled={disabled || value >= MAX_PROJECTION_OVERLAY_FONT_SCALE} aria-label={`Increase overlay ${label} size`} title={`Increase ${label} size (${value}%)`} className="flex min-h-0 flex-1 items-center justify-center text-[10px] font-extrabold text-slate-600 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-30">A+</button>
+      <button type="button" onClick={() => onChange(normalizeProjectionOverlayFontScale(value - 5))} disabled={disabled || value <= MIN_PROJECTION_OVERLAY_FONT_SCALE} aria-label={`Decrease overlay ${label} size`} title={`Decrease ${label} size (${value}%)`} className="flex min-h-0 flex-1 items-center justify-center text-[10px] font-extrabold text-slate-600 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-30">A−</button>
+    </div>
+  );
+}
+
+function ProjectionOverlayPreview({ title, text, tone, position, fontSize, titleFontScale, textFontScale, viewport, className = "" }: {
   title: string;
   text: string;
   tone: OverlayTone;
   position: OverlayPosition;
   fontSize: number;
+  titleFontScale?: number;
+  textFontScale?: number;
+  viewport: ProjectionViewport;
   className?: string;
 }) {
-  const frameRef = useRef<HTMLDivElement | null>(null);
-  const [frameWidth, setFrameWidth] = useState(320);
-  const appearance = overlayAppearance(tone);
-  const scale = Math.max(0.25, frameWidth / 320);
-  const messageFontSize = Math.max(4, projectionOverlayPreviewTextSizePx(fontSize) * scale);
-  const titleFontSize = Math.max(3, messageFontSize * 0.45);
-  const paddingY = Math.max(2, frameWidth * 0.012);
-  const paddingX = Math.max(3, frameWidth * 0.018);
-
-  useLayoutEffect(() => {
-    const frame = frameRef.current;
-    if (!frame) return;
-    const measure = () => setFrameWidth(frame.clientWidth || 320);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(frame);
-    return () => observer.disconnect();
-  }, []);
-
+  const overlay = buildOverlayState({ title, text, tone, position, fontSize, titleFontScale, textFontScale, visible: true });
   return (
     <div
-      ref={frameRef}
-      className={`relative isolate aspect-video min-w-0 overflow-hidden rounded-lg border border-slate-700 bg-slate-950 ${className}`}
+      className={`relative isolate w-full overflow-hidden rounded-lg border border-slate-700 bg-slate-950 ${className}`}
       style={{
         backgroundImage: "linear-gradient(45deg,rgba(255,255,255,.035) 25%,transparent 25%),linear-gradient(-45deg,rgba(255,255,255,.035) 25%,transparent 25%),linear-gradient(45deg,transparent 75%,rgba(255,255,255,.035) 75%),linear-gradient(-45deg,transparent 75%,rgba(255,255,255,.035) 75%)",
         backgroundPosition: "0 0,0 8px,8px -8px,-8px 0",
         backgroundSize: "16px 16px",
       }}
     >
-      {title || text ? (
-        <div
-          className="absolute left-1/2 max-w-[94%] overflow-hidden rounded-md border text-center"
-          style={{
-            top: position === "top" ? "7%" : position === "center" ? "50%" : "auto",
-            bottom: position === "bottom" ? "7%" : "auto",
-            transform: position === "center" ? "translate(-50%, -50%)" : "translateX(-50%)",
-            width: `${projectionOverlayWidthPercent(fontSize)}%`,
-            padding: `${paddingY}px ${paddingX}px`,
-            background: appearance.background,
-            color: appearance.color,
-            borderColor: appearance.border,
-            boxShadow: appearance.shadow,
-            textShadow: appearance.textShadow,
-          }}
-        >
-          {title ? <strong className="block [overflow-wrap:anywhere] uppercase tracking-widest opacity-70" style={{ fontSize: `${titleFontSize}px` }}>{title}</strong> : null}
-          {text ? <ProjectionAutoFitText text={text} maximumFontSize={messageFontSize} minimumFontSize={Math.max(3, messageFontSize * 0.45)} fit="width" className="font-bold leading-[1.15]" /> : null}
-        </div>
-      ) : (
-        <div className="flex size-full items-center justify-center px-4 text-center text-[9px] font-semibold text-white/35">Select or create an overlay</div>
-      )}
+      <ProjectionViewportPreview viewport={viewport} label="Overlay projector preview">
+        <ProjectionOverlayLayer overlay={overlay} viewport={viewport} />
+      </ProjectionViewportPreview>
+      {!title && !text ? <div className="absolute inset-0 flex items-center justify-center px-4 text-center text-[9px] font-semibold text-white/35">Select or create an overlay</div> : null}
     </div>
   );
 }
@@ -565,7 +513,7 @@ function BibleChapterPicker({ value, chapterCount, onChange }: { value: string; 
   );
 }
 
-export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, operatorActive = true }: { songs: ProjectionSong[]; playlists: ProjectionPlaylist[]; initialOverlayPresets: ProjectionOverlayPreset[]; operatorActive?: boolean }) {
+export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, operatorActive = true, onLyricsSaved }: { songs: ProjectionSong[]; playlists: ProjectionPlaylist[]; initialOverlayPresets: ProjectionOverlayPreset[]; operatorActive?: boolean; onLyricsSaved?: () => void }) {
   const [songLyricsOverrides, setSongLyricsOverrides] = useState<Record<number, string>>({});
   const projectionSongs = useMemo(() => songs.map((song) => ({ ...song, lyrics: songLyricsOverrides[song.id] ?? song.lyrics })), [songLyricsOverrides, songs]);
   const activeSongs = useMemo(() => projectionSongs.filter((song) => !song.isArchived && song.lyrics?.trim()), [projectionSongs]);
@@ -630,11 +578,16 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
   const [overlayTone, setOverlayTone] = useState<OverlayTone>("blue");
   const [overlayPosition, setOverlayPosition] = useState<OverlayPosition>("bottom");
   const [overlayFontSize, setOverlayFontSize] = useState(35);
+  const [overlayTitleFontScale, setOverlayTitleFontScale] = useState(100);
+  const [overlayTextFontScale, setOverlayTextFontScale] = useState(100);
   const [overlayPresets, setOverlayPresets] = useState(initialOverlayPresets);
+  const [overlayEditorOpen, setOverlayEditorOpen] = useState(false);
+  const [overlayContextMenu, setOverlayContextMenu] = useState<{ presetId: string; x: number; y: number } | null>(null);
   const [selectedOverlayPresetId, setSelectedOverlayPresetId] = useState("");
   const [overlayPresetName, setOverlayPresetName] = useState("");
   const [overlayPresetNotice, setOverlayPresetNotice] = useState<string | null>(null);
   const [overlayPresetPending, startOverlayPresetTransition] = useTransition();
+  const [overlayAutosaveStatus, setOverlayAutosaveStatus] = useState<OverlayAutosaveStatus>({ state: "idle" });
   const [songLyricsPending, startSongLyricsTransition] = useTransition();
 
   const [screens, setScreens] = useState<ProjectionScreenLike[]>([]);
@@ -643,6 +596,14 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
   const [projectorConnected, setProjectorConnected] = useState(false);
   const [outputError, setOutputError] = useState<string | null>(null);
   const studioRef = useRef<HTMLElement | null>(null);
+  const overlayTextRef = useRef<HTMLTextAreaElement | null>(null);
+  const overlayPositionRef = useRef<HTMLSelectElement | null>(null);
+  const overlayEditorFocusRef = useRef<"text" | "position">("text");
+  const overlayContextTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const overlayPresetsRef = useRef(initialOverlayPresets);
+  const overlaySelectedPresetIdRef = useRef("");
+  const overlayDraftRef = useRef<OverlayAutosaveDraft>({ title: "", text: "", tone: "blue", position: "bottom", fontSize: 35, titleFontScale: 100, textFontScale: 100 });
+  const overlayAutosaveRef = useRef<ReturnType<typeof createProjectionOverlayAutosave> | null>(null);
   const projectorWindowRef = useRef<Window | null>(null);
   const channelRef = useRef<BroadcastChannel | null>(null);
   const latestStateRef = useRef<ProjectionOutputState | null>(null);
@@ -654,6 +615,46 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
   const lastHeartbeatRef = useRef(0);
   const controlHandlerRef = useRef<(key: ProjectionControlKey) => void>(() => undefined);
   const localMediaUrlRef = useRef("");
+
+  useEffect(() => {
+    if (overlayEditorOpen) {
+      const field = overlayEditorFocusRef.current === "position" ? overlayPositionRef.current : overlayTextRef.current;
+      field?.focus();
+    }
+  }, [overlayEditorOpen]);
+
+  useEffect(() => {
+    const autosave = createProjectionOverlayAutosave({
+      save: saveProjectionOverlayPreset,
+      nameForDraft: (draft) => {
+        const base = (draft.title.trim() || draft.text.trim()).replace(/\s+/g, " ").slice(0, 80);
+        let name = base;
+        for (let suffix = 2; overlayPresetsRef.current.some((preset) => preset.name.toLowerCase() === name.toLowerCase()); suffix++) {
+          const ending = ` (${suffix})`;
+          name = `${base.slice(0, 80 - ending.length)}${ending}`;
+        }
+        return name;
+      },
+      onSaved: (result) => {
+        overlayPresetsRef.current = result.presets;
+        overlaySelectedPresetIdRef.current = result.preset.id;
+        setOverlayPresets(result.presets);
+        setSelectedOverlayPresetId(result.preset.id);
+        setOverlayPresetName(result.preset.name);
+      },
+      onStatus: setOverlayAutosaveStatus,
+    });
+    autosave.load(null);
+    overlayAutosaveRef.current = autosave;
+    const flush = () => { void autosave.flush(); };
+    window.addEventListener("online", flush);
+    return () => {
+      window.removeEventListener("online", flush);
+      overlayAutosaveRef.current = null;
+      void autosave.flush();
+      autosave.dispose();
+    };
+  }, []);
 
   const selectedPlaylist = playlists.find((playlist) => String(playlist.id) === playlistId) ?? null;
   const selectedSession = selectedPlaylist?.sessions.find((session) => String(session.id) === sessionId) ?? selectedPlaylist?.sessions[0] ?? null;
@@ -700,6 +701,7 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
   };
   const visibleThemes = (Object.entries(projectionThemes) as Array<[ProjectionThemeKey, ProjectionTheme]>).filter(([, theme]) => themeCategory === "all" || theme.category === themeCategory);
   const selectedScreen = screens.find((screen) => projectionScreenId(screen) === selectedScreenId) ?? null;
+  const previewViewport = normalizeProjectionViewport(projectorViewport ?? (selectedScreen ? { width: selectedScreen.width ?? selectedScreen.availWidth ?? 1920, height: selectedScreen.height ?? selectedScreen.availHeight ?? 1080 } : null));
   const footerForSlide = (index: number) => source === "bible"
     ? loadedBible ? `${loadedBible.reference} · ${bibleTranslations.map((item) => item.version.code).join(" / ")} — ${slides.length ? `${index + 1}/${slides.length}` : "No verses"}` : "Bible presentation"
     : selectedSong ? songFooterForSlide(selectedSong, index, slides.length) : "Reverence Worship";
@@ -716,9 +718,6 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
     return null;
   })();
   const returnableLiveSelection = liveSelection ?? detectedLiveSongSelection;
-  const overlayStyle = overlayAppearance(overlayTone);
-  const overlayWidth = projectionOverlayWidthPercent(overlayFontSize);
-  const overlayPadding = `${(0.8 + overlayFontSize * 0.014).toFixed(2)}vh ${(1.2 + overlayFontSize * 0.02).toFixed(2)}vw`;
 
   const outputState: ProjectionOutputState = {
     version: 3,
@@ -746,30 +745,22 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
       durationMs: transitionType === "cut" ? 0 : clampProjectionTransitionDuration(transitionDuration),
     },
     effects: backgroundEffects,
-    overlay: {
+    overlay: buildOverlayState({
       visible: overlayVisible,
-      title: overlayTitle.trim(),
-      text: overlayText.trim(),
+      title: overlayTitle,
+      text: overlayText,
+      tone: overlayTone,
       position: overlayPosition,
-      alignment: "center",
       fontSize: overlayFontSize,
-      width: overlayWidth,
-      opacity: 96,
-      background: overlayStyle.background,
-      color: overlayStyle.color,
-      borderColor: overlayStyle.border,
-      boxShadow: overlayStyle.shadow,
-      textShadow: overlayStyle.textShadow,
-      padding: overlayPadding,
-    },
+      titleFontScale: overlayTitleFontScale,
+      textFontScale: overlayTextFontScale,
+    }),
   };
   const draftFingerprint = JSON.stringify({ ...outputState, updatedAt: 0 });
   const liveFingerprint = liveState ? JSON.stringify({ ...liveState, updatedAt: 0 }) : "";
   const hasPendingChanges = draftFingerprint !== liveFingerprint;
-  const selectedOverlayIsLive = Boolean(
-    liveState?.overlay.visible
-      && JSON.stringify({ ...liveState.overlay, visible: true }) === JSON.stringify({ ...outputState.overlay, visible: true }),
-  );
+  const selectedOverlayIsLive = projectionOverlayIsLive(liveState?.overlay, outputState.overlay);
+  const overlayContextPreset = overlayPresets.find((preset) => preset.id === overlayContextMenu?.presetId);
   const appearanceIsLive = Boolean(
     liveState
       && liveState.background === outputState.background
@@ -1031,10 +1022,13 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
   }
 
   function toggleLiveOverlay() {
-    const base = latestStateRef.current ?? outputState;
-    const visible = !selectedOverlayIsLive && Boolean(overlayTitle.trim() || overlayText.trim());
-    setOverlayVisible(visible);
-    commitOutputState({ ...base, overlay: visible ? { ...outputState.overlay, visible: true } : { ...base.overlay, visible: false } });
+    toggleOverlayLive(outputState.overlay);
+  }
+
+  function toggleOverlayLive(overlay: ProjectionOutputState["overlay"]) {
+    const next = projectionOverlayToggleState(latestStateRef.current ?? liveState, outputState, overlay);
+    setOverlayVisible(next.overlay.visible);
+    commitOutputState(next);
   }
 
   function toggleLiveBackgroundLayer() {
@@ -1071,7 +1065,10 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
     setClearedLiveState(null);
   }
 
-  function chooseDrawerPanel(panel: ProjectionControlPanel) {
+  async function chooseDrawerPanel(panel: ProjectionControlPanel) {
+    if (!await flushOverlayEdits()) return;
+    setOverlayContextMenu(null);
+    setOverlayEditorOpen(false);
     if (panel === controlPanel) {
       setDrawerOpen((current) => !current);
       return;
@@ -1144,6 +1141,17 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
     setDeckEditorOpen(true);
   }
 
+  function openSongLyricsEditor() {
+    if (source !== "songs" || !selectedSong) return;
+    setDeckEditorOpen(false);
+    setSongLyricsEditor({
+      songId: selectedSong.id,
+      title: selectedSong.title,
+      lyrics: songLyricsOverrides[selectedSong.id] ?? selectedSong.lyrics ?? "",
+      notice: null,
+    });
+  }
+
   function saveSongLyrics() {
     if (!songLyricsEditor || songLyricsPending) return;
     const editor = songLyricsEditor;
@@ -1166,6 +1174,7 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
         setSlideIndex(0);
         setBlanked(false);
         setSongLyricsEditor(null);
+        onLyricsSaved?.();
       } catch {
         setSongLyricsEditor((current) => current?.songId === editor.songId ? { ...current, notice: "Unable to save the lyrics right now. Check your permission or connection and try again." } : current);
       }
@@ -1222,6 +1231,7 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
       setSlideIndex(0);
       setBlanked(false);
       setDeckEditorOpen(false);
+      onLyricsSaved?.();
       return { ok: true };
     } catch {
       return { ok: false, message: "Unable to save the song right now. Check your permission or connection and try again." };
@@ -1330,7 +1340,10 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
     }
   }
 
-  function selectOverlayPreset(preset: ProjectionOverlayPreset) {
+  function loadOverlayPreset(preset: ProjectionOverlayPreset) {
+    overlayDraftRef.current = { title: preset.title, text: preset.text, tone: preset.tone, position: preset.position, fontSize: preset.fontSize, titleFontScale: normalizeProjectionOverlayFontScale(preset.titleFontScale), textFontScale: normalizeProjectionOverlayFontScale(preset.textFontScale) };
+    overlaySelectedPresetIdRef.current = preset.id;
+    overlayAutosaveRef.current?.load(preset);
     setSelectedOverlayPresetId(preset.id);
     setOverlayPresetName(preset.name);
     setOverlayPresetNotice(null);
@@ -1339,10 +1352,44 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
     setOverlayTone(preset.tone);
     setOverlayPosition(preset.position);
     setOverlayFontSize(preset.fontSize);
-    setOverlayVisible(true);
+    setOverlayTitleFontScale(normalizeProjectionOverlayFontScale(preset.titleFontScale));
+    setOverlayTextFontScale(normalizeProjectionOverlayFontScale(preset.textFontScale));
   }
 
-  function startNewOverlay() {
+  async function selectOverlayPreset(preset: ProjectionOverlayPreset) {
+    if (!await flushOverlayEdits()) return;
+    preset = overlayPresetsRef.current.find((item) => item.id === preset.id) ?? preset;
+    setOverlayContextMenu(null);
+    setOverlayEditorOpen(false);
+    loadOverlayPreset(preset);
+    toggleOverlayLive(buildOverlayState(preset));
+  }
+
+  function closeOverlayContextMenu() {
+    setOverlayContextMenu(null);
+    overlayContextTriggerRef.current?.focus({ preventScroll: true });
+  }
+
+  async function editOverlayPreset(preset: ProjectionOverlayPreset, focus: "text" | "position" = "text") {
+    setOverlayContextMenu(null);
+    if (!await flushOverlayEdits()) return;
+    preset = overlayPresetsRef.current.find((item) => item.id === preset.id) ?? preset;
+    overlayEditorFocusRef.current = focus;
+    loadOverlayPreset(preset);
+    setOverlayEditorOpen(true);
+    setOverlayVisible(projectionOverlayIsLive((latestStateRef.current ?? liveState)?.overlay, buildOverlayState(preset)));
+    const field = focus === "position" ? overlayPositionRef.current : overlayTextRef.current;
+    field?.focus();
+  }
+
+  async function startNewOverlay() {
+    if (!await flushOverlayEdits()) return;
+    overlayAutosaveRef.current?.load(null);
+    overlaySelectedPresetIdRef.current = "";
+    overlayDraftRef.current = { title: "", text: "", tone: "blue", position: "bottom", fontSize: 35, titleFontScale: 100, textFontScale: 100 };
+    setOverlayContextMenu(null);
+    overlayEditorFocusRef.current = "text";
+    setOverlayEditorOpen(true);
     setSelectedOverlayPresetId("");
     setOverlayPresetName("");
     setOverlayPresetNotice(null);
@@ -1351,41 +1398,53 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
     setOverlayTone("blue");
     setOverlayPosition("bottom");
     setOverlayFontSize(35);
+    setOverlayTitleFontScale(100);
+    setOverlayTextFontScale(100);
     setOverlayVisible(false);
+    overlayTextRef.current?.focus();
   }
 
-  function saveCurrentOverlayPreset() {
+  function updateOverlayDraft(update: Partial<OverlayAutosaveDraft>, immediate = false) {
+    const draft = { ...overlayDraftRef.current, ...update };
+    overlayDraftRef.current = draft;
+    setOverlayTitle(draft.title);
+    setOverlayText(draft.text);
+    setOverlayTone(draft.tone);
+    setOverlayPosition(draft.position);
+    setOverlayFontSize(draft.fontSize);
+    setOverlayTitleFontScale(normalizeProjectionOverlayFontScale(draft.titleFontScale));
+    setOverlayTextFontScale(normalizeProjectionOverlayFontScale(draft.textFontScale));
     setOverlayPresetNotice(null);
-    startOverlayPresetTransition(async () => {
-      const result = await saveProjectionOverlayPreset({
-        id: selectedOverlayPresetId || undefined,
-        name: overlayPresetName,
-        title: overlayTitle,
-        text: overlayText,
-        tone: overlayTone,
-        position: overlayPosition,
-        fontSize: overlayFontSize,
-      });
-      setOverlayPresetNotice(result.message);
-      if (result.ok) {
-        setOverlayPresets(result.presets);
-        setSelectedOverlayPresetId(result.preset.id);
-        setOverlayPresetName(result.preset.name);
-      }
-    });
+    overlayAutosaveRef.current?.update(draft, { immediate });
   }
 
-  function deleteSelectedOverlayPreset() {
-    const preset = overlayPresets.find((item) => item.id === selectedOverlayPresetId);
-    if (!preset || !window.confirm(`Delete the saved overlay “${preset.name}”?`)) return;
+  async function flushOverlayEdits() {
+    return await overlayAutosaveRef.current?.flush() ?? true;
+  }
+
+  async function closeOverlayEditor() {
+    if (await flushOverlayEdits()) setOverlayEditorOpen(false);
+  }
+
+  async function deleteOverlayPreset(preset: ProjectionOverlayPreset) {
+    setOverlayContextMenu(null);
+    if (overlayPresetPending || !window.confirm(`Delete the saved overlay “${preset.name}”?`)) return;
+    const saved = await flushOverlayEdits();
+    if (!saved && overlaySelectedPresetIdRef.current !== preset.id) return;
     setOverlayPresetNotice(null);
     startOverlayPresetTransition(async () => {
       const result = await deleteProjectionOverlayPreset(preset.id);
       setOverlayPresetNotice(result.message);
       if (result.ok) {
+        overlayPresetsRef.current = result.presets;
         setOverlayPresets(result.presets);
-        setSelectedOverlayPresetId("");
-        setOverlayPresetName("");
+        if (overlaySelectedPresetIdRef.current === preset.id) {
+          overlayAutosaveRef.current?.load(null);
+          overlaySelectedPresetIdRef.current = "";
+          setSelectedOverlayPresetId("");
+          setOverlayPresetName("");
+          setOverlayEditorOpen(false);
+        }
       }
     });
   }
@@ -1535,7 +1594,6 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
 
   const deckEditorItems: ProjectionSlideEditorItem[] = slides.map((slide, index) => ({ id: `${slideDeckKey}:editor:${index}`, slide, fontSize: slideTextSizeOverrides[slideOverrideKey(index)] ?? null }));
   const deckHasEdits = Boolean(deckOverrides[slideDeckKey] || slides.some((_, index) => slideOverrides[slideOverrideKey(index)] || slideTextSizeOverrides[slideOverrideKey(index)] !== undefined));
-  const songLyricsEditorSlides = songProjectionSlides(songLyricsEditor?.lyrics);
   const songLyricsEditorValid = Boolean(songLyricsEditor?.lyrics.trim() && songLyricsEditor.lyrics.length <= MAX_EDITABLE_SONG_LYRICS_LENGTH);
   const songLyricsEditorHasTemporaryEdits = Boolean(songLyricsEditor && (
     Object.keys(slideOverrides).some((key) => key.startsWith(`song:${songLyricsEditor.songId}:`))
@@ -1551,7 +1609,6 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
             <ProjectionOutputFitMeasurement
               key={`${slideOverrideKey(index)}:${fitAllRequest.width}x${fitAllRequest.height}`}
               slide={slide}
-              footer={footerForSlide(index)}
               viewport={fitAllRequest}
               scale={fitAllRequest.scale}
               overlay={outputState.overlay}
@@ -1600,7 +1657,7 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
         <div className="flex min-h-0 min-w-0 flex-col border-b border-slate-200 bg-slate-100/40 p-3 xl:border-b-0 xl:border-r">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <h4 className="min-w-0 truncate text-base font-extrabold text-slate-950">{source === "songs" ? selectedSong?.title ?? "Choose a song" : loadedBible?.reference ?? "Load a Bible chapter"}</h4>
-            {source === "songs" ? <div className="flex flex-wrap gap-2"><button type="button" onClick={() => openDeckEditor()} disabled={!currentSlide} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-blue-200 bg-white px-2.5 text-[10px] font-bold text-blue-700 hover:bg-blue-50 disabled:opacity-40"><Pencil className="size-3.5" /> Edit slides</button>{deckHasEdits ? <button type="button" onClick={resetDeckEdits} className="inline-flex size-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:text-red-600" aria-label="Reset all slide edits" title="Reset all slide edits"><RotateCcw className="size-3.5" /></button> : null}</div> : null}
+            {source === "songs" ? <div className="flex flex-wrap gap-2"><button type="button" onClick={openSongLyricsEditor} disabled={!selectedSong} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-blue-200 bg-white px-2.5 text-[10px] font-bold text-blue-700 hover:bg-blue-50 disabled:opacity-40"><Pencil className="size-3.5" /> Edit</button>{deckHasEdits ? <button type="button" onClick={resetDeckEdits} className="inline-flex size-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:text-red-600" aria-label="Reset all slide edits" title="Reset all slide edits"><RotateCcw className="size-3.5" /></button> : null}</div> : null}
           </div>
           <div className="grid min-h-0 flex-1 auto-rows-max content-start items-start grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-2.5 overflow-y-auto p-0.5 pr-2">
             {slides.map((slide, index) => {
@@ -1608,12 +1665,13 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
               const slideTextSize = textSizeForSlide(index);
               const isLive = slideIsLive(index);
               const isPreview = index === safeSlideIndex;
-              const uniformPreviewFontSize = `${projectionTextSizePx(slideTextSize) / (uniformTextViewport?.width ?? projectorViewport?.width ?? 1920) * 100}cqw`;
+              const slidePreviewState: ProjectionOutputState = { ...outputState, blanked: false, slide, fontSize: slideTextSize, footer: footerForSlide(index) };
               return <article key={`${slide.label}-${index}`} className={`group relative h-fit min-h-[145px] self-start overflow-hidden rounded-lg border bg-white shadow-sm transition ${isLive ? "border-emerald-500 ring-2 ring-emerald-200" : isPreview ? "border-blue-500 ring-2 ring-blue-200" : "border-slate-300 hover:border-blue-300 hover:shadow-md"}`}>
                 <button type="button" onClick={(event) => { presentSlideAtIndex(index); event.currentTarget.blur(); }} className="flex min-h-[145px] w-full flex-col text-left" aria-label={`Present slide ${index + 1}`} title="Click to present this slide">
-                  <div className="relative isolate w-full shrink-0 overflow-hidden bg-black px-[3.5%] py-[3.5%] text-center [container-type:inline-size]" style={{ aspectRatio: uniformTextViewport ? `${uniformTextViewport.width} / ${uniformTextViewport.height}` : projectorViewport ? `${projectorViewport.width} / ${projectorViewport.height}` : "16 / 9", minHeight: 108, color: activeTheme.text }}>
-                    <ProjectionBackgroundLayer background={activeTheme.background} media={outputState.media} effects={backgroundEffects} playVideo={isPreview} animate={isPreview} contentLength={projectionSlideContentLength(slide)} className="-z-20" />
-                    {slide.sections?.length ? <div className="grid size-full min-h-0" style={{ gridTemplateColumns: `repeat(${slide.sections.length},minmax(0,1fr))` }}>{slide.sections.map((section, sectionIndex) => <div key={`${section.label}-${sectionIndex}`} className="flex min-h-0 min-w-0 flex-col px-1" style={{ borderLeft: sectionIndex ? `1px solid ${activeTheme.muted}` : undefined }}><span className="text-[6px] font-bold uppercase tracking-wider" style={{ color: activeTheme.muted }}>{section.label}</span>{uniformTextSize ? <p className="flex min-h-0 flex-1 items-center justify-center whitespace-pre-line font-bold leading-[1.08] [text-wrap:balance]" style={{ fontSize: uniformPreviewFontSize, textShadow: activeTheme.shadow }}>{section.text}</p> : <ProjectionAutoFitText text={section.text} maximumFontSize={Math.max(8, projectionPreviewTextSizePx(slideTextSize) * 0.82)} minimumFontSize={5} className="font-bold leading-[1.08]" style={{ textShadow: activeTheme.shadow }} />}</div>)}</div> : uniformTextSize ? <p className="flex size-full items-center justify-center whitespace-pre-line font-bold leading-[1.08] [text-wrap:balance]" style={{ fontSize: uniformPreviewFontSize, textShadow: activeTheme.shadow }}>{slide.text}</p> : <ProjectionAutoFitText text={slide.text} maximumFontSize={projectionPreviewTextSizePx(slideTextSize)} minimumFontSize={6} className="font-bold leading-[1.08]" style={{ textShadow: activeTheme.shadow }} />}
+                  <div className="relative isolate w-full shrink-0 overflow-hidden bg-black">
+                    <ProjectionViewportPreview viewport={previewViewport} label={`Slide ${index + 1} projector preview`}>
+                      <ProjectionFrame state={slidePreviewState} playVideo={isPreview} animateBackground={isPreview} />
+                    </ProjectionViewportPreview>
                     {isLive ? <span className={`absolute left-1.5 top-1.5 rounded px-1.5 py-0.5 text-[7px] font-extrabold uppercase tracking-wide text-white ${liveState?.blanked ? "bg-amber-600" : "bg-emerald-600"}`}>{liveState?.blanked ? "Live · blanked" : "Live"}</span> : isPreview ? <span className="absolute left-1.5 top-1.5 rounded bg-blue-600 px-1.5 py-0.5 text-[7px] font-extrabold uppercase tracking-wide text-white">Preview</span> : null}
                   </div>
                   <div className={`flex h-9 w-full shrink-0 items-center justify-between gap-2 border-t px-2 ${isLive ? "border-emerald-400 bg-emerald-50" : isPreview ? "border-blue-400 bg-blue-50" : "border-slate-200 bg-slate-50"}`}><span className="text-[10px] font-extrabold text-slate-500">{index + 1}</span><span className={`min-w-0 flex-1 truncate text-right text-[10px] font-extrabold ${isLive ? "text-emerald-700" : "text-blue-700"}`}>{slide.label || `Slide ${index + 1}`}{edited ? " · Edited" : ""}</span></div>
@@ -1653,7 +1711,7 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
 
         <aside className="flex h-fit min-h-0 self-start flex-col overflow-hidden bg-white shadow-sm">
           <div className="bg-slate-950 p-3 text-white">
-            <ProjectionLiveMonitor state={liveState} />
+            <ProjectionLiveMonitor state={liveState} viewport={previewViewport} />
           <button type="button" onClick={toggleLiveBlank} className={`mt-2 inline-flex h-8 w-full shrink-0 items-center justify-center gap-1.5 rounded-md text-[9px] font-bold ${liveState?.blanked ? "bg-amber-500 text-slate-950" : "bg-white/10 text-white hover:bg-white/15"}`}>{liveState?.blanked ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}{liveState?.blanked ? "Show output" : "Blank output"}</button>
           <section className="mt-2 shrink-0 rounded-lg border border-white/10 bg-white/[0.04] p-2" aria-label="Output layers">
             <div className="mb-1 flex justify-end gap-1"><button type="button" onClick={restoreLiveLayers} disabled={!clearedLiveState} className="h-7 rounded px-2 text-[8px] font-bold text-white/60 hover:bg-white/10 disabled:opacity-25">Restore</button><button type="button" onClick={clearAllLiveLayers} disabled={!liveState} className="h-7 rounded bg-red-500/15 px-2 text-[8px] font-bold text-red-300 hover:bg-red-500/25 disabled:opacity-25">Clear all</button></div>
@@ -1763,30 +1821,48 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
           ) : null}
 
           {controlPanel === "overlay" ? (
-            <div className="grid h-full min-h-0 gap-3 lg:grid-cols-[340px_minmax(0,1fr)_220px]">
+            <div className={`grid h-full min-h-0 gap-3 ${overlayEditorOpen ? "lg:grid-cols-[340px_minmax(0,1fr)]" : ""}`}>
               <aside className="min-h-0 overflow-y-auto rounded-lg border border-blue-100 bg-blue-50/60 p-3" aria-label="Saved overlays">
-                <div className="grid grid-cols-2 gap-2">
-                  {overlayPresets.map((preset) => (
-                    <button
-                      key={preset.id}
-                      type="button"
-                      aria-label={"Select overlay " + preset.name}
-                      aria-pressed={selectedOverlayPresetId === preset.id}
-                      onClick={() => selectOverlayPreset(preset)}
-                      className={selectedOverlayPresetId === preset.id
-                        ? "min-w-0 overflow-hidden rounded-lg border-2 border-blue-500 bg-white text-left shadow-sm ring-2 ring-blue-100"
-                        : "min-w-0 overflow-hidden rounded-lg border-2 border-white bg-white/80 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300"}
-                    >
-                      <ProjectionOverlayPreview title={preset.title} text={preset.text} tone={preset.tone} position={preset.position} fontSize={preset.fontSize} className="rounded-b-none border-0 border-b border-slate-700" />
-                      <span className="flex h-8 items-center justify-between gap-1.5 px-2">
-                        <span className="truncate text-[9px] font-extrabold text-slate-700">{preset.name}</span>
-                        {selectedOverlayPresetId === preset.id ? <span className="shrink-0 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[7px] font-extrabold uppercase text-emerald-700">Ready</span> : null}
-                      </span>
-                    </button>
-                  ))}
+                {overlayPresetNotice ? <p role="status" className="mb-2 rounded bg-white px-2 py-1 text-[10px] text-slate-600">{overlayPresetNotice}</p> : null}
+                <div className={`grid grid-cols-2 gap-2 ${overlayEditorOpen ? "" : "sm:grid-cols-[repeat(auto-fill,minmax(150px,1fr))]"}`}>
+                  {overlayPresets.map((preset) => {
+                    const presetIsLive = projectionOverlayIsLive(liveState?.overlay, buildOverlayState(preset));
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        aria-label={`${presetIsLive ? "Hide" : "Show"} overlay ${preset.name}`}
+                        aria-pressed={presetIsLive}
+                        aria-haspopup="menu"
+                        aria-expanded={overlayContextMenu?.presetId === preset.id}
+                        disabled={overlayPresetPending}
+                        onClick={() => selectOverlayPreset(preset)}
+                        onContextMenu={(event) => {
+                          event.preventDefault();
+                          const bounds = event.currentTarget.getBoundingClientRect();
+                          const keyboard = event.clientX === 0 && event.clientY === 0;
+                          overlayContextTriggerRef.current = event.currentTarget;
+                          setOverlayContextMenu({ presetId: preset.id, x: keyboard ? bounds.left : event.clientX, y: keyboard ? bounds.bottom : event.clientY });
+                        }}
+                        title="Click to show or hide. Right-click for Edit, Position, or Delete."
+                        className={presetIsLive
+                          ? "min-w-0 overflow-hidden rounded-lg border-2 border-emerald-500 bg-white text-left shadow-sm ring-2 ring-emerald-100"
+                          : selectedOverlayPresetId === preset.id
+                            ? "min-w-0 overflow-hidden rounded-lg border-2 border-blue-500 bg-white text-left shadow-sm ring-2 ring-blue-100"
+                            : "min-w-0 overflow-hidden rounded-lg border-2 border-white bg-white/80 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300"}
+                      >
+                        <ProjectionOverlayPreview title={preset.title} text={preset.text} tone={preset.tone} position={preset.position} fontSize={preset.fontSize} titleFontScale={preset.titleFontScale} textFontScale={preset.textFontScale} viewport={previewViewport} className="rounded-b-none border-0 border-b border-slate-700" />
+                        <span className="flex h-8 items-center justify-between gap-1.5 px-2">
+                          <span className="truncate text-[9px] font-extrabold text-slate-700">{preset.name}</span>
+                          {presetIsLive || selectedOverlayPresetId === preset.id ? <span className="shrink-0 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[7px] font-extrabold uppercase text-emerald-700">{presetIsLive ? "Live" : "Ready"}</span> : null}
+                        </span>
+                      </button>
+                    );
+                  })}
                   <button
                     type="button"
                     onClick={startNewOverlay}
+                    disabled={overlayPresetPending}
                     className="group flex min-h-[118px] flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-blue-300 bg-white/70 text-blue-700 transition hover:-translate-y-0.5 hover:border-blue-500 hover:bg-white hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
                     aria-label="Create a new overlay"
                   >
@@ -1798,61 +1874,43 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
                 </div>
               </aside>
 
-              <section className="grid min-h-0 gap-3 rounded-lg border border-slate-200 bg-white p-3 xl:grid-cols-[minmax(260px,1.1fr)_minmax(230px,.9fr)]" aria-label="Overlay preview">
+              {overlayEditorOpen ? <section className="grid min-h-0 gap-3 rounded-lg border border-slate-200 bg-white p-3 xl:grid-cols-[minmax(260px,1.1fr)_minmax(230px,.9fr)]" aria-label="Overlay preview">
                 <div className="min-w-0">
-                  <div className="mb-2 flex justify-end">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <button type="button" onClick={closeOverlayEditor} className="inline-flex size-6 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100" aria-label="Close overlay editor"><X className="size-3.5" /></button>
                     <span className={selectedOverlayIsLive ? "rounded-full bg-emerald-100 px-2 py-1 text-[7px] font-extrabold uppercase text-emerald-700" : "rounded-full bg-amber-100 px-2 py-1 text-[7px] font-extrabold uppercase text-amber-700"}>
                       {selectedOverlayIsLive ? "Live" : "Ready"}
                     </span>
                   </div>
-                  <ProjectionOverlayPreview title={overlayTitle.trim()} text={overlayText.trim()} tone={overlayTone} position={overlayPosition} fontSize={overlayFontSize} className="shadow-inner" />
+                  <ProjectionOverlayPreview title={overlayTitle.trim()} text={overlayText.trim()} tone={overlayTone} position={overlayPosition} fontSize={overlayFontSize} titleFontScale={overlayTitleFontScale} textFontScale={overlayTextFontScale} viewport={previewViewport} className="shadow-inner" />
                   <p className="mt-2 truncate text-[9px] font-semibold text-slate-500">{overlayPresetName || "Unsaved overlay"}</p>
                 </div>
 
                 <div className="min-h-0 space-y-2 overflow-y-auto pr-1">
-                  <input value={overlayTitle} onChange={(event) => setOverlayTitle(event.target.value)} placeholder="Overlay title" className="h-9 w-full rounded-md border border-slate-300 px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
-                  <textarea value={overlayText} onChange={(event) => setOverlayText(event.target.value)} placeholder="Overlay message" rows={3} className="w-full resize-none rounded-md border border-slate-300 p-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                  <div className="flex items-start gap-1.5">
+                    <input value={overlayTitle} onChange={(event) => updateOverlayDraft({ title: event.target.value })} disabled={overlayPresetPending} aria-label="Overlay title" placeholder="Overlay title" maxLength={160} className="h-9 min-w-0 flex-1 rounded-md border border-slate-300 px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                    <OverlayTextSizeControl label="title" value={overlayTitleFontScale} disabled={overlayPresetPending} onChange={(titleFontScale) => updateOverlayDraft({ titleFontScale }, true)} />
+                  </div>
+                  <div className="flex items-start gap-1.5">
+                    <textarea ref={overlayTextRef} value={overlayText} onChange={(event) => updateOverlayDraft({ text: event.target.value })} disabled={overlayPresetPending} aria-label="Overlay message" placeholder="Overlay message" maxLength={2000} rows={3} className="min-w-0 flex-1 resize-none rounded-md border border-slate-300 p-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                    <OverlayTextSizeControl label="message" value={overlayTextFontScale} disabled={overlayPresetPending} onChange={(textFontScale) => updateOverlayDraft({ textFontScale }, true)} />
+                  </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <select value={overlayTone} onChange={(event) => setOverlayTone(event.target.value as OverlayTone)} className="h-8 rounded-md border border-slate-300 bg-white px-1.5 text-[10px] font-semibold">
+                    <select value={overlayTone} onChange={(event) => updateOverlayDraft({ tone: event.target.value as OverlayTone }, true)} disabled={overlayPresetPending} className="h-8 rounded-md border border-slate-300 bg-white px-1.5 text-[10px] font-semibold">
                       <option value="blue">Blue</option>
                       <option value="dark">Dark</option>
                       <option value="light">Light</option>
                       <option value="minimal">Minimal</option>
                     </select>
-                    <select value={overlayPosition} onChange={(event) => setOverlayPosition(event.target.value as OverlayPosition)} className="h-8 rounded-md border border-slate-300 bg-white px-1.5 text-[10px] font-semibold">
+                    <select ref={overlayPositionRef} value={overlayPosition} onChange={(event) => updateOverlayDraft({ position: event.target.value as OverlayPosition }, true)} disabled={overlayPresetPending} aria-label="Overlay position" className="h-8 rounded-md border border-slate-300 bg-white px-1.5 text-[10px] font-semibold">
                       <option value="top">Top</option>
                       <option value="center">Center</option>
                       <option value="bottom">Bottom</option>
                     </select>
                   </div>
-                  <label className="block text-[9px] font-semibold text-slate-500">
-                    <span className="flex justify-between"><span>Overlay size</span><strong>{overlayFontSize}%</strong></span>
-                    <input type="range" min={PROJECTION_TEXT_SIZE_MIN_PERCENT} max={PROJECTION_TEXT_SIZE_MAX_PERCENT} step={1} value={overlayFontSize} onChange={(event) => setOverlayFontSize(Number(event.target.value))} className="mt-2 w-full accent-blue-600" />
-                  </label>
+                  {overlayAutosaveStatus.state !== "idle" ? <p role="status" className={`pt-2 text-right text-[10px] font-semibold ${overlayAutosaveStatus.state === "error" ? "text-red-600" : "text-slate-500"}`}>{overlayAutosaveStatus.state === "error" ? overlayAutosaveStatus.message : overlayAutosaveStatus.state === "saved" ? "Saved" : "Saving…"}</p> : null}
                 </div>
-              </section>
-
-              <aside className="min-h-0 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-3" aria-label="Overlay presentation">
-                <button
-                  type="button"
-                  onClick={toggleLiveOverlay}
-                  disabled={!overlayTitle.trim() && !overlayText.trim()}
-                  className={selectedOverlayIsLive
-                    ? "h-10 w-full rounded-md bg-red-600 text-[9px] font-extrabold text-white shadow-sm hover:bg-red-700 disabled:opacity-35"
-                    : "h-10 w-full rounded-md bg-emerald-600 text-[9px] font-extrabold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-35"}
-                >
-                  {selectedOverlayIsLive ? "Hide live overlay" : "Show overlay live"}
-                </button>
-                <div className="my-3 border-t border-slate-200" />
-                <input value={overlayPresetName} onChange={(event) => setOverlayPresetName(event.target.value)} placeholder="Preset name" maxLength={80} className="h-8 w-full rounded border border-slate-300 bg-white px-2 text-[9px]" />
-                <button type="button" onClick={saveCurrentOverlayPreset} disabled={overlayPresetPending || !overlayPresetName.trim() || (!overlayTitle.trim() && !overlayText.trim())} className="mt-2 inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-md bg-blue-600 text-[10px] font-extrabold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-35">
-                  <Save className="size-3.5" /> Save
-                </button>
-                <div className="mt-2 flex justify-end">
-                  <button type="button" onClick={deleteSelectedOverlayPreset} disabled={!selectedOverlayPresetId || overlayPresetPending} className="inline-flex items-center gap-1 text-[8px] font-bold text-red-500 disabled:opacity-35"><Trash2 className="size-3" /> Delete</button>
-                </div>
-                {overlayPresetNotice ? <p className="mt-2 rounded bg-white px-2 py-1 text-[8px] text-slate-500">{overlayPresetNotice}</p> : null}
-              </aside>
+              </section> : null}
             </div>
           ) : null}
 
@@ -1901,31 +1959,34 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
         </div> : null}
       </section>
 
+      {overlayContextMenu && overlayContextPreset ? (
+        <ProjectionOverlayContextMenu
+          name={overlayContextPreset.name}
+          x={overlayContextMenu.x}
+          y={overlayContextMenu.y}
+          disabled={overlayPresetPending}
+          onEdit={() => editOverlayPreset(overlayContextPreset)}
+          onPosition={() => editOverlayPreset(overlayContextPreset, "position")}
+          onDelete={() => deleteOverlayPreset(overlayContextPreset)}
+          onClose={closeOverlayContextMenu}
+        />
+      ) : null}
+
       {songLyricsEditor ? (
         <div className="fixed inset-0 z-[85] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm sm:p-5" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target && !songLyricsPending) setSongLyricsEditor(null); }}>
-          <section className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="song-lyrics-editor-title">
-            <header className="flex items-start justify-between gap-4 border-b border-slate-200 bg-gradient-to-r from-blue-50 via-white to-white px-5 py-4">
-              <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 id="song-lyrics-editor-title" className="text-base font-extrabold text-slate-950">Edit complete song lyrics</h3><span className="rounded-full bg-blue-100 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-blue-700">Permanent library change</span></div><p className="mt-1 truncate text-xs font-semibold text-slate-600">{songLyricsEditor.title}</p><p className="mt-1 text-[10px] text-slate-400">Saving regenerates every projection slide. The audience output changes only after you press Take live.</p></div>
+          <section className="flex h-[92dvh] max-h-full w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="song-lyrics-editor-title">
+            <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-gradient-to-r from-blue-50 via-white to-white px-5 py-4">
+              <h3 id="song-lyrics-editor-title" className="min-w-0 truncate text-xs font-semibold text-slate-600">{songLyricsEditor.title}</h3>
               <button type="button" onClick={() => setSongLyricsEditor(null)} disabled={songLyricsPending} className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200 hover:text-slate-700 disabled:opacity-40" aria-label="Close lyrics editor"><X className="size-4" /></button>
             </header>
-            <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_320px]">
-              <div className="flex min-h-0 flex-col border-b border-slate-200 p-5 lg:border-b-0 lg:border-r">
-                <div className="mb-2 flex items-end justify-between gap-3"><label htmlFor="complete-song-lyrics" className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Complete lyrics</label><span className="text-[10px] font-semibold text-slate-400">{songLyricsEditor.lyrics.length} / {MAX_EDITABLE_SONG_LYRICS_LENGTH} characters</span></div>
-                <textarea id="complete-song-lyrics" autoFocus value={songLyricsEditor.lyrics} maxLength={MAX_EDITABLE_SONG_LYRICS_LENGTH} onChange={(event) => setSongLyricsEditor((current) => current ? { ...current, lyrics: event.target.value, notice: null } : null)} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); saveSongLyrics(); } }} spellCheck className="min-h-[330px] flex-1 resize-none rounded-xl border border-slate-300 bg-white p-4 font-mono text-sm leading-6 text-slate-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
-                <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] leading-4 text-slate-500"><strong className="text-slate-700">Formatting:</strong> use headings such as <code className="rounded bg-white px-1 text-blue-700">[Verse 1]</code> or <code className="rounded bg-white px-1 text-blue-700">[Chorus]</code> on their own block. Slides are automatically limited to six lyric lines.</div>
-                {songLyricsEditorHasTemporaryEdits ? <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-[10px] font-semibold text-amber-800 ring-1 ring-amber-200">Saving the complete song will replace temporary edits previously made to individual slides.</p> : null}
-              </div>
-              <aside className="min-h-0 bg-slate-50/70 p-4">
-                <div className="mb-3 flex items-center justify-between"><div><h4 className="text-xs font-extrabold text-slate-800">Generated slides</h4><p className="text-[10px] text-slate-400">Updates while you type</p></div><span className="rounded-full bg-blue-600 px-2.5 py-1 text-[10px] font-extrabold text-white">{songLyricsEditorSlides.length}</span></div>
-                <div className="max-h-[52vh] space-y-2 overflow-y-auto pr-1">
-                  {songLyricsEditorSlides.map((slide, index) => <div key={`${slide.label ?? "slide"}-${index}`} className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm"><div className="mb-1 flex items-center justify-between gap-2"><span className="truncate text-[9px] font-extrabold uppercase tracking-wider text-blue-600">{slide.label || `Slide ${index + 1}`}</span><span className="shrink-0 text-[9px] font-bold text-slate-300">{index + 1}</span></div><p className="whitespace-pre-line text-[10px] font-semibold leading-4 text-slate-600">{slide.text}</p></div>)}
-                  {!songLyricsEditorSlides.length ? <div className="rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center text-xs text-slate-400">Enter lyrics to generate slides.</div> : null}
-                </div>
-              </aside>
+            <div className="flex min-h-0 flex-1 flex-col p-5">
+              <label htmlFor="complete-song-lyrics" className="sr-only">Complete lyrics</label>
+              <textarea id="complete-song-lyrics" autoFocus value={songLyricsEditor.lyrics} maxLength={MAX_EDITABLE_SONG_LYRICS_LENGTH} onChange={(event) => setSongLyricsEditor((current) => current ? { ...current, lyrics: event.target.value, notice: null } : null)} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); saveSongLyrics(); } }} spellCheck className="min-h-0 w-full flex-1 resize-none rounded-xl border border-slate-300 bg-white p-4 font-mono text-sm leading-6 text-slate-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+              {songLyricsEditorHasTemporaryEdits ? <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-[10px] font-semibold text-amber-800 ring-1 ring-amber-200">Saving the complete song will replace temporary edits previously made to individual slides.</p> : null}
             </div>
-            <footer className="flex flex-col gap-3 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <footer className="flex shrink-0 flex-col gap-3 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0" aria-live="polite">{songLyricsEditor.notice ? <p className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 ring-1 ring-red-200">{songLyricsEditor.notice}</p> : <p className="text-[10px] text-slate-400">Tip: press Ctrl+Enter to save.</p>}</div>
-              <div className="flex shrink-0 justify-end gap-2"><button type="button" onClick={() => setSongLyricsEditor(null)} disabled={songLyricsPending} className="h-9 rounded-lg border border-slate-300 bg-white px-4 text-xs font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-40">Cancel</button><button type="button" onClick={saveSongLyrics} disabled={!songLyricsEditorValid || songLyricsPending} className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-4 text-xs font-extrabold text-white hover:bg-blue-700 disabled:opacity-40">{songLyricsPending ? <LoaderCircle className="size-4 animate-spin" /> : <Save className="size-4" />}{songLyricsPending ? "Saving…" : "Save complete lyrics"}</button></div>
+              <div className="flex shrink-0 justify-end gap-2"><button type="button" onClick={() => setSongLyricsEditor(null)} disabled={songLyricsPending} className="h-9 rounded-lg border border-slate-300 bg-white px-4 text-xs font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-40">Cancel</button><button type="button" onClick={saveSongLyrics} disabled={!songLyricsEditorValid || songLyricsPending} className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-4 text-xs font-extrabold text-white hover:bg-blue-700 disabled:opacity-40">{songLyricsPending ? <LoaderCircle className="size-4 animate-spin" /> : <Save className="size-4" />}{songLyricsPending ? "Saving…" : "Save"}</button></div>
             </footer>
           </section>
         </div>
@@ -1937,7 +1998,8 @@ export function SongProjectionStudio({ songs, playlists, initialOverlayPresets, 
           initialItems={deckEditorItems}
           initialActiveIndex={safeSlideIndex}
           defaultFontSize={fontSize}
-          theme={activeTheme}
+          previewState={outputState}
+          viewport={previewViewport}
           canSaveToSong={source === "songs" && Boolean(selectedSong)}
           onClose={() => setDeckEditorOpen(false)}
           onApply={applyDeckEdits}

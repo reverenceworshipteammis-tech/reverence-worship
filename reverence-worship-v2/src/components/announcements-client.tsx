@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAppDialog } from "@/components/app-dialog-provider";
 import { ActionNotice } from "@/components/action-notice";
 import { ADMIN_NOTIFICATIONS_CHANGED_EVENT } from "@/lib/admin-notification-events";
+import { membershipTypeFilterOptions, type MembershipType } from "@/lib/membership-types";
 import { BarChart3, CheckCircle2, ChevronLeft, ChevronRight, FileSearch2, Filter, MailCheck, Megaphone, Pencil, Plus, RefreshCw, Search, Send, Trash2, Upload, X } from "lucide-react";
 import {
   deleteAnnouncement,
@@ -26,7 +27,7 @@ type UserOption = {
   status: "active" | "pending" | "inactive";
   gender: "male" | "female" | "other" | null;
   maritalStatus: string | null;
-  membershipType: "permanent" | "temporary" | "visitor" | null;
+  membershipType: MembershipType | null;
   roleIds: number[];
 };
 
@@ -511,7 +512,7 @@ export function AnnouncementsClient({
                     />
                     <AudienceFilterGroup
                       label="Membership type"
-                      options={[["permanent", "Permanent"], ["temporary", "Temporary Member"], ["visitor", "Partner"]]}
+                      options={membershipTypeFilterOptions}
                       selected={recipientFilters.membershipTypes}
                       onToggle={(value) => toggleRecipientFilter("membershipTypes", value)}
                     />

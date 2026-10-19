@@ -23,6 +23,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { updateOwnProfileAction, type ProfileActionState } from "@/app/admin/profile/actions";
 import { ActionNotice } from "@/components/action-notice";
+import { membershipTypeLabel, membershipTypeOptions, normalizeMembershipType } from "@/lib/membership-types";
 
 export const OPEN_PROFILE_MODAL_EVENT = "reverence:open-profile";
 
@@ -232,7 +233,7 @@ export function ProfileModal({
                   <ProfileSelect label="Gender" name="gender" defaultValue={profile.gender} icon={Mars} options={genderOptions} />
                   <ProfileField label="Date of Birth" name="dateOfBirth" defaultValue={toDateInput(profile.dateOfBirth)} icon={CalendarDays} type="date" />
                   <ProfileField label="Marital Status" name="maritalStatus" defaultValue={profile.maritalStatus} icon={Users} />
-                  <ProfileSelect label="Membership Type" name="membershipType" defaultValue={profile.membershipType} icon={BadgeCheck} options={membershipOptions} />
+                  <ProfileSelect label="Membership Type" name="membershipType" defaultValue={normalizeMembershipType(profile.membershipType)} icon={BadgeCheck} required options={membershipOptions} />
                   <ProfileField label="Occupation" name="occupation" defaultValue={profile.occupation} icon={BriefcaseBusiness} last />
                 </ProfileSection>
 
@@ -278,7 +279,7 @@ export function ProfileModal({
               <InfoRow label="Gender" value={formatEnum(profile.gender)} icon={Mars} />
               <InfoRow label="Date of Birth" value={formatDate(profile.dateOfBirth)} icon={CalendarDays} />
               <InfoRow label="Marital Status" value={display(profile.maritalStatus)} icon={Users} />
-              <InfoRow label="Membership Type" value={formatEnum(profile.membershipType)} icon={BadgeCheck} />
+              <InfoRow label="Membership Type" value={membershipTypeLabel(profile.membershipType)} icon={BadgeCheck} />
               <InfoRow label="Occupation" value={display(profile.occupation)} icon={BriefcaseBusiness} last />
             </ProfileSection>
 
@@ -308,10 +309,8 @@ const genderOptions = [
 ];
 
 const membershipOptions = [
-  { value: "", label: "Not specified" },
-  { value: "permanent", label: "Permanent" },
-  { value: "temporary", label: "Temporary" },
-  { value: "visitor", label: "Visitor" },
+  { value: "", label: "Select membership type", disabled: true, hidden: true },
+  ...membershipTypeOptions,
 ];
 
 function ProfileBadge({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
@@ -415,12 +414,14 @@ function ProfileSelect({
   defaultValue,
   icon: Icon,
   options,
+  required = false,
 }: {
   label: string;
   name: string;
   defaultValue: string | null | undefined;
   icon: LucideIcon;
-  options: Array<{ value: string; label: string }>;
+  options: Array<{ value: string; label: string; disabled?: boolean; hidden?: boolean }>;
+  required?: boolean;
 }) {
   return (
     <div className="flex gap-3 border-b border-gray-100 pb-3">
@@ -432,9 +433,10 @@ function ProfileSelect({
         <select
           name={name}
           defaultValue={defaultValue ?? ""}
+          required={required}
           className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
         >
-          {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          {options.map((option) => <option key={option.value} value={option.value} disabled={option.disabled} hidden={option.hidden}>{option.label}</option>)}
         </select>
       </label>
     </div>

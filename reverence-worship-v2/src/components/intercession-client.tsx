@@ -9,6 +9,7 @@ import { ActionPlanTaskTemplateButtons } from "@/components/action-plan-task-tem
 import { DepartmentActionPlanManager } from "@/components/department-action-plan-manager";
 import { IntercessionRichText } from "@/components/intercession-rich-text";
 import { intercessionRichTextToPlainText } from "@/lib/intercession-rich-text";
+import { membershipTypeLabel, membershipTypeOptions } from "@/lib/membership-types";
 import {
   AlertTriangle,
   BarChart3,
@@ -1259,9 +1260,7 @@ export function IntercessionClient({
                       className="h-9 w-full rounded-lg border border-gray-300 px-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:h-auto sm:px-3 sm:py-2 sm:text-sm sm:focus:ring-4"
                     >
                       <option value="all">All membership types</option>
-                      <option value="permanent">Permanent</option>
-                      <option value="temporary">Temporary Member</option>
-                      <option value="visitor">Partner</option>
+                      {membershipTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                       <option value="unspecified">Not specified</option>
                     </select>
                   </div>
@@ -2750,13 +2749,6 @@ function EmptyState({ title }: { title: string }) {
       <p className="text-sm font-medium text-gray-500">{title}</p>
     </div>
   );
-}
-
-function membershipTypeLabel(value: string | null) {
-  if (value === "permanent") return "Permanent";
-  if (value === "temporary") return "Temporary Member";
-  if (value === "visitor") return "Partner";
-  return "Not specified";
 }
 
 function ReportCard({ label, mobileLabel, value, tone }: { label: string; mobileLabel?: string; value: number; tone: "blue" | "green" | "amber" | "red" }) {

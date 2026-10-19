@@ -1,17 +1,18 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
+import { normalizePostgresSslMode } from "@/lib/database-url";
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
   prismaSchemaVersion?: string;
 };
 
-const PRISMA_SCHEMA_VERSION = "2026-10-05-pooled-database-url-v7";
+const PRISMA_SCHEMA_VERSION = "2026-10-19-compatible-partner-mapping-v10";
 
 function databaseUrl() {
   // The application should use the pooled URL. DIRECT_URL is reserved for
   // tools that explicitly need a direct database connection (such as migrations).
-  return process.env.DATABASE_URL?.trim() || process.env.DIRECT_URL?.trim();
+  return normalizePostgresSslMode(process.env.DATABASE_URL?.trim() || process.env.DIRECT_URL?.trim());
 }
 
 function databasePoolMax() {

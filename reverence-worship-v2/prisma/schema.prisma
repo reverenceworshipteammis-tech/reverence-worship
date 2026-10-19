@@ -22,7 +22,7 @@ enum UserStatus {
 enum MembershipType {
   permanent
   temporary
-  visitor
+  partner @map("visitor")
 }
 
 enum ProbationState {

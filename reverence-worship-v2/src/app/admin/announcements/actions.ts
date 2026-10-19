@@ -5,6 +5,7 @@ import { requirePermission } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { notifyUsers, userIdsForAnnouncement } from "@/lib/notifications";
 import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
+import { parseMembershipTypeFilters } from "@/lib/membership-types";
 
 function readString(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -39,7 +40,7 @@ function parseRecipientFilters(value: string) {
       statuses: parseFilterList(parsed.statuses, ["active", "pending", "inactive"] as const),
       genders: parseFilterList(parsed.genders, ["male", "female"] as const),
       maritalStatuses: parseFilterList(parsed.maritalStatuses, ["Single", "Married", "Divorced", "Widowed"] as const),
-      membershipTypes: parseFilterList(parsed.membershipTypes, ["permanent", "temporary", "visitor"] as const),
+      membershipTypes: parseMembershipTypeFilters(parsed.membershipTypes),
     };
   } catch {
     return { statuses: [], genders: [], maritalStatuses: [], membershipTypes: [] };

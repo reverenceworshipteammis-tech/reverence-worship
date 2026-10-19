@@ -6,6 +6,7 @@ import { z } from "zod";
 import { requirePermission } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { notifyEmailAddress, notifyUsers } from "@/lib/notifications";
+import { MEMBERSHIP_TYPES, importedMembershipType, type MembershipType } from "@/lib/membership-types";
 
 const createUserSchema = z.object({
   name: z.string().trim().min(2),
@@ -19,7 +20,7 @@ const createUserSchema = z.object({
   village: z.string().optional(),
   gender: z.enum(["", "male", "female"]).optional(),
   maritalStatus: z.string().optional(),
-  membershipType: z.enum(["", "permanent", "temporary", "visitor"]).optional(),
+  membershipType: z.enum(MEMBERSHIP_TYPES),
   occupation: z.string().optional(),
   skills: z.string().optional(),
   password: z.string().min(6),
@@ -43,7 +44,7 @@ const updateUserSchema = z.object({
   village: z.string().optional(),
   gender: z.enum(["", "male", "female"]).optional(),
   maritalStatus: z.string().optional(),
-  membershipType: z.enum(["", "permanent", "temporary", "visitor"]).optional(),
+  membershipType: z.enum(MEMBERSHIP_TYPES),
   occupation: z.string().optional(),
   skills: z.string().optional(),
   status: z.enum(["active", "pending", "inactive"]),
@@ -102,7 +103,7 @@ type ImportedUserRow = {
   village: string | null;
   family: string | null;
   occupation: string | null;
-  membershipType: "permanent" | "temporary" | "visitor" | null;
+  membershipType: MembershipType | null;
 };
 
 async function roleIdsWithMemberBase(roleIds: number[]) {
@@ -290,14 +291,6 @@ function parseImportStatus(statusValue: string, approvalValue: string): "active"
   return "active";
 }
 
-function parseMembershipType(value: string): "permanent" | "temporary" | "visitor" | null {
-  const normalized = value.toLowerCase();
-  if (normalized.includes("temporary")) return "temporary";
-  if (normalized.includes("visitor") || normalized.includes("partner")) return "visitor";
-  if (normalized.includes("permanent")) return "permanent";
-  return value ? "permanent" : null;
-}
-
 function parseGender(value: string): "male" | "female" | null {
   const normalized = value.toLowerCase();
   if (normalized.startsWith("m")) return "male";
@@ -345,7 +338,7 @@ function parseImportedUser(row: Record<string, string>): ImportedUserRow | null 
     village: readImportValue(row, "Village") || null,
     family: readImportValue(row, "Family") || null,
     occupation: readImportValue(row, "Occupation") || null,
-    membershipType: parseMembershipType(readImportValue(row, "Membership Type")),
+    membershipType: importedMembershipType(readImportValue(row, "Membership Type")),
   };
 }
 

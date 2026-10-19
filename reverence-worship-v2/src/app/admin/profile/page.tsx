@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import { requirePageAccess } from "@/lib/auth";
+import { membershipTypeLabel } from "@/lib/membership-types";
 
 function display(value: string | null | undefined) {
   return value && value.trim() ? value : "-";
@@ -130,7 +131,7 @@ export default async function ProfilePage() {
                 <InfoRow label="Gender" value={formatEnum(user.gender)} icon={Mars} />
                 <InfoRow label="Date of Birth" value={formatDate(user.dateOfBirth)} icon={CalendarDays} />
                 <InfoRow label="Marital Status" value={display(user.maritalStatus)} icon={Users} />
-                <InfoRow label="Membership Type" value={formatEnum(user.membershipType)} icon={BadgeCheck} />
+                <InfoRow label="Membership Type" value={membershipTypeLabel(user.membershipType)} icon={BadgeCheck} />
                 <InfoRow label="Occupation" value={display(user.occupation)} icon={BriefcaseBusiness} last />
               </div>
             </section>

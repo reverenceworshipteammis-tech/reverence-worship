@@ -2263,7 +2263,7 @@ export function MusicClient({
               ) : null}
             </div>
           <div className={libraryTab === "projection" ? "block" : "hidden"} aria-hidden={libraryTab !== "projection"}>
-            <SongProjectionStudio songs={songs} playlists={playlists} initialOverlayPresets={overlayPresets} operatorActive={libraryTab === "projection"} />
+            <SongProjectionStudio songs={songs} playlists={playlists} initialOverlayPresets={overlayPresets} operatorActive={libraryTab === "projection"} onLyricsSaved={() => router.refresh()} />
           </div>
           <div className={libraryTab === "projection" ? "hidden" : "flex flex-col gap-4 lg:flex-row lg:gap-5"}>
             {libraryTab === "playlists" ? <section className="w-full">
