@@ -37,12 +37,29 @@ test("quiz publishing rejects negative marks and answers outside the grid column
   assert.deepEqual(issues.map((issue) => issue.id), ["grid-points", "grid-correct-row-option-1"]);
 });
 
-test("zero-point quiz questions can publish without a correct answer", () => {
+test("zero-point quiz questions of every answer type can publish without a correct answer", () => {
   const issues = getIntercessionPublishingIssues("Unmarked questions", [
-    { id: "check", type: "checkboxes", label: "Choose", points: 0, options: ["A", "B"] },
-    { id: "grid", type: "checkbox_grid", label: "Choose", points: 0, rows: ["First", "Second"], columns: ["A", "B"] },
+    { id: "short", type: "short_answer", label: "Short answer", points: 0 },
+    { id: "paragraph", type: "paragraph", label: "Paragraph", points: 0 },
+    { id: "multiple", type: "multiple_choice", label: "Multiple choice", points: 0, options: ["A", "B"] },
+    { id: "checkboxes", type: "checkboxes", label: "Checkboxes", points: 0, options: ["A", "B"] },
+    { id: "dropdown", type: "dropdown", label: "Dropdown", points: 0, options: ["A", "B"] },
+    { id: "date", type: "date", label: "Date", points: 0 },
+    { id: "time", type: "time", label: "Time", points: 0 },
+    { id: "scale", type: "linear_scale", label: "Scale", points: 0, min: 1, max: 5 },
+    { id: "rating", type: "rating", label: "Rating", points: 0, max: 5 },
+    { id: "choice-grid", type: "multiple_choice_grid", label: "Choice grid", points: 0, rows: ["First"], columns: ["A", "B"] },
+    { id: "checkbox-grid", type: "checkbox_grid", label: "Checkbox grid", points: 0, rows: ["First", "Second"], columns: ["A", "B"] },
   ], { is_quiz: true });
   assert.deepEqual(issues, []);
+});
+
+test("quiz questions worth points still require a correct answer", () => {
+  const issues = getIntercessionPublishingIssues("Graded questions", [
+    { id: "multiple", type: "multiple_choice", label: "Multiple choice", points: 1, options: ["A", "B"] },
+    { id: "checkboxes", type: "checkboxes", label: "Checkboxes", points: 1, options: ["A", "B"] },
+  ], { is_quiz: true });
+  assert.deepEqual(issues.map((issue) => issue.id), ["multiple-correct-answer", "checkboxes-correct-answer"]);
 });
 
 test("graded quiz grids require a correct answer for every row", () => {

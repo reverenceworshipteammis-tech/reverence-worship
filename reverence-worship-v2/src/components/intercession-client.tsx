@@ -29,7 +29,6 @@ import {
   LayoutGrid,
   Link2,
   ListChecks,
-  Layers,
   Mail,
   MessageCircle,
   Monitor,
@@ -113,6 +112,7 @@ type SpiritualForm = {
   isActive: boolean;
   availabilityMessage: string | null;
   createdAt: string;
+  updatedAt: string;
   createdBy: string;
   submissionsCount: number;
   hasSubmitted: boolean;
@@ -314,6 +314,7 @@ export function IntercessionClient({
   const [reportDetail, setReportDetail] = useState<ReportRow | null>(null);
   const [previewForm, setPreviewForm] = useState<SpiritualForm | null>(null);
   const [manageStatus, setManageStatus] = useState<"active" | "archived">("active");
+  const [selectedFormIds, setSelectedFormIds] = useState<Set<number>>(new Set());
   const [todayValue] = useState(() => kigaliDateKey());
   const [weekValue] = useState(() => addCalendarDays(kigaliDateKey(), 7));
   const [isPending, startTransition] = useTransition();
@@ -339,6 +340,12 @@ export function IntercessionClient({
         .some((value) => value.toLowerCase().includes(normalized)),
     );
   }, [forms, manageStatus, query]);
+  const selectedForms = forms.filter((form) => selectedFormIds.has(form.id));
+  const allVisibleFormsSelected = filteredForms.length > 0 && filteredForms.every((form) => selectedFormIds.has(form.id));
+  const selectedActiveForms = selectedForms.filter((form) => form.isActive);
+  const selectedArchivedForms = selectedForms.filter((form) => !form.isActive);
+  const selectedPublishableForms = selectedForms.filter((form) => form.isActive && !form.isPublished && !form.previewSettings.submission_opens_at);
+  const selectedUnpublishableForms = selectedForms.filter((form) => form.isActive && form.isPublished && !form.previewSettings.submission_opens_at);
 
   const submissionGroups = useMemo(() => {
     const groups = new Map<number, { formId: number; formTitle: string; formDescription: string | null; submissions: FormSubmission[] }>();
@@ -442,6 +449,73 @@ export function IntercessionClient({
 
   function duplicateForm(formId: number) {
     runAction(() => duplicateSpiritualForm(formId));
+  }
+
+  function toggleFormSelection(formId: number, selected: boolean) {
+    setSelectedFormIds((current) => {
+      const next = new Set(current);
+      if (selected) next.add(formId);
+      else next.delete(formId);
+      return next;
+    });
+  }
+
+  function toggleVisibleFormSelection(selected: boolean) {
+    setSelectedFormIds((current) => {
+      const next = new Set(current);
+      for (const form of filteredForms) {
+        if (selected) next.add(form.id);
+        else next.delete(form.id);
+      }
+      return next;
+    });
+  }
+
+  async function performBulkFormAction(
+    formIds: number[],
+    action: (formId: number) => Promise<{ ok: boolean; message: string }>,
+    label: string,
+  ) {
+    let succeeded = 0;
+    const failedIds: number[] = [];
+    const failures: string[] = [];
+    for (const formId of formIds) {
+      const title = intercessionRichTextToPlainText(forms.find((form) => form.id === formId)?.title ?? `Form ${formId}`);
+      try {
+        const result = await action(formId);
+        if (result.ok) succeeded += 1;
+        else {
+          failedIds.push(formId);
+          failures.push(`${title}: ${result.message}`);
+        }
+      } catch (error) {
+        console.error("Bulk form action failed.", { formId, error });
+        failedIds.push(formId);
+        failures.push(`${title}: ${error instanceof Error ? error.message : "Unexpected error."}`);
+      }
+    }
+    return {
+      ok: succeeded > 0 || failures.length === 0,
+      message: failures.length
+        ? `${label}: ${succeeded} of ${formIds.length} succeeded. ${failures.join(" ")}`
+        : `${label}: ${succeeded} ${succeeded === 1 ? "form" : "forms"} completed.`,
+      failedIds,
+      succeeded,
+    };
+  }
+
+  function runBulkFormAction(
+    formIds: number[],
+    action: (formId: number) => Promise<{ ok: boolean; message: string }>,
+    label: string,
+  ) {
+    if (!formIds.length) return;
+    startTransition(async () => {
+      const result = await performBulkFormAction(formIds, action, label);
+      setNotice(result);
+      setSelectedFormIds((current) => new Set([...current].filter((id) => result.failedIds.includes(id))));
+      if (result.succeeded) router.refresh();
+    });
   }
 
   function formUrl(formId: number) {
@@ -905,17 +979,6 @@ export function IntercessionClient({
                             {form.description && (
                               <p className="mt-1 text-sm text-gray-500 line-clamp-2"><IntercessionRichText value={form.description} /></p>
                             )}
-                            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-                              <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5">
-                                <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                                  <line x1="16" y1="2" x2="16" y2="6" />
-                                  <line x1="8" y1="2" x2="8" y2="6" />
-                                  <line x1="3" y1="10" x2="21" y2="10" />
-                                </svg>
-                                {form.createdAt}
-                              </span>
-                            </div>
                             {form.availabilityMessage && (
                               <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
                                 {form.availabilityMessage}
@@ -992,7 +1055,7 @@ export function IntercessionClient({
           {canManageForms && activeFormSection === "manage" && (
             <section>
               <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div><h2 className="text-lg font-bold text-gray-900">Manage Forms</h2><div className="mt-2 flex gap-1 rounded-lg bg-slate-100 p-1">{(["active", "archived"] as const).map((status) => <button key={status} type="button" onClick={() => setManageStatus(status)} className={`rounded-md px-3 py-1.5 text-xs font-semibold capitalize ${manageStatus === status ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-white"}`}>{status}{status === "archived" ? ` (${forms.filter((form) => !form.isActive).length})` : ""}</button>)}</div></div>
+                <div><h2 className="text-lg font-bold text-gray-900">Manage Forms</h2><div className="mt-2 flex gap-1 rounded-lg bg-slate-100 p-1">{(["active", "archived"] as const).map((status) => <button key={status} type="button" onClick={() => { setManageStatus(status); setSelectedFormIds(new Set()); }} className={`rounded-md px-3 py-1.5 text-xs font-semibold capitalize ${manageStatus === status ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-white"}`}>{status}{status === "archived" ? ` (${forms.filter((form) => !form.isActive).length})` : ""}</button>)}</div></div>
                 <label className="relative block sm:w-80">
                   <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" aria-hidden="true" />
                   <input
@@ -1004,14 +1067,49 @@ export function IntercessionClient({
                 </label>
               </div>
 
+              <label className="mb-3 inline-flex items-center gap-2 text-xs font-medium text-slate-600 md:hidden">
+                <input type="checkbox" checked={allVisibleFormsSelected} onChange={(event) => toggleVisibleFormSelection(event.target.checked)} aria-label="Select all visible forms" className="size-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+                Select all visible forms
+              </label>
+
+              {selectedFormIds.size ? (
+                <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3">
+                  <span className="mr-1 text-sm font-semibold text-blue-900">{selectedFormIds.size} selected</span>
+                  {permissions.canPublishForms && selectedPublishableForms.length ? <button type="button" disabled={isPending} onClick={() => runBulkFormAction(selectedPublishableForms.map((form) => form.id), toggleSpiritualFormPublish, "Publish selected forms")} className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-blue-700 ring-1 ring-blue-200 disabled:opacity-50">Publish{selectedPublishableForms.length > 1 ? ` (${selectedPublishableForms.length})` : ""}</button> : null}
+                  {permissions.canPublishForms && selectedUnpublishableForms.length ? <button type="button" disabled={isPending} onClick={() => runBulkFormAction(selectedUnpublishableForms.map((form) => form.id), toggleSpiritualFormPublish, "Unpublish selected forms")} className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-blue-700 ring-1 ring-blue-200 disabled:opacity-50">Unpublish{selectedUnpublishableForms.length > 1 ? ` (${selectedUnpublishableForms.length})` : ""}</button> : null}
+                  {(permissions.canManageForms || permissions.canEditForms) && selectedActiveForms.length ? <button type="button" disabled={isPending} onClick={() => runBulkFormAction(selectedActiveForms.map((form) => form.id), (id) => setSpiritualFormArchived(id, true), "Archive selected forms")} className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-blue-700 ring-1 ring-blue-200 disabled:opacity-50">Archive ({selectedActiveForms.length})</button> : null}
+                  {(permissions.canManageForms || permissions.canEditForms) && selectedArchivedForms.length ? <button type="button" disabled={isPending} onClick={() => runBulkFormAction(selectedArchivedForms.map((form) => form.id), (id) => setSpiritualFormArchived(id, false), "Restore selected forms")} className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-blue-700 ring-1 ring-blue-200 disabled:opacity-50">Restore ({selectedArchivedForms.length})</button> : null}
+                  {permissions.canCreateForms ? <button type="button" disabled={isPending} onClick={() => runBulkFormAction([...selectedFormIds], duplicateSpiritualForm, "Duplicate selected forms")} className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-blue-700 ring-1 ring-blue-200 disabled:opacity-50">Duplicate ({selectedFormIds.size})</button> : null}
+                  {permissions.canDeleteForms ? <button type="button" disabled={isPending} onClick={() => {
+                    const ids = [...selectedFormIds];
+                    setConfirmAction({
+                      title: "Delete Selected Forms",
+                      message: `Delete ${ids.length} selected forms and their submissions? Accepted membership commitments are protected and those forms will not be deleted. This action cannot be undone.`,
+                      confirmLabel: `Delete ${ids.length} Forms`,
+                      tone: "danger",
+                      action: async () => {
+                        const result = await performBulkFormAction(ids, deleteSpiritualForm, "Delete selected forms");
+                        setSelectedFormIds((current) => new Set([...current].filter((id) => result.failedIds.includes(id))));
+                        return result;
+                      },
+                    });
+                  }} className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-red-700 ring-1 ring-red-200 disabled:opacity-50">Delete ({selectedFormIds.size})</button> : null}
+                  <button type="button" onClick={() => setSelectedFormIds(new Set())} className="ml-auto rounded-lg px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-white">Clear selection</button>
+                </div>
+              ) : null}
+
               <div className="space-y-3 md:hidden">
                 {filteredForms.length ? filteredForms.map((form) => (
                   <article key={form.id} className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
+                        <label className="mb-2 inline-flex items-center gap-2 text-xs font-medium text-slate-600">
+                          <input type="checkbox" checked={selectedFormIds.has(form.id)} onChange={(event) => toggleFormSelection(form.id, event.target.checked)} aria-label={`Select ${intercessionRichTextToPlainText(form.title)}`} className="size-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+                          Select form
+                        </label>
                         <h3 className="line-clamp-2 text-sm font-semibold text-gray-900"><IntercessionRichText value={form.title} /></h3>
                         <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-gray-500">
-                          <span>{form.createdAt}</span>
+                          <span>Modified: {form.updatedAt}</span>
                           <span className="size-1 rounded-full bg-gray-300" />
                           <span>{form.questionCount} questions</span>
                         </div>
@@ -1098,6 +1196,9 @@ export function IntercessionClient({
                 <table className="min-w-full divide-y divide-gray-200 text-sm">
                   <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
                     <tr>
+                      <th className="px-4 py-3">
+                        <input type="checkbox" checked={allVisibleFormsSelected} onChange={(event) => toggleVisibleFormSelection(event.target.checked)} aria-label="Select all visible forms" className="size-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+                      </th>
                       <th className="px-4 py-3">Form</th>
                       <th className="px-4 py-3">Status</th>
                       <th className="px-4 py-3">Submissions</th>
@@ -1111,6 +1212,9 @@ export function IntercessionClient({
                         className="cursor-pointer transition hover:bg-gray-50"
                         onClick={() => window.location.href = `/admin/intercession/forms/${form.id}/edit`}
                       >
+                        <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
+                          <input type="checkbox" checked={selectedFormIds.has(form.id)} onChange={(event) => toggleFormSelection(form.id, event.target.checked)} aria-label={`Select ${intercessionRichTextToPlainText(form.title)}`} className="size-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+                        </td>
                         <td className="px-4 py-3">
                           <div className="font-semibold text-gray-900"><IntercessionRichText value={form.title} /></div>
                           <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
@@ -1121,7 +1225,7 @@ export function IntercessionClient({
                                 <line x1="8" y1="2" x2="8" y2="6" />
                                 <line x1="3" y1="10" x2="21" y2="10" />
                               </svg>
-                              Created: {form.createdAt}
+                              Modified: {form.updatedAt}
                             </span>
                           </div>
                         </td>
@@ -1147,62 +1251,22 @@ export function IntercessionClient({
                         </td>
                         <td className="px-4 py-3 text-center text-sm text-gray-500">{form.submissionsCount}</td>
                         <td className="px-4 py-3">
-                          <div className="flex justify-end gap-2">
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                copyFormLink(form.id);
-                              }}
-                              className="inline-flex size-9 items-center justify-center rounded-lg border border-blue-200 text-blue-600 transition hover:bg-blue-50"
-                              aria-label={`Copy link to ${intercessionRichTextToPlainText(form.title)}`}
-                              title="Copy form link"
-                            >
-                              <Link2 className="size-4" aria-hidden="true" />
-                            </button>
-                            <button
-                              type="button"
-                              aria-label="Preview form"
-                              title="Preview form"
-                              className="inline-flex size-9 items-center justify-center rounded-lg border border-blue-200 text-blue-600 transition hover:bg-blue-50"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setPreviewForm(form);
-                              }}
-                            >
-                              <Presentation className="size-4" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                duplicateForm(form.id);
-                              }}
-                              className="inline-flex size-9 items-center justify-center rounded-lg border border-blue-200 text-blue-600 transition hover:bg-blue-50"
-                              aria-label="Duplicate"
-                              title="Duplicate form"
-                            >
-                              <Copy className="size-4" />
-                            </button>
-
-                            {permissions.canViewSubmissions && (
-                              <Link
-                                href={`/admin/intercession/forms/${form.id}/submissions`}
-                                aria-label="Submissions"
-                                title="Submissions"
-                                className="inline-flex size-9 items-center justify-center rounded-lg border border-blue-200 text-blue-600 transition hover:bg-blue-50"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <Users className="size-4" />
-                              </Link>
-                            )}
-                            {permissions.canDeleteForms && (
-                              <button
-                                type="button"
-                                aria-label="Delete"
-                                title="Delete"
-                                onClick={(e) => {
-                                  e.stopPropagation();
+                          <div className="flex justify-end" onClick={(event) => event.stopPropagation()}>
+                            <select
+                              aria-label={`Actions for ${intercessionRichTextToPlainText(form.title)}`}
+                              value=""
+                              onChange={(event) => {
+                                const action = event.target.value;
+                                event.currentTarget.value = "";
+                                if (action === "copy-link") copyFormLink(form.id);
+                                else if (action === "preview") setPreviewForm(form);
+                                else if (action === "duplicate") duplicateForm(form.id);
+                                else if (action === "submissions") router.push(`/admin/intercession/forms/${form.id}/submissions`);
+                                else if (action === "edit") router.push(`/admin/intercession/forms/${form.id}/edit`);
+                                else if (action === "publish") runAction(() => toggleSpiritualFormPublish(form.id));
+                                else if (action === "archive") runAction(() => setSpiritualFormArchived(form.id, true));
+                                else if (action === "restore") runAction(() => setSpiritualFormArchived(form.id, false));
+                                else if (action === "delete") {
                                   setConfirmAction({
                                     title: "Delete Form",
                                     message: `Delete "${intercessionRichTextToPlainText(form.title)}" and all of its submissions? This action cannot be undone.`,
@@ -1210,13 +1274,20 @@ export function IntercessionClient({
                                     tone: "danger",
                                     action: () => deleteSpiritualForm(form.id),
                                   });
-                                }}
-                                className="inline-flex size-9 items-center justify-center rounded-lg border border-blue-200 text-blue-600 transition hover:bg-blue-50"
-                              >
-                                <Trash2 className="size-4" />
-                              </button>
-                            )}
-                            {permissions.canManageForms || permissions.canEditForms ? <button type="button" aria-label={form.isActive ? "Archive form" : "Restore form"} title={form.isActive ? "Archive form" : "Restore form"} onClick={(event) => { event.stopPropagation(); runAction(() => setSpiritualFormArchived(form.id, form.isActive)); }} className="inline-flex size-9 items-center justify-center rounded-lg border border-blue-200 text-blue-600 hover:bg-blue-50"><Layers className="size-4" /></button> : null}
+                                }
+                              }}
+                              className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                            >
+                              <option value="" disabled>Action</option>
+                              {permissions.canEditForms ? <option value="edit">Edit</option> : null}
+                              <option value="copy-link">Copy link</option>
+                              <option value="preview">Preview</option>
+                              {permissions.canCreateForms ? <option value="duplicate">Duplicate</option> : null}
+                              {permissions.canViewSubmissions ? <option value="submissions">Submissions</option> : null}
+                              {permissions.canPublishForms && form.isActive && !form.previewSettings.submission_opens_at ? <option value="publish">{form.isPublished ? "Unpublish" : "Publish"}</option> : null}
+                              {permissions.canManageForms || permissions.canEditForms ? <option value={form.isActive ? "archive" : "restore"}>{form.isActive ? "Archive" : "Restore"}</option> : null}
+                              {permissions.canDeleteForms ? <option value="delete">Delete</option> : null}
+                            </select>
                           </div>
                         </td>
                       </tr>
@@ -1229,7 +1300,7 @@ export function IntercessionClient({
 
           {canViewReports && activeFormSection === "reports" && (
             <section className="space-y-5">
-              <Link href="/admin/intercession/commitments" className="flex items-center justify-between gap-4 rounded-xl border border-blue-200 bg-blue-50 p-5 text-blue-800 transition hover:bg-blue-100"><span><strong className="block">Annual membership commitments</strong><span className="mt-1 block text-sm">Accepted and pending members, profile changes, previous years, reminders, and exports.</span></span><ChevronRight className="size-5 shrink-0" aria-hidden="true" /></Link>
+              <Link href="/admin/intercession/commitments" className="flex items-center justify-between gap-4 rounded-xl border border-blue-200 bg-blue-50 p-5 text-blue-800 transition hover:bg-blue-100"><strong>Membership Commitment</strong><ChevronRight className="size-5 shrink-0" aria-hidden="true" /></Link>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <h2 className="text-lg font-bold text-gray-900">Reports</h2>
                 <div className="text-sm text-gray-500">Participation across published forms</div>

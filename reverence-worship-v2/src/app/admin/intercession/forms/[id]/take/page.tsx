@@ -65,14 +65,11 @@ export default async function TakeIntercessionFormPage({
   }
 
   const formSettings = parseIntercessionFormSettings(form.settings);
+  const acceptedCommitment = formSettings.commitment && formSettings.limit_one_response
+    ? await prisma.membershipCommitment.findFirst({ where: { userId: user.id, year: formSettings.commitment.year }, select: { id: true } })
+    : null;
   if (formSettings.commitment) {
-    const accepted = formSettings.limit_one_response
-      ? await prisma.membershipCommitment.findFirst({ where: { userId: user.id, year: formSettings.commitment.year }, select: { id: true } })
-      : null;
-    if (accepted) {
-      return <div className="mx-auto max-w-2xl p-6 text-center"><h1 className="text-xl font-bold">Commitment already accepted</h1><p className="my-4">You have accepted your membership commitment for {formSettings.commitment.year}.</p>{formSettings.allow_view_response ? <Link href={`/admin/intercession/commitments/${accepted.id}`} className="font-semibold text-blue-700">View accepted commitment</Link> : null}</div>;
-    }
-    if (!user.membershipType || !formSettings.commitment.membershipTypes.includes(user.membershipType)) return <div className="p-6 text-center">This commitment is not available for your membership type.</div>;
+    if (!acceptedCommitment && (!user.membershipType || !formSettings.commitment.membershipTypes.includes(user.membershipType))) return <div className="p-6 text-center">This commitment is not available for your membership type.</div>;
   }
   const availability = intercessionFormAvailability(formSettings, form.isActive, await withDatabaseRetry(() => prisma.formSubmission.count({ where: { formId, deletedAt: null } }), 3));
   if (availability) return (
@@ -102,7 +99,7 @@ export default async function TakeIntercessionFormPage({
       }}
       questions={asQuestions(form.questions)}
       settings={formSettings}
-      alreadySubmitted={Boolean(existingSubmission)}
+      alreadySubmitted={Boolean(existingSubmission || acceptedCommitment)}
       memberProfile={formSettings.commitment ? commitmentProfileValues(user) : undefined}
     />
   );

@@ -1335,6 +1335,7 @@ function QuestionCard({
         </div>
       </div>
       </div>
+      {showPoints && question.points === 0 ? <p className="mt-2 text-right text-xs text-slate-500">A correct answer is optional for a 0-point question.</p> : null}
     </div>
   );
 }
