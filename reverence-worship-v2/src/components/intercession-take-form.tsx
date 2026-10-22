@@ -86,7 +86,7 @@ export function IntercessionTakeForm({
   preview = false,
   embedded = false,
   onPreviewClose,
-  backHref = "/admin/intercession",
+  backHref = "/admin/forms",
   requireRespondentName = false,
   editToken = "",
   initialValues,
@@ -313,7 +313,7 @@ export function IntercessionTakeForm({
       <TakeShell title={settings.commitment ? "Commitment already accepted" : "Already Submitted"} tone="yellow">
         <Info className="mx-auto mb-3 size-10 text-yellow-500" aria-hidden="true" />
         <p className="mb-4 text-gray-600">{settings.commitment ? `You have already accepted your membership commitment for ${settings.commitment.year}.` : "You have already submitted this form. Only one response is allowed per user."}</p>
-        {settings.commitment && settings.allow_view_response !== false ? <Link href="/admin/intercession/commitments/mine" className="mb-4 block font-semibold text-blue-700">View my accepted commitments</Link> : null}
+        {settings.commitment && settings.allow_view_response !== false ? <Link href="/admin/forms/commitments/mine" className="mb-4 block font-semibold text-blue-700">View my accepted commitments</Link> : null}
         <Link href={backHref} className="inline-flex rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
           Back to Forms
         </Link>
@@ -332,15 +332,15 @@ export function IntercessionTakeForm({
               <p className="text-xs text-amber-700">This is how the form will appear to members. Preview answers cannot be submitted.</p>
             </div>
           </div>
-          <Link href="/admin/intercession?section=manage" className="shrink-0 text-xs font-semibold text-amber-800 underline underline-offset-2 hover:text-amber-950">
+          <Link href="/admin/forms?section=manage" className="shrink-0 text-xs font-semibold text-amber-800 underline underline-offset-2 hover:text-amber-950">
             Back to Manage Forms
           </Link>
         </div>
       ) : null}
-      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white text-slate-900 [color-scheme:light] shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+      <div className="@container/form overflow-hidden rounded-2xl border border-gray-200 bg-white text-slate-900 [color-scheme:light] shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
         <div className="border-b border-sky-100 bg-gradient-to-br from-white via-sky-50 to-cyan-50/40 px-5 py-6 sm:px-8">
           {!embedded ? <div className="flex items-center justify-between text-sky-700">
-            <Link href={preview ? "/admin/intercession?section=manage" : backHref} className="flex items-center gap-2 text-sm text-sky-700 hover:text-sky-900">
+            <Link href={preview ? "/admin/forms?section=manage" : backHref} className="flex items-center gap-2 text-sm text-sky-700 hover:text-sky-900">
               <ArrowLeft className="size-4" aria-hidden="true" />
               {preview ? "Back to Manage Forms" : "Back to Forms"}
             </Link>
@@ -373,7 +373,7 @@ export function IntercessionTakeForm({
           {settings.commitment ? <input type="hidden" name="commitment_version" value={form.version ?? 0} /> : null}
           {settings.commitment ? <div className="bg-slate-50 px-5 pt-5 sm:px-8 sm:pt-8"><CommitmentMemberInformation config={settings.commitment} values={memberProfile} preview={preview} membershipQuestionLinked={questions.some((question) => question.membershipTypeMapping != null)} anonymous={!settings.require_login && !memberProfile} /></div> : null}
           {requireRespondentName || displayQuestions.length > 0 || !settings.allow_empty_submission ? (
-            <div className="space-y-6 bg-slate-50 p-5 sm:p-8">
+            <div className="space-y-4 bg-slate-50 px-2 py-4 @min-[640px]/form:space-y-6 @min-[640px]/form:p-8">
               {requireRespondentName && !settings.commitment ? <VisitorInformationFields fields={parseIntercessionVisitorFields(settings.visitor_fields)} formId={form.id} /> : null}
               {displayQuestions.length ? (
                 displayQuestions.map(({ question, index }) => (
@@ -554,7 +554,7 @@ function QuestionField({
   const options = question.options.length ? question.options : ["Option 1"];
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 transition focus-within:border-blue-300 focus-within:ring-4 focus-within:ring-blue-100">
+    <div className="rounded-xl border border-slate-200 bg-white px-3 py-4 transition focus-within:border-blue-300 focus-within:ring-4 focus-within:ring-blue-100 @min-[640px]/form:p-5">
       <div className="mb-4">
         <h3 className="text-lg font-semibold text-slate-900">
           {displayNumber !== null && <span className="mr-2 text-blue-600">{displayNumber}.</span>}

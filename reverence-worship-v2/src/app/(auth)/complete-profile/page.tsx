@@ -36,6 +36,18 @@ export default async function CompleteProfilePage({ searchParams }: { searchPara
           sector: user.sector,
           cell: user.cell,
           village: user.village,
+          highestEducationLevel: user.highestEducationLevel,
+          otherEducationLevel: user.otherEducationLevel,
+          educationFieldOfStudy: user.educationFieldOfStudy,
+          educationInstitution: user.educationInstitution,
+          educationCompletionYear: user.educationCompletionYear,
+          additionalQualifications: user.educationQualifications.map(({ name, fieldOfStudy, institution, status, completionYear }) => ({
+            name,
+            fieldOfStudy,
+            institution,
+            status: status === "studying" || status === "planned" ? status : "completed",
+            completionYear,
+          })),
         }}
       />
     </div>

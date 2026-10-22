@@ -2,15 +2,14 @@
 
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { ArrowDown, ArrowLeft, ArrowUp, ArrowUpDown, BarChart3, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Download, FileSpreadsheet, FileText, List, RotateCcw, Search, UserCheck, Users, X, XCircle, type LucideIcon } from "lucide-react";
-import { bulkUpdateFormSubmissions, deleteFormSubmission, permanentlyDeleteFormSubmission, restoreFormSubmission, saveSubmissionManualReview, setAllSubmissionRelease, setSubmissionRelease } from "@/app/admin/intercession/actions";
+import { ArrowDown, ArrowLeft, ArrowUp, ArrowUpDown, BarChart3, CalendarDays, CheckCircle2, FileSpreadsheet, FileText, RotateCcw, Search, UserCheck, Users, X, XCircle, type LucideIcon } from "lucide-react";
+import { bulkUpdateFormSubmissions, permanentlyDeleteFormSubmission, restoreFormSubmission, saveSubmissionManualReview, setAllSubmissionRelease, setSubmissionRelease } from "@/app/admin/intercession/actions";
 import { useAppDialog } from "@/components/app-dialog-provider";
 import { ActionNotice } from "@/components/action-notice";
 import { IntercessionRichText } from "@/components/intercession-rich-text";
 import { IntercessionQuestionImages } from "@/components/intercession-question-images";
 import { IntercessionResponseSummaryCard, type IntercessionChartSelection } from "@/components/intercession-response-charts";
-import { IntercessionResponseManagement, type ResponseManagementForm } from "@/components/intercession-response-management";
-import { PrintButton } from "@/components/print-button";
+import { type ResponseManagementForm } from "@/components/intercession-response-management";
 import { intercessionRichTextToPlainText } from "@/lib/intercession-rich-text";
 import { buildIntercessionResponseSummaries, type IntercessionAnalyticsQuestion, type IntercessionResponseValue } from "@/lib/intercession-response-summary";
 import type { IntercessionQuestionImage } from "@/lib/intercession-question-images";
@@ -20,6 +19,7 @@ import { useDialogFocusTrap } from "@/hooks/use-dialog-focus-trap";
 type SubmissionRow = {
   id: number;
   memberName: string;
+  isCommitment: boolean;
   respondentType: "Member" | "Guest";
   visitorDetails: IntercessionVisitorDetail[];
   submittedAt: string;
@@ -49,24 +49,20 @@ type SubmissionRow = {
   }>;
 };
 
-type SubmissionSortField = "responder" | "type" | "submitted";
-
+type SubmissionSortField = "responder" | "type" | "submitted" | "marks";
+type SubmissionFilter = "name" | "date" | "question" | "answer" | "category" | "review" | "storage";
 export function IntercessionSubmissionsClient({
   form,
   submissions,
 }: {
-  form: ResponseManagementForm & { version: number; title: string; description: string | null; isQuiz: boolean; releaseGrade: string; canDeleteSubmissions: boolean; canGradeSubmissions: boolean; includeTimestamps: boolean; exportQuestions: Array<{ questionId: string; questionIndex: number; question: string }>; analyticsQuestions: IntercessionAnalyticsQuestion[]; responseActivity: Array<{ id: number; action: string; actor: string; createdAt: string }> };
+  form: ResponseManagementForm & { version: number; title: string; description: string | null; isQuiz: boolean; releaseGrade: string; canDeleteSubmissions: boolean; canGradeSubmissions: boolean; includeTimestamps: boolean; exportQuestions: Array<{ questionId: string; questionIndex: number; question: string }>; analyticsQuestions: IntercessionAnalyticsQuestion[] };
   submissions: SubmissionRow[];
 }) {
   const { confirm } = useAppDialog();
-  const [activeView, setActiveView] = useState<"summary" | "question" | "individual" | "manage">("summary");
-  const [selectedQuestionIndex, setSelectedQuestionIndex] = useState(0);
-  const [questionSearch, setQuestionSearch] = useState("");
-  const [selectedResponseId, setSelectedResponseId] = useState<number | null>(null);
+  const [activeView, setActiveView] = useState<"summary" | "manage">("summary");
   const [selectedSubmissionIds, setSelectedSubmissionIds] = useState<Set<number>>(() => new Set());
+  const [filterBy, setFilterBy] = useState<SubmissionFilter>("name");
   const [query, setQuery] = useState("");
-  const [scoreFilter, setScoreFilter] = useState("all");
-  const [releaseFilter, setReleaseFilter] = useState("all");
   const [respondentFilter, setRespondentFilter] = useState("all");
   const [reviewFilter, setReviewFilter] = useState("all");
   const [deletionFilter, setDeletionFilter] = useState("active");
@@ -88,43 +84,30 @@ export function IntercessionSubmissionsClient({
       answers: submission.answers.map((answer) => ({ questionId: answer.questionId, questionIndex: answer.questionIndex, value: answer.responseValue })),
     })),
   ), [activeSubmissions, form.analyticsQuestions]);
-  const selectedSummary = responseSummaries[selectedQuestionIndex] ?? null;
-  const matchingQuestions = responseSummaries.map((summary, index) => ({ summary, index, label: intercessionRichTextToPlainText(summary.label).replace(/\s+/g, " ").trim() || "Question" })).filter((item) => !questionSearch.trim() || item.label.toLowerCase().includes(questionSearch.trim().toLowerCase()));
-
   const filteredSubmissions = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return submissions.filter((submission) => {
-      const matchesSearch =
-        !normalized ||
-        [submission.memberName, ...submission.visitorDetails.flatMap((detail) => Array.isArray(detail.value) ? detail.value : [detail.value]), ...submission.answers.map((answer) => answer.answer)].some((value) => value.toLowerCase().includes(normalized));
-      const score = submission.score ?? 0;
-      const matchesScore = !form.isQuiz || scoreFilter === "all" ||
-        (scoreFilter === "high" && score >= 80) ||
-        (scoreFilter === "medium" && score >= 60 && score < 80) ||
-        (scoreFilter === "low" && score >= 40 && score < 60) ||
-        (scoreFilter === "fail" && score < 40) ||
-        (scoreFilter === "unscored" && submission.score === null);
-      const matchesRelease =
-        form.releaseGrade !== "later" ||
-        releaseFilter === "all" ||
-        (releaseFilter === "released" && submission.isReleased) ||
-        (releaseFilter === "pending" && !submission.isReleased);
-      const matchesRespondent = respondentFilter === "all" || submission.respondentType.toLowerCase() === respondentFilter;
-      const matchesReview = reviewFilter === "all" || reviewFilter === "reviewed" && Boolean(submission.reviewedAt) || reviewFilter === "pending" && !submission.reviewedAt;
-      const matchesDeleted = deletionFilter === "all" || deletionFilter === "trash" && Boolean(submission.deletedAt) || deletionFilter === "active" && !submission.deletedAt;
+      const matchesName = filterBy !== "name" || !normalized || submission.memberName.toLowerCase().includes(normalized);
+      const matchesRespondent = filterBy !== "category" || respondentFilter === "all" || submission.respondentType.toLowerCase() === respondentFilter;
+      const matchesReview = filterBy !== "review" || reviewFilter === "all" || reviewFilter === "reviewed" && Boolean(submission.reviewedAt) || reviewFilter === "pending" && !submission.reviewedAt;
+      const matchesDeleted = filterBy === "storage"
+        ? deletionFilter === "all" || deletionFilter === "trash" && Boolean(submission.deletedAt) || deletionFilter === "active" && !submission.deletedAt
+        : !submission.deletedAt;
       const submittedTime = new Date(submission.submittedAtIso).getTime();
-      const matchesDate = (!dateFrom || submittedTime >= new Date(`${dateFrom}T00:00:00+02:00`).getTime()) && (!dateTo || submittedTime <= new Date(`${dateTo}T23:59:59.999+02:00`).getTime());
-      const selectedAnswer = questionFilter ? submission.answers.find((answer) => answer.questionId === questionFilter)?.answer ?? "" : submission.answers.map((answer) => answer.answer).join(" ");
-      const matchesAnswer = !answerFilter.trim() || selectedAnswer.toLowerCase().includes(answerFilter.trim().toLowerCase());
-      return matchesSearch && matchesScore && matchesRelease && matchesRespondent && matchesReview && matchesDeleted && matchesDate && matchesAnswer;
+      const matchesDate = filterBy !== "date" || (!dateFrom || submittedTime >= new Date(`${dateFrom}T00:00:00+02:00`).getTime()) && (!dateTo || submittedTime <= new Date(`${dateTo}T23:59:59.999+02:00`).getTime());
+      const questionAnswer = questionFilter ? submission.answers.find((answer) => answer.questionId === questionFilter)?.answer ?? "" : "";
+      const matchesQuestion = filterBy !== "question" || !questionFilter || Boolean(questionAnswer.trim());
+      const matchesAnswer = filterBy !== "answer" || !answerFilter.trim() || submission.answers.some((answer) => answer.answer.toLowerCase().includes(answerFilter.trim().toLowerCase()));
+      return matchesName && matchesRespondent && matchesReview && matchesDeleted && matchesDate && matchesQuestion && matchesAnswer;
     }).sort((first, second) => {
       let comparison = 0;
       if (sortField === "responder") comparison = first.memberName.localeCompare(second.memberName, undefined, { sensitivity: "base" });
       if (sortField === "type") comparison = first.respondentType.localeCompare(second.respondentType, undefined, { sensitivity: "base" });
       if (sortField === "submitted") comparison = new Date(first.submittedAtIso).getTime() - new Date(second.submittedAtIso).getTime();
+      if (sortField === "marks") comparison = (first.score ?? -1) - (second.score ?? -1);
       return (comparison || first.id - second.id) * (sortDirection === "asc" ? 1 : -1);
     });
-  }, [submissions, query, scoreFilter, releaseFilter, respondentFilter, reviewFilter, deletionFilter, dateFrom, dateTo, questionFilter, answerFilter, sortField, sortDirection, form.isQuiz, form.releaseGrade]);
+  }, [submissions, filterBy, query, respondentFilter, reviewFilter, deletionFilter, dateFrom, dateTo, questionFilter, answerFilter, sortField, sortDirection]);
 
   const averageScore = useMemo(() => {
     const scored = activeSubmissions.map((submission) => submission.score).filter((score): score is number => typeof score === "number");
@@ -133,9 +116,8 @@ export function IntercessionSubmissionsClient({
   }, [activeSubmissions]);
 
   function resetFilters() {
+    setFilterBy("name");
     setQuery("");
-    setScoreFilter("all");
-    setReleaseFilter("all");
     setRespondentFilter("all");
     setReviewFilter("all");
     setDeletionFilter("active");
@@ -166,61 +148,29 @@ export function IntercessionSubmissionsClient({
 
   const pendingReleaseCount = activeSubmissions.filter((submission) => submission.score !== null && !submission.isReleased).length;
   const releasedCount = activeSubmissions.filter((submission) => submission.isReleased).length;
-  const exportSearch = new URLSearchParams({ status: deletionFilter });
-  if (query) exportSearch.set("q", query);
-  if (respondentFilter !== "all") exportSearch.set("type", respondentFilter);
-  if (scoreFilter !== "all") exportSearch.set("score", scoreFilter);
-  if (releaseFilter !== "all") exportSearch.set("release", releaseFilter);
-  if (reviewFilter !== "all") exportSearch.set("review", reviewFilter);
-  if (questionFilter) exportSearch.set("question", questionFilter);
-  if (answerFilter) exportSearch.set("answer", answerFilter);
-  if (dateFrom) exportSearch.set("from", dateFrom);
-  if (dateTo) exportSearch.set("to", dateTo);
+  const exportSearch = new URLSearchParams({ status: filterBy === "storage" ? deletionFilter : "active" });
+  if (filterBy === "name" && query.trim()) exportSearch.set("name", query.trim());
+  if (filterBy === "category" && respondentFilter !== "all") exportSearch.set("type", respondentFilter);
+  if (filterBy === "review" && reviewFilter !== "all") exportSearch.set("review", reviewFilter);
+  if (filterBy === "question" && questionFilter) exportSearch.set("question", questionFilter);
+  if (filterBy === "answer" && answerFilter.trim()) exportSearch.set("answer", answerFilter.trim());
+  if (filterBy === "date" && dateFrom) exportSearch.set("from", dateFrom);
+  if (filterBy === "date" && dateTo) exportSearch.set("to", dateTo);
   if (selectedSubmissionIds.size) exportSearch.set("ids", [...selectedSubmissionIds].join(","));
-
-  function exportCsv() {
-    const visitorColumns = Array.from(new Map(filteredSubmissions.flatMap((submission) => submission.visitorDetails.map((detail) => [detail.fieldId, detail.label] as const))).entries());
-    const answerColumns = form.exportQuestions.map((question) => ({
-      ...question,
-      header: `Q${question.questionIndex + 1}: ${intercessionRichTextToPlainText(question.question).replace(/\s+/g, " ").trim()}`,
-    }));
-    const header = ["#", "Responder", "Type", ...visitorColumns.map(([, label]) => label), ...(form.includeTimestamps ? ["Submitted Date", "Submitted Time"] : []), ...answerColumns.map((question) => question.header), ...(form.isQuiz ? ["Marks", "Score"] : [])];
-    const rows = filteredSubmissions.map((submission) => [
-      String(submissions.indexOf(submission) + 1),
-      submission.memberName,
-      submission.respondentType,
-      ...visitorColumns.map(([fieldId]) => {
-        const value = submission.visitorDetails.find((detail) => detail.fieldId === fieldId)?.value;
-        return Array.isArray(value) ? value.join(", ") : value ?? "";
-      }),
-      ...(form.includeTimestamps ? [submission.submittedDate, submission.submittedTime] : []),
-      ...answerColumns.map((question) => submission.answers.find((answer) => answer.questionId === question.questionId)?.answer ?? ""),
-      ...(form.isQuiz ? [submission.earnedPoints === null ? "" : `${formatIntercessionMarks(submission.earnedPoints)}/${formatIntercessionMarks(submission.totalPoints)}`, submission.score === null ? "" : `${submission.score}%`] : []),
-    ]);
-    const csv = [header, ...rows]
-      .map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(","))
-      .join("\n");
-    const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `submissions-${form.id}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
-  }
 
   return (
     <div className="mx-auto max-w-7xl px-2 py-4 sm:px-4 sm:py-6">
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         {notice ? (
           <ActionNotice message={notice.message} tone={notice.ok ? "success" : "error"} onClose={() => setNotice(null)} className="m-4" />
         ) : null}
-        <div className="border-b border-slate-200 bg-white px-4 py-5 sm:px-6">
+        <div className="sticky top-40 z-20 rounded-t-2xl bg-white lg:top-[73px]">
+        <div className="rounded-t-2xl border-b border-slate-200 bg-white px-4 py-5 sm:px-6">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
-              <Link href="/admin/intercession" className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-500 transition hover:text-blue-600">
+              <Link href="/admin/forms" className="mb-3 inline-flex min-h-10 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 shadow-sm transition hover:border-blue-300 hover:bg-blue-100 hover:text-blue-800 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100">
                 <ArrowLeft className="size-4" aria-hidden="true" />
-                Back to Manage Forms
+                Back
               </Link>
               <h1 className="text-xl font-bold text-slate-900 sm:text-2xl"><IntercessionRichText value={form.title} /></h1>
             </div>
@@ -231,105 +181,76 @@ export function IntercessionSubmissionsClient({
           </div>
         </div>
 
-        <IntercessionResponseManagement form={form} onNotice={setNotice} />
-
-        <nav className="flex overflow-x-auto border-b border-slate-200 bg-white px-2 sm:px-5" role="tablist" aria-label="Response views">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 border-b border-slate-200 bg-white px-2 sm:px-5">
+        <nav className="flex overflow-x-auto" role="tablist" aria-label="Response views">
           <ResponseViewTab active={activeView === "summary"} icon={BarChart3} label="Summary" onClick={() => setActiveView("summary")} />
-          <ResponseViewTab active={activeView === "question"} icon={List} label="Question" onClick={() => setActiveView("question")} />
-          <ResponseViewTab active={activeView === "individual"} icon={UserCheck} label="Individual" onClick={() => setActiveView("individual")} />
           <ResponseViewTab active={activeView === "manage"} icon={FileSpreadsheet} label="Manage" onClick={() => setActiveView("manage")} />
         </nav>
 
         {form.isQuiz ? (
-          <div className="grid gap-3 border-b border-slate-200 bg-white p-4 sm:grid-cols-3">
+          <div className="grid w-full gap-2 py-1.5 sm:w-auto sm:grid-cols-2">
             <StatCard label="Total Submissions" value={activeSubmissions.length} tone="blue" />
             <StatCard label="Average Score" value={`${averageScore}%`} tone="green" />
-            <StatCard label="Result Mode" value={resultModeLabel(form.releaseGrade)} tone="purple" />
           </div>
         ) : null}
+        </div>
+
+        </div>
 
         {activeView === "summary" ? (
           <div className="space-y-4 bg-slate-50 p-3 sm:p-5">
             {responseSummaries.length ? responseSummaries.map((summary) => (
-              <IntercessionResponseSummaryCard key={summary.questionId} summary={summary} fullExcelHref={form.allowExport ? `/admin/intercession/forms/${form.id}/submissions/export` : undefined} onSeriesSelect={setAnswerDrilldown} />
+              <IntercessionResponseSummaryCard key={summary.questionId} summary={summary} fullExcelHref={form.allowExport ? `/admin/forms/${form.id}/submissions/export` : undefined} onSeriesSelect={setAnswerDrilldown} />
             )) : <ResponseAnalyticsEmpty />}
           </div>
-        ) : activeView === "question" ? (
-          <div className="bg-slate-50 p-3 sm:p-5">
-            {selectedSummary ? (
-              <>
-                <div className="mb-4 grid gap-3 rounded-xl border border-slate-200 bg-white p-3 sm:grid-cols-[minmax(180px,0.65fr)_minmax(260px,1.35fr)_auto] sm:items-end">
-                  <label className="min-w-0 text-xs font-semibold text-slate-600">Search questions
-                    <span className="relative mt-1 block"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" aria-hidden="true" /><input type="search" value={questionSearch} onChange={(event) => setQuestionSearch(event.target.value)} placeholder="Type question text" className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm font-normal text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" /></span>
-                  </label>
-                  <label className="min-w-0 text-xs font-semibold text-slate-600">
-                    Question {selectedQuestionIndex + 1} of {responseSummaries.length}{questionSearch ? ` · ${matchingQuestions.length} matching` : ""}
-                    <select
-                      value={matchingQuestions.some((item) => item.index === selectedQuestionIndex) ? selectedQuestionIndex : ""}
-                      onChange={(event) => setSelectedQuestionIndex(Number(event.target.value))}
-                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                    >
-                      {matchingQuestions.length ? matchingQuestions.map((item) => <option key={item.summary.questionId} value={item.index}>{item.index + 1}. {item.label}</option>) : <option value="">No matching questions</option>}
-                    </select>
-                  </label>
-                  <div className="flex shrink-0 gap-2">
-                    <button type="button" disabled={selectedQuestionIndex === 0} onClick={() => setSelectedQuestionIndex((current) => Math.max(0, current - 1))} className="inline-flex size-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Previous question"><ChevronLeft className="size-5" aria-hidden="true" /></button>
-                    <button type="button" disabled={selectedQuestionIndex >= responseSummaries.length - 1} onClick={() => setSelectedQuestionIndex((current) => Math.min(responseSummaries.length - 1, current + 1))} className="inline-flex size-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Next question"><ChevronRight className="size-5" aria-hidden="true" /></button>
-                  </div>
-                </div>
-                <IntercessionResponseSummaryCard key={selectedSummary.questionId} summary={selectedSummary} fullExcelHref={form.allowExport ? `/admin/intercession/forms/${form.id}/submissions/export` : undefined} onSeriesSelect={setAnswerDrilldown} />
-              </>
-            ) : <ResponseAnalyticsEmpty />}
-          </div>
-        ) : activeView === "individual" ? (
-          <IndividualResponseView submissions={activeSubmissions} selectedId={selectedResponseId} onSelectedId={setSelectedResponseId} onReview={setReviewSubmission} />
         ) : (
         <>
         <div className="border-b border-slate-200 bg-slate-50 p-3 sm:p-4">
-          <div className={`grid grid-cols-1 gap-3 ${form.isQuiz ? "sm:grid-cols-2 lg:grid-cols-[minmax(220px,1fr)_180px_180px_auto]" : "sm:grid-cols-[minmax(220px,1fr)_auto]"}`}>
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-slate-600">Search responder</label>
+          <div className="grid grid-cols-1 items-end gap-3 md:grid-cols-[180px_minmax(220px,1fr)_auto]">
+            <label className="text-xs font-semibold text-slate-600">Filter by
+              <select
+                value={filterBy}
+                onChange={(event) => {
+                  if (isSubmissionFilter(event.target.value)) setFilterBy(event.target.value);
+                }}
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              >
+                <option value="name">Name</option>
+                <option value="date">Date</option>
+                <option value="question">Question</option>
+                <option value="answer">Answer</option>
+                <option value="category">User category (guest or member)</option>
+                <option value="review">Review status</option>
+                <option value="storage">Storage</option>
+              </select>
+            </label>
+            {filterBy === "name" ? (
               <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                <input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Name, detail, or answer"
-                  className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                />
-              </div>
-            </div>
-            {form.isQuiz ? (
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-slate-600">Score range</label>
-                <select
-                  value={scoreFilter}
-                  onChange={(event) => setScoreFilter(event.target.value)}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                >
-                  <option value="all">All scores</option>
-                  <option value="high">80% and above</option>
-                  <option value="medium">60% - 79%</option>
-                  <option value="low">40% - 59%</option>
-                  <option value="fail">Below 40%</option>
-                  <option value="unscored">Awaiting review</option>
-                </select>
+                <label htmlFor="submission-name-filter" className="mb-1 block text-xs font-semibold text-slate-600">Name</label>
+                <Search className="pointer-events-none absolute left-3 top-[2.35rem] size-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                <input id="submission-name-filter" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search respondent name" className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
               </div>
             ) : null}
-            {form.releaseGrade === "later" ? (
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-slate-600">Release status</label>
-                <select
-                  value={releaseFilter}
-                  onChange={(event) => setReleaseFilter(event.target.value)}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                >
-                  <option value="all">All statuses</option>
-                  <option value="released">Released</option>
-                  <option value="pending">Pending review</option>
-                </select>
+            {filterBy === "date" ? (
+              <div className="grid grid-cols-2 gap-2">
+                <label className="text-xs font-semibold text-slate-600">From date<input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900" /></label>
+                <label className="text-xs font-semibold text-slate-600">To date<input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900" /></label>
               </div>
             ) : null}
+            {filterBy === "question" ? (
+              <label className="text-xs font-semibold text-slate-600">Question
+                <select value={questionFilter} onChange={(event) => setQuestionFilter(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900">
+                  <option value="">Any question</option>
+                  {form.analyticsQuestions.map((question, index) => <option key={question.questionId} value={question.questionId}>{index + 1}. {intercessionRichTextToPlainText(question.label).replace(/\s+/g, " ").trim()}</option>)}
+                </select>
+              </label>
+            ) : null}
+            {filterBy === "answer" ? (
+              <label className="text-xs font-semibold text-slate-600">Answer contains<input value={answerFilter} onChange={(event) => setAnswerFilter(event.target.value)} placeholder="Search answers" className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900" /></label>
+            ) : null}
+            {filterBy === "category" ? <FilterSelect label="User category" value={respondentFilter} onChange={setRespondentFilter} options={[["all", "Members and guests"], ["member", "Members"], ["guest", "Guests"]]} /> : null}
+            {filterBy === "review" ? <FilterSelect label="Review status" value={reviewFilter} onChange={setReviewFilter} options={[["all", "All review statuses"], ["reviewed", "Reviewed"], ["pending", "Awaiting review"]]} /> : null}
+            {filterBy === "storage" ? <FilterSelect label="Storage" value={deletionFilter} onChange={setDeletionFilter} options={[["active", "Active responses"], ["trash", "Trash"], ["all", "Active and trash"]]} /> : null}
             <div className="flex items-end justify-end gap-2">
               <button
                 type="button"
@@ -339,27 +260,8 @@ export function IntercessionSubmissionsClient({
                 <RotateCcw className="size-4" aria-hidden="true" />
                 Reset
               </button>
-              {form.allowExport && submissions.length > 0 ? (
-                <button
-                  type="button"
-                  onClick={exportCsv}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-100"
-                >
-                  <Download className="size-4" aria-hidden="true" />
-                  CSV
-                </button>
-              ) : null}
-              {form.allowExport && submissions.length > 0 ? <a href={`/admin/intercession/forms/${form.id}/submissions/export?${exportSearch.toString()}`} className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100"><FileSpreadsheet className="size-4" aria-hidden="true" />Excel</a> : null}
+              {form.allowExport && submissions.length > 0 ? <a href={`/admin/forms/${form.id}/submissions/export?${exportSearch.toString()}`} className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100"><FileSpreadsheet className="size-4" aria-hidden="true" />Excel</a> : null}
             </div>
-          </div>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <FilterSelect label="Respondent" value={respondentFilter} onChange={setRespondentFilter} options={[["all", "Members and guests"], ["member", "Members"], ["guest", "Guests"]]} />
-            <FilterSelect label="Review status" value={reviewFilter} onChange={setReviewFilter} options={[["all", "All review statuses"], ["reviewed", "Reviewed"], ["pending", "Awaiting review"]]} />
-            <FilterSelect label="Storage" value={deletionFilter} onChange={setDeletionFilter} options={[["active", "Active responses"], ["trash", "Trash"], ["all", "Active and trash"]]} />
-            <label className="text-xs font-semibold text-slate-600">Question<select value={questionFilter} onChange={(event) => setQuestionFilter(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900"><option value="">Any question</option>{form.analyticsQuestions.map((question, index) => <option key={question.questionId} value={question.questionId}>{index + 1}. {intercessionRichTextToPlainText(question.label).replace(/\s+/g, " ").trim()}</option>)}</select></label>
-            <label className="text-xs font-semibold text-slate-600">Answer contains<input value={answerFilter} onChange={(event) => setAnswerFilter(event.target.value)} placeholder="Search selected answer" className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900" /></label>
-            <label className="text-xs font-semibold text-slate-600">From date<input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900" /></label>
-            <label className="text-xs font-semibold text-slate-600">To date<input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900" /></label>
           </div>
           <div className="mt-3 text-xs text-slate-500">
             Showing {filteredSubmissions.length} of {submissions.length} submissions
@@ -412,7 +314,7 @@ export function IntercessionSubmissionsClient({
                 <th className="px-4 py-3">#</th>
                 <th className="px-4 py-3" aria-sort={sortField === "responder" ? sortDirection === "asc" ? "ascending" : "descending" : "none"}><SortHeader label="Responder" active={sortField === "responder"} direction={sortDirection} onClick={() => changeSort("responder")} /></th>
                 <th className="w-24 px-4 py-3" aria-sort={sortField === "type" ? sortDirection === "asc" ? "ascending" : "descending" : "none"}><SortHeader label="Type" active={sortField === "type"} direction={sortDirection} onClick={() => changeSort("type")} /></th>
-                {form.isQuiz ? <th className="px-4 py-3">Marks</th> : null}
+                {form.isQuiz ? <th className="px-4 py-3" aria-sort={sortField === "marks" ? sortDirection === "asc" ? "ascending" : "descending" : "none"}><SortHeader label="Marks" active={sortField === "marks"} direction={sortDirection} onClick={() => changeSort("marks")} /></th> : null}
                 <th className="px-4 py-3" aria-sort={sortField === "submitted" ? sortDirection === "asc" ? "ascending" : "descending" : "none"}><SortHeader label="Submitted" active={sortField === "submitted"} direction={sortDirection} onClick={() => changeSort("submitted")} /></th>
                 <th className="px-4 py-3">Actions</th>
               </tr>
@@ -482,21 +384,7 @@ export function IntercessionSubmissionsClient({
                             </button>
                           )
                         ) : null}
-                        {form.canDeleteSubmissions && !submission.deletedAt ? (
-                          <button
-                            type="button"
-                            disabled={pending}
-                            onClick={async () => {
-                              if (await confirm({ title: "Move submission to trash", message: `Move ${submission.memberName}'s submission to trash? It can be restored later.`, confirmLabel: "Move to trash", tone: "danger" })) {
-                                runSubmissionAction(() => deleteFormSubmission(submission.id));
-                              }
-                            }}
-                            className="rounded-lg border border-red-100 px-2.5 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-60"
-                          >
-                            Trash
-                          </button>
-                        ) : null}
-                        {form.canDeleteSubmissions && submission.deletedAt ? <><button type="button" disabled={pending} onClick={() => runSubmissionAction(() => restoreFormSubmission(submission.id))} className="rounded-lg border border-emerald-200 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-60">Restore</button><button type="button" disabled={pending} onClick={async () => { if (await confirm({ title: "Permanently delete submission", message: `Permanently delete ${submission.memberName}'s submission and uploaded files? This cannot be undone.`, confirmLabel: "Delete permanently", tone: "danger" })) runSubmissionAction(() => permanentlyDeleteFormSubmission(submission.id)); }} className="rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60">Delete forever</button></> : null}
+                        {form.canDeleteSubmissions && submission.deletedAt ? <><button type="button" disabled={pending} onClick={() => runSubmissionAction(() => restoreFormSubmission(submission.id))} className="rounded-lg border border-emerald-200 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-60">Restore</button><button type="button" disabled={pending} onClick={async () => { const commitmentWarning = submission.isCommitment ? " This will also permanently delete the accepted commitment record." : ""; if (await confirm({ title: "Permanently delete submission", message: `Permanently delete ${submission.memberName}'s submission and uploaded files?${commitmentWarning} This cannot be undone.`, confirmLabel: "Delete permanently", tone: "danger" })) runSubmissionAction(() => permanentlyDeleteFormSubmission(submission.id)); }} className="rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60">Delete forever</button></> : null}
                       </div>
                     </td>
                   </tr>
@@ -513,7 +401,6 @@ export function IntercessionSubmissionsClient({
             </tbody>
           </table>
         </div>
-        <ActivityHistory entries={form.responseActivity} />
         </>
         )}
       </div>
@@ -529,7 +416,14 @@ export function IntercessionSubmissionsClient({
           }}
         />
       ) : null}
-      {answerDrilldown ? <AnswerDrilldownModal selection={answerDrilldown} submissions={activeSubmissions} onClose={() => setAnswerDrilldown(null)} onOpenSubmission={(submissionId) => { setSelectedResponseId(submissionId); setActiveView("individual"); setAnswerDrilldown(null); }} /> : null}
+      {answerDrilldown ? <AnswerDrilldownModal selection={answerDrilldown} submissions={activeSubmissions} onClose={() => setAnswerDrilldown(null)} onOpenSubmission={(submissionId) => {
+        const submission = activeSubmissions.find((item) => item.id === submissionId);
+        if (submission) {
+          setQuery(submission.memberName);
+          setActiveView("manage");
+        }
+        setAnswerDrilldown(null);
+      }} /> : null}
     </div>
   );
 }
@@ -558,67 +452,12 @@ function FilterSelect({ label, value, onChange, options }: { label: string; valu
   return <label className="text-xs font-semibold text-slate-600">{label}<select value={value} onChange={(event) => onChange(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900">{options.map(([optionValue, optionLabel]) => <option key={optionValue} value={optionValue}>{optionLabel}</option>)}</select></label>;
 }
 
+function isSubmissionFilter(value: string): value is SubmissionFilter {
+  return ["name", "date", "question", "answer", "category", "review", "storage"].includes(value);
+}
+
 function BulkButton({ label, onClick, tone = "default" }: { label: string; onClick: () => void; tone?: "default" | "danger" }) {
   return <button type="button" onClick={onClick} className={`rounded-lg border px-3 py-1.5 font-semibold ${tone === "danger" ? "border-red-200 bg-white text-red-700" : "border-blue-200 bg-white text-blue-700"}`}>{label}</button>;
-}
-
-function IndividualResponseView({ submissions, selectedId, onSelectedId, onReview }: { submissions: SubmissionRow[]; selectedId: number | null; onSelectedId: (id: number | null) => void; onReview: (submission: SubmissionRow) => void }) {
-  const [search, setSearch] = useState("");
-  if (!submissions.length) return <div className="bg-slate-50 p-5"><IndividualResponsesEmpty /></div>;
-  const normalizedSearch = search.trim().toLowerCase();
-  const filteredSubmissions = submissions.filter((submission) => !normalizedSearch || [
-    submission.memberName,
-    submission.respondentType,
-    ...submission.visitorDetails.flatMap((detail) => Array.isArray(detail.value) ? detail.value : [detail.value]),
-  ].some((value) => value.toLowerCase().includes(normalizedSearch)));
-  const submission = selectedId === null ? null : submissions.find((item) => item.id === selectedId) ?? null;
-
-  return (
-    <div className="bg-slate-50 p-3 sm:p-5">
-      <div className="grid gap-4 lg:grid-cols-[minmax(280px,340px)_minmax(0,1fr)] lg:items-start">
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:sticky lg:top-4">
-          <div className="border-b border-slate-200 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div><h2 className="font-bold text-slate-900">Submitted responses</h2><p className="text-xs text-slate-500">{submissions.length} {submissions.length === 1 ? "person" : "people"}</p></div>
-              <Users className="size-5 text-blue-600" aria-hidden="true" />
-            </div>
-            <label className="relative mt-3 block">
-              <span className="sr-only">Search submitted members</span>
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-              <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by name" className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
-            </label>
-          </div>
-          <div className="max-h-[65vh] overflow-y-auto p-2" role="list" aria-label="Submitted members">
-            {filteredSubmissions.length ? filteredSubmissions.map((item) => {
-              const selected = item.id === selectedId;
-              return (
-                <button key={item.id} type="button" role="listitem" aria-current={selected ? "true" : undefined} onClick={() => onSelectedId(item.id)} className={`mb-1 w-full rounded-xl border px-3 py-3 text-left transition last:mb-0 ${selected ? "border-blue-300 bg-blue-50 ring-2 ring-blue-100" : "border-transparent hover:border-slate-200 hover:bg-slate-50"}`}>
-                  <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-bold text-slate-900">{item.memberName}</p><p className="mt-0.5 truncate text-xs text-slate-500">{item.respondentType}</p></div><span className={`mt-0.5 size-2 shrink-0 rounded-full ${selected ? "bg-blue-600" : "bg-emerald-500"}`} aria-hidden="true" /></div>
-                  <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-slate-400"><span>{item.respondentType}</span><span>{item.submittedDate}</span></div>
-                </button>
-              );
-            }) : <div className="px-3 py-10 text-center"><Search className="mx-auto size-7 text-slate-300" aria-hidden="true" /><p className="mt-2 text-sm font-semibold text-slate-600">No matching members</p><button type="button" onClick={() => setSearch("")} className="mt-2 text-xs font-semibold text-blue-700 hover:underline">Clear search</button></div>}
-          </div>
-        </section>
-
-        {submission ? (
-          <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex flex-col gap-4 border-b border-slate-200 pb-4 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0"><button type="button" onClick={() => onSelectedId(null)} className="mb-2 text-xs font-semibold text-blue-700 hover:underline lg:hidden">Back to all responses</button><h2 className="text-lg font-bold text-slate-900">{submission.memberName}</h2><p className="truncate text-sm text-slate-500">{submission.respondentType}</p><div className="mt-2 text-sm text-slate-500"><p>{submission.submittedAt}</p><p>Completed in {submission.completionSeconds === null ? "unknown time" : formatDuration(submission.completionSeconds)} · Form v{submission.formVersion}</p></div></div>
-              <div className="flex shrink-0 flex-wrap gap-2"><PrintButton label="Print response" /><button type="button" onClick={() => onReview(submission)} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Open review</button></div>
-            </div>
-            <div className="mt-4 space-y-3">{submission.answers.map((answer) => <section key={answer.questionId} className="rounded-xl border border-slate-200 p-4"><h3 className="font-semibold text-slate-900"><IntercessionRichText value={answer.question} /></h3><div className="mt-2 whitespace-pre-wrap rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">{answer.answer}</div></section>)}</div>
-          </article>
-        ) : (
-          <section className="grid min-h-80 place-items-center rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center"><div><UserCheck className="mx-auto size-10 text-slate-300" aria-hidden="true" /><h2 className="mt-3 font-bold text-slate-700">Select a submitted member</h2><p className="mt-1 text-sm text-slate-500">Click a person in the list to view their details and answers.</p></div></section>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function IndividualResponsesEmpty() {
-  return <div className="rounded-2xl border border-dashed border-slate-300 bg-white py-14 text-center"><Users className="mx-auto size-10 text-slate-300" aria-hidden="true" /><p className="mt-3 font-semibold text-slate-600">No responses have been submitted yet.</p></div>;
 }
 
 function AnswerDrilldownModal({ selection, submissions, onClose, onOpenSubmission }: { selection: IntercessionChartSelection; submissions: SubmissionRow[]; onClose: () => void; onOpenSubmission: (submissionId: number) => void }) {
@@ -643,26 +482,6 @@ function submissionMatchesSelection(submission: SubmissionRow, selection: Interc
     return Array.isArray(rowValue) ? rowValue.includes(selection.answerLabel) : rowValue === selection.answerLabel;
   }
   return Array.isArray(value) ? value.includes(selection.answerLabel) : value === selection.answerLabel;
-}
-
-function formatDuration(seconds: number) {
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  const remainder = seconds % 60;
-  return `${minutes}m${remainder ? ` ${remainder}s` : ""}`;
-}
-
-function ActivityHistory({ entries }: { entries: Array<{ id: number; action: string; actor: string; createdAt: string }> }) {
-  return (
-    <details className="border-t border-slate-200 bg-white p-4">
-      <summary className="cursor-pointer text-sm font-bold text-slate-700">Activity history ({entries.length})</summary>
-      <div className="mt-3 max-h-72 divide-y divide-slate-100 overflow-y-auto rounded-xl border border-slate-200">{entries.length ? entries.map((entry) => <div key={entry.id} className="flex flex-col gap-1 px-3 py-2 text-xs sm:flex-row sm:items-center sm:justify-between"><span className="font-semibold text-slate-700">{activityLabel(entry.action)} <span className="font-normal text-slate-500">by {entry.actor}</span></span><time className="text-slate-400">{entry.createdAt}</time></div>) : <p className="p-4 text-sm text-slate-500">No response management activity recorded yet.</p>}</div>
-    </details>
-  );
-}
-
-function activityLabel(action: string) {
-  return action.replace(/^intercession\./, "").replace(/[.-]/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function ResponseAnalyticsEmpty() {
@@ -694,6 +513,7 @@ function ReviewSubmissionModal({
   const [pending, startTransition] = useTransition();
   const dialogRef = useDialogFocusTrap<HTMLDivElement>(true, onClose);
   const manualReview = form.isQuiz && form.releaseGrade === "later" && form.canGradeSubmissions;
+  const earnedTotal = submission.answers.reduce((sum, answer) => sum + (answer.points > 0 ? awardedPoints[answer.questionIndex] ?? 0 : 0), 0);
 
   function setGrade(questionIndex: number, correct: boolean) {
     setGrades((current) => ({ ...current, [questionIndex]: correct }));
@@ -728,9 +548,16 @@ function ReviewSubmissionModal({
               {submission.memberName} · {submission.submittedDate} {submission.submittedTime}
             </p>
           </div>
-          <button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600" aria-label="Close">
-            <X className="size-5" aria-hidden="true" />
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {form.isQuiz ? (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-center shadow-sm">
+                <p className="text-sm font-bold tabular-nums text-blue-900">{formatIntercessionMarks(earnedTotal)}<span className="px-1 text-blue-500">/</span>{formatIntercessionMarks(submission.totalPoints)}</p>
+              </div>
+            ) : null}
+            <button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600" aria-label="Close">
+              <X className="size-5" aria-hidden="true" />
+            </button>
+          </div>
         </div>
 
         <div className="max-h-[65vh] overflow-y-auto p-4">
@@ -752,7 +579,7 @@ function ReviewSubmissionModal({
                     </div>
                     {form.isQuiz ? (
                       <span className="w-fit rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
-                        {answer.points === 0 ? "Unscored reflection" : `${answer.points} point${answer.points === 1 ? "" : "s"}`}
+                        {answer.points === 0 ? "Unscored reflection" : `${formatIntercessionMarks(answer.earnedPoints ?? 0)}/${formatIntercessionMarks(answer.points)}`}
                       </span>
                     ) : null}
                   </div>
@@ -760,7 +587,6 @@ function ReviewSubmissionModal({
                   <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm leading-6 text-slate-700">
                     {/^https?:\/\//.test(answer.answer) || answer.answer.startsWith("/uploads/form-answers/") ? <a href={answer.answer} target="_blank" rel="noreferrer" className="font-semibold text-blue-700 underline underline-offset-2">Open uploaded file</a> : answer.answer}
                   </div>
-                  {form.isQuiz && answer.points > 0 && answer.earnedPoints !== null ? <p className="mt-2 text-xs font-semibold text-blue-700">Awarded {formatIntercessionMarks(answer.earnedPoints)} of {formatIntercessionMarks(answer.points)} point{answer.points === 1 ? "" : "s"}</p> : null}
                   {manualReview && answer.points > 0 ? (
                     <div className="mt-3 flex flex-wrap items-center gap-2">
                       <label className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800">Award points<input type="number" min={0} max={answer.points} step={0.01} value={awardedPoints[answer.questionIndex] ?? 0} onChange={(event) => { const value = Math.min(answer.points, Math.max(0, Number(event.target.value) || 0)); setAwardedPoints((current) => ({ ...current, [answer.questionIndex]: value })); setGrades((current) => ({ ...current, [answer.questionIndex]: value >= answer.points })); }} className="w-20 rounded border border-blue-200 bg-white px-2 py-1 text-right" /><span>/ {formatIntercessionMarks(answer.points)}</span></label>
@@ -822,23 +648,16 @@ function initials(name: string) {
     .toUpperCase();
 }
 
-function resultModeLabel(releaseGrade: string) {
-  if (releaseGrade === "never") return "Private";
-  if (releaseGrade === "later") return "Pending Review";
-  return "Auto-graded";
-}
-
-function StatCard({ label, value, tone }: { label: string; value: string | number; tone: "blue" | "green" | "purple" }) {
+function StatCard({ label, value, tone }: { label: string; value: string | number; tone: "blue" | "green" }) {
   const toneClass = {
     blue: "bg-blue-50 text-blue-700",
     green: "bg-green-50 text-green-700",
-    purple: "bg-purple-50 text-purple-700",
   }[tone];
 
   return (
-    <div className={`rounded-lg border border-gray-100 p-4 ${toneClass}`}>
-      <p className="text-xs font-semibold uppercase text-gray-500">{label}</p>
-      <p className="mt-1 text-xl font-bold">{value}</p>
+    <div className={`flex items-center justify-between gap-3 rounded-lg border border-gray-100 px-3 py-1.5 ${toneClass}`}>
+      <p className="text-[11px] font-semibold uppercase text-gray-500">{label}</p>
+      <p className="text-base font-bold">{value}</p>
     </div>
   );
 }

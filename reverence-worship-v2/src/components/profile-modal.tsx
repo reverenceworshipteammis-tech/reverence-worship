@@ -5,11 +5,11 @@ import {
   BadgeCheck,
   BriefcaseBusiness,
   CalendarDays,
+  GraduationCap,
   Home,
   Mail,
   MapPin,
   Mars,
-  NotebookText,
   Pencil,
   Phone,
   Save,
@@ -24,6 +24,8 @@ import { useRouter } from "next/navigation";
 import { updateOwnProfileAction, type ProfileActionState } from "@/app/admin/profile/actions";
 import { ActionNotice } from "@/components/action-notice";
 import { membershipTypeLabel, membershipTypeOptions, normalizeMembershipType } from "@/lib/membership-types";
+import { EducationFields } from "@/components/education-fields";
+import { educationLevelLabel } from "@/lib/education-rules";
 
 export const OPEN_PROFILE_MODAL_EVENT = "reverence:open-profile";
 
@@ -39,14 +41,16 @@ export type ProfileModalData = {
   maritalStatus: string | null;
   membershipType: string | null;
   occupation: string | null;
+  highestEducationLevel: string | null;
+  otherEducationLevel: string | null;
+  educationFieldOfStudy: string | null;
+  educationInstitution: string | null;
+  educationCompletionYear: number | null;
   province: string | null;
   district: string | null;
   sector: string | null;
   cell: string | null;
   village: string | null;
-  emergencyName: string | null;
-  emergencyPhone: string | null;
-  notes: string | null;
 };
 
 export function openProfileModal() {
@@ -228,7 +232,7 @@ export function ProfileModal({
               <div className="grid grid-cols-1 gap-7 md:grid-cols-2">
                 <ProfileSection title="Personal Information" icon={User} iconClassName="text-blue-600">
                   <ProfileField label="Full Name" name="name" defaultValue={profile.name} icon={User} required autoFocus />
-                  <ProfileField label="Email Address" name="email" defaultValue={profile.email} icon={Mail} type="email" required />
+                  <ProfileField label="Email Address" name="email" defaultValue={profile.email} icon={Mail} type="email" readOnly />
                   <ProfileField label="Phone" name="phone" defaultValue={profile.phone} icon={Phone} type="tel" />
                   <ProfileSelect label="Gender" name="gender" defaultValue={profile.gender} icon={Mars} options={genderOptions} />
                   <ProfileField label="Date of Birth" name="dateOfBirth" defaultValue={toDateInput(profile.dateOfBirth)} icon={CalendarDays} type="date" />
@@ -237,15 +241,26 @@ export function ProfileModal({
                   <ProfileField label="Occupation" name="occupation" defaultValue={profile.occupation} icon={BriefcaseBusiness} last />
                 </ProfileSection>
 
+                <div className="md:col-span-2">
+                  <EducationFields
+                    idPrefix="profile-education"
+                    showAdditionalQualifications={false}
+                    initialValues={{
+                      highestEducationLevel: profile.highestEducationLevel ?? "",
+                      otherEducationLevel: profile.otherEducationLevel ?? "",
+                      educationFieldOfStudy: profile.educationFieldOfStudy ?? "",
+                      educationInstitution: profile.educationInstitution ?? "",
+                      educationCompletionYear: profile.educationCompletionYear?.toString() ?? "",
+                    }}
+                  />
+                </div>
+
                 <ProfileSection title="Address & Contact" icon={MapPin} iconClassName="text-emerald-600">
                   <ProfileField label="Province" name="province" defaultValue={profile.province} icon={MapPin} />
                   <ProfileField label="District" name="district" defaultValue={profile.district} icon={Home} />
                   <ProfileField label="Sector" name="sector" defaultValue={profile.sector} icon={MapPin} />
                   <ProfileField label="Cell" name="cell" defaultValue={profile.cell} icon={MapPin} />
                   <ProfileField label="Village" name="village" defaultValue={profile.village} icon={Home} />
-                  <ProfileField label="Nick Name" name="emergencyName" defaultValue={profile.emergencyName} icon={Users} />
-                  <ProfileField label="Emergency Phone" name="emergencyPhone" defaultValue={profile.emergencyPhone} icon={Phone} type="tel" />
-                  <ProfileField label="Notes" name="notes" defaultValue={profile.notes} icon={NotebookText} multiline last />
                 </ProfileSection>
               </div>
               <div className="mt-6 flex flex-col-reverse gap-2 border-t border-gray-100 pt-5 sm:flex-row sm:justify-end">
@@ -283,15 +298,26 @@ export function ProfileModal({
               <InfoRow label="Occupation" value={display(profile.occupation)} icon={BriefcaseBusiness} last />
             </ProfileSection>
 
+            <ProfileSection title="Educational Information" icon={GraduationCap} iconClassName="text-violet-600">
+              <InfoRow label="Highest Education Level" value={educationLevelLabel(profile.highestEducationLevel) || "-"} icon={GraduationCap} />
+              {profile.highestEducationLevel === "other" ? (
+                <InfoRow label="Specified Qualification" value={display(profile.otherEducationLevel)} icon={GraduationCap} />
+              ) : null}
+              {profile.highestEducationLevel && profile.highestEducationLevel !== "none" && profile.highestEducationLevel !== "primary" ? (
+                <>
+                  <InfoRow label="Field of Study" value={display(profile.educationFieldOfStudy)} icon={GraduationCap} />
+                  <InfoRow label="Institution" value={display(profile.educationInstitution)} icon={GraduationCap} />
+                  <InfoRow label="Year of Completion" value={profile.educationCompletionYear?.toString() ?? "-"} icon={CalendarDays} last />
+                </>
+              ) : null}
+            </ProfileSection>
+
             <ProfileSection title="Address & Contact" icon={MapPin} iconClassName="text-emerald-600">
               <InfoRow label="Province" value={display(profile.province)} icon={MapPin} />
               <InfoRow label="District" value={display(profile.district)} icon={Home} />
               <InfoRow label="Sector" value={display(profile.sector)} icon={MapPin} />
               <InfoRow label="Cell" value={display(profile.cell)} icon={MapPin} />
-              <InfoRow label="Village" value={display(profile.village)} icon={Home} />
-              <InfoRow label="Nick Name" value={display(profile.emergencyName)} icon={Users} />
-              <InfoRow label="Emergency Phone" value={display(profile.emergencyPhone)} icon={Phone} />
-              <InfoRow label="Notes" value={display(profile.notes)} icon={NotebookText} last />
+              <InfoRow label="Village" value={display(profile.village)} icon={Home} last />
             </ProfileSection>
           </div>
           )}
@@ -376,6 +402,7 @@ function ProfileField({
   type = "text",
   required = false,
   autoFocus = false,
+  readOnly = false,
   multiline = false,
   last = false,
 }: {
@@ -386,6 +413,7 @@ function ProfileField({
   type?: React.HTMLInputTypeAttribute;
   required?: boolean;
   autoFocus?: boolean;
+  readOnly?: boolean;
   multiline?: boolean;
   last?: boolean;
 }) {
@@ -401,7 +429,15 @@ function ProfileField({
         {multiline ? (
           <textarea name={name} defaultValue={defaultValue ?? ""} rows={3} maxLength={1000} className={controlClassName} />
         ) : (
-          <input name={name} defaultValue={defaultValue ?? ""} type={type} required={required} autoFocus={autoFocus} className={controlClassName} />
+          <input
+            name={readOnly ? undefined : name}
+            defaultValue={defaultValue ?? ""}
+            type={type}
+            required={required && !readOnly}
+            readOnly={readOnly}
+            autoFocus={autoFocus}
+            className={`${controlClassName} ${readOnly ? "cursor-not-allowed bg-gray-50 text-gray-500" : ""}`}
+          />
         )}
       </label>
     </div>

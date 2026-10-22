@@ -98,6 +98,9 @@ export const getCurrentUser = cache(async () => {
             role: true,
           },
         },
+        educationQualifications: {
+          orderBy: [{ completionYear: "desc" }, { id: "asc" }],
+        },
       },
     }));
   } catch (error) {

@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useActionState, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { ActionNotice } from "@/components/action-notice";
 import { membershipTypeFilterOptions, membershipTypeLabel, membershipTypeOptions, normalizeMembershipType, parseMembershipTypeFilters } from "@/lib/membership-types";
+import { educationLevelLabel, type EducationQualification } from "@/lib/education-rules";
 import {
   AlertTriangle,
   ArrowDown,
@@ -56,6 +57,12 @@ type UserRow = {
   maritalStatus: string | null;
   membershipType: string | null;
   occupation: string | null;
+  highestEducationLevel: string | null;
+  otherEducationLevel: string | null;
+  educationFieldOfStudy: string | null;
+  educationInstitution: string | null;
+  educationCompletionYear: number | null;
+  additionalQualifications: EducationQualification[];
   skills: string | null;
   status: "active" | "pending" | "inactive";
   createdAt: string;
@@ -991,7 +998,23 @@ export function UserManagementClient({
                   ["Cell", viewUser.cell || "-"],
                   ["Village", viewUser.village || "-"],
                 ]],
-                ["Additional Information", [["Skills", viewUser.skills || "-"]]],
+                ["Educational Information", [
+                  ["Highest Education Level", educationLevelLabel(viewUser.highestEducationLevel) || "-"],
+                  ...(viewUser.highestEducationLevel === "other"
+                    ? [["Specified Qualification", viewUser.otherEducationLevel || "-"]]
+                    : []),
+                  ...(viewUser.highestEducationLevel && viewUser.highestEducationLevel !== "none" && viewUser.highestEducationLevel !== "primary"
+                    ? [
+                        ["Field of Study", viewUser.educationFieldOfStudy || "-"],
+                        ["Institution", viewUser.educationInstitution || "-"],
+                        ["Year of Completion", viewUser.educationCompletionYear?.toString() || "-"],
+                      ]
+                    : []),
+                  ...viewUser.additionalQualifications.map((qualification) => [
+                    `${qualification.name} (${qualification.status})`,
+                    `${qualification.fieldOfStudy} · ${qualification.institution} · ${qualification.completionYear}`,
+                  ]),
+                ]],
               ].map(([title, items]) => (
                 <section key={title as string}>
                   <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-700">{title as string}</h4>

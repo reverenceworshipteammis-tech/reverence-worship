@@ -747,7 +747,7 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
         } catch { /* A confirmed database save must not fail because browser storage is full. */ }
         const discarded = JSON.parse(String(formData.get("discardedImages") ?? "[]")) as string[];
         discarded.forEach((imagePath) => removedImagePathsRef.current.delete(imagePath));
-        if (!initialData?.id && unchanged) navigateTo = `/admin/intercession/forms/${confirmedId}/edit`;
+        if (!initialData?.id && unchanged) navigateTo = `/admin/forms/${confirmedId}/edit`;
       } catch {
         const recoverySaved = preserveRecoveryDraft();
         setDraftStatus("error");
@@ -767,7 +767,7 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
         <div className="sticky top-0 z-40 mx-auto mb-5 max-w-5xl rounded-xl border border-gray-200 bg-white shadow-[0_8px_28px_rgba(15,23,42,0.05)]">
           <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
             <div>
-              <Link href="/admin/intercession?section=manage" onClick={async (event) => {
+              <Link href="/admin/forms?section=manage" onClick={async (event) => {
                 if (!["unsaved", "saving", "error"].includes(draftStatus)) return;
                 event.preventDefault();
                 const shouldLeave = await confirm({
@@ -776,7 +776,7 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
                   confirmLabel: "Leave builder",
                   tone: "danger",
                 });
-                if (shouldLeave) router.push("/admin/intercession?section=manage");
+                if (shouldLeave) router.push("/admin/forms?section=manage");
               }} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-sm font-semibold text-blue-700 shadow-sm transition hover:border-blue-300 hover:bg-blue-100 hover:text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 active:bg-blue-200">
                 <ArrowLeft className="size-4" aria-hidden="true" />
                 Manage Forms

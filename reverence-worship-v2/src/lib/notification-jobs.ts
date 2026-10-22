@@ -180,7 +180,7 @@ export async function runScheduledNotificationJobs() {
     await notifyUsers({
       userIds: recipients, type: "form", title: "Form deadline approaching",
       message: `${intercessionRichTextToPlainText(form.title)} is due ${dateLabel(deadline)}. Please submit it before the deadline.`,
-      link: `/admin/intercession/forms/${form.id}/take`, sourceType: "spiritual_form", sourceId: form.id,
+      link: `/admin/forms/${form.id}/take`, sourceType: "spiritual_form", sourceId: form.id,
       dedupeKey: `form:${form.id}:deadline:${settings.submission_deadline}:${daysRemaining}`,
     });
     results.formReminders += recipients.length;

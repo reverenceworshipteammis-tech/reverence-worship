@@ -96,6 +96,9 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
             select: { id: true },
             take: 1,
           },
+          educationQualifications: {
+            orderBy: [{ completionYear: "desc" }, { id: "asc" }],
+          },
         },
       }),
       prisma.role.findMany({
@@ -147,6 +150,18 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
         maritalStatus: user.maritalStatus,
         membershipType: user.membershipType,
         occupation: user.occupation,
+        highestEducationLevel: user.highestEducationLevel,
+        otherEducationLevel: user.otherEducationLevel,
+        educationFieldOfStudy: user.educationFieldOfStudy,
+        educationInstitution: user.educationInstitution,
+        educationCompletionYear: user.educationCompletionYear,
+        additionalQualifications: user.educationQualifications.map(({ name, fieldOfStudy, institution, status, completionYear }) => ({
+          name,
+          fieldOfStudy,
+          institution,
+          status: status === "studying" || status === "planned" ? status : "completed",
+          completionYear,
+        })),
         skills: user.skills,
         status: user.status,
         createdAt: formatDate(user.createdAt),

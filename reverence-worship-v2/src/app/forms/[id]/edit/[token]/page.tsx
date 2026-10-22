@@ -42,7 +42,7 @@ export default async function EditFormResponsePage({ params }: { params: Promise
         requireRespondentName={!submission.userId}
         editToken={token}
         initialValues={initialValues}
-        backHref={submission.userId ? "/admin/intercession?section=results" : "/"}
+        backHref={submission.userId ? "/admin/forms?section=results" : "/"}
       />
     </main>
   );

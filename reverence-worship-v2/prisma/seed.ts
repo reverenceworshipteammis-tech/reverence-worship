@@ -149,7 +149,7 @@ const featureDefinitionsByPage: Record<string, FeatureDefinition[]> = {
     { name: "view-results", label: "View Form Results", description: "Review form responses and member results." },
     { name: "view-reports", label: "View Form Reports", description: "Open Intercession participation reports." },
     { name: "export-reports", label: "Export Form Reports", description: "Download intercession report data." },
-    { name: "read-bible", label: "Read Bible", description: "Use the Bible reading tab." },
+    { name: "read-bible", label: "Read Bible", description: "Open the Bible reader page." },
     { name: "manage-action-plans", label: "Manage Intercession Action Plans", description: "Create and update Intercession DPT action plans." },
   ],
   "social-fellowship": [

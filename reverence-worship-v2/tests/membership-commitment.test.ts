@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Prisma } from "../src/generated/prisma/client";
 import {
-  commitmentAcceptanceLabel, commitmentConfigurationIssue, commitmentProfileUpdate, commitmentProfileValues,
+  COMMITMENT_PROFILE_FIELDS, commitmentAcceptanceLabel, commitmentConfigurationIssue, commitmentProfileUpdate, commitmentProfileValues,
   defaultCommitmentSettings, parseCommitmentSettings, validateCommitmentProfile,
   type CommitmentSettings, type CommitmentSnapshot,
 } from "../src/lib/membership-commitment";
@@ -58,6 +58,24 @@ test("only allowed profile fields and membership types are configurable", () => 
   assert.ok(commitmentConfigurationIssue({ ...configuration(), profileFields: [configuration().profileFields[0], configuration().profileFields[0]] }));
 });
 
+test("removed emergency contact and skills fields are excluded from commitment forms", () => {
+  const fields = defaultCommitmentSettings(2027).profileFields;
+  assert.equal(fields.some(({ key }) => ["emergencyName", "emergencyPhone", "skills"].includes(key)), false);
+
+  const legacy = {
+    ...configuration(),
+    profileFields: [
+      ...configuration().profileFields,
+      { key: "emergencyName" as const, editable: false, required: false, requiresApproval: false },
+      { key: "emergencyPhone" as const, editable: false, required: false, requiresApproval: false },
+      { key: "skills" as const, editable: false, required: false, requiresApproval: false },
+    ],
+  };
+  const parsed = parseCommitmentSettings(legacy);
+  assert.deepEqual(parsed?.profileFields.map(({ key }) => key), configuration().profileFields.map(({ key }) => key));
+  assert.equal(commitmentConfigurationIssue(legacy), null);
+});
+
 test("legacy commitment audience selections no longer restrict the three membership types", () => {
   const stored = { ...configuration(), membershipTypes: ["permanent" as const] };
   const parsed = parseCommitmentSettings(stored);
@@ -89,6 +107,89 @@ test("prefilling normalizes database values without exposing unselected administ
   assert.equal(values.dateOfBirth, "2001-01-02");
   assert.equal(values.phone, "");
   assert.equal("passwordHash" in values, false); assert.equal("notes" in values, false); assert.equal("sessionVersion" in values, false);
+});
+
+test("education profile fields can be included and are formatted for commitment forms", () => {
+  const config = defaultCommitmentSettings(2027);
+  const educationKeys = [
+    "highestEducationLevel",
+    "otherEducationLevel",
+    "educationFieldOfStudy",
+    "educationInstitution",
+    "educationCompletionYear",
+  ] as const;
+  assert.deepEqual(
+    COMMITMENT_PROFILE_FIELDS.filter((field) => educationKeys.includes(field.key as (typeof educationKeys)[number])).map(({ key }) => key),
+    educationKeys,
+  );
+
+  config.profileFields.push(
+    { key: "highestEducationLevel", editable: false, required: false, requiresApproval: false },
+    { key: "educationFieldOfStudy", editable: false, required: false, requiresApproval: false },
+    { key: "educationInstitution", editable: false, required: false, requiresApproval: false },
+    { key: "educationCompletionYear", editable: false, required: false, requiresApproval: false },
+  );
+  const values = commitmentProfileValues({
+    highestEducationLevel: "bachelors_a0",
+    educationFieldOfStudy: "Accounting",
+    educationInstitution: "University of Rwanda",
+    educationCompletionYear: 2020,
+  });
+  assert.equal(values.highestEducationLevel, "bachelors_a0");
+  assert.equal(values.educationCompletionYear, "2020");
+  const parsedConfig = parseCommitmentSettings(config);
+  assert.equal(parsedConfig?.profileFields.length, config.profileFields.length + 1);
+  assert.equal(parsedConfig?.profileFields.some((field) => field.key === "otherEducationLevel"), true);
+  assert.equal(parsedConfig?.profileFields.some((field) => field.key === "educationInstitution"), true);
+});
+
+test("education level reveals and validates its dependent commitment fields", () => {
+  const config = parseCommitmentSettings({
+    ...configuration(),
+    profileFields: [{ key: "highestEducationLevel", editable: true, required: true, requiresApproval: false }],
+  })!;
+  for (const field of config.profileFields) {
+    if (["otherEducationLevel", "educationFieldOfStudy", "educationInstitution", "educationCompletionYear"].includes(field.key)) {
+      field.required = true;
+    }
+  }
+  const h = harness(config);
+
+  h.data.set("profile_highestEducationLevel", "bachelors_a0");
+  assert.equal(validateCommitmentProfile(config, {}, h.data).ok, false);
+  h.data.set("profile_educationFieldOfStudy", "Accounting");
+  h.data.set("profile_educationInstitution", "University of Rwanda");
+  h.data.set("profile_educationCompletionYear", "2020");
+  assert.equal(validateCommitmentProfile(config, {}, h.data).ok, true);
+
+  h.data.set("profile_highestEducationLevel", "other");
+  assert.equal(validateCommitmentProfile(config, {}, h.data).ok, false);
+  h.data.set("profile_otherEducationLevel", "Certificate in Accounting");
+  assert.equal(validateCommitmentProfile(config, {}, h.data).ok, true);
+
+  h.data.set("profile_highestEducationLevel", "primary");
+  h.data.delete("profile_otherEducationLevel");
+  h.data.delete("profile_educationFieldOfStudy");
+  h.data.delete("profile_educationInstitution");
+  h.data.delete("profile_educationCompletionYear");
+  assert.equal(validateCommitmentProfile(config, {}, h.data).ok, true);
+});
+
+test("education year is validated and converted to a number when a commitment profile is updated", () => {
+  const config: CommitmentSettings = {
+    ...configuration(),
+    profileFields: [{ key: "educationCompletionYear", editable: true, required: true, requiresApproval: false }],
+  };
+  const h = harness(config);
+  h.data.set("profile_educationCompletionYear", "2020");
+  const valid = validateCommitmentProfile(config, {}, h.data);
+  assert.equal(valid.ok, true);
+  if (valid.ok) {
+    assert.deepEqual(commitmentProfileUpdate(valid.changes), { educationCompletionYear: 2020 });
+  }
+
+  h.data.set("profile_educationCompletionYear", "20x0");
+  assert.equal(validateCommitmentProfile(config, {}, h.data).ok, false);
 });
 
 test("read-only tampering and arbitrary profile keys never change the accepted information", () => {

@@ -10,6 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { getSystemSetting, isRegistrationEnabled, settingToNumber } from "@/lib/system-settings";
 import { notifyUsers, userIdsWithPermission } from "@/lib/notifications";
 import { authPathWithReturnTo, safeAuthReturnPath } from "@/lib/auth-return-path";
+import { educationFieldsSchema, parseAdditionalQualifications } from "@/lib/education-rules";
 
 type AuthState = {
   error?: string;
@@ -94,6 +95,7 @@ const registerSchema = z
     sector: z.string().trim().min(1, "Sector is required."),
     cell: z.string().trim().min(1, "Cell is required."),
     village: z.string().trim().min(1, "Village is required."),
+    occupation: z.string().trim().max(120, "Occupation must be 120 characters or fewer.").optional(),
     password: z.string().min(6, "Password must be at least 6 characters."),
     confirmPassword: z.string(),
   })
@@ -222,6 +224,27 @@ export async function completeGoogleProfileAction(
     return { error: parsed.error.issues[0]?.message ?? "Complete all required details." };
   }
 
+  const profileValues = Object.fromEntries(formData);
+  let educationData;
+  try {
+    const parsedEducation = educationFieldsSchema.safeParse({
+      highestEducationLevel: profileValues.highestEducationLevel,
+      otherEducationLevel: profileValues.otherEducationLevel ?? "",
+      educationFieldOfStudy: profileValues.educationFieldOfStudy ?? "",
+      educationInstitution: profileValues.educationInstitution ?? "",
+      educationCompletionYear: profileValues.educationCompletionYear ?? "",
+      additionalQualifications: parseAdditionalQualifications(profileValues.additionalQualifications),
+    });
+    if (!parsedEducation.success) {
+      return { error: parsedEducation.error.issues[0]?.message ?? "Invalid educational information." };
+    }
+    educationData = parsedEducation.data;
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Invalid additional qualifications." };
+  }
+
+  const hasEducationDetails =
+    educationData.highestEducationLevel !== "none" && educationData.highestEducationLevel !== "primary";
   await prisma.user.update({
     where: { id: user.id },
     data: {
@@ -236,6 +259,16 @@ export async function completeGoogleProfileAction(
       sector: parsed.data.sector,
       cell: parsed.data.cell,
       village: parsed.data.village,
+      highestEducationLevel: educationData.highestEducationLevel,
+      otherEducationLevel: educationData.highestEducationLevel === "other" ? educationData.otherEducationLevel : null,
+      educationFieldOfStudy: hasEducationDetails ? educationData.educationFieldOfStudy : null,
+      educationInstitution: hasEducationDetails ? educationData.educationInstitution : null,
+      educationCompletionYear: !hasEducationDetails
+        ? null
+        : Number(educationData.educationCompletionYear),
+      educationQualifications: educationData.additionalQualifications.length
+        ? { create: educationData.additionalQualifications }
+        : undefined,
     },
   });
 
@@ -276,11 +309,33 @@ export async function registerAction(
     return { error: "Public registration is currently disabled." };
   }
 
-  const parsed = registerSchema.safeParse(Object.fromEntries(formData));
+  const registrationValues = Object.fromEntries(formData);
+  const parsed = registerSchema.safeParse(registrationValues);
 
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid registration details." };
   }
+
+  let educationData;
+  try {
+    const parsedEducation = educationFieldsSchema.safeParse({
+      highestEducationLevel: registrationValues.highestEducationLevel,
+      otherEducationLevel: registrationValues.otherEducationLevel ?? "",
+      educationFieldOfStudy: registrationValues.educationFieldOfStudy ?? "",
+      educationInstitution: registrationValues.educationInstitution ?? "",
+      educationCompletionYear: registrationValues.educationCompletionYear ?? "",
+      additionalQualifications: parseAdditionalQualifications(registrationValues.additionalQualifications),
+    });
+    if (!parsedEducation.success) {
+      return { error: parsedEducation.error.issues[0]?.message ?? "Invalid educational information." };
+    }
+    educationData = parsedEducation.data;
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Invalid additional qualifications." };
+  }
+
+  const hasEducationDetails =
+    educationData.highestEducationLevel !== "none" && educationData.highestEducationLevel !== "primary";
 
   const passwordMinLength = settingToNumber(passwordMinLengthSetting, 6);
   if (parsed.data.password.length < passwordMinLength) {
@@ -326,6 +381,17 @@ export async function registerAction(
         sector: parsed.data.sector,
         cell: parsed.data.cell,
         village: parsed.data.village,
+        occupation: parsed.data.occupation || null,
+        highestEducationLevel: educationData.highestEducationLevel,
+        otherEducationLevel: educationData.highestEducationLevel === "other" ? educationData.otherEducationLevel : null,
+        educationFieldOfStudy: hasEducationDetails ? educationData.educationFieldOfStudy : null,
+        educationInstitution: hasEducationDetails ? educationData.educationInstitution : null,
+        educationCompletionYear: !hasEducationDetails
+          ? null
+          : Number(educationData.educationCompletionYear),
+        educationQualifications: educationData.additionalQualifications.length
+          ? { create: educationData.additionalQualifications }
+          : undefined,
         passwordHash,
         status: firstUser ? "active" : "pending",
         roles: {

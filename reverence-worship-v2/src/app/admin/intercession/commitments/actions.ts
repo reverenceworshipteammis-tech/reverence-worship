@@ -10,7 +10,7 @@ import { loadCommitmentReports, settingsObject } from "@/lib/membership-commitme
 import { intercessionFormAvailability, parseIntercessionFormSettings } from "@/lib/intercession-form-domain";
 
 export async function sendCommitmentReminders(year: number) {
-  const admin = await requireAnyPermission("intercession", ["manage-forms", "edit-forms"], "/admin/intercession");
+  const admin = await requireAnyPermission("intercession", ["manage-forms", "edit-forms"], "/admin/forms/commitments");
   if (!Number.isInteger(year) || year < 2000 || year > 2200) return { ok: false, message: "Select a valid commitment year." };
   const report = await loadCommitmentReports(year);
   if (report.year !== year) return { ok: false, message: "No commitment form exists for this year." };
@@ -33,7 +33,7 @@ export async function sendCommitmentReminders(year: number) {
     const groups = available.map((form) => ({ form, ids: recipients.filter((recipient) => recipient.formId === form.id).map((recipient) => recipient.userId) })).filter((group) => group.ids.length);
     await Promise.allSettled(groups.map(({ form, ids }) => notifyUsers({
       userIds: ids, type: "form", title: `Membership commitment ${year}`, message: `Please review your information and accept your membership commitment for ${year}.`,
-      link: `/admin/intercession/forms/${form.id}/take`, sourceType: "spiritual_form", sourceId: form.id, dedupeKey: `commitment:${year}:reminder:${kigaliDateKey()}`,
+      link: `/admin/forms/${form.id}/take`, sourceType: "spiritual_form", sourceId: form.id, dedupeKey: `commitment:${year}:reminder:${kigaliDateKey()}`,
     })));
   });
   return { ok: true, message: `Reminders queued for ${recipients.length} pending member${recipients.length === 1 ? "" : "s"}. Reminders are limited to one per member per day.` };

@@ -7,7 +7,7 @@ const globalForPrisma = globalThis as unknown as {
   prismaSchemaVersion?: string;
 };
 
-const PRISMA_SCHEMA_VERSION = "2026-10-19-annual-commitments-v11";
+const PRISMA_SCHEMA_VERSION = "2026-10-22-education-profiles-v12";
 
 function databaseUrl() {
   // The application should use the pooled URL. DIRECT_URL is reserved for
@@ -63,7 +63,8 @@ const canReusePrisma =
   "passwordResetToken" in existingPrisma &&
   "probation" in existingPrisma &&
   "probationExtension" in existingPrisma &&
-  "probationDecisionRequest" in existingPrisma;
+  "probationDecisionRequest" in existingPrisma &&
+  "educationQualification" in existingPrisma;
 
 export const prisma =
   canReusePrisma

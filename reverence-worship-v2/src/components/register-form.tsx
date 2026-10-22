@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useActionState } from "react";
 import {
   ArrowLeft,
+  BriefcaseBusiness,
   Calendar,
   CheckCircle2,
   Clock3,
@@ -20,6 +21,7 @@ import {
 } from "lucide-react";
 import { registerAction } from "@/app/auth-actions";
 import { AuthFormButton } from "@/components/auth-form-button";
+import { EducationFields } from "@/components/education-fields";
 import { PasswordField } from "@/components/password-field";
 
 function Field({
@@ -28,21 +30,23 @@ function Field({
   type = "text",
   placeholder,
   icon: Icon,
+  optional = false,
 }: {
   label: string;
   name: string;
   type?: string;
   placeholder: string;
   icon: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
+  optional?: boolean;
 }) {
   return (
     <div>
       <label className="mb-1 block text-xs font-semibold text-gray-700" htmlFor={name}>
-        {label} <span className="text-red-500">*</span>
+        {label} {!optional && <span className="text-red-500">*</span>}
       </label>
       <div className="relative">
         <Icon className="auth-field-icon size-4" aria-hidden />
-        <input id={name} name={name} type={type} required className="auth-field" placeholder={placeholder} />
+        <input id={name} name={name} type={type} required={!optional} className="auth-field" placeholder={placeholder} />
       </div>
     </div>
   );
@@ -187,7 +191,7 @@ export function RegisterForm() {
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div>
           <h2 className="auth-display text-2xl font-extrabold text-gray-900">Create Account</h2>
-          <p className="mt-1 text-sm text-gray-500">All fields are required.</p>
+          <p className="mt-1 text-sm text-gray-500">All marked fields are required. Additional qualifications are optional.</p>
         </div>
         <Link
           href="/"
@@ -232,6 +236,8 @@ export function RegisterForm() {
           <Field label="Sector" name="sector" placeholder="Sector" icon={MapPin} />
           <Field label="Cell" name="cell" placeholder="Cell" icon={MapPin} />
           <Field label="Village" name="village" placeholder="Village" icon={Home} />
+          <Field label="Occupation" name="occupation" placeholder="e.g., Teacher or Accountant" icon={BriefcaseBusiness} optional />
+          <EducationFields idPrefix="registration-education" inline />
         </div>
 
         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">

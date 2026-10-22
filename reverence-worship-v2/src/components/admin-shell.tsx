@@ -61,6 +61,7 @@ type NavItem = {
   href: string;
   page: string;
   feature?: string;
+  anyFeatures?: string[];
   icon: LucideIcon;
   active?: boolean;
   memberOnly?: boolean;
@@ -74,8 +75,8 @@ const navGroups: Array<{ label: string; items: NavItem[] }> = [
       { label: "My Performance", href: "/admin/performance", page: "performance", icon: BarChart3, memberOnly: true },
       { label: "My Contribution", href: "/admin/contributions", page: "contributions", icon: HandCoins, memberOnly: true },
       { label: "My Family", href: "/admin/family", page: "family", icon: Home, memberOnly: true },
-      { label: "Read Bible", href: "/admin/intercession?tab=bible", page: "intercession", feature: "read-bible", icon: BookOpen },
-      { label: "Forms", href: "/admin/intercession?tab=forms", page: "intercession", feature: "submit-forms", icon: FileText },
+      { label: "Read Bible", href: "/admin/bible", page: "intercession", feature: "read-bible", icon: BookOpen },
+      { label: "Forms", href: "/admin/forms", page: "intercession", anyFeatures: ["submit-forms", "create-forms", "manage-forms", "edit-forms", "view-submissions", "view-results", "view-reports", "export-reports"], icon: FileText },
       { label: "Playlists & Songs", href: "/admin/music?tab=playlist", page: "music-ministry", feature: "view-playlists", icon: ListMusic },
       { label: "Announcements", href: "/admin/announcements", page: "announcements", feature: "view", icon: Megaphone },
       { label: "Permission Request", href: "/admin/discipline?tab=permission", page: "discipline", feature: "view-own-permission-requests", icon: MailOpen },
@@ -95,7 +96,7 @@ const navGroups: Array<{ label: string; items: NavItem[] }> = [
 
 const mobileNavItems = [
   { label: "Home", href: "/admin/dashboard", page: "dashboard", icon: Gauge },
-  { label: "Bible", href: "/admin/intercession?tab=bible", page: "intercession", feature: "read-bible", icon: BookOpen },
+  { label: "Bible", href: "/admin/bible", page: "intercession", feature: "read-bible", icon: BookOpen },
   { label: "Playlists & Songs", href: "/admin/music?tab=playlist", page: "music-ministry", feature: "view-playlists", icon: ListMusic },
   { label: "Giving", href: "/admin/contributions", page: "contributions", icon: HandCoins },
   { label: "Progress", href: "/admin/performance", page: "performance", icon: BarChart3 },
@@ -109,6 +110,9 @@ function hasPagePermission(permissions: string[], page: string) {
 }
 
 function hasNavPermission(permissions: string[], item: NavItem) {
+  if (item.anyFeatures) {
+    return permissions.includes("*") || item.anyFeatures.some((feature) => permissions.includes(`${item.page}.${feature}`));
+  }
   return item.feature
     ? permissions.includes("*") || permissions.includes(`${item.page}.${item.feature}`)
     : hasPagePermission(permissions, item.page);

@@ -43,7 +43,7 @@ export function IntercessionResponseManagement({ form, onNotice }: { form: Respo
   }
 
   async function copyFormLink() {
-    const path = form.requireLogin ? `/admin/intercession/forms/${form.id}/take` : `/forms/${form.id}`;
+    const path = form.requireLogin ? `/admin/forms/${form.id}/take` : `/forms/${form.id}`;
     await navigator.clipboard.writeText(`${window.location.origin}${path}`);
     onNotice({ ok: true, message: "Form link copied." });
   }
@@ -58,8 +58,8 @@ export function IntercessionResponseManagement({ form, onNotice }: { form: Respo
           </button>
         ) : null}
         <button type="button" onClick={() => void copyFormLink()} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"><Copy className="size-4" aria-hidden="true" />Copy form link</button>
-        <Link href={`/admin/intercession/forms/${form.id}/edit`} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100">Preview / edit</Link>
-        {form.allowExport ? <a href={`/admin/intercession/forms/${form.id}/submissions/export`} className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"><FileSpreadsheet className="size-4" aria-hidden="true" />Download Excel</a> : null}
+        <Link href={`/admin/forms/${form.id}/edit`} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100">Preview / edit</Link>
+        {form.allowExport ? <a href={`/admin/forms/${form.id}/submissions/export`} className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"><FileSpreadsheet className="size-4" aria-hidden="true" />Download Excel</a> : null}
         {form.canManageResponses ? <button type="button" disabled={pending} onClick={() => run(() => sendFormResponseReminders(form.id))} className="inline-flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-100 disabled:opacity-50"><BellRing className="size-4" aria-hidden="true" />Send reminders</button> : null}
         <button type="button" onClick={() => setShareOpen(true)} className="inline-flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-700 hover:bg-sky-100"><Share2 className="size-4" aria-hidden="true" />Share summary</button>
         {form.canManageResponses ? <button type="button" onClick={() => setPreferencesOpen(true)} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"><Settings2 className="size-4" aria-hidden="true" />Response settings</button> : null}

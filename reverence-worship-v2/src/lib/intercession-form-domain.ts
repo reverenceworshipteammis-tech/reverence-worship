@@ -19,6 +19,22 @@ export function formatIntercessionMarks(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
+export function intercessionScoreMarks(value: unknown) {
+  if (!Array.isArray(value)) return null;
+  let earned = 0;
+  let total = 0;
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const grade = item as Record<string, unknown>;
+    const points = Number(grade.points);
+    if (!Number.isFinite(points) || points <= 0) continue;
+    const earnedPoints = Number(grade.earnedPoints);
+    total += points;
+    earned += Number.isFinite(earnedPoints) ? earnedPoints : grade.correct ? points : 0;
+  }
+  return total > 0 ? `${formatIntercessionMarks(earned)}/${formatIntercessionMarks(total)}` : null;
+}
+
 export const INTERCESSION_VISITOR_FIELD_TYPES = ["text", "phone", "email", "number", "date", "select", "checkboxes"] as const;
 export type IntercessionVisitorFieldType = typeof INTERCESSION_VISITOR_FIELD_TYPES[number];
 

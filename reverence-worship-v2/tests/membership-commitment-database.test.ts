@@ -137,6 +137,15 @@ test("commitment database transactions, concurrent acceptance, and immutable his
       assert.equal(await client.membershipCommitment.count({ where: { userId: rollbackMember.id } }), 0);
       assert.equal(await client.formSubmission.count(), countBefore);
     });
+    await t.test("permanently deleting a response also removes its accepted commitment", async () => {
+      assert.ok(record.submissionId);
+      await client.$transaction(async (tx) => {
+        await tx.membershipCommitment.deleteMany({ where: { submissionId: record.submissionId! } });
+        await tx.formSubmission.delete({ where: { id: record.submissionId! } });
+      });
+      assert.equal(await client.membershipCommitment.findUnique({ where: { id: record.id } }), null);
+      assert.equal(await client.formSubmission.findUnique({ where: { id: record.submissionId! } }), null);
+    });
   } finally {
     await client.$disconnect();
     await database.query("ROLLBACK");

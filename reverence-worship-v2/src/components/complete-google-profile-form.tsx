@@ -5,6 +5,8 @@ import { useActionState } from "react";
 import { Calendar, Heart, Home, Mail, Map, MapPin, Phone, User, Users } from "lucide-react";
 import { completeGoogleProfileAction } from "@/app/auth-actions";
 import { AuthFormButton } from "@/components/auth-form-button";
+import { EducationFields } from "@/components/education-fields";
+import type { EducationQualification } from "@/lib/education-rules";
 
 type CompleteGoogleProfileFormProps = {
   returnTo: string;
@@ -20,6 +22,12 @@ type CompleteGoogleProfileFormProps = {
     sector: string | null;
     cell: string | null;
     village: string | null;
+    highestEducationLevel: string | null;
+    otherEducationLevel: string | null;
+    educationFieldOfStudy: string | null;
+    educationInstitution: string | null;
+    educationCompletionYear: number | null;
+    additionalQualifications: EducationQualification[];
   };
 };
 
@@ -153,6 +161,17 @@ export function CompleteGoogleProfileForm({ user, returnTo }: CompleteGoogleProf
           <Field label="Cell" name="cell" defaultValue={user.cell} placeholder="Cell" icon={MapPin} />
           <Field label="Village" name="village" defaultValue={user.village} placeholder="Village" icon={Home} />
         </div>
+        <EducationFields
+          idPrefix="google-profile-education"
+          initialValues={{
+            highestEducationLevel: user.highestEducationLevel ?? "",
+            otherEducationLevel: user.otherEducationLevel ?? "",
+            educationFieldOfStudy: user.educationFieldOfStudy ?? "",
+            educationInstitution: user.educationInstitution ?? "",
+            educationCompletionYear: user.educationCompletionYear?.toString() ?? "",
+            additionalQualifications: user.additionalQualifications,
+          }}
+        />
       </div>
 
       <div className="mt-5">

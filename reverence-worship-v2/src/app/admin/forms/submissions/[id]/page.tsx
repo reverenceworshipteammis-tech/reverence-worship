@@ -1,0 +1,285 @@
+import Link from "next/link";
+import { notFound, redirect } from "next/navigation";
+import { ArrowLeft, CalendarDays, CheckCircle2, FileText, Lock } from "lucide-react";
+import { requireUser } from "@/lib/auth";
+import {
+  memberCanViewScore,
+  memberResultLabel,
+  memberResultState,
+} from "@/lib/intercession-result-rules";
+import { prisma } from "@/lib/prisma";
+import { IntercessionRichText } from "@/components/intercession-rich-text";
+import { IntercessionQuestionImages } from "@/components/intercession-question-images";
+import { parseQuestionImages, type IntercessionQuestionImage } from "@/lib/intercession-question-images";
+import { formatIntercessionMarks, intercessionPartialCreditWasDeducted } from "@/lib/intercession-form-domain";
+
+type Question = {
+  index: number;
+  type: string;
+  label: string;
+  description: string;
+  rows: string[];
+  correctAnswer: string;
+  correctAnswers: string[] | Record<string, string | string[]>;
+  images: IntercessionQuestionImage[];
+};
+
+function asObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function asStringArray(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function parseQuestions(value: unknown): Question[] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((value, index) => {
+      const question = asObject(value);
+      return {
+        index,
+        type: String(question.type ?? "short_answer"),
+        label: String(question.label ?? question.text ?? `Question ${index + 1}`),
+        description: typeof question.description === "string" ? question.description : "",
+        rows: asStringArray(question.rows),
+        correctAnswer: typeof question.correctAnswer === "string" ? question.correctAnswer : "",
+        correctAnswers: Array.isArray(question.correctAnswers)
+          ? asStringArray(question.correctAnswers)
+          : Object.fromEntries(Object.entries(asObject(question.correctAnswers)).map(([key, answer]) => [key, Array.isArray(answer) ? asStringArray(answer) : typeof answer === "string" ? answer : ""])),
+        images: parseQuestionImages(question.images),
+      };
+    })
+    .filter((question) => question.type !== "title_section" && question.type !== "section_break");
+}
+
+function correctAnswerText(question: Question) {
+  if (question.type === "checkboxes" && Array.isArray(question.correctAnswers)) return question.correctAnswers.join(", ");
+  if (!["multiple_choice_grid", "checkbox_grid"].includes(question.type)) return question.correctAnswer;
+  const gridAnswers = Object.entries(question.correctAnswers).map(([key, answer], index) => {
+    const rowIndex = Number(key.match(/_(\d+)$/)?.[1] ?? index);
+    const rowLabel = question.rows[rowIndex] ?? `Row ${rowIndex + 1}`;
+    const answerText = Array.isArray(answer) ? answer.join(", ") : answer;
+    return `${rowLabel}: ${answerText}`;
+  });
+  return gridAnswers.length ? gridAnswers.join("\n") : question.correctAnswer;
+}
+
+function answerText(value: unknown, rows: string[]) {
+  if (Array.isArray(value)) {
+    const answers = value.map(String).filter(Boolean);
+    return answers.length ? answers.join(", ") : "No answer submitted.";
+  }
+
+  if (value && typeof value === "object") {
+    const lines = Object.entries(value as Record<string, unknown>).map(([key, rowAnswer], index) => {
+      const rowIndex = Number(key.match(/_(\d+)$/)?.[1] ?? index);
+      const label = rows[rowIndex] ?? `Row ${rowIndex + 1}`;
+      const formatted = Array.isArray(rowAnswer)
+        ? rowAnswer.map(String).filter(Boolean).join(", ")
+        : String(rowAnswer ?? "");
+      return `${label}: ${formatted || "No answer"}`;
+    });
+    return lines.length ? lines.join("\n") : "No answer submitted.";
+  }
+
+  const answer = String(value ?? "").trim();
+  return answer || "No answer submitted.";
+}
+
+function manualGradeFor(value: unknown, questionIndex: number) {
+  if (!Array.isArray(value)) return null;
+  const grade = value.find((item) =>
+    Boolean(item) &&
+    typeof item === "object" &&
+    Number((item as Record<string, unknown>).questionIndex) === questionIndex,
+  );
+  return grade && typeof grade === "object"
+    ? Boolean((grade as Record<string, unknown>).correct)
+    : null;
+}
+
+function earnedPointsFor(value: unknown, questionIndex: number) {
+  if (!Array.isArray(value)) return null;
+  const grade = value.find((item) => item && typeof item === "object" && Number((item as Record<string, unknown>).questionIndex) === questionIndex);
+  if (!grade || typeof grade !== "object") return null;
+  const record = grade as Record<string, unknown>;
+  const earned = Number(record.earnedPoints);
+  return Number.isFinite(earned) ? Math.round(earned * 100) / 100 : record.correct ? Number(record.points ?? 1) : 0;
+}
+
+function pointsFor(value: unknown, questionIndex: number) {
+  if (!Array.isArray(value)) return null;
+  const grade = value.find((item) => item && typeof item === "object" && Number((item as Record<string, unknown>).questionIndex) === questionIndex);
+  if (!grade || typeof grade !== "object") return null;
+  const points = Number((grade as Record<string, unknown>).points);
+  return Number.isFinite(points) ? points : null;
+}
+
+function scorePointsFor(value: unknown) {
+  if (!Array.isArray(value)) return { earned: 0, total: 0 };
+  return value.reduce((sum, item) => {
+    const grade = asObject(item);
+    const points = Number(grade.points ?? 0);
+    const earned = Number(grade.earnedPoints);
+    return {
+      earned: sum.earned + (Number.isFinite(earned) ? earned : grade.correct ? points : 0),
+      total: sum.total + (Number.isFinite(points) ? points : 0),
+    };
+  }, { earned: 0, total: 0 });
+}
+
+function formatDateTime(date: Date) {
+  return new Intl.DateTimeFormat("en", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Africa/Kigali",
+  }).format(date);
+}
+
+export default async function MemberSubmissionResultPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const user = await requireUser();
+  const { id } = await params;
+  const submissionId = Number(id);
+
+  if (!Number.isInteger(submissionId) || submissionId <= 0) notFound();
+
+  const submission = await prisma.formSubmission.findFirst({
+    where: { id: submissionId, userId: user.id, deletedAt: null },
+    include: { form: true, commitment: { select: { id: true } } },
+  });
+
+  if (!submission) notFound();
+  if (submission.commitment) redirect(`/admin/forms/commitments/${submission.commitment.id}`);
+
+  const settings = asObject(submission.form.settings);
+  const answers = asObject(submission.answers);
+  const questions = parseQuestions(submission.questionSnapshot ?? submission.form.questions);
+  const allowViewResponse = settings.allow_view_response !== false;
+  const showQuestionNumbers = settings.show_question_numbers !== false;
+  const showCorrectAnswers = settings.show_correct_answers !== false;
+  const allowPartialPoints = settings.allow_partial_points !== false;
+  const resultInput = {
+    isQuiz: Boolean(settings.is_quiz),
+    releaseGrade: String(settings.release_grade ?? "never"),
+    score: submission.score,
+    isReleased: submission.isReleased,
+  };
+  const resultState = memberResultState(resultInput);
+  const canViewScore = memberCanViewScore(resultInput);
+  const scorePoints = scorePointsFor(submission.manualGrades);
+
+  return (
+    <div className="mx-auto max-w-5xl px-3 py-5 sm:px-4 sm:py-8">
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-sky-100 bg-gradient-to-br from-white via-sky-50 to-cyan-50/40 px-5 py-6 sm:px-8">
+          <Link
+            href="/admin/forms?section=results"
+            className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-sky-700 transition hover:text-sky-900"
+          >
+            <ArrowLeft className="size-4" aria-hidden="true" />
+            Back to My Results
+          </Link>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-sky-700">Your submission</p>
+              <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl"><IntercessionRichText value={submission.form.title} /></h1>
+              {submission.form.description ? (
+                <p className="mt-2 text-sm leading-6 text-slate-600"><IntercessionRichText value={submission.form.description} /></p>
+              ) : null}
+              <p className="mt-3 inline-flex items-center gap-2 text-sm text-slate-500">
+                <CalendarDays className="size-4" aria-hidden="true" />
+                Submitted {formatDateTime(submission.submittedAt)}
+              </p>
+            </div>
+            <span className="inline-flex shrink-0 items-center gap-2 self-start rounded-full bg-green-100 px-3 py-1.5 text-sm font-semibold text-green-700">
+              <CheckCircle2 className="size-4" aria-hidden="true" />
+              {canViewScore && scorePoints.total > 0 ? `${formatIntercessionMarks(scorePoints.earned)} / ${formatIntercessionMarks(scorePoints.total)}` : memberResultLabel(resultState)}
+            </span>
+          </div>
+        </div>
+
+        {resultInput.isQuiz && !canViewScore ? (
+          <div className="border-b border-slate-200 bg-slate-50 px-5 py-4 text-sm text-slate-600 sm:px-8">
+            {resultState === "awaiting_review"
+              ? "Your submission is awaiting review."
+              : resultState === "pending_release"
+                ? "Your result has been reviewed and is waiting to be released."
+                : "The score for this form is private."}
+          </div>
+        ) : null}
+
+        <div className="bg-slate-50 p-5 sm:p-8">
+          {allowViewResponse ? (
+            <div>
+              <div className="mb-5 flex items-center gap-2">
+                <FileText className="size-5 text-blue-600" aria-hidden="true" />
+                <h2 className="text-lg font-bold text-slate-900">Your responses</h2>
+              </div>
+              <div className="space-y-4">
+                {questions.map((question, displayIndex) => {
+                  const grade = canViewScore
+                    ? manualGradeFor(submission.manualGrades, question.index)
+                    : null;
+                  const awardedPoints = canViewScore ? earnedPointsFor(submission.manualGrades, question.index) : null;
+                  const questionPoints = canViewScore ? pointsFor(submission.manualGrades, question.index) : null;
+                  return (
+                    <article key={question.index} className="rounded-xl border border-slate-200 bg-white p-5">
+                      <div className="flex items-start justify-between gap-3">
+                        <h3 className="font-semibold text-slate-900">
+                          {showQuestionNumbers ? <span className="mr-2 text-blue-600">{displayIndex + 1}.</span> : null}
+                          <IntercessionRichText value={question.label} />
+                        </h3>
+                        {grade !== null ? (
+                          <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${
+                            grade ? "bg-green-100 text-green-700" : awardedPoints && awardedPoints > 0 ? "bg-blue-100 text-blue-700" : "bg-red-100 text-red-700"
+                          }`}>
+                            {awardedPoints !== null && questionPoints !== null ? formatIntercessionMarks(awardedPoints) + " / " + formatIntercessionMarks(questionPoints) : "Scored"}
+                          </span>
+                        ) : null}
+                      </div>
+                      {question.description ? (
+                        <p className="mt-1 whitespace-pre-line text-sm text-slate-500">{question.description}</p>
+                      ) : null}
+                      <IntercessionQuestionImages images={question.images} className="mt-4" />
+                      <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                        <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Answer</p>
+                        {question.type === "file_upload" && typeof answers[`question_${question.index}`] === "string" && String(answers[`question_${question.index}`]).startsWith("/") ? <a href={String(answers[`question_${question.index}`])} target="_blank" rel="noreferrer" className="text-sm font-semibold text-blue-700 underline underline-offset-2">Open uploaded file</a> : question.type === "file_upload" && /^https?:\/\//.test(String(answers[`question_${question.index}`] ?? "")) ? <a href={String(answers[`question_${question.index}`])} target="_blank" rel="noreferrer" className="text-sm font-semibold text-blue-700 underline underline-offset-2">Open uploaded file</a> : <p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-800">{answerText(answers[`question_${question.index}`], question.rows)}</p>}
+                      </div>
+                      {resultInput.isQuiz && canViewScore && showCorrectAnswers && correctAnswerText(question) ? (
+                        <div className="mt-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3">
+                          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-green-700">Correct response</p>
+                          <p className="whitespace-pre-wrap break-words text-sm leading-6 text-green-900">{correctAnswerText(question)}</p>
+                        </div>
+                      ) : null}
+                      {resultInput.isQuiz && canViewScore && allowPartialPoints && intercessionPartialCreditWasDeducted(question, answers[`question_${question.index}`], question.index) ? (
+                        <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-5 text-amber-900">
+                          Marking rule: If you choose one wrong answer, you lose the credit for one correct answer.
+                        </p>
+                      ) : null}
+                    </article>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-center">
+              <Lock className="mx-auto mb-3 size-8 text-amber-600" aria-hidden="true" />
+              <h2 className="font-semibold text-amber-900">Response review is unavailable</h2>
+              <p className="mt-1 text-sm text-amber-700">The form owner has disabled viewing submitted answers.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

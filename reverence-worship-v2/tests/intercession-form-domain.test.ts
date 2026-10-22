@@ -7,6 +7,7 @@ import {
   intercessionLifecycleDate,
   intercessionGuestFieldConfigurationIssue,
   normalizeIntercessionRespondentName,
+  intercessionScoreMarks,
   parseIntercessionVisitorDetails,
   parseIntercessionVisitorFields,
   parseIntercessionFormQuestions,
@@ -61,6 +62,27 @@ test("conditional grid questions can target a row and value", () => {
   ]);
   assert.deepEqual(visibleIntercessionQuestions(questions, { grid: { row_0: "Good" } }).map((item) => item.question.id), ["grid"]);
   assert.deepEqual(visibleIntercessionQuestions(questions, { grid: { row_0: "Poor" } }).map((item) => item.question.id), ["grid", "follow"]);
+});
+
+test("choice options are normalized consistently before rendering and validation", () => {
+  const [question] = parseIntercessionFormQuestions([{
+    id: "commitment-service",
+    type: "checkboxes",
+    label: "Commitment",
+    options: ["  Gutanga inkunga y’amafaranga  ", "", "  Gushyigikira ibikororwa  "],
+  }]);
+  assert.deepEqual(question.options, ["Gutanga inkunga y’amafaranga", "Gushyigikira ibikororwa"]);
+});
+
+test("quiz score marks format as earned points over possible points", () => {
+  assert.equal(intercessionScoreMarks([
+    { points: 2, earnedPoints: 1.5 },
+    { points: 3, earnedPoints: 3 },
+    { points: 5, earnedPoints: 0 },
+  ]), "4.5/10");
+  assert.equal(intercessionScoreMarks([{ points: 1, correct: true }]), "1/1");
+  assert.equal(intercessionScoreMarks([]), null);
+  assert.equal(intercessionScoreMarks(null), null);
 });
 
 test("quiz scoring supports exact and partial checkbox marks", () => {
