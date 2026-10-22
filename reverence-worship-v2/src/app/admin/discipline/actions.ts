@@ -829,7 +829,7 @@ export async function savePermissionRequest(formData: FormData) {
   }
 
   if (!(Number.isFinite(id) && id > 0)) {
-    await notifyUsers({ userIds: await userIdsWithPermission("discipline", "approve-permission-requests"), type: "permission", title: "Permission request submitted", message: PERMISSION_REQUEST_SUBMITTED_MESSAGE, link: "/admin/discipline?tab=permission&status=pending", sourceType: "permission_request", sourceId: request.id, dedupeKey: `permission:${request.id}:submitted` });
+    await notifyUsers({ userIds: await userIdsWithPermission("discipline", "approve-permission-requests"), type: "permission", title: "Permission request submitted", message: PERMISSION_REQUEST_SUBMITTED_MESSAGE, link: "/admin/discipline?tab=permission&status=pending", sourceType: "permission_request", sourceId: request.id, dedupeKey: `permission:${request.id}:submitted`, includeConfiguredRecipients: true });
   }
   await prisma.activityLog.create({
     data: {

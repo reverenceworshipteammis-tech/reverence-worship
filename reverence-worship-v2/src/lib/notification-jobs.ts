@@ -132,6 +132,7 @@ export async function runScheduledNotificationJobs() {
         sourceType: "probation",
         sourceId: probation.id,
         dedupeKey: `probation:${probation.id}:review:${daysRemaining}-days:leaders`,
+        includeConfiguredRecipients: true,
       });
       results.probationReminders += 1;
     } else if (daysRemaining < 0) {
@@ -144,6 +145,7 @@ export async function runScheduledNotificationJobs() {
         sourceType: "probation",
         sourceId: probation.id,
         dedupeKey: `probation:${probation.id}:overdue:${todayKey}`,
+        includeConfiguredRecipients: true,
       });
       results.probationReminders += 1;
     }
@@ -158,6 +160,7 @@ export async function runScheduledNotificationJobs() {
       userIds: await userIdsForAnnouncement(updated.targetType, updated.targetRoles, updated.targetUsers),
       type: "announcement", title: updated.title, message: updated.content, link: "/admin/announcements",
       sourceType: "announcement", sourceId: updated.id, dedupeKey: `announcement:${updated.id}:scheduled`,
+      includeConfiguredRecipients: true,
     });
     results.announcements += 1;
   }
@@ -198,6 +201,7 @@ export async function runScheduledNotificationJobs() {
       link: `/admin/${task.actionPlan.department === "social-fellowship" ? "social-fellowship" : task.actionPlan.department}`,
       sourceType: "action_plan_task", sourceId: task.id,
       dedupeKey: `action-task:${task.id}:${overdue ? `overdue:${todayKey}` : "due-soon"}`,
+      includeConfiguredRecipients: true,
     });
     results.taskReminders += userIds.length;
   }

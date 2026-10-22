@@ -415,6 +415,21 @@ function accountStatusNotification(action: "approve" | "activate" | "deactivate"
   };
 }
 
+function accountStatusTemplateVariables(oldStatus: string, newStatus: string) {
+  const label = (status: string) => status.charAt(0).toUpperCase() + status.slice(1);
+  return {
+    oldStatus: label(oldStatus),
+    newStatus: label(newStatus),
+  };
+}
+
+function accountRoleTemplateVariables(oldRoles: string[], newRoles: string[]) {
+  return {
+    oldRole: oldRoles.sort((left, right) => left.localeCompare(right)).join(", ") || "No role",
+    newRole: newRoles.sort((left, right) => left.localeCompare(right)).join(", ") || "No role",
+  };
+}
+
 export async function createUserAction(
   _previousState: UserActionState,
   formData: FormData,
@@ -480,6 +495,7 @@ export async function createUserAction(
     sourceType: "user",
     sourceId: createdUser.id,
     dedupeKey: `account:${createdUser.id}:created`,
+    event: "registration",
   });
   await prisma.activityLog.create({ data: { userId: admin.id, action: "users.created", module: "users", metadata: { affectedUserId: createdUser.id, status: createdUser.status } } });
 
@@ -648,7 +664,7 @@ export async function runUserTableAction(formData: FormData) {
     return { ok: false, message: "Super Admin is a protected system account and cannot be managed as a normal user." };
   }
 
-  const affectedUser = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, email: true, status: true } });
+  const affectedUser = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, name: true, email: true, status: true } });
   if (!affectedUser) return { ok: false, message: "User not found." };
   const probation = await prisma.probation.findFirst({
     where: { userId, state: { in: ["active", "extended"] } },
@@ -684,7 +700,7 @@ export async function runUserTableAction(formData: FormData) {
 
   if (action === "reject" || action === "delete") {
     if (action === "reject") {
-      await notifyEmailAddress(affectedUser.email, "Account registration rejected", "Your account registration was reviewed and rejected. Contact an administrator if you need more information.");
+      await notifyEmailAddress(affectedUser.email, "Account registration rejected", "Your account registration was reviewed and rejected. Contact an administrator if you need more information.", "account", "registration");
     }
     await prisma.user.delete({
       where: { id: userId },
@@ -706,6 +722,12 @@ export async function runUserTableAction(formData: FormData) {
       emailSubject: notification.emailSubject,
       emailText: notification.emailText,
       sendEmail: true,
+      templateVariables: accountStatusTemplateVariables(
+        affectedUser.status,
+        action === "deactivate" ? "inactive" : "active",
+      ),
+      templateVariant: "account_status",
+      event: "status_change",
     });
   }
   await prisma.activityLog.create({ data: { userId: (action === "delete" || action === "reject") && admin.id === userId ? null : admin.id, action: `users.${action}`, module: "users", metadata: { affectedUserId: userId } } });
@@ -736,6 +758,14 @@ export async function updateUserRoleAction(formData: FormData) {
   }
 
   const roleIds = await roleIdsPreservingProbation(userId, [roleId]);
+  const previousRoles = await prisma.userRole.findMany({
+    where: { userId },
+    select: { role: { select: { displayName: true } } },
+  });
+  const nextRoles = await prisma.role.findMany({
+    where: { id: { in: roleIds } },
+    select: { displayName: true },
+  });
 
   await prisma.userRole.deleteMany({ where: { userId } });
   await prisma.userRole.createMany({
@@ -747,6 +777,12 @@ export async function updateUserRoleAction(formData: FormData) {
     userIds: [userId], type: "account", title: "Role changed",
     message: "Your account role and access permissions were updated.", link: "/admin/dashboard",
     sourceType: "user", sourceId: userId, dedupeKey: `account:${userId}:role:${Date.now()}`,
+    event: "role_change",
+    templateVariables: accountRoleTemplateVariables(
+      previousRoles.map(({ role }) => role.displayName),
+      nextRoles.map((role) => role.displayName),
+    ),
+    templateVariant: "account_role",
   });
   await prisma.activityLog.create({ data: { userId: admin.id, action: "users.role-updated", module: "users", metadata: { affectedUserId: userId, roleIds } } });
 
@@ -771,7 +807,7 @@ export async function updateUserAction(
     return { ok: false, message: "Super Admin is a protected system account and cannot be edited from User Management." };
   }
 
-  const currentUser = await prisma.user.findUnique({ where: { id: parsed.data.userId }, select: { email: true, status: true } });
+  const currentUser = await prisma.user.findUnique({ where: { id: parsed.data.userId }, select: { name: true, email: true, status: true } });
   if (!currentUser) return { ok: false, message: "User not found." };
   const probation = await prisma.probation.findFirst({
     where: { userId: parsed.data.userId },
@@ -827,7 +863,7 @@ export async function updateUserAction(
 
   if (currentUser.email !== parsed.data.email) {
     await Promise.all([
-      notifyEmailAddress(currentUser.email, "Email address changed", `The email address on your Reverence Worship account was changed to ${parsed.data.email}. Contact an administrator immediately if you did not request this.`),
+      notifyEmailAddress(currentUser.email, "Email address changed", `The email address on your Reverence Worship account was changed to ${parsed.data.email}. Contact an administrator immediately if you did not request this.`, "security"),
       notifyUsers({ userIds: [parsed.data.userId], type: "security", title: "Email address changed", message: `Your account email was changed from ${currentUser.email}.`, link: "/admin/profile", sourceType: "user", sourceId: parsed.data.userId, dedupeKey: `account:${parsed.data.userId}:email:${Date.now()}` }),
     ]);
   }
@@ -860,6 +896,12 @@ export async function updateUserAction(
       emailSubject: notification.emailSubject,
       emailText: notification.emailText,
       sendEmail: true,
+      templateVariables: accountStatusTemplateVariables(
+        currentUser.status,
+        parsed.data.status,
+      ),
+      templateVariant: "account_status",
+      event: "status_change",
     });
   }
   await prisma.activityLog.create({ data: { userId: admin.id, action: "users.updated", module: "users", metadata: { affectedUserId: parsed.data.userId, emailChanged: currentUser.email !== parsed.data.email, statusChanged: currentUser.status !== parsed.data.status, passwordChanged: Boolean(passwordHash) } } });
@@ -892,6 +934,14 @@ export async function updateUserRolesAction(
   }
 
   const roleIds = await roleIdsPreservingProbation(userId, selectedRoleIds);
+  const previousRoles = await prisma.userRole.findMany({
+    where: { userId },
+    select: { role: { select: { displayName: true } } },
+  });
+  const nextRoles = await prisma.role.findMany({
+    where: { id: { in: roleIds } },
+    select: { displayName: true },
+  });
 
   await prisma.userRole.deleteMany({ where: { userId } });
 
@@ -906,6 +956,12 @@ export async function updateUserRolesAction(
     userIds: [userId], type: "account", title: "Roles or permissions changed",
     message: "Your roles and access permissions were updated.", link: "/admin/dashboard",
     sourceType: "user", sourceId: userId, dedupeKey: `account:${userId}:roles:${Date.now()}`,
+    event: "role_change",
+    templateVariables: accountRoleTemplateVariables(
+      previousRoles.map(({ role }) => role.displayName),
+      nextRoles.map((role) => role.displayName),
+    ),
+    templateVariant: "account_role",
   });
   await prisma.activityLog.create({ data: { userId: admin.id, action: "users.roles-updated", module: "users", metadata: { affectedUserId: userId, roleIds } } });
 

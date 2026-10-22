@@ -826,42 +826,46 @@ export async function updateSpiritualForm(formId: number, formData: FormData) {
 export async function toggleSpiritualFormPublish(formId: number) {
   await requireAnyPermission("intercession", ["publish-forms", "edit-forms"], "/admin/intercession");
 
-  const form = await prisma.spiritualForm.findUnique({
-    where: { id: formId },
-    select: { settings: true, title: true, questions: true },
-  });
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "forms" WHERE "id" = ${formId} FOR UPDATE`;
+    const form = await tx.spiritualForm.findUnique({
+      where: { id: formId },
+      select: { settings: true, title: true, questions: true, updatedAt: true },
+    });
 
-  if (!form) {
-    return { ok: false, message: "Form not found." };
-  }
+    if (!form) return { ok: false as const, message: "Form not found." };
 
-  const settings = (form.settings as Record<string, unknown> | null) ?? {};
-  const nextPublished = !Boolean(settings.is_published);
-  if (nextPublished) {
-    const publishingIssues = getIntercessionPublishingIssues(form.title, form.questions, settings);
-    if (publishingIssues.length > 0) {
-      return { ok: false, message: `Cannot publish: ${publishingIssues[0].message}` };
+    const settings = (form.settings as Record<string, unknown> | null) ?? {};
+    const nextPublished = !Boolean(settings.is_published);
+    if (nextPublished) {
+      const publishingIssues = getIntercessionPublishingIssues(form.title, form.questions, settings);
+      if (publishingIssues.length > 0) {
+        return { ok: false as const, message: `Cannot publish: ${publishingIssues[0].message}` };
+      }
     }
-  }
 
-  const prepared = await prepareCommitmentFormSettings({ ...settings, is_published: nextPublished, ...(!nextPublished && settings.commitment ? { submission_opens_at: "" } : {}) }, form.settings, formId);
-  if (!prepared.ok) return prepared;
-  const updated = await prisma.spiritualForm.update({
-    where: { id: formId },
-    data: {
-      settings: prepared.settings,
-      ...(settings.commitment ? { version: { increment: 1 } } : {}),
-      ...(nextPublished ? { isActive: true } : {}),
-    },
+    const prepared = await prepareCommitmentFormSettings({ ...settings, is_published: nextPublished, ...(!nextPublished && settings.commitment ? { submission_opens_at: "" } : {}) }, form.settings, formId);
+    if (!prepared.ok) return prepared;
+    const updated = await tx.spiritualForm.update({
+      where: { id: formId },
+      data: {
+        settings: prepared.settings,
+        updatedAt: form.updatedAt,
+        ...(settings.commitment ? { version: { increment: 1 } } : {}),
+        ...(nextPublished ? { isActive: true } : {}),
+      },
+    });
+    return { ok: true as const, updated, nextPublished, isCommitment: Boolean(settings.commitment) };
   });
+  if (!result.ok) return result;
 
-  if (nextPublished && settings.commitment) after(() => notifyFormPublished(updated, String(updated.updatedAt.getTime())));
-  else if (nextPublished) await notifyFormPublished(updated, String(updated.updatedAt.getTime()));
+  if (result.nextPublished && result.isCommitment) after(() => notifyFormPublished(result.updated, String(result.updated.updatedAt.getTime())));
+  else if (result.nextPublished) await notifyFormPublished(result.updated, String(result.updated.updatedAt.getTime()));
   else await prisma.notification.deleteMany({ where: { sourceType: "spiritual_form", sourceId: formId } });
 
   revalidateSpiritualFormPaths(formId);
 
-  return { ok: true, message: nextPublished ? "Form published." : "Form unpublished." };
+  return { ok: true, message: result.nextPublished ? "Form published." : "Form unpublished." };
 }
 
 export async function setSpiritualFormArchived(formId: number, archived: boolean) {
@@ -1088,7 +1092,7 @@ export async function submitSpiritualForm(formId: number, formData: FormData) {
       after(async () => {
         await Promise.allSettled([
           ...(user ? [notifyUsers({ userIds: [user.id], type: "form", title: "Commitment accepted", message: `Your membership commitment for ${settings.commitment!.year} has been received.`, link: settings.allow_view_response ? "/admin/intercession/commitments/mine" : "/admin/intercession?section=results", sourceType: "form_submission", sourceId: submission.id, dedupeKey: `commitment:${submission.id}:receipt` })] : []),
-          ...(settings.notify_on_submit ? [userIdsWithPermission("intercession", "view-submissions").then((userIds) => notifyUsers({ userIds, type: "form", title: "Membership commitment received", message: `${visitorName} accepted the membership commitment for ${settings.commitment!.year}.`, link: "/admin/intercession/commitments", sourceType: "form_submission", sourceId: submission.id, dedupeKey: `commitment:${submission.id}:admin` }))] : []),
+          ...(settings.notify_on_submit ? [userIdsWithPermission("intercession", "view-submissions").then((userIds) => notifyUsers({ userIds, type: "form", title: "Membership commitment received", message: `${visitorName} accepted the membership commitment for ${settings.commitment!.year}.`, link: "/admin/intercession/commitments", sourceType: "form_submission", sourceId: submission.id, dedupeKey: `commitment:${submission.id}:admin`, includeConfiguredRecipients: true }))] : []),
         ]);
       });
       revalidatePath("/admin/intercession");
@@ -1109,6 +1113,7 @@ export async function submitSpiritualForm(formId: number, formData: FormData) {
         message: `${visitorName} ${editSubmission ? "updated" : "submitted"} ${intercessionRichTextToPlainText(form.title)}.`,
         link: `/admin/intercession/forms/${form.id}/submissions`, sourceType: "form_submission", sourceId: submission.id,
         dedupeKey: `form-submission:${submission.id}`,
+        includeConfiguredRecipients: true,
       });
     }
     if (!editSubmission && settings.send_response_receipt) {
@@ -1123,7 +1128,7 @@ export async function submitSpiritualForm(formId: number, formData: FormData) {
       } else {
         const email = visitorDetails.details.find((detail) => detail.type === "email")?.value;
         if (typeof email === "string" && email) {
-          await notifyEmailAddress(email, `Response received: ${intercessionRichTextToPlainText(form.title)}`, `Thank you, ${visitorName}. Your response has been recorded.${editPath ? ` You may edit it until ${editUntil?.toLocaleString("en-RW", { timeZone: "Africa/Kigali" })}: ${publicAppUrl(editPath)}` : ""}`);
+          await notifyEmailAddress(email, `Response received: ${intercessionRichTextToPlainText(form.title)}`, `Thank you, ${visitorName}. Your response has been recorded.${editPath ? ` You may edit it until ${editUntil?.toLocaleString("en-RW", { timeZone: "Africa/Kigali" })}: ${publicAppUrl(editPath)}` : ""}`, "form");
         }
       }
       await prisma.formSubmission.update({ where: { id: submission.id }, data: { receiptSentAt: new Date() } });

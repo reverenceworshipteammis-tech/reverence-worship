@@ -82,6 +82,7 @@ async function notifyProbationLeaders(input: {
     sourceType: "probation",
     sourceId: input.probationId,
     dedupeKey: input.dedupeKey,
+    includeConfiguredRecipients: true,
   });
 }
 

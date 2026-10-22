@@ -784,7 +784,7 @@ export async function saveExpense(formData: FormData) {
 
       if (!result.ok) return result;
 
-      await notifyUsers({ userIds: [firstApprover!], type: "expense", title: "Expense awaiting approval", message: `An expense of RWF ${amount.toLocaleString()} requires your approval: ${description}`, link: "/admin/finance", sourceType: "expense", sourceId: result.expenseId, dedupeKey: `expense:${result.expenseId}:submitted` });
+      await notifyUsers({ userIds: [firstApprover!], type: "expense", title: "Expense awaiting approval", message: `An expense of RWF ${amount.toLocaleString()} requires your approval: ${description}`, link: "/admin/finance", sourceType: "expense", sourceId: result.expenseId, dedupeKey: `expense:${result.expenseId}:submitted`, includeConfiguredRecipients: true });
 
       revalidatePath("/admin/finance");
       return result;
@@ -878,7 +878,7 @@ export async function voidExpense(id: number, reason: string) {
   });
   if (result.count !== 1) return { ok: false, message: "Expense was not found or is already voided." };
   await logFinance(user.id, needsApproval ? "finance.expense-void.requested" : "finance.expense.voided", { expenseId: id, reason: cleanReason, approverId: expense.approverId1 });
-  if (needsApproval && expense.approverId1) await notifyUsers({ userIds: [expense.approverId1], type: "expense", title: "Expense void requested", message: `A request to void expense #${id} requires your approval. Reason: ${cleanReason}`, link: "/admin/finance", sourceType: "expense", sourceId: id, dedupeKey: `expense:${id}:void-requested:${Date.now()}` });
+  if (needsApproval && expense.approverId1) await notifyUsers({ userIds: [expense.approverId1], type: "expense", title: "Expense void requested", message: `A request to void expense #${id} requires your approval. Reason: ${cleanReason}`, link: "/admin/finance", sourceType: "expense", sourceId: id, dedupeKey: `expense:${id}:void-requested:${Date.now()}`, includeConfiguredRecipients: true });
   revalidatePath("/admin/finance");
   return { ok: true, message: needsApproval ? "Void request sent to the original approver. The expense remains deducted until approval." : "Expense voided. Its audit history was preserved." };
 }

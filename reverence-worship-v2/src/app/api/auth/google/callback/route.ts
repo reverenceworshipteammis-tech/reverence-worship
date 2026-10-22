@@ -56,6 +56,7 @@ async function createGoogleUser(profile: Awaited<ReturnType<typeof exchangeGoogl
     sourceType: "user",
     sourceId: user.id,
     dedupeKey: `google-registration:${user.id}:submitted`,
+    event: "registration",
   });
 
   if (!firstUser) {
@@ -69,6 +70,7 @@ async function createGoogleUser(profile: Awaited<ReturnType<typeof exchangeGoogl
       sourceType: "user",
       sourceId: user.id,
       dedupeKey: `google-registration:${user.id}:approval`,
+      event: "registration",
     });
   }
 

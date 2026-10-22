@@ -8,11 +8,13 @@ const questions = [
   { questionId: "rating", questionIndex: 2, label: "Rating", type: "rating", options: [], rows: [], columns: [], min: 1, max: 5 },
   { questionId: "matrix", questionIndex: 3, label: "Matrix", type: "multiple_choice_grid", options: [], rows: ["Morning", "Evening"], columns: ["Yes", "No"], min: 1, max: 5 },
   { questionId: "comment", questionIndex: 4, label: "Comment", type: "paragraph", options: [], rows: [], columns: [], min: 1, max: 5 },
+  { questionId: "membership", questionIndex: 5, label: "Membership type", type: "membership_type", options: ["Permanent member", "Temporary member", "Partner"], rows: [], columns: [], min: 1, max: 5 },
 ];
 
 const submissions = [
   { answers: [
     { questionId: "family", questionIndex: 0, value: "Peace" },
+    { questionId: "membership", questionIndex: 5, value: "Temporary member" },
     { questionId: "needs", questionIndex: 1, value: ["Prayer", "Call"] },
     { questionId: "rating", questionIndex: 2, value: "5" },
     { questionId: "matrix", questionIndex: 3, value: { row_0: "Yes", row_1: "No" } },
@@ -20,6 +22,7 @@ const submissions = [
   ] },
   { answers: [
     { questionId: "family", questionIndex: 0, value: "Recovery" },
+    { questionId: "membership", questionIndex: 5, value: "Permanent member" },
     { questionId: "needs", questionIndex: 1, value: ["Prayer"] },
     { questionId: "rating", questionIndex: 2, value: "3" },
     { questionId: "matrix", questionIndex: 3, value: { row_0: "Yes", row_1: "" } },
@@ -38,6 +41,12 @@ test("summarizes single and multi-select questions with respondent percentages",
     { label: "Prayer", count: 2, percentage: 100 },
     { label: "Visit", count: 0, percentage: 0 },
     { label: "Call", count: 1, percentage: 50 },
+  ]);
+  assert.equal(summaries[5].kind, "pie");
+  assert.deepEqual(summaries[5].series.map(({ label, count }) => ({ label, count })), [
+    { label: "Permanent member", count: 1 },
+    { label: "Temporary member", count: 1 },
+    { label: "Partner", count: 0 },
   ]);
 });
 

@@ -127,7 +127,7 @@ export async function saveRolePermissions(formData: FormData) {
   ]);
 
   const affectedUsers = await prisma.userRole.findMany({ where: { roleId }, select: { userId: true } });
-  await notifyUsers({ userIds: affectedUsers.map((item) => item.userId), type: "account", title: "Permissions changed", message: `Access permissions for your ${role.name} role were updated.`, link: "/admin/dashboard", sourceType: "role", sourceId: roleId, dedupeKey: `role:${roleId}:permissions:${Date.now()}` });
+  await notifyUsers({ userIds: affectedUsers.map((item) => item.userId), type: "account", title: "Permissions changed", message: `Access permissions for your ${role.name} role were updated.`, link: "/admin/dashboard", sourceType: "role", sourceId: roleId, dedupeKey: `role:${roleId}:permissions:${Date.now()}`, event: "role_change" });
   await prisma.activityLog.create({ data: { userId: admin.id, action: "permissions.role-updated", module: "permissions", metadata: { roleId, assignmentCount: assignments.length } } });
 
   revalidatePath("/admin/permissions");

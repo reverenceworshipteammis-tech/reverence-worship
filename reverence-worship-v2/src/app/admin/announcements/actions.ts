@@ -187,6 +187,7 @@ export async function saveAnnouncement(formData: FormData) {
       sourceId: announcement.id,
       dedupeKey: `announcement:${announcement.id}:${announcement.updatedAt.getTime()}`,
       sendEmail: false,
+      includeConfiguredRecipients: true,
     });
   }
 
@@ -242,6 +243,7 @@ export async function toggleAnnouncementStatus(id: number) {
       sourceId: updated.id,
       dedupeKey: `announcement:${updated.id}:published:${updated.updatedAt.getTime()}`,
       sendEmail: false,
+      includeConfiguredRecipients: true,
     });
   }
 
@@ -278,6 +280,7 @@ export async function sendAnnouncementEmail(id: number) {
     sourceId: announcement.id,
     dedupeKey: `announcement:${announcement.id}:sent:${announcement.updatedAt.getTime()}`,
     sendInApp: false,
+    includeConfiguredRecipients: true,
   });
 
   await prisma.announcement.update({

@@ -3,7 +3,24 @@ import "server-only";
 import nodemailer from "nodemailer";
 import { getEmailConfiguration } from "@/lib/email-config";
 import { escapeHtml, formatEmailMessage } from "@/lib/email-html";
-import { NOTIFICATION_CATEGORIES, notificationCategory } from "@/lib/notification-rules";
+import {
+  ACCOUNT_NOTIFICATION_EVENTS,
+  DEFAULT_ACCOUNT_EVENT_CHANNELS,
+  DEFAULT_ACCOUNT_ROLE_MESSAGE_TEMPLATE,
+  DEFAULT_ACCOUNT_STATUS_MESSAGE_TEMPLATE,
+  accountNotificationEventChannelSettingKey,
+  accountNotificationEventSettingKey,
+  NOTIFICATION_CATEGORIES,
+  notificationCategory,
+  parseNotificationRecipientSettings,
+  renderNotificationContent,
+  shouldIncludeConfiguredNotificationRecipients,
+  type NotificationCategory,
+  type AccountNotificationEvent,
+  type NotificationContentTemplate,
+  type NotificationRecipientSettings,
+  type NotificationTemplateVariables,
+} from "@/lib/notification-rules";
 import { PERMISSION_REQUEST_SUBMITTED_MESSAGE } from "@/lib/permission-notification-copy";
 import { prisma } from "@/lib/prisma";
 
@@ -20,6 +37,10 @@ type NotifyUsersInput = {
   emailText?: string;
   sendInApp?: boolean;
   sendEmail?: boolean;
+  includeConfiguredRecipients?: boolean;
+  templateVariables?: Omit<NotificationTemplateVariables, "firstName">;
+  templateVariant?: "account_status" | "account_role";
+  event?: AccountNotificationEvent;
 };
 
 let transporter: ReturnType<typeof nodemailer.createTransport> | null = null;
@@ -30,9 +51,14 @@ export type EmailDeliveryResult = {
 };
 
 type NotificationSettings = {
-  inAppEnabled: boolean;
-  emailEnabled: boolean;
   enabledTypes: Set<string>;
+  channels: Map<NotificationCategory | "birthday", { inAppEnabled: boolean; emailEnabled: boolean }>;
+  configuredRecipients: Map<NotificationCategory, NotificationRecipientSettings>;
+  templates: Map<NotificationCategory, NotificationContentTemplate>;
+  accountStatusMessageTemplate: string;
+  accountRoleMessageTemplate: string;
+  accountEventEnabled: Map<AccountNotificationEvent, boolean>;
+  accountEventChannels: Map<AccountNotificationEvent, { inAppEnabled: boolean; emailEnabled: boolean }>;
 };
 
 function uniqueIds(ids: number[]) {
@@ -57,12 +83,85 @@ async function getNotificationSettings(): Promise<NotificationSettings> {
   for (const type of NOTIFICATION_CATEGORIES) {
     if (settingToBoolean(settings.get(`notification_${type}_enabled`), true)) enabledTypes.add(type);
   }
+  if (settingToBoolean(settings.get("notification_birthday_enabled"), true)) enabledTypes.add("birthday");
+
+  const channelTypes: Array<NotificationCategory | "birthday"> = [...NOTIFICATION_CATEGORIES, "birthday"];
 
   return {
-    inAppEnabled: settingToBoolean(settings.get("notification_in_app_enabled"), true),
-    emailEnabled: settingToBoolean(settings.get("notification_email_enabled"), true),
     enabledTypes,
+    channels: new Map(channelTypes.map((type) => [
+      type,
+      {
+        inAppEnabled: settingToBoolean(
+          settings.get(`notification_${type}_in_app_enabled`),
+          settingToBoolean(settings.get("notification_in_app_enabled"), true),
+        ),
+        emailEnabled: settingToBoolean(
+          settings.get(`notification_${type}_email_enabled`),
+          settingToBoolean(settings.get("notification_email_enabled"), true),
+        ),
+      },
+    ] as const)),
+    configuredRecipients: new Map(NOTIFICATION_CATEGORIES.map((type) => {
+      const value = settings.get(`notification_${type}_recipients`);
+      return [type, parseNotificationRecipientSettings(value)];
+    })),
+    templates: new Map(NOTIFICATION_CATEGORIES.map((type) => [
+      type,
+      {
+        title: type !== "account" && typeof settings.get(`notification_${type}_title_template`) === "string"
+          ? settings.get(`notification_${type}_title_template`) as string
+          : "",
+        message: type !== "account" && typeof settings.get(`notification_${type}_message_template`) === "string"
+          ? settings.get(`notification_${type}_message_template`) as string
+          : "",
+      },
+    ])),
+    accountStatusMessageTemplate: typeof settings.get("notification_account_status_message_template") === "string"
+      ? settings.get("notification_account_status_message_template") as string
+      : DEFAULT_ACCOUNT_STATUS_MESSAGE_TEMPLATE,
+    accountRoleMessageTemplate: typeof settings.get("notification_account_role_message_template") === "string"
+      ? settings.get("notification_account_role_message_template") as string
+      : DEFAULT_ACCOUNT_ROLE_MESSAGE_TEMPLATE,
+    accountEventEnabled: new Map(ACCOUNT_NOTIFICATION_EVENTS.map(({ id }) => [
+      id,
+      settingToBoolean(settings.get(accountNotificationEventSettingKey(id)), true),
+    ])),
+    accountEventChannels: new Map(ACCOUNT_NOTIFICATION_EVENTS.map(({ id }) => [
+      id,
+      {
+        inAppEnabled: settingToBoolean(
+          settings.get(accountNotificationEventChannelSettingKey(id, "inAppEnabled")),
+          DEFAULT_ACCOUNT_EVENT_CHANNELS[id].inAppEnabled,
+        ),
+        emailEnabled: settingToBoolean(
+          settings.get(accountNotificationEventChannelSettingKey(id, "emailEnabled")),
+          DEFAULT_ACCOUNT_EVENT_CHANNELS[id].emailEnabled,
+        ),
+      },
+    ])),
   };
+}
+
+async function resolveNotificationRecipientIds(recipients: NotificationRecipientSettings) {
+  if (recipients.mode === "all") {
+    const users = await prisma.user.findMany({ where: { status: "active" }, select: { id: true } });
+    return users.map((user) => user.id);
+  }
+  if (recipients.mode === "roles") {
+    if (!recipients.roleIds.length) return [];
+    const users = await prisma.user.findMany({
+      where: { status: "active", roles: { some: { roleId: { in: recipients.roleIds } } } },
+      select: { id: true },
+    });
+    return users.map((user) => user.id);
+  }
+  if (!recipients.userIds.length) return [];
+  const users = await prisma.user.findMany({
+    where: { id: { in: recipients.userIds }, status: "active" },
+    select: { id: true },
+  });
+  return users.map((user) => user.id);
 }
 
 function mailTransport() {
@@ -132,25 +231,51 @@ export async function deliverEmail(deliveryId: number) {
 }
 
 export async function notifyUsers(input: NotifyUsersInput) {
-  const ids = uniqueIds(input.userIds);
-  if (!ids.length) return [];
   const settings = await getNotificationSettings();
   const category = notificationCategory(input.type);
-  if (!settings.enabledTypes.has(category)) return [];
+  const enabledType = input.type === "birthday" ? "birthday" : category;
+  if (!settings.enabledTypes.has(enabledType)) return [];
+  if (category === "account" && input.event && !settings.accountEventEnabled.get(input.event)) return [];
+  const channels = category === "account" && input.event
+    ? settings.accountEventChannels.get(input.event)
+    : settings.channels.get(input.type === "birthday" ? "birthday" : category);
+  const effectiveChannels = channels
+    ?? { inAppEnabled: true, emailEnabled: true };
+  const configuredIds = shouldIncludeConfiguredNotificationRecipients(category, Boolean(input.includeConfiguredRecipients))
+    ? await resolveNotificationRecipientIds(settings.configuredRecipients.get(category) ?? { mode: "individuals", userIds: [], roleIds: [] })
+    : [];
+  const ids = uniqueIds([...input.userIds, ...configuredIds]);
+  if (!ids.length) return [];
 
-  const users = await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, email: true } });
+  const users = await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, email: true, name: true } });
   const notificationIds: number[] = [];
+  const categoryTemplate = input.type === "birthday"
+    ? { title: "", message: "" }
+    : settings.templates.get(category) ?? { title: "", message: "" };
+  const template = input.templateVariant === "account_status"
+    ? { ...categoryTemplate, message: settings.accountStatusMessageTemplate }
+    : input.templateVariant === "account_role"
+      ? { ...categoryTemplate, message: settings.accountRoleMessageTemplate }
+      : categoryTemplate;
 
   for (const user of users) {
+    const firstName = user.name.trim().split(/\s+/)[0] ?? "";
+    const templateVariables = { ...input.templateVariables, firstName };
+    const { title, message } = renderNotificationContent(
+      input.title,
+      input.message,
+      template,
+      templateVariables,
+    );
     const dedupeKey = input.dedupeKey ? `${input.dedupeKey}:user:${user.id}` : null;
     let notification: { id: number } | null = null;
 
-    if (settings.inAppEnabled && input.sendInApp !== false) {
+    if (effectiveChannels.inAppEnabled && input.sendInApp !== false) {
       const data = {
         userId: user.id,
         type: input.type,
-        title: input.title,
-        message: input.message,
+        title,
+        message,
         link: input.link,
         sourceType: input.sourceType,
         sourceId: input.sourceId,
@@ -166,14 +291,20 @@ export async function notifyUsers(input: NotifyUsersInput) {
       notificationIds.push(notification.id);
     }
 
-    if (settings.emailEnabled && input.sendEmail !== false && user.email) {
+    if (effectiveChannels.emailEnabled && input.sendEmail !== false && user.email) {
+      const emailContent = renderNotificationContent(
+        input.emailSubject ?? input.title,
+        input.emailText ?? input.message,
+        template,
+        templateVariables,
+      );
       const data = {
         userId: user.id,
         notificationId: notification?.id,
         recipient: user.email,
-        subject: input.emailSubject ?? input.title,
-        text: input.emailText ?? input.message,
-        html: emailHtml(input.title, input.emailText ?? input.message, input.link),
+        subject: emailContent.title,
+        text: emailContent.message,
+        html: emailHtml(emailContent.title, emailContent.message, input.link),
       };
       const delivery = notification
         ? await prisma.emailDelivery.upsert({
@@ -189,10 +320,24 @@ export async function notifyUsers(input: NotifyUsersInput) {
   return notificationIds;
 }
 
-export async function notifyEmailAddress(recipient: string, subject: string, message: string) {
+export async function notifyEmailAddress(
+  recipient: string,
+  subject: string,
+  message: string,
+  category?: NotificationCategory,
+  event?: AccountNotificationEvent,
+) {
   if (!recipient) return { status: "skipped", error: "Recipient email is required." } satisfies EmailDeliveryResult;
   const settings = await getNotificationSettings();
-  if (!settings.emailEnabled) return { status: "skipped", error: "Email notifications are disabled in System Settings." } satisfies EmailDeliveryResult;
+  const emailEnabled = category === "account" && event
+    ? settings.accountEventChannels.get(event)?.emailEnabled
+    : category ? settings.channels.get(category)?.emailEnabled : true;
+  if (category && (!settings.enabledTypes.has(category) || !emailEnabled)) {
+    return { status: "skipped", error: `${category.replaceAll("_", " ")} email notifications are disabled in System Settings.` } satisfies EmailDeliveryResult;
+  }
+  if (category === "account" && event && !settings.accountEventEnabled.get(event)) {
+    return { status: "skipped", error: "Account registration notifications are disabled in System Settings." } satisfies EmailDeliveryResult;
+  }
   const delivery = await prisma.emailDelivery.create({
     data: { recipient, subject, text: message, html: emailHtml(subject, message) },
   });
@@ -201,15 +346,23 @@ export async function notifyEmailAddress(recipient: string, subject: string, mes
 
 export async function sendCriticalSystemEmail(subject: string, message: string) {
   const settings = await getNotificationSettings();
-  if (!settings.emailEnabled || !settings.enabledTypes.has("system")) return false;
-  const recipients = (process.env.SYSTEM_ALERT_EMAIL ?? "").split(",").map((item) => item.trim()).filter(Boolean);
+  if (!settings.channels.get("system")?.emailEnabled || !settings.enabledTypes.has("system")) return false;
+  const configuredIds = await resolveNotificationRecipientIds(settings.configuredRecipients.get("system") ?? { mode: "individuals", userIds: [], roleIds: [] });
+  const configuredUsers = configuredIds.length
+    ? await prisma.user.findMany({ where: { id: { in: configuredIds }, status: "active" }, select: { email: true } })
+    : [];
+  const recipients = [...new Set([
+    ...(process.env.SYSTEM_ALERT_EMAIL ?? "").split(",").map((item) => item.trim()).filter(Boolean),
+    ...configuredUsers.map((user) => user.email),
+  ])];
   if (!recipients.length || !getEmailConfiguration().configured) return false;
+  const content = renderNotificationContent(subject, message, settings.templates.get("system") ?? { title: "", message: "" });
   await mailTransport().sendMail({
     from: process.env.SMTP_FROM,
     to: recipients,
-    subject,
-    text: message,
-    html: emailHtml(subject, message),
+    subject: content.title,
+    text: content.message,
+    html: emailHtml(content.title, content.message),
   });
   return true;
 }
@@ -276,22 +429,32 @@ export async function userIdsForAnnouncement(targetType: string, targetRoles: st
 }
 
 export async function notifySuperAdmins(input: Omit<NotifyUsersInput, "userIds">) {
-  return notifyUsers({ ...input, userIds: await userIdsForRoles(["super-admin"]) });
+  return notifyUsers({
+    ...input,
+    userIds: await userIdsForRoles(["super-admin"]),
+    includeConfiguredRecipients: true,
+  });
 }
 
 export async function notifyJoinRequestAdmins(title: string, message: string) {
   const settings = await getNotificationSettings();
-  if (!settings.emailEnabled) {
+  if (!settings.channels.get("join_request")?.emailEnabled) {
     return { status: "skipped", error: "Email notifications are disabled in System Settings." } satisfies EmailDeliveryResult;
   }
   if (!settings.enabledTypes.has("join_request")) {
     return { status: "skipped", error: "Join request notifications are disabled in System Settings." } satisfies EmailDeliveryResult;
   }
 
+  const configuredIds = await resolveNotificationRecipientIds(
+    settings.configuredRecipients.get("join_request") ?? { mode: "individuals", userIds: [], roleIds: [] },
+  );
   const users = await prisma.user.findMany({
     where: {
       status: "active",
-      roles: { some: { role: { name: { in: ["admin", "super-admin"] } } } },
+      OR: [
+        { roles: { some: { role: { name: { in: ["admin", "super-admin"] } } } } },
+        ...(configuredIds.length ? [{ id: { in: configuredIds } }] : []),
+      ],
     },
     select: { id: true, email: true },
   });
@@ -307,11 +470,18 @@ export async function notifyJoinRequestAdmins(title: string, message: string) {
     message,
     sendEmail: false,
     sendInApp: true,
+    includeConfiguredRecipients: true,
     dedupeKey: `join-request:${crypto.randomUUID()}`,
   });
 
+  const content = renderNotificationContent(
+    title,
+    message,
+    settings.templates.get("join_request") ?? { title: "", message: "" },
+  );
+  const emailSubject = settings.templates.get("join_request")?.title.trim() ? content.title : "A guest wants to join Reverence Worship";
   const results = await Promise.all(recipients.map((recipient) =>
-    notifyEmailAddress(recipient, "A guest wants to join Reverence Worship", message),
+    notifyEmailAddress(recipient, emailSubject, content.message),
   ));
   const failure = results.find((result) => result.status === "failed" || result.status === "skipped");
   if (failure) return failure;
@@ -341,6 +511,7 @@ export async function reconcilePendingPermissionNotifications(limit = 100) {
       sourceType: "permission_request",
       sourceId: request.id,
       dedupeKey: `permission:${request.id}:submitted`,
+      includeConfiguredRecipients: true,
     });
   }
 

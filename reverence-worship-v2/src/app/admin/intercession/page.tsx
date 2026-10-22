@@ -145,7 +145,7 @@ export default async function IntercessionPage({ searchParams }: { searchParams:
       isActive: form.isActive,
       availabilityMessage: intercessionFormAvailability(parsedSettings, form.isActive, form._count.submissions),
       createdAt: formatDate(form.createdAt),
-      updatedAt: formatDate(form.updatedAt),
+      updatedAt: formatDateTime(form.updatedAt),
       createdBy: form.creator?.name ?? "Unknown",
       submissionsCount: form._count.submissions,
       hasSubmitted: mySubmittedFormIds.has(form.id),

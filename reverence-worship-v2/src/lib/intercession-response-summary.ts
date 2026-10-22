@@ -83,7 +83,7 @@ function summarizeQuestion(
     average: null as number | null,
   };
 
-  if (["multiple_choice", "dropdown"].includes(question.type)) {
+  if (["multiple_choice", "membership_type", "dropdown"].includes(question.type)) {
     return {
       ...base,
       kind: "pie",

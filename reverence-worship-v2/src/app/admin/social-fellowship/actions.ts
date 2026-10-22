@@ -429,7 +429,7 @@ export async function createSocialActionPlan(formData: FormData) {
 
   const assignedTasks = await prisma.actionPlanTask.findMany({ where: { actionPlanId: plan.id, assignedTo: { not: null } }, select: { id: true, assignedTo: true, taskName: true } });
   for (const task of assignedTasks) {
-    if (task.assignedTo) await notifyUsers({ userIds: [task.assignedTo], type: "task", title: "Action plan task assigned", message: `${task.taskName} was assigned to you.`, link: "/admin/social-fellowship", sourceType: "action_plan_task", sourceId: task.id, dedupeKey: `action-task:${task.id}:assigned` });
+    if (task.assignedTo) await notifyUsers({ userIds: [task.assignedTo], type: "task", title: "Action plan task assigned", message: `${task.taskName} was assigned to you.`, link: "/admin/social-fellowship", sourceType: "action_plan_task", sourceId: task.id, dedupeKey: `action-task:${task.id}:assigned`, includeConfiguredRecipients: true });
   }
 
   await syncActionPlanProgress(plan.id);
@@ -473,7 +473,7 @@ export async function updateSocialActionPlan(actionPlanId: number, formData: For
 
   const assignedTasks = await prisma.actionPlanTask.findMany({ where: { actionPlanId, assignedTo: { not: null } }, select: { id: true, assignedTo: true, taskName: true, updatedAt: true } });
   for (const task of assignedTasks) {
-    if (task.assignedTo) await notifyUsers({ userIds: [task.assignedTo], type: "task", title: "Action plan task assigned or updated", message: `${task.taskName} is assigned to you.`, link: "/admin/social-fellowship", sourceType: "action_plan_task", sourceId: task.id, dedupeKey: `action-task:${task.id}:updated:${task.updatedAt.getTime()}` });
+    if (task.assignedTo) await notifyUsers({ userIds: [task.assignedTo], type: "task", title: "Action plan task assigned or updated", message: `${task.taskName} is assigned to you.`, link: "/admin/social-fellowship", sourceType: "action_plan_task", sourceId: task.id, dedupeKey: `action-task:${task.id}:updated:${task.updatedAt.getTime()}`, includeConfiguredRecipients: true });
   }
 
   await syncActionPlanProgress(actionPlanId);

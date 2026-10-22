@@ -248,6 +248,7 @@ export async function completeGoogleProfileAction(
     sourceType: "user",
     sourceId: user.id,
     dedupeKey: `google-profile-completed:${user.id}`,
+    event: "registration",
   });
 
   redirect(returnTo);
@@ -350,6 +351,7 @@ export async function registerAction(
       sourceType: "user",
       sourceId: user.id,
       dedupeKey: `registration:${user.id}:submitted`,
+      event: "registration",
     });
 
     if (!firstUser) {
@@ -363,6 +365,7 @@ export async function registerAction(
         sourceType: "user",
         sourceId: user.id,
         dedupeKey: `registration:${user.id}:approval`,
+        event: "registration",
       });
     }
   } catch (error) {

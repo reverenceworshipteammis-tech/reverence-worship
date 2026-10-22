@@ -104,6 +104,7 @@ export async function updateOwnProfileAction(
         previousEmail,
         "Email address changed",
         `The email address on your Reverence Worship account was changed to ${parsed.data.email}. Contact an administrator immediately if you did not request this.`,
+        "security",
       ),
       notifyUsers({
         userIds: [user.id],
