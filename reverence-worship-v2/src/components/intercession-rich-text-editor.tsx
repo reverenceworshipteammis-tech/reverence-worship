@@ -2,26 +2,10 @@
 
 import { ClipboardEvent, KeyboardEvent, useLayoutEffect, useRef } from "react";
 import {
-  escapeIntercessionRichText,
   intercessionRichTextToPlainText,
   intercessionRichTextToSafeHtml,
 } from "@/lib/intercession-rich-text";
-
-function serializeChildren(parent: Node): string {
-  return Array.from(parent.childNodes).map((node) => serializeNode(node)).join("");
-}
-
-function serializeNode(node: Node): string {
-  if (node.nodeType === Node.TEXT_NODE) return escapeIntercessionRichText(node.textContent ?? "");
-  if (!(node instanceof HTMLElement)) return "";
-
-  const content = serializeChildren(node);
-  if (node.tagName === "BR") return "\n";
-  if (node.tagName === "STRONG" || node.tagName === "B") return `<strong>${content}</strong>`;
-  if (node.tagName === "EM" || node.tagName === "I") return `<em>${content}</em>`;
-  if (node.tagName === "DIV" || node.tagName === "P") return `${content}\n`;
-  return content;
-}
+import { serializeIntercessionEditor } from "@/lib/intercession-editor-serialization";
 
 export function IntercessionRichTextEditor({
   value,
@@ -53,7 +37,7 @@ export function IntercessionRichTextEditor({
   function syncValue() {
     const editor = editorRef.current;
     if (!editor) return;
-    let nextValue = serializeChildren(editor).replace(/\n+$/, "");
+    let nextValue = serializeIntercessionEditor(editor).replace(/\n+$/, "");
     if (maxLength && intercessionRichTextToPlainText(nextValue).length > maxLength) {
       editor.innerHTML = intercessionRichTextToSafeHtml(lastValueRef.current);
       return;

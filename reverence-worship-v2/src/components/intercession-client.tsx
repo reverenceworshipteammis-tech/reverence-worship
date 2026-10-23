@@ -920,7 +920,6 @@ export function IntercessionClient({
 
           {activeFormSection === "available" && (
             <section>
-              <h2 className="mb-3 px-1 text-lg font-bold text-gray-900">Available Forms</h2>
               <div className="grid grid-cols-1 gap-3">
                 {publishedForms.length ? (
                   publishedForms.map((form) => {
@@ -929,7 +928,7 @@ export function IntercessionClient({
                     return (
                       <article
                         key={form.id}
-                        className="available-form-card group relative flex w-full flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-slate-300 hover:shadow-md sm:p-5"
+                        className="available-form-card group relative flex w-full flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-slate-300 hover:shadow-md sm:p-5 lg:flex-row lg:items-center lg:gap-6"
                       >
                         <Link href={cardUrl} className="min-w-0 flex-1 rounded-lg after:absolute after:inset-0 after:rounded-xl focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-blue-500 focus-visible:after:ring-offset-2">
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -965,7 +964,7 @@ export function IntercessionClient({
                           </div>
                           </div>
                         </Link>
-                        <div className="mt-3 flex items-center justify-between gap-3 border-t border-slate-100 pt-2">
+                        <div className="mt-3 flex items-center justify-between gap-3 border-t border-slate-100 pt-2 lg:mt-0 lg:shrink-0 lg:border-0 lg:pt-0">
                           <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-600">Open form <ChevronRight className="size-4" aria-hidden="true" /></span>
                         </div>
                       </article>
@@ -980,8 +979,7 @@ export function IntercessionClient({
 
           {activeFormSection === "results" && (
             <section>
-              <div className="mx-auto mb-3 flex max-w-5xl flex-wrap items-center justify-between gap-3 px-1"><h2 className="text-lg font-bold text-gray-900">My Results</h2></div>
-              <div className="mx-auto max-w-5xl space-y-3">
+              <div className="w-full space-y-3">
                 {submissionGroups.length ? (
                   submissionGroups.map((group) => (
                     <section key={group.formId} className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
