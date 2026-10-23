@@ -38,8 +38,8 @@ export function FormsSectionNavigation({
             : "manage";
 
   return (
-    <aside className="sticky top-[73px] z-30 h-fit self-start rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
-      <nav aria-label="Forms sections" className="flex gap-1 overflow-x-auto lg:flex-col">
+    <aside className="forms-sticky-navigation sticky top-[var(--admin-header-height,72px)] z-30 h-fit self-start rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
+      <nav aria-label="Forms sections" className="grid grid-cols-2 gap-1 sm:flex sm:flex-wrap lg:flex-col">
         {allowedSections.map(({ id, label, icon: Icon }) => {
           const selected = currentSection === id;
           return (
@@ -47,7 +47,7 @@ export function FormsSectionNavigation({
               key={id}
               href={`/admin/forms?section=${id}`}
               aria-current={selected ? "page" : undefined}
-              className={`flex shrink-0 items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition lg:w-full ${
+              className={`flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition sm:justify-start lg:w-full ${
                 selected ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
               }`}
             >

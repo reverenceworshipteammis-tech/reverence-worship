@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { ArrowDown, ArrowLeft, ArrowUp, ArrowUpDown, BarChart3, CalendarDays, CheckCircle2, FileSpreadsheet, FileText, RotateCcw, Search, UserCheck, Users, X, XCircle, type LucideIcon } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowUp, ArrowUpDown, BarChart3, CalendarDays, CheckCircle2, ChevronRight, FileSpreadsheet, FileText, RotateCcw, Search, UserCheck, Users, X, XCircle, type LucideIcon } from "lucide-react";
 import { bulkUpdateFormSubmissions, permanentlyDeleteFormSubmission, restoreFormSubmission, saveSubmissionManualReview, setAllSubmissionRelease, setSubmissionRelease } from "@/app/admin/intercession/actions";
 import { useAppDialog } from "@/components/app-dialog-provider";
 import { ActionNotice } from "@/components/action-notice";
+import { FormActionsSheet } from "@/components/form-actions-sheet";
 import { IntercessionRichText } from "@/components/intercession-rich-text";
 import { IntercessionQuestionImages } from "@/components/intercession-question-images";
 import { IntercessionResponseSummaryCard, type IntercessionChartSelection } from "@/components/intercession-response-charts";
@@ -61,7 +62,24 @@ export function IntercessionSubmissionsClient({
   const { confirm } = useAppDialog();
   const [activeView, setActiveView] = useState<"summary" | "manage">("summary");
   const [selectedSubmissionIds, setSelectedSubmissionIds] = useState<Set<number>>(() => new Set());
+  const [mobileSelectionMode, setMobileSelectionMode] = useState(false);
+  const [actionsSubmissionId, setActionsSubmissionId] = useState<number | null>(null);
   const [filterBy, setFilterBy] = useState<SubmissionFilter>("name");
+  const filterMenuRef = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    function closeOnOutsideInteraction(event: Event) {
+      const menu = filterMenuRef.current;
+      if (menu?.open && event.target instanceof Node && !menu.contains(event.target)) {
+        menu.open = false;
+      }
+    }
+    document.addEventListener("pointerdown", closeOnOutsideInteraction);
+    document.addEventListener("focusin", closeOnOutsideInteraction);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsideInteraction);
+      document.removeEventListener("focusin", closeOnOutsideInteraction);
+    };
+  }, []);
   const [query, setQuery] = useState("");
   const [respondentFilter, setRespondentFilter] = useState("all");
   const [reviewFilter, setReviewFilter] = useState("all");
@@ -76,6 +94,7 @@ export function IntercessionSubmissionsClient({
   const [answerDrilldown, setAnswerDrilldown] = useState<IntercessionChartSelection | null>(null);
   const [notice, setNotice] = useState<{ ok: boolean; message: string } | null>(null);
   const [pending, startTransition] = useTransition();
+  const actionInFlight = useRef(false);
 
   const activeSubmissions = useMemo(() => submissions.filter((submission) => !submission.deletedAt), [submissions]);
   const responseSummaries = useMemo(() => buildIntercessionResponseSummaries(
@@ -139,10 +158,15 @@ export function IntercessionSubmissionsClient({
   }
 
   function runSubmissionAction(action: () => Promise<{ ok: boolean; message: string }>) {
+    if (actionInFlight.current) return;
+    actionInFlight.current = true;
     startTransition(async () => {
+      try {
       const result = await action();
       setNotice(result);
       if (result.ok) setSelectedSubmissionIds(new Set());
+      } catch { setNotice({ ok: false, message: "The action could not be completed. Please try again." }); }
+      finally { actionInFlight.current = false; }
     });
   }
 
@@ -159,36 +183,37 @@ export function IntercessionSubmissionsClient({
   if (selectedSubmissionIds.size) exportSearch.set("ids", [...selectedSubmissionIds].join(","));
 
   return (
-    <div className="mx-auto max-w-7xl px-2 py-4 sm:px-4 sm:py-6">
+    <div className="mx-auto max-w-7xl px-0 pt-2 pb-28 sm:px-4 sm:py-6">
+      {pending && <p role="status" className="fixed bottom-24 left-1/2 z-[160] -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2 text-sm text-white shadow-lg">Saving changes…</p>}
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         {notice ? (
           <ActionNotice message={notice.message} tone={notice.ok ? "success" : "error"} onClose={() => setNotice(null)} className="m-4" />
         ) : null}
-        <div className="sticky top-40 z-20 rounded-t-2xl bg-white lg:top-[73px]">
+        <div className="rounded-t-2xl bg-white lg:sticky lg:top-[var(--admin-header-height,72px)] lg:z-20">
         <div className="rounded-t-2xl border-b border-slate-200 bg-white px-4 py-5 sm:px-6">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <Link href="/admin/forms" className="mb-3 inline-flex min-h-10 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 shadow-sm transition hover:border-blue-300 hover:bg-blue-100 hover:text-blue-800 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100">
+          <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-3">
+            <div className="contents">
+              <Link href="/admin/forms?section=manage" className="order-1 inline-flex min-h-11 items-center gap-2 rounded-lg px-2 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
                 <ArrowLeft className="size-4" aria-hidden="true" />
                 Back
               </Link>
-              <h1 className="text-xl font-bold text-slate-900 sm:text-2xl"><IntercessionRichText value={form.title} /></h1>
+              <h1 className="order-3 col-span-2 break-words text-base font-semibold leading-snug text-slate-900 sm:text-2xl"><IntercessionRichText value={form.title} /></h1>
             </div>
-            <span className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700">
+            <span className="order-2 inline-flex w-fit items-center gap-1.5 justify-self-end rounded-full bg-slate-100 px-2 py-1.5 text-[11px] font-medium text-slate-600 sm:px-3 sm:text-sm">
               <Users className="size-4" aria-hidden="true" />
-              {activeSubmissions.length} Responses{submissions.length - activeSubmissions.length > 0 ? ` · ${submissions.length - activeSubmissions.length} in trash` : ""}
+              {activeSubmissions.length} Responses
             </span>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-x-4 border-b border-slate-200 bg-white px-2 sm:px-5">
-        <nav className="flex overflow-x-auto" role="tablist" aria-label="Response views">
+        <nav className="flex w-full justify-around overflow-x-auto sm:w-auto sm:justify-start" role="tablist" aria-label="Response views">
           <ResponseViewTab active={activeView === "summary"} icon={BarChart3} label="Summary" onClick={() => setActiveView("summary")} />
           <ResponseViewTab active={activeView === "manage"} icon={FileSpreadsheet} label="Manage" onClick={() => setActiveView("manage")} />
         </nav>
 
         {form.isQuiz ? (
-          <div className="grid w-full gap-2 py-1.5 sm:w-auto sm:grid-cols-2">
+          <div className="grid w-full grid-cols-2 gap-2 py-3 sm:w-auto">
             <StatCard label="Total Submissions" value={activeSubmissions.length} tone="blue" />
             <StatCard label="Average Score" value={`${averageScore}%`} tone="green" />
           </div>
@@ -198,7 +223,7 @@ export function IntercessionSubmissionsClient({
         </div>
 
         {activeView === "summary" ? (
-          <div className="space-y-4 bg-slate-50 p-3 sm:p-5">
+          <div className="space-y-3 rounded-b-2xl bg-slate-50 p-2 sm:space-y-4 sm:p-5">
             {responseSummaries.length ? responseSummaries.map((summary) => (
               <IntercessionResponseSummaryCard key={summary.questionId} summary={summary} fullExcelHref={form.allowExport ? `/admin/forms/${form.id}/submissions/export` : undefined} onSeriesSelect={setAnswerDrilldown} />
             )) : <ResponseAnalyticsEmpty />}
@@ -206,24 +231,25 @@ export function IntercessionSubmissionsClient({
         ) : (
         <>
         <div className="border-b border-slate-200 bg-slate-50 p-3 sm:p-4">
-          <div className="grid grid-cols-1 items-end gap-3 md:grid-cols-[180px_minmax(220px,1fr)_auto]">
-            <label className="text-xs font-semibold text-slate-600">Filter by
-              <select
-                value={filterBy}
-                onChange={(event) => {
-                  if (isSubmissionFilter(event.target.value)) setFilterBy(event.target.value);
-                }}
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              >
-                <option value="name">Name</option>
-                <option value="date">Date</option>
-                <option value="question">Question</option>
-                <option value="answer">Answer</option>
-                <option value="category">User category (guest or member)</option>
-                <option value="review">Review status</option>
-                <option value="storage">Storage</option>
-              </select>
-            </label>
+          <div className="relative grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2 md:grid-cols-[180px_minmax(220px,1fr)_auto] md:gap-3">
+            <div className="min-w-0 text-xs font-semibold text-slate-600">
+              <span id="submission-filter-label">Filter by</span>
+              <details ref={filterMenuRef} className="group mt-1 rounded-lg border border-slate-300 bg-white" onKeyDown={(event) => { if (event.key === "Escape") { event.currentTarget.open = false; event.currentTarget.querySelector("summary")?.focus(); } }}>
+                <summary aria-labelledby="submission-filter-label submission-filter-value" className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-1 rounded-lg px-2 py-2 text-xs font-normal text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 sm:px-3 sm:text-sm [&::-webkit-details-marker]:hidden">
+                  <span id="submission-filter-value">{({ name: "Name", date: "Date", question: "Question", answer: "Answer", category: "User category", review: "Review status", storage: "Storage" })[filterBy]}</span>
+                  <ArrowDown className="size-4 shrink-0 transition group-open:rotate-180" aria-hidden="true" />
+                </summary>
+                <div className="absolute left-0 right-0 z-30 mt-1 max-h-64 overflow-y-auto overscroll-contain rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+                  {([["name", "Name"], ["date", "Date"], ["question", "Question"], ["answer", "Answer"], ["category", "User category (guest or member)"], ["review", "Review status"], ["storage", "Storage"]] as const).map(([value, label]) => (
+                    <button key={value} type="button" aria-pressed={filterBy === value} onClick={(event) => { setFilterBy(value); const dropdown = event.currentTarget.closest("details"); if (dropdown) { dropdown.open = false; dropdown.querySelector("summary")?.focus(); } }} className={`flex min-h-11 w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm font-normal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 ${filterBy === value ? "bg-slate-100 text-slate-900" : "text-slate-600 hover:bg-slate-50"}`}>
+                      <span className="min-w-0 break-words">{label}</span>
+                      {filterBy === value && <CheckCircle2 className="size-4 shrink-0" aria-hidden="true" />}
+                    </button>
+                  ))}
+                </div>
+              </details>
+            </div>
+            <div className="order-last col-span-2 min-w-0 md:order-none md:col-span-1 [&_input]:min-w-0 [&_select]:min-w-0 [&_label]:min-w-0">
             {filterBy === "name" ? (
               <div className="relative">
                 <label htmlFor="submission-name-filter" className="mb-1 block text-xs font-semibold text-slate-600">Name</label>
@@ -251,16 +277,17 @@ export function IntercessionSubmissionsClient({
             {filterBy === "category" ? <FilterSelect label="User category" value={respondentFilter} onChange={setRespondentFilter} options={[["all", "Members and guests"], ["member", "Members"], ["guest", "Guests"]]} /> : null}
             {filterBy === "review" ? <FilterSelect label="Review status" value={reviewFilter} onChange={setReviewFilter} options={[["all", "All review statuses"], ["reviewed", "Reviewed"], ["pending", "Awaiting review"]]} /> : null}
             {filterBy === "storage" ? <FilterSelect label="Storage" value={deletionFilter} onChange={setDeletionFilter} options={[["active", "Active responses"], ["trash", "Trash"], ["all", "Active and trash"]]} /> : null}
-            <div className="flex items-end justify-end gap-2">
+            </div>
+            <div className="flex items-end justify-end gap-1.5 sm:gap-2">
               <button
                 type="button"
                 onClick={resetFilters}
-                className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
+                className="inline-flex min-h-11 items-center justify-center gap-1 rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs font-medium text-slate-600 transition hover:bg-slate-100 sm:gap-2 sm:px-4 sm:text-sm"
               >
                 <RotateCcw className="size-4" aria-hidden="true" />
                 Reset
               </button>
-              {form.allowExport && submissions.length > 0 ? <a href={`/admin/forms/${form.id}/submissions/export?${exportSearch.toString()}`} className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100"><FileSpreadsheet className="size-4" aria-hidden="true" />Excel</a> : null}
+              {form.allowExport && submissions.length > 0 ? <a href={`/admin/forms/${form.id}/submissions/export?${exportSearch.toString()}`} className="inline-flex min-h-11 items-center justify-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-2 text-xs font-medium text-emerald-700 transition hover:bg-emerald-100 sm:gap-2 sm:px-4 sm:text-sm"><FileSpreadsheet className="size-4" aria-hidden="true" />Excel</a> : null}
             </div>
           </div>
           <div className="mt-3 text-xs text-slate-500">
@@ -306,7 +333,42 @@ export function IntercessionSubmissionsClient({
           </div>
         ) : null}
 
-        <div className="overflow-x-auto">
+        <div className="space-y-3 bg-slate-50 p-3 md:hidden">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <label className="flex min-w-0 items-center gap-2 text-xs text-slate-500">Sort by
+              <select value={sortField} onChange={(event) => setSortField(event.target.value as SubmissionSortField)} className="min-h-11 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700">
+                <option value="submitted">Date</option><option value="responder">Name</option><option value="type">User type</option>{form.isQuiz && <option value="marks">Marks</option>}
+              </select>
+              <button type="button" aria-label={sortDirection === "asc" ? "Sort descending" : "Sort ascending"} onClick={() => setSortDirection((current) => current === "asc" ? "desc" : "asc")} className="flex size-11 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600">{sortDirection === "asc" ? <ArrowUp className="size-4" /> : <ArrowDown className="size-4" />}</button>
+            </label>
+            <button type="button" aria-pressed={mobileSelectionMode} onClick={() => { setMobileSelectionMode(!mobileSelectionMode); setSelectedSubmissionIds(new Set()); }} className="min-h-11 rounded-lg px-2 text-xs font-semibold text-slate-600">{mobileSelectionMode ? "Done" : "Select"}</button>
+          </div>
+          {mobileSelectionMode && <label className="flex min-h-11 items-center gap-2 text-xs text-slate-600"><input type="checkbox" checked={filteredSubmissions.length > 0 && filteredSubmissions.every((submission) => selectedSubmissionIds.has(submission.id))} onChange={(event) => { const checked = event.target.checked; setSelectedSubmissionIds((current) => { const next = new Set(current); filteredSubmissions.forEach((submission) => checked ? next.add(submission.id) : next.delete(submission.id)); return next; }); }} className="size-4" />Select all visible responses</label>}
+          {filteredSubmissions.map((submission) => (
+            <article key={submission.id} className="relative rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+              <button type="button" disabled={pending} aria-haspopup={mobileSelectionMode ? undefined : "dialog"} aria-label={mobileSelectionMode ? `Select ${submission.memberName}` : `Actions for response from ${submission.memberName}`} onClick={() => { if (mobileSelectionMode) { setSelectedSubmissionIds((current) => { const next = new Set(current); if (next.has(submission.id)) next.delete(submission.id); else next.add(submission.id); return next; }); } else setActionsSubmissionId(submission.id); }} className="absolute inset-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" />
+              <div className="pointer-events-none relative flex items-start gap-2">
+                {mobileSelectionMode && <input type="checkbox" checked={selectedSubmissionIds.has(submission.id)} readOnly tabIndex={-1} aria-hidden="true" className="mt-1 size-4 shrink-0" />}
+                <div className="min-w-0 flex-1">
+                  <h3 className="break-words text-sm font-medium text-slate-900">{submission.memberName}</h3>
+                </div>
+                <ChevronRight className="mt-1 size-4 shrink-0 text-slate-400" aria-hidden="true" />
+              </div>
+              <div className="pointer-events-none relative mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-xs text-slate-500">
+                {form.isQuiz && <p>{submission.earnedPoints === null ? <span className="text-amber-700">Awaiting review</span> : <span>Marks <strong className="font-semibold text-slate-800">{formatIntercessionMarks(submission.earnedPoints)} / {formatIntercessionMarks(submission.totalPoints)}</strong></span>}</p>}
+                <p className="ml-auto flex items-start gap-1.5 text-[11px]"><CalendarDays className="size-3.5 shrink-0" aria-hidden="true" /><span>{submission.submittedDate}, {submission.submittedTime}</span></p>
+                {submission.deletedAt && <p className="w-full text-red-700">In trash</p>}
+              </div>
+              <FormActionsSheet title={submission.memberName} open={actionsSubmissionId === submission.id} onClose={() => setActionsSubmissionId(null)}>
+                <button type="button" disabled={pending} onClick={() => setReviewSubmission(submission)} className="flex items-center gap-3 rounded-lg bg-slate-50 px-3 text-left text-sm text-slate-700"><UserCheck className="size-4" aria-hidden="true" />Review response</button>
+                {form.canGradeSubmissions && form.releaseGrade === "later" && submission.score !== null && <button type="button" disabled={pending} onClick={() => runSubmissionAction(() => setSubmissionRelease(submission.id, !submission.isReleased))} className="min-h-11 rounded-lg bg-slate-50 px-3 text-xs font-medium text-slate-700 disabled:opacity-50">{submission.isReleased ? "Hide grade" : "Release grade"}</button>}
+                {form.canDeleteSubmissions && submission.deletedAt && <><button type="button" disabled={pending} onClick={() => runSubmissionAction(() => restoreFormSubmission(submission.id))} className="min-h-11 rounded-lg px-3 text-xs text-emerald-700 disabled:opacity-50">Restore</button><button type="button" disabled={pending} onClick={async () => { if (await confirm({ title: "Permanently delete submission", message: `Permanently delete ${submission.memberName}'s submission and uploaded files?${submission.isCommitment ? " This will also permanently delete the accepted commitment record." : ""} This cannot be undone.`, confirmLabel: "Delete permanently", tone: "danger" })) runSubmissionAction(() => permanentlyDeleteFormSubmission(submission.id)); }} className="min-h-11 rounded-lg px-3 text-xs text-red-700 disabled:opacity-50">Delete forever</button></>}
+              </FormActionsSheet>
+            </article>
+          ))}
+          {!filteredSubmissions.length && <p className="py-8 text-center text-sm text-slate-500">No responses match these filters.</p>}
+        </div>
+        <div className="hidden overflow-x-auto md:block">
           <table className="min-w-full divide-y divide-gray-200 text-sm">
             <thead className="bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
               <tr>
@@ -450,10 +512,6 @@ function SortHeader({ label, active, direction, onClick }: { label: string; acti
 
 function FilterSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: Array<[string, string]> }) {
   return <label className="text-xs font-semibold text-slate-600">{label}<select value={value} onChange={(event) => onChange(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900">{options.map(([optionValue, optionLabel]) => <option key={optionValue} value={optionValue}>{optionLabel}</option>)}</select></label>;
-}
-
-function isSubmissionFilter(value: string): value is SubmissionFilter {
-  return ["name", "date", "question", "answer", "category", "review", "storage"].includes(value);
 }
 
 function BulkButton({ label, onClick, tone = "default" }: { label: string; onClick: () => void; tone?: "default" | "danger" }) {
@@ -655,9 +713,9 @@ function StatCard({ label, value, tone }: { label: string; value: string | numbe
   }[tone];
 
   return (
-    <div className={`flex items-center justify-between gap-3 rounded-lg border border-gray-100 px-3 py-1.5 ${toneClass}`}>
-      <p className="text-[11px] font-semibold uppercase text-gray-500">{label}</p>
-      <p className="text-base font-bold">{value}</p>
+    <div className={`flex min-w-0 items-center justify-between gap-2 rounded-lg border border-gray-100 px-2 py-2 sm:gap-3 sm:px-3 ${toneClass}`}>
+      <p className="text-[11px] font-medium text-slate-500">{label}</p>
+      <p className="shrink-0 text-base font-semibold tabular-nums">{value}</p>
     </div>
   );
 }

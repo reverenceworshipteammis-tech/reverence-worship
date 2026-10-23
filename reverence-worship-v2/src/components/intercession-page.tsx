@@ -94,7 +94,7 @@ export async function IntercessionPage({
   }
 
   const loadForms = standaloneForms && canLoadForms;
-  const loadReports = standaloneForms && canLoadReports;
+  const loadReports = standaloneForms && canLoadReports && params.section === "reports";
   const [forms, mySubmissions, users, allSubmissions, actionPlans] = await Promise.all([
     loadForms ? withDatabaseRetry(() => prisma.spiritualForm.findMany({
       orderBy: { createdAt: "desc" },
@@ -106,8 +106,14 @@ export async function IntercessionPage({
     loadForms ? withDatabaseRetry(() => prisma.formSubmission.findMany({
       where: { userId: user.id, deletedAt: null },
       orderBy: { submittedAt: "desc" },
-      include: {
-        form: true,
+      select: {
+        id: true,
+        formId: true,
+        submittedAt: true,
+        score: true,
+        isReleased: true,
+        manualGrades: true,
+        form: { select: { title: true, description: true, questions: true, settings: true } },
       },
     }), 3) : Promise.resolve([]),
     loadReports

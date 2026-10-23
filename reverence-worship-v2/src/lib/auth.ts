@@ -186,21 +186,24 @@ const getPermissionKeys = cache(async (userId: number, roleIdsKey: string, isSup
   if (isSuperAdmin) return ["*"] satisfies PermissionKey[];
 
   const roleIds = roleIdsKey.split(",").map(Number).filter((roleId) => Number.isInteger(roleId) && roleId > 0);
-  const permissions = roleIds.length > 0
-    ? await withDatabaseRetry(() => prisma.rolePageFeature.findMany({
+  const [permissions, isParent] = await Promise.all([
+    roleIds.length > 0
+    ? withDatabaseRetry(() => prisma.rolePageFeature.findMany({
         where: { roleId: { in: roleIds } },
         include: {
           page: { select: { name: true } },
           feature: { select: { name: true } },
         },
       }))
-    : [];
+    : Promise.resolve([]),
+    getParentAssociation(userId),
+  ]);
 
   const permissionSet = new Set<PermissionKey>(
     permissions.map((permission) => `${permission.page.name}.${permission.feature.name}` as PermissionKey),
   );
 
-  if (await getParentAssociation(userId)) permissionSet.add("parent.view");
+  if (isParent) permissionSet.add("parent.view");
 
   return Array.from(permissionSet);
 });

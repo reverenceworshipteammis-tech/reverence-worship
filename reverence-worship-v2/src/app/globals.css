@@ -326,6 +326,36 @@ input {
   transition: margin-left 0.3s ease;
 }
 
+/* Opaque bridges prevent scrolling content from showing through header seams
+   and the rounded corners of section navigation. */
+.admin-top-header::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: 100%;
+  height: 1px;
+  background: #ffffff;
+  pointer-events: none;
+}
+
+.forms-sticky-navigation {
+  isolation: isolate;
+}
+
+.forms-sticky-navigation::before {
+  content: "";
+  position: absolute;
+  inset: -1px -1px 0;
+  z-index: -1;
+  background: #f3f4f6;
+  pointer-events: none;
+}
+
+.forms-sticky-navigation > nav {
+  border-radius: inherit;
+  background: #ffffff;
+}
+
 .admin-main-content.expanded {
   margin-left: 68px;
 }

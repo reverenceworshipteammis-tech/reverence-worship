@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useMemo, useState, useTransition } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { FormActionsSheet } from "@/components/form-actions-sheet";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { addCalendarDays, databaseDate, kigaliDateKey } from "@/lib/calendar-date";
@@ -19,6 +20,7 @@ import {
   CheckCircle2,
   CalendarDays,
   ChevronRight,
+  ChevronDown,
   ClipboardList,
   Copy,
   Download,
@@ -258,9 +260,22 @@ export function IntercessionClient({
   const [previewForm, setPreviewForm] = useState<SpiritualForm | null>(null);
   const [manageStatus, setManageStatus] = useState<"active" | "archived">("active");
   const [selectedFormIds, setSelectedFormIds] = useState<Set<number>>(new Set());
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [actionsFormId, setActionsFormId] = useState<number | null>(null);
+  const [expandedResultForms, setExpandedResultForms] = useState<Set<number>>(new Set());
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      try {
+        const id = Number(sessionStorage.getItem("forms-expanded-result"));
+        if (id > 0) setExpandedResultForms(new Set([id]));
+      } catch { /* Expansion memory is optional. */ }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
   const [todayValue] = useState(() => kigaliDateKey());
   const [weekValue] = useState(() => addCalendarDays(kigaliDateKey(), 7));
   const [isPending, startTransition] = useTransition();
+  const actionInFlight = useRef(false);
 
   const reportForms = forms.filter((form) => form.isActive && form.submissionsCount > 0);
   const reportFormIdsInRange = new Set(
@@ -394,13 +409,18 @@ export function IntercessionClient({
   const canViewReports = permissions.canViewReports || permissions.canViewSubmissions || permissions.canExportReports;
 
   function runAction(action: () => Promise<{ ok: boolean; message: string }>, close?: () => void) {
+    if (actionInFlight.current) return;
+    actionInFlight.current = true;
     startTransition(async () => {
+      try {
       const result = await action();
       setNotice(result);
       if (result.ok) {
         close?.();
         router.refresh();
       }
+      } catch { setNotice({ ok: false, message: "The action could not be completed. Please try again." }); }
+      finally { actionInFlight.current = false; }
     });
   }
 
@@ -692,6 +712,7 @@ export function IntercessionClient({
         </div>
       ) : null}
 
+      {isPending && <p role="status" className="fixed bottom-24 left-1/2 z-[160] -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2 text-sm text-white shadow-lg">Saving changes…</p>}
       {notice ? <IntercessionNoticeBanner notice={notice} onClose={() => setNotice(null)} /> : null}
 
       {activeTab === "actions" ? (
@@ -871,7 +892,7 @@ export function IntercessionClient({
           </div>
         </div>
       ) : (
-        <div className="rounded-xl bg-white p-4 shadow-md sm:p-6">
+        <div className={standaloneForms && (activeFormSection === "available" || activeFormSection === "results") ? "pb-24 sm:rounded-xl sm:bg-white sm:p-6 sm:shadow-md" : "rounded-xl bg-white p-4 shadow-md sm:p-6"}>
           {!standaloneForms && <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             {!standaloneForms ? (
               <div className="grid w-full grid-cols-2 gap-1 rounded-xl border border-gray-200 bg-gray-50 p-1 sm:inline-grid sm:w-auto sm:grid-cols-4">
@@ -899,8 +920,8 @@ export function IntercessionClient({
 
           {activeFormSection === "available" && (
             <section>
-              <h2 className="mb-4 text-lg font-bold text-gray-900">Available Forms</h2>
-              <div className="space-y-3 rounded-xl bg-gray-50 p-3">
+              <h2 className="mb-3 px-1 text-lg font-bold text-gray-900">Available Forms</h2>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {publishedForms.length ? (
                   publishedForms.map((form) => {
                     const cardUrl = `/admin/forms/${form.id}/take`;
@@ -908,13 +929,13 @@ export function IntercessionClient({
                     return (
                       <article
                         key={form.id}
-                        className="available-form-card group flex w-full items-start gap-2 rounded-xl border border-gray-200 bg-gradient-to-br from-white to-blue-50/30 p-4 transition hover:border-blue-200 hover:shadow-md sm:p-5"
+                        className="available-form-card group relative flex w-full flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-slate-300 hover:shadow-md sm:p-5"
                       >
-                        <Link href={cardUrl} className="min-w-0 flex-1">
+                        <Link href={cardUrl} className="min-w-0 flex-1 rounded-lg after:absolute after:inset-0 after:rounded-xl focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-blue-500 focus-visible:after:ring-offset-2">
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
-                              <h3 className="text-base font-semibold text-slate-800 sm:text-lg"><IntercessionRichText value={form.title} /></h3>
+                              <h3 className="w-full line-clamp-2 text-base font-semibold leading-snug text-slate-900 sm:text-lg"><IntercessionRichText value={form.title} /></h3>
                               {form.hasSubmitted && (
                                 <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
                                   <CheckCircle2 className="size-3" aria-hidden="true" />
@@ -922,7 +943,7 @@ export function IntercessionClient({
                                 </span>
                               )}
                               {form.limitOneResponse && (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+                                <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
                                   <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                     <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
                                     <path d="M7 11V7a5 5 0 0 1 10 0v4" />
@@ -936,9 +957,6 @@ export function IntercessionClient({
                                 </span>
                               )}
                             </div>
-                            {form.description && (
-                              <p className="mt-1 text-sm text-gray-500 line-clamp-2"><IntercessionRichText value={form.description} /></p>
-                            )}
                             {form.availabilityMessage && (
                               <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
                                 {form.availabilityMessage}
@@ -947,15 +965,9 @@ export function IntercessionClient({
                           </div>
                           </div>
                         </Link>
-                        <button
-                          type="button"
-                          onClick={() => copyFormLink(form.id)}
-                          className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-white text-blue-600 transition hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-                          aria-label={`Copy link to ${intercessionRichTextToPlainText(form.title)}`}
-                          title="Copy form link"
-                        >
-                          <Link2 className="size-4" aria-hidden="true" />
-                        </button>
+                        <div className="mt-3 flex items-center justify-between gap-3 border-t border-slate-100 pt-2">
+                          <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-600">Open form <ChevronRight className="size-4" aria-hidden="true" /></span>
+                        </div>
                       </article>
                     );
                   })
@@ -968,38 +980,49 @@ export function IntercessionClient({
 
           {activeFormSection === "results" && (
             <section>
-              <div className="mx-auto mb-4 flex max-w-5xl flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-bold text-gray-900">My Results</h2></div>
+              <div className="mx-auto mb-3 flex max-w-5xl flex-wrap items-center justify-between gap-3 px-1"><h2 className="text-lg font-bold text-gray-900">My Results</h2></div>
               <div className="mx-auto max-w-5xl space-y-3">
                 {submissionGroups.length ? (
                   submissionGroups.map((group) => (
                     <section key={group.formId} className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-                      <header className="flex flex-col gap-2 bg-slate-50/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                      <header className="relative flex flex-col gap-2 px-4 py-4 pr-16 sm:flex-row sm:items-center sm:justify-between sm:pl-5 sm:pr-16">
                         <div className="min-w-0">
-                          <h3 className="font-semibold text-gray-900"><IntercessionRichText value={group.formTitle} /></h3>
-                          {group.formDescription ? <p className="mt-1 line-clamp-1 text-sm text-gray-500"><IntercessionRichText value={group.formDescription} /></p> : null}
+                          <h3 className="line-clamp-2 text-base font-normal leading-snug text-gray-900"><IntercessionRichText value={group.formTitle} /></h3>
                         </div>
-                        <span className="w-fit shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
-                          {group.submissions.length} {group.submissions.length === 1 ? "attempt" : "attempts"}
-                        </span>
+                          <button
+                            type="button"
+                            aria-expanded={expandedResultForms.has(group.formId)}
+                            aria-controls={`result-attempts-${group.formId}`}
+                            aria-label={`${expandedResultForms.has(group.formId) ? "Hide" : "Show"} submissions for ${intercessionRichTextToPlainText(group.formTitle)}`}
+                            onClick={() => setExpandedResultForms((current) => {
+                              const expanded = !current.has(group.formId);
+                              try { if (expanded) sessionStorage.setItem("forms-expanded-result", String(group.formId)); else sessionStorage.removeItem("forms-expanded-result"); } catch { /* Expansion memory is optional. */ }
+                              return expanded ? new Set([group.formId]) : new Set<number>();
+                            })}
+                            className="absolute inset-0 flex w-full items-center justify-end rounded-lg pr-4 text-slate-500 hover:bg-slate-100/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
+                          >
+                            <ChevronDown className={`size-5 transition-transform ${expandedResultForms.has(group.formId) ? "rotate-180" : ""}`} aria-hidden="true" />
+                          </button>
                       </header>
-                      <div className="divide-y divide-gray-100 border-t border-gray-100">
+                      <div id={`result-attempts-${group.formId}`} hidden={!expandedResultForms.has(group.formId)} className="divide-y divide-gray-100 border-t border-gray-100">
                         {group.submissions.map((submission, index) => (
                           <Link
                             key={submission.id}
                             href={`/admin/forms/submissions/${submission.id}`}
-                            className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5 transition hover:bg-blue-50/50 focus-visible:bg-blue-50/50 sm:px-5"
+                            className="relative grid min-h-20 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 py-3 pl-4 pr-10 transition hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 sm:pl-5 sm:pr-11"
                           >
-                            <span className="rounded-md bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600">
-                              {index + 1}
+                            <span className="text-sm font-semibold text-slate-700">
+                              Attempt {index + 1}
                             </span>
-                            <span className="flex min-w-0 items-center gap-2 text-sm text-gray-600">
+                            <span className="col-span-2 row-start-2 flex min-w-0 items-start gap-2 text-xs leading-relaxed text-slate-500">
                               <CalendarDays className="size-3.5 shrink-0 text-gray-400" aria-hidden="true" />
-                              <span className="truncate">Submitted {submission.submittedAt}</span>
+                              <span>Submitted {submission.submittedAt}</span>
                             </span>
-                            <span className="inline-flex min-w-20 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-full bg-green-100 px-2.5 py-1 text-xs font-semibold text-green-700">
+                            <span className="col-start-2 row-start-1 inline-flex shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-full bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700">
                               <CheckCircle2 className="size-3" aria-hidden="true" />
                               {submission.score === null ? submission.resultStatus : submission.earnedPoints !== null && submission.totalPoints !== null ? `${formatIntercessionMarks(submission.earnedPoints)} / ${formatIntercessionMarks(submission.totalPoints)}` : submission.resultStatus}
                             </span>
+                            <ChevronRight className="absolute right-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                           </Link>
                         ))}
                       </div>
@@ -1014,7 +1037,7 @@ export function IntercessionClient({
 
           {canManageForms && activeFormSection === "manage" && (
             <section>
-              <div className="sticky top-40 z-20 mb-4 flex flex-col gap-3 bg-white py-3 sm:flex-row sm:items-center sm:justify-between lg:top-[73px]">
+              <div className="sticky top-40 z-20 mb-4 flex flex-col gap-3 bg-white py-3 sm:flex-row sm:items-center sm:justify-between lg:top-[var(--admin-header-height,72px)]">
                 <div><div className="mt-2 flex gap-1 rounded-lg bg-slate-100 p-1">{(["active", "archived"] as const).map((status) => <button key={status} type="button" onClick={() => { setManageStatus(status); setSelectedFormIds(new Set()); }} className={`rounded-md px-3 py-1.5 text-xs font-semibold capitalize ${manageStatus === status ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-white"}`}>{status}{status === "archived" ? ` (${forms.filter((form) => !form.isActive).length})` : ""}</button>)}</div></div>
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                   {permissions.canCreateForms && (
@@ -1026,7 +1049,8 @@ export function IntercessionClient({
                       Create Form
                     </Link>
                   )}
-                <label className="relative block sm:w-80">
+                <div className="flex items-center gap-2">
+                <label className="relative block min-w-0 flex-1 sm:w-80">
                   <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" aria-hidden="true" />
                   <input
                     value={query}
@@ -1035,13 +1059,15 @@ export function IntercessionClient({
                     placeholder="Search forms..."
                   />
                 </label>
+                <button type="button" aria-pressed={selectionMode} onClick={() => { setSelectionMode(!selectionMode); setSelectedFormIds(new Set()); }} className="min-h-11 shrink-0 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-blue-700 md:hidden">{selectionMode ? "Done" : "Select"}</button>
+                </div>
                 </div>
               </div>
 
-              <label className="mb-3 inline-flex items-center gap-2 text-xs font-medium text-slate-600 md:hidden">
+              {selectionMode && <label className="mb-3 inline-flex min-h-11 items-center gap-2 text-xs font-medium text-slate-600 md:hidden">
                 <input type="checkbox" checked={allVisibleFormsSelected} onChange={(event) => toggleVisibleFormSelection(event.target.checked)} aria-label="Select all visible forms" className="size-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
                 Select all visible forms
-              </label>
+              </label>}
 
               {selectedFormIds.size ? (
                 <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3">
@@ -1069,41 +1095,35 @@ export function IntercessionClient({
                 </div>
               ) : null}
 
-              <div className="space-y-3 md:hidden">
+              <div className="space-y-3 pb-24 md:hidden">
                 {filteredForms.length ? filteredForms.map((form) => (
-                  <article key={form.id} className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <label className="mb-2 inline-flex items-center gap-2 text-xs font-medium text-slate-600">
+                  <article key={form.id} className="relative rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition hover:border-slate-300 hover:shadow-md">
+                    <button type="button" onClick={() => selectionMode ? toggleFormSelection(form.id, !selectedFormIds.has(form.id)) : setActionsFormId(form.id)} aria-haspopup={selectionMode ? undefined : "dialog"} aria-expanded={selectionMode ? undefined : actionsFormId === form.id} aria-label={selectionMode ? `Select ${intercessionRichTextToPlainText(form.title)}` : `Actions for ${intercessionRichTextToPlainText(form.title)}`} className="absolute inset-0 z-10 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2" />
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                        {selectionMode && <label className="relative z-20 inline-flex min-h-11 items-center gap-2 text-xs font-medium text-slate-600">
                           <input type="checkbox" checked={selectedFormIds.has(form.id)} onChange={(event) => toggleFormSelection(form.id, event.target.checked)} aria-label={`Select ${intercessionRichTextToPlainText(form.title)}`} className="size-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
                           Select form
-                        </label>
-                        <h3 className="line-clamp-2 text-sm font-semibold text-gray-900"><IntercessionRichText value={form.title} /></h3>
-                        <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-gray-500">
-                          <span>Modified: {form.updatedAt}</span>
-                          <span className="size-1 rounded-full bg-gray-300" />
-                          <span>{form.questionCount} questions</span>
-                        </div>
-                      </div>
+                        </label>}
+                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-600">
+                        Submissions <span className="font-bold text-slate-900">{form.submissionsCount}</span>
+                      </span>
                       <span className="shrink-0 rounded-full bg-blue-100 px-2 py-1 text-[11px] font-semibold text-blue-700">
                         {form.publicationStatus === "scheduled" ? "Scheduled" : form.publicationStatus === "closed" ? "Closed" : form.isPublished ? "Published" : "Draft"}
                       </span>
                     </div>
+                    <h3 className="line-clamp-2 text-base font-semibold leading-snug text-gray-900"><IntercessionRichText value={form.title} /></h3>
+                    <p className="mt-1 text-[11px] text-gray-500">Modified: {form.updatedAt}</p>
 
-                    {form.description ? <p className="mt-2 line-clamp-2 text-xs text-gray-600"><IntercessionRichText value={form.description} /></p> : null}
+                    {form.description ? <p className="mt-2 line-clamp-1 text-xs text-gray-600"><IntercessionRichText value={form.description} /></p> : null}
 
-                    <div className="mt-3 grid grid-cols-2 gap-2">
-                      <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Submissions</p>
-                        <p className="mt-0.5 text-sm font-bold text-gray-800">{form.submissionsCount}</p>
-                      </div>
-                      <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+                    <div className="mt-3 hidden sm:block">
+                      <div className="hidden rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 sm:block">
                         <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Created By</p>
                         <p className="mt-0.5 truncate text-xs font-semibold text-gray-800">{form.createdBy}</p>
                       </div>
                     </div>
 
-                    <div className="mt-3 flex flex-wrap gap-2">
+                    <FormActionsSheet title={intercessionRichTextToPlainText(form.title)} open={actionsFormId === form.id} onClose={() => setActionsFormId(null)}>
                       <button type="button" onClick={() => copyFormLink(form.id)} className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-blue-50 px-3 text-xs font-semibold text-blue-700 transition hover:bg-blue-100">
                         <Link2 className="size-3.5" aria-hidden="true" />
                         Copy link
@@ -1150,13 +1170,13 @@ export function IntercessionClient({
                               action: () => deleteSpiritualForm(form.id),
                             });
                           }}
-                          className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-blue-50 px-3 text-xs font-semibold text-blue-700 transition hover:bg-blue-100"
+                          className="mt-2 inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border-t border-red-100 bg-red-50 px-3 text-xs font-semibold text-red-700 transition hover:bg-red-100"
                         >
                           <Trash2 className="size-3.5" />
                           Delete
                         </button>
                       )}
-                    </div>
+                    </FormActionsSheet>
                   </article>
                 )) : (
                   <EmptyState title="No forms found" />
@@ -1181,7 +1201,7 @@ export function IntercessionClient({
                       <tr 
                         key={form.id} 
                         className="cursor-pointer transition hover:bg-gray-50"
-                        onClick={() => window.location.href = `/admin/forms/${form.id}/edit`}
+                        onClick={() => router.push(`/admin/forms/${form.id}/edit`)}
                       >
                         <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
                           <input type="checkbox" checked={selectedFormIds.has(form.id)} onChange={(event) => toggleFormSelection(form.id, event.target.checked)} aria-label={`Select ${intercessionRichTextToPlainText(form.title)}`} className="size-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
@@ -1271,7 +1291,7 @@ export function IntercessionClient({
 
           {canViewReports && activeFormSection === "reports" && (
             <section className="space-y-5">
-              <div className="sticky top-40 z-20 space-y-5 bg-white pb-4 lg:top-[73px]">
+              <div className="sticky top-40 z-20 space-y-5 bg-white pb-4 lg:top-[var(--admin-header-height,72px)]">
               <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                 <div className="grid min-w-0 flex-1 grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
                   <ReportCard label="All Members" mobileLabel="All" value={reportSummary.total} tone="blue" />
@@ -1279,13 +1299,13 @@ export function IntercessionClient({
                   <ReportCard label="Partial Participation" mobileLabel="Partial" value={reportSummary.partial} tone="amber" />
                   <ReportCard label="0% Participation" mobileLabel="0%" value={reportSummary.notStarted} tone="red" />
                 </div>
-                <Link href="/admin/forms/commitments" className="inline-flex shrink-0 items-center justify-center gap-2 self-end rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800 transition hover:bg-blue-100 xl:self-auto">Membership Commitment<ChevronRight className="size-4 shrink-0" aria-hidden="true" /></Link>
+                <Link href="/admin/forms/commitments" className="hidden shrink-0 items-center justify-center gap-2 self-end rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800 transition hover:bg-blue-100 sm:inline-flex xl:self-auto">Membership Commitment<ChevronRight className="size-4 shrink-0" aria-hidden="true" /></Link>
               </div>
 
               <div>
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <details className="relative shrink-0">
-                    <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 [&::-webkit-details-marker]:hidden">
+                    <summary className="flex min-h-9 cursor-pointer list-none items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-2 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100 sm:gap-2 sm:px-4 sm:text-sm [&::-webkit-details-marker]:hidden">
                       <SlidersHorizontal className="size-4" aria-hidden="true" /> Filter by <ChevronRight className="size-4 rotate-90" aria-hidden="true" />
                     </summary>
                     <div className="absolute left-0 top-full z-30 mt-2 w-56 rounded-xl border border-gray-200 bg-white p-2 shadow-lg">
@@ -1294,7 +1314,7 @@ export function IntercessionClient({
                       ))}
                     </div>
                   </details>
-                  <div className="flex min-h-10 min-w-0 flex-1 items-center overflow-x-auto">
+                  <div className={`${reportFilter ? "flex" : "hidden sm:flex"} order-last min-h-10 w-full min-w-0 flex-none items-center rounded-lg bg-slate-50 p-3 sm:order-none sm:w-auto sm:flex-1 sm:overflow-x-auto sm:bg-transparent sm:p-0 [&>div]:w-full [&>div]:min-w-0 [&>div]:flex-wrap [&>div>div]:min-w-0 [&>div>div]:flex-1 [&>div>div]:flex-col [&>div>div]:items-start [&_input]:min-h-11 [&_select]:min-h-11 sm:[&>div]:w-auto sm:[&>div]:flex-nowrap sm:[&>div>div]:flex-none sm:[&>div>div]:flex-row sm:[&>div>div]:items-center [&_input[type=date]]:min-w-0 [&_input[type=date]]:max-w-full [&_select]:max-w-full [&>div>div>div]:w-full`}>
                     {reportFilter === "date" && (<div className="flex items-center gap-3"><div className="flex shrink-0 items-center gap-2">
                     <label className="shrink-0 text-xs font-medium text-gray-700">From</label>
                     <input
@@ -1353,13 +1373,13 @@ export function IntercessionClient({
                   </div></div>)}
 
                   </div>
-                  <div className="flex shrink-0 items-center gap-3">
-                    <button type="button" onClick={() => { resetReportFilters(); setReportFilter(null); }} className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-gray-100 px-4 text-sm font-medium text-gray-700 transition hover:bg-gray-200"><RotateCcw className="size-4" aria-hidden="true" />Reset</button>
+                  <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:ml-0 sm:gap-3">
+                    <button type="button" onClick={() => { resetReportFilters(); setReportFilter(null); }} className="inline-flex h-9 items-center justify-center gap-1 rounded-lg bg-gray-100 px-2 text-xs font-medium text-gray-700 transition hover:bg-gray-200 sm:gap-2 sm:px-4 sm:text-sm"><RotateCcw className="size-4" aria-hidden="true" />Reset</button>
                     {permissions.canExportReports ? (
                       <button
                         type="button"
                         onClick={exportReportCsv}
-                        className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-medium text-white transition hover:bg-emerald-700 sm:h-auto sm:gap-2 sm:px-4 sm:py-2 sm:text-sm"
+                        className="inline-flex h-9 items-center justify-center gap-1 rounded-lg bg-emerald-600 px-2 text-xs font-medium text-white transition hover:bg-emerald-700 sm:h-auto sm:gap-2 sm:px-4 sm:py-2 sm:text-sm"
                       >
                         <Download className="size-3.5 sm:size-4" aria-hidden="true" />
                         Export

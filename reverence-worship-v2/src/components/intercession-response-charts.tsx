@@ -65,18 +65,18 @@ export function IntercessionResponseSummaryCard({ summary, onSeriesSelect, fullE
   }
 
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+    <article className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-5 [&_button]:min-h-11 [&_summary]:min-h-11 [&_select]:min-h-11">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <h2 className="text-base font-bold text-slate-900 sm:text-lg"><IntercessionRichText value={summary.label} /></h2>
+          <h2 className="break-words text-sm font-semibold leading-relaxed text-slate-900 sm:text-lg"><IntercessionRichText value={summary.label} /></h2>
           <p className="mt-1 text-sm text-slate-500">{summary.responseCount} answered · {Math.max(0, summary.totalSubmissions - summary.responseCount)} skipped · {summary.totalSubmissions ? formatPercent(Math.round(summary.responseCount / summary.totalSubmissions * 1000) / 10) : "0%"} response rate</p>
         </div>
         {hasChart || canExport ? (
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap items-center justify-between gap-1.5 sm:justify-start">
           {hasChart ? <button type="button" onClick={() => setShowData((current) => !current)} className="inline-flex w-fit shrink-0 items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-100" aria-expanded={showData}><Table2 className="size-4" aria-hidden="true" />{showData ? "Hide data" : "View data"}</button> : null}
           {canExport ? <details className="relative">
             <summary className="inline-flex cursor-pointer list-none items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold text-blue-600 transition hover:bg-blue-50"><Download className="size-4" aria-hidden="true" />{copyState === "copying" ? "Preparing…" : copyState === "copied" ? "Copied" : copyState === "downloaded" ? "Downloaded" : copyState === "error" ? "Export failed" : "Export"}<ChevronDown className="size-3.5" aria-hidden="true" /></summary>
-            <div className="absolute right-0 z-20 mt-1 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+            <div className="absolute right-0 z-20 mt-1 w-52 max-w-[calc(100vw-4rem)] overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
               {hasChart ? <><ExportAction icon={Copy} label="Copy chart" onClick={() => void copyChart()} disabled={copyState === "copying"} /><ExportAction icon={Download} label="Download PNG" onClick={() => void downloadChart()} disabled={copyState === "copying"} /></> : null}
               {summary.responseCount > 0 ? <ExportAction icon={FileText} label="Download question CSV" onClick={() => downloadQuestionCsv(summary, sortedSeries)} /> : null}
               {fullExcelHref ? <a href={fullExcelHref} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"><FileSpreadsheet className="size-4 text-slate-400" aria-hidden="true" />Download full Excel</a> : null}
@@ -88,7 +88,7 @@ export function IntercessionResponseSummaryCard({ summary, onSeriesSelect, fullE
 
       {hasChart && (canSwitchChart || canSort) ? <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">{canSwitchChart ? <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5" aria-label="Chart type"><ChartModeButton active={chartMode === "pie"} icon={PieChartIcon} label="Pie" onClick={() => setChartMode("pie")} /><ChartModeButton active={chartMode === "bar"} icon={BarChart3} label="Bar" onClick={() => setChartMode("bar")} /></div> : null}{canSort ? <label className="ml-auto inline-flex items-center gap-2 text-xs font-semibold text-slate-500">Sort<select value={sortMode} onChange={(event) => setSortMode(event.target.value as typeof sortMode)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-700"><option value="original">Original order</option><option value="highest">Highest first</option><option value="lowest">Lowest first</option></select></label> : null}</div> : null}
 
-      <div ref={chartRef} className="mt-3">
+      <div ref={chartRef} className="mt-3 min-w-0 max-w-full">
         {summary.responseCount === 0 ? (
           <EmptyResponses />
         ) : summary.kind === "pie" && chartMode === "pie" ? (
@@ -128,7 +128,7 @@ function PieChart({ summary, series, onSelect }: { summary: IntercessionQuestion
   const highest = Math.max(0, ...series.map((item) => item.count));
 
   return (
-    <div className="relative grid items-center gap-4 md:grid-cols-[minmax(230px,300px)_minmax(0,1fr)]">
+    <div className="relative grid min-w-0 grid-cols-[minmax(0,1fr)] items-center gap-4 md:grid-cols-[minmax(230px,300px)_minmax(0,1fr)]">
       {tooltip ? <ChartTooltip text={tooltip} /> : null}
       <svg viewBox="0 0 260 260" className="mx-auto w-full max-w-[280px]" role="img" aria-label={`${plain(summary.label)} response chart`} xmlns="http://www.w3.org/2000/svg">
         <rect width="260" height="260" fill="#ffffff" />
@@ -144,9 +144,9 @@ function PieChart({ summary, series, onSelect }: { summary: IntercessionQuestion
         })}
         {nonZero.length === 1 ? <text x="130" y={centerY + 5} textAnchor="middle" fill="#ffffff" fontSize="16" fontWeight="700" pointerEvents="none">100%</text> : null}
       </svg>
-      <div className="space-y-1.5" aria-label="Chart legend">{series.map((item) => {
+      <div className="min-w-0 space-y-1.5" aria-label="Chart legend">{series.map((item) => {
         const clickable = Boolean(onSelect && item.count > 0);
-        const content = <><span className="size-3 shrink-0 rounded-full" style={{ backgroundColor: seriesColor(item.label, summary.series) }} aria-hidden="true" /><span className="min-w-0 flex-1 truncate text-left font-medium text-slate-700">{item.label}</span>{item.count === highest && highest > 0 ? <span className="hidden rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700 sm:inline">Most selected</span> : null}<span className="shrink-0 font-semibold text-slate-600">{item.count} ({formatPercent(item.percentage)})</span></>;
+        const content = <><span className="size-3 shrink-0 rounded-full" style={{ backgroundColor: seriesColor(item.label, summary.series) }} aria-hidden="true" /><span className="min-w-0 flex-1 break-words text-left text-xs font-medium text-slate-700 [overflow-wrap:anywhere] sm:text-sm">{item.label}</span>{item.count === highest && highest > 0 ? <span className="hidden rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700 sm:inline">Most selected</span> : null}<span className="shrink-0 whitespace-nowrap text-xs font-semibold text-slate-600 sm:text-sm">{item.count} ({formatPercent(item.percentage)})</span></>;
         return onSelect ? <button key={item.label} type="button" disabled={!clickable} onClick={() => onSelect(item.label)} className="flex w-full items-center gap-2 rounded-lg border border-transparent px-2.5 py-2 text-sm transition enabled:hover:border-blue-200 enabled:hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:cursor-default" title={clickable ? `View respondents who selected ${item.label}` : "No respondents selected this answer"}>{content}</button> : <div key={item.label} className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm">{content}</div>;
       })}</div>
     </div>
@@ -170,7 +170,14 @@ function SeriesBarChart({ series, originalSeries, label, onSelect }: { series: I
   return (
     <div className="relative overflow-x-auto">
       {tooltip ? <ChartTooltip text={tooltip} /> : null}
-      <svg viewBox={`0 0 820 ${height}`} className="min-w-[700px]" role="img" aria-label={`${label} response chart`} xmlns="http://www.w3.org/2000/svg">
+      <div className="space-y-3 sm:hidden" aria-label={`${label} response chart`}>
+        {series.map((item) => {
+          const canSelect = Boolean(onSelect && item.count > 0);
+          const content = <><span className="flex items-start justify-between gap-3 text-xs leading-relaxed"><span className="min-w-0 break-words text-slate-700">{item.label}</span><span className="shrink-0 font-semibold tabular-nums text-slate-600">{item.count} ({formatPercent(item.percentage)})</span></span><span className="mt-2 block h-2.5 overflow-hidden rounded-full bg-slate-100" aria-hidden="true"><span className="block h-full rounded-full" style={{ width: `${item.count / max * 100}%`, backgroundColor: seriesColor(item.label, originalSeries) }} /></span></>;
+          return canSelect ? <button key={item.label} type="button" onClick={() => onSelect?.(item.label)} className="block w-full rounded-lg p-2 text-left hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" aria-label={`${item.label}: ${item.count} responses (${formatPercent(item.percentage)}). View respondents`}>{content}</button> : <div key={item.label} className="p-2">{content}</div>;
+        })}
+      </div>
+      <svg viewBox={`0 0 820 ${height}`} className="hidden min-w-[700px] sm:block" role="img" aria-label={`${label} response chart`} xmlns="http://www.w3.org/2000/svg">
         <rect width="820" height={height} fill="#ffffff" />
         {series.map((item, index) => {
           const y = 8 + index * 44;

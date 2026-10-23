@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   BarChart3,
@@ -32,17 +33,19 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  getAdminNotifications,
   markAdminNotificationRead,
   markAllAdminNotificationsRead,
   type AdminNotification,
 } from "@/app/admin/notifications/actions";
 import {
   OPEN_PROFILE_MODAL_EVENT,
-  ProfileModal,
   ProfileModalTrigger,
   type ProfileModalData,
-} from "@/components/profile-modal";
+} from "@/components/profile-modal-trigger";
+
+const ProfileModal = dynamic(() => import("@/components/profile-modal").then((module) => module.ProfileModal), {
+  loading: () => <p role="status" className="fixed bottom-24 left-1/2 z-[160] -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2 text-sm text-white">Opening profile…</p>,
+});
 import { ADMIN_NOTIFICATION_NAVIGATION_EVENT, ADMIN_NOTIFICATIONS_CHANGED_EVENT } from "@/lib/admin-notification-events";
 import { hasSuperAdminRole } from "@/lib/system-account-rules";
 
@@ -156,6 +159,17 @@ export function AdminShell({
   const [notificationError, setNotificationError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const headerRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const header = headerRef.current;
+    const shell = header?.closest<HTMLElement>(".admin-app");
+    if (!header || !shell) return;
+    const updateHeight = () => shell.style.setProperty("--admin-header-height", `${header.getBoundingClientRect().height}px`);
+    updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, []);
   const lastActivityRef = useRef(0);
   const activitySincePingRef = useRef(true);
   const loggingOutRef = useRef(false);
@@ -185,11 +199,16 @@ export function AdminShell({
         return queryDifference || b.href.length - a.href.length;
       })[0]?.label ?? "Reverence Worship";
 
+  const notificationRequestPending = useRef(false);
   const loadNotifications = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (notificationRequestPending.current) return;
+    notificationRequestPending.current = true;
     setNotificationError(null);
     if (!silent) setPending(true);
     try {
-      const result = await getAdminNotifications();
+      const response = await fetch("/api/admin/notifications", { cache: "no-store" });
+      if (!response.ok) throw new Error("Notifications could not be loaded.");
+      const result = await response.json() as { ok: boolean; notifications: AdminNotification[]; unreadCount: number };
       if (result.ok) {
         setNotifications(result.notifications);
         setUnreadCount(result.unreadCount);
@@ -201,6 +220,7 @@ export function AdminShell({
       console.error("Unable to refresh notifications", error);
       setNotificationError("Could not load notifications. They will retry automatically.");
     } finally {
+      notificationRequestPending.current = false;
       if (!silent) setPending(false);
     }
   }, []);
@@ -446,7 +466,7 @@ export function AdminShell({
       </aside>
 
       <div className={`admin-main-content min-h-screen ${collapsed ? "expanded" : ""}`}>
-        <header className="admin-top-header sticky top-0 z-40 bg-white shadow-sm">
+        <header ref={headerRef} className="admin-top-header sticky top-0 z-40 bg-white shadow-sm">
           <div className="flex items-center justify-between px-6 py-4">
             <div className="flex items-center gap-4">
               <button
@@ -626,12 +646,12 @@ export function AdminShell({
         </button>
       </nav>
 
-      <ProfileModal
+      {profileOpen && <ProfileModal
         profile={user.profile}
         open={profileOpen}
         canEdit={user.permissions.includes("*") || user.permissions.includes("profile.edit")}
         onClose={closeProfile}
-      />
+      />}
     </main>
   );
 }

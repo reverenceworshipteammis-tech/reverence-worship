@@ -22,7 +22,7 @@ export function useDialogFocusTrap<T extends HTMLElement>(open: boolean, onClose
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     }
     window.addEventListener("keydown", handleKey);
-    return () => { window.removeEventListener("keydown", handleKey); window.setTimeout(() => returnFocus?.focus(), 0); };
+    return () => { window.removeEventListener("keydown", handleKey); window.setTimeout(() => { if (!document.querySelector('[role="dialog"][aria-modal="true"]')) returnFocus?.focus(); }, 0); };
   }, [open]);
 
   return dialogRef;

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ActionNotice } from "@/components/action-notice";
+import { intercessionMobileSteps } from "@/lib/intercession-mobile-steps";
 import { FormEvent, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { ArrowLeft, CheckCircle2, Clock, FileText, Info, Lock, Paperclip, Presentation, Send } from "lucide-react";
 import { submitSpiritualForm } from "@/app/admin/intercession/actions";
@@ -125,6 +126,9 @@ export function IntercessionTakeForm({
   const draftRestored = useRef(false);
   const [shuffleSeed] = useState(() => Math.random());
   const [isPending, startTransition] = useTransition();
+  const submittingRef = useRef(false);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const limitOneResponse = settings.limit_one_response !== false;
   const submitButtonLabel = settings.submit_button_label?.trim() || "Submit";
@@ -173,6 +177,10 @@ export function IntercessionTakeForm({
 
   const answerableQuestions = displayQuestions.filter(({ question }) => !["title_section", "section_break"].includes(question.type));
   const answeredVisibleQuestions = answerableQuestions.filter(({ index }) => answered[`question_${index}`]).length;
+  const questionSteps = intercessionMobileSteps(displayQuestions.map(({ question }) => question));
+  const stepCount = questionSteps.length ? questionSteps[questionSteps.length - 1] + 1 : 1;
+  const activeStep = Math.min(currentStep, stepCount - 1);
+  const mobileSteps = !isAttendanceAction && stepCount > 1;
   const progress = answerableQuestions.length
     ? Math.round((answeredVisibleQuestions / answerableQuestions.length) * 100)
     : 0;
@@ -210,7 +218,7 @@ export function IntercessionTakeForm({
         return result;
       }, {}));
       setDraftStatus(initialValues ? "Response loaded" : "Draft restored");
-    } catch { localStorage.removeItem(draftKey); }
+    } catch { setDraftStatus("Draft could not be restored on this device."); }
   }, [draftKey, form.id, initialValues, preview, questions]);
 
   function saveDraft(target: HTMLFormElement) {
@@ -222,44 +230,76 @@ export function IntercessionTakeForm({
       const all = data.getAll(key).filter((item): item is string => typeof item === "string");
       values[key] = all.length > 1 ? all : String(value);
     }
-    localStorage.setItem(draftKey, JSON.stringify(values));
-    setDraftStatus("Draft saved");
+    try {
+      localStorage.setItem(draftKey, JSON.stringify(values));
+      setDraftStatus("Draft saved on this device. Files must be selected again if you leave.");
+    } catch { setDraftStatus("Draft could not be saved on this device. Keep this page open."); }
+  }
+
+  function validateFields(fields: Array<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) {
+    const groups = new Map<string, HTMLInputElement[]>();
+    fields.forEach((field) => {
+      if (field instanceof HTMLInputElement && field.type === "checkbox") {
+        field.setCustomValidity("");
+        groups.set(field.name, [...(groups.get(field.name) ?? []), field]);
+      }
+    });
+    groups.forEach((group, name) => {
+      const match = name.match(/^question_(\d+)/);
+      const required = match ? questions[Number(match[1])]?.required : parseIntercessionVisitorFields(settings.visitor_fields).find((field) => `visitor_${field.id}` === name)?.required;
+      if (required && !group.some((field) => field.checked)) group[0].setCustomValidity("Please select at least one option.");
+    });
+    const invalid = fields.filter((field) => field.willValidate && !field.validity.valid);
+    fields.forEach((field) => { if (field.name) { field.setAttribute("aria-invalid", String(invalid.includes(field))); if (invalid.includes(field)) field.setAttribute("aria-describedby", `error-${field.name}`); } });
+    setFieldErrors(Object.fromEntries(invalid.map((field) => [field.name, field.validationMessage || "Please complete this field."])));
+    if (!invalid.length) return true;
+    const first = invalid[0];
+    const step = first.closest<HTMLElement>("[data-form-step]")?.dataset.formStep;
+    if (step !== undefined) setCurrentStep(Number(step));
+    else setCurrentStep(0);
+    requestAnimationFrame(() => { first.scrollIntoView({ behavior: "smooth", block: "center" }); first.focus({ preventScroll: true }); });
+    return false;
+  }
+
+  function moveStep(next: number) {
+    if (next > activeStep && formRef.current) {
+      const selector = `[data-form-step="${activeStep}"] input, [data-form-step="${activeStep}"] select, [data-form-step="${activeStep}"] textarea${activeStep === 0 ? ', [data-form-intro] input, [data-form-intro] select, [data-form-intro] textarea' : ''}`;
+      const fields = Array.from(formRef.current.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(selector));
+      if (!preview && !validateFields(fields)) return;
+    }
+    setCurrentStep(next);
+    requestAnimationFrame(() => formRef.current?.querySelector<HTMLElement>(`[data-form-step="${next}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (preview) return;
-    if (requireRespondentName) {
-      const submissionData = new FormData(event.currentTarget);
-      const missingCheckboxField = parseIntercessionVisitorFields(settings.visitor_fields)
-        .find((field) => field.required && field.type === "checkboxes" && submissionData.getAll(`visitor_${field.id}`).length === 0);
-      if (missingCheckboxField) {
-        setMessage(`${missingCheckboxField.label} is required.`);
-        setMessageIsError(true);
-        event.currentTarget.querySelector<HTMLInputElement>(`[name="${CSS.escape(`visitor_${missingCheckboxField.id}`)}"]`)?.focus();
-        return;
-      }
-    }
-    if (!event.currentTarget.checkValidity()) {
+    if (preview || submittingRef.current) return;
+    if (mobileSteps && window.matchMedia("(max-width: 639px)").matches && activeStep < stepCount - 1) { moveStep(activeStep + 1); return; }
+    if (!validateFields(Array.from(event.currentTarget.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>("input, select, textarea")))) {
       setMessage("Please fill all required fields.");
       setMessageIsError(true);
-      event.currentTarget.querySelector<HTMLElement>(":invalid")?.focus();
       return;
     }
     const formData = new FormData(event.currentTarget);
     formData.set("startedAt", startedAt.current);
     if (editToken) formData.set("editToken", editToken);
-    let respondentKey = localStorage.getItem(`intercession-respondent:${form.id}`);
-    if (!respondentKey) { respondentKey = crypto.randomUUID(); localStorage.setItem(`intercession-respondent:${form.id}`, respondentKey); }
+    let respondentKey = crypto.randomUUID();
+    try { respondentKey = localStorage.getItem(`intercession-respondent:${form.id}`) || respondentKey; localStorage.setItem(`intercession-respondent:${form.id}`, respondentKey); } catch { /* Submission remains available without local storage. */ }
     formData.set("respondentKey", respondentKey);
+    submittingRef.current = true;
     startTransition(async () => {
+      try {
       const result = await submitSpiritualForm(form.id, formData);
       setMessage(result.message);
       setMessageIsError(!result.ok);
       if (result.ok) {
-        localStorage.removeItem(draftKey);
+        try { localStorage.removeItem(draftKey); } catch { /* Response has already been saved. */ }
         setSubmitted({ message: result.message, redirectUrl: result.redirectUrl ?? "", score: result.score ?? null, earnedPoints: result.earnedPoints ?? null, totalPoints: result.totalPoints ?? null, responseDetails: result.responseDetails ?? [], editUrl: result.editUrl ?? "" });
       }
+      } catch {
+        setMessage("Your response could not be submitted. Your answers are still here. Please try again.");
+        setMessageIsError(true);
+      } finally { submittingRef.current = false; }
     });
   }
 
@@ -355,7 +395,7 @@ export function IntercessionTakeForm({
           </div>
         </div>
 
-        {settings.show_progress_bar && (
+        {(settings.show_progress_bar || mobileSteps) && (
           <div className="px-5 pt-6 sm:px-8">
             <div className="mb-2 flex justify-between text-sm text-gray-600">
               <span>Your Progress</span>
@@ -369,15 +409,18 @@ export function IntercessionTakeForm({
 
         {message && <ActionNotice message={message} tone={messageIsError ? "error" : "info"} onClose={() => setMessage(null)} className="mx-5 mt-4 sm:mx-8" />}
 
-        <form ref={formRef} onSubmit={submit} noValidate onInput={(event) => saveDraft(event.currentTarget)}>
+        {!preview && draftStatus ? <p className="px-5 py-2 text-xs text-slate-500" role="status">{draftStatus}</p> : null}
+        <form ref={formRef} onSubmit={submit} noValidate aria-busy={isPending} onInput={(event) => { saveDraft(event.currentTarget); const field = event.target as HTMLInputElement; if (field.name) { field.setCustomValidity(""); field.removeAttribute("aria-invalid"); setFieldErrors((current) => { const next = { ...current }; delete next[field.name]; return next; }); } }}>
+          <fieldset disabled={isPending} className="contents">
           {settings.commitment ? <input type="hidden" name="commitment_version" value={form.version ?? 0} /> : null}
-          {settings.commitment ? <div className="bg-slate-50 px-5 pt-5 sm:px-8 sm:pt-8"><CommitmentMemberInformation config={settings.commitment} values={memberProfile} preview={preview} membershipQuestionLinked={questions.some((question) => question.membershipTypeMapping != null)} anonymous={!settings.require_login && !memberProfile} /></div> : null}
+          {settings.commitment ? <div data-form-intro className={`${mobileSteps && activeStep > 0 ? "hidden sm:block" : ""} bg-slate-50 px-5 pt-5 sm:px-8 sm:pt-8`}><CommitmentMemberInformation config={settings.commitment} values={memberProfile} preview={preview} membershipQuestionLinked={questions.some((question) => question.membershipTypeMapping != null)} anonymous={!settings.require_login && !memberProfile} /></div> : null}
           {requireRespondentName || displayQuestions.length > 0 || !settings.allow_empty_submission ? (
             <div className="space-y-4 bg-slate-50 px-2 py-4 @min-[640px]/form:space-y-6 @min-[640px]/form:p-8">
-              {requireRespondentName && !settings.commitment ? <VisitorInformationFields fields={parseIntercessionVisitorFields(settings.visitor_fields)} formId={form.id} /> : null}
+              {requireRespondentName && !settings.commitment ? <div data-form-intro className={mobileSteps && activeStep > 0 ? "hidden sm:block" : ""}><VisitorInformationFields fields={parseIntercessionVisitorFields(settings.visitor_fields)} formId={form.id} errors={fieldErrors} /></div> : null}
+              {Object.entries(fieldErrors).filter(([name]) => !name.startsWith("question_") && !name.startsWith("visitor_")).map(([name, error]) => <p key={name} id={`error-${name}`} role="alert" className="text-sm text-red-700">{error}</p>)}
               {displayQuestions.length ? (
-                displayQuestions.map(({ question, index }) => (
-                  <div key={`${question.id}-${index}`}>
+                displayQuestions.map(({ question, index }, position) => (
+                  <div key={`${question.id}-${index}`} data-form-step={questionSteps[position]} className={`${mobileSteps && questionSteps[position] !== activeStep ? "hidden sm:block" : ""} scroll-mt-48`}>
                     {["title_section", "section_break"].includes(question.type) ? <FormDisplayBlock question={question} /> : <QuestionField
                       question={question}
                       index={index}
@@ -386,6 +429,7 @@ export function IntercessionTakeForm({
                       onAnswered={(value) => setAnswered((current) => ({ ...current, [`question_${index}`]: value }))}
                       onAnswerChange={(value) => setAnswersByQuestionId((current) => ({ ...current, [question.id]: value }))}
                     />}
+                    {Object.entries(fieldErrors).filter(([name]) => name === `question_${index}` || name.startsWith(`question_${index}_`)).map(([name, error]) => <p key={name} id={`error-${name}`} role="alert" className="mt-2 px-3 text-sm text-red-700">{error}</p>)}
                   </div>
                 ))
               ) : (
@@ -394,7 +438,12 @@ export function IntercessionTakeForm({
             </div>
           ) : null}
 
-          <div className={isAttendanceAction ? "relative overflow-hidden border-t border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-cyan-50 px-5 py-8 sm:px-8 sm:py-10" : "border-t border-gray-200 bg-white px-5 py-5 sm:px-8"}>
+          {mobileSteps && <div className="flex items-center justify-between gap-3 border-t border-slate-200 bg-white px-4 py-4 sm:hidden">
+            <button type="button" disabled={activeStep === 0 || isPending} onClick={() => moveStep(activeStep - 1)} className="min-h-11 rounded-lg border border-slate-200 px-3 text-sm text-slate-600 disabled:opacity-40">Previous</button>
+            <span className="text-xs text-slate-500" aria-live="polite">Step {activeStep + 1} of {stepCount}</span>
+            {activeStep < stepCount - 1 ? <button type="button" disabled={isPending} onClick={() => moveStep(activeStep + 1)} className="min-h-11 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white">Continue</button> : <span className="text-xs text-slate-500">Ready to submit</span>}
+          </div>}
+          <div className={`${mobileSteps && activeStep < stepCount - 1 ? "hidden sm:block " : ""}${isAttendanceAction ? "relative overflow-hidden border-t border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-cyan-50 px-5 py-8 sm:px-8 sm:py-10" : "border-t border-gray-200 bg-white px-5 py-5 sm:px-8"}`}>
             {isAttendanceAction ? <><div className="pointer-events-none absolute -left-20 -top-20 size-56 rounded-full bg-emerald-200/30 blur-3xl" /><div className="pointer-events-none absolute -bottom-24 -right-20 size-64 rounded-full bg-cyan-200/30 blur-3xl" /></> : null}
             <div className={isAttendanceAction || settings.commitment ? "flex flex-col items-center gap-4" : "flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end"}>
               {isAttendanceAction ? (
@@ -456,15 +505,15 @@ export function IntercessionTakeForm({
                 </button>
               )}
             </div>
-            {!preview && draftStatus ? <p className="mt-3 text-right text-xs text-slate-400" aria-live="polite">{draftStatus}</p> : null}
           </div>
+          </fieldset>
         </form>
       </div>
     </div>
   );
 }
 
-function VisitorInformationFields({ fields, formId }: { fields: IntercessionVisitorField[]; formId: number }) {
+function VisitorInformationFields({ fields, formId, errors = {} }: { fields: IntercessionVisitorField[]; formId: number; errors?: Record<string, string> }) {
   return (
     <section className="overflow-hidden rounded-xl border border-blue-200 bg-white shadow-sm">
       <div className="border-b border-blue-100 bg-blue-50/70 px-5 py-4">
@@ -509,6 +558,7 @@ function VisitorInformationFields({ fields, formId }: { fields: IntercessionVisi
                   className={commonClass}
                 />
               )}
+              {errors[name] && <p id={`error-${name}`} role="alert" className="mt-2 text-sm text-red-700">{errors[name]}</p>}
             </div>
           );
         })}
@@ -562,7 +612,6 @@ function QuestionField({
           {question.required && <span className="ml-1 text-red-500">*</span>}
         </h3>
         {question.description && <p className="mt-1 text-sm text-gray-500"><IntercessionRichText value={question.description} /></p>}
-        {question.membershipTypeMapping != null ? <p className="mt-2 text-sm text-blue-700">Your selection will update your membership type when you submit and accept this commitment.</p> : null}
       </div>
 
       <IntercessionQuestionImages images={question.images} className="mb-5" />

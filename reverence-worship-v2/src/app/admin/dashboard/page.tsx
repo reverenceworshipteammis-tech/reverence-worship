@@ -24,7 +24,7 @@ import { PerformanceSummaryCards } from "@/components/performance-client";
 import { getPerformanceDateRange } from "@/lib/performance-date-range";
 import { getUserPerformanceData, type PerformanceMetrics } from "@/lib/user-performance";
 import { currentKigaliYear, databaseDate, kigaliDateKey } from "@/lib/calendar-date";
-import { ProfileModalTrigger } from "@/components/profile-modal";
+import { ProfileModalTrigger } from "@/components/profile-modal-trigger";
 import { getProbationMonitoring, probationDateSummary } from "@/lib/probation-data";
 import { PROBATION_GOOD_THRESHOLD } from "@/lib/probation-rules";
 import { intercessionFormAvailability, parseIntercessionFormSettings } from "@/lib/intercession-form-domain";

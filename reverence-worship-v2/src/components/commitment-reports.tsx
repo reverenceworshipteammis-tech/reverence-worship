@@ -19,7 +19,7 @@ export function CommitmentReports({ year, years, rows, canExport, heading }: { h
   const percentage = rows.length ? Math.round(accepted / rows.length * 1000) / 10 : 0;
   const exportQuery = new URLSearchParams({ year: String(year), q: query.trim(), status });
   return <div className="space-y-5">
-    <div className="sticky top-40 z-20 space-y-5 bg-white pb-4 lg:top-[73px]">
+    <div className="sticky top-40 z-20 space-y-5 bg-white pb-4 lg:top-[var(--admin-header-height,72px)]">
       {heading}
     <div className="flex flex-wrap items-center justify-between gap-4">
       <label className="shrink-0 text-sm font-semibold text-slate-700">Commitment year<select className="ml-3 rounded-lg border border-slate-300 bg-white px-4 py-2" value={year} onChange={(event) => router.push(`/admin/forms/commitments?year=${event.target.value}`)}>{years.length ? years.map((item) => <option key={item} value={item}>{item}</option>) : <option value={year}>{year}</option>}</select></label>
