@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ActionNotice } from "@/components/action-notice";
@@ -395,7 +394,6 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
   const [draggingQuestionId, setDraggingQuestionId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [activeImageUploads, setActiveImageUploads] = useState(0);
-  const [collapsedQuestionIds, setCollapsedQuestionIds] = useState<Set<string>>(new Set());
   const [draftStatus, setDraftStatus] = useState<DraftStatus>("saved");
   const [showChecklist, setShowChecklist] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
@@ -690,6 +688,17 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
     });
   }
 
+  function moveQuestionByOffset(id: string, offset: -1 | 1) {
+    setQuestions((current) => {
+      const index = current.findIndex((question) => question.id === id);
+      const targetIndex = index + offset;
+      if (index < 0 || targetIndex < 0 || targetIndex >= current.length) return current;
+      const next = [...current];
+      [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
+      return next;
+    });
+  }
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (saveInFlightRef.current) return;
@@ -765,50 +774,34 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
     <div className="min-h-screen bg-slate-50 px-3 py-5 sm:px-5">
       <form onSubmit={submit}>
         <div className="sticky top-0 z-40 mx-auto mb-5 max-w-5xl rounded-xl border border-gray-200 bg-white shadow-[0_8px_28px_rgba(15,23,42,0.05)]">
-          <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-            <div>
-              <Link href="/admin/forms?section=manage" onClick={async (event) => {
-                if (!["unsaved", "saving", "error"].includes(draftStatus)) return;
-                event.preventDefault();
-                const shouldLeave = await confirm({
-                  title: "Leave form builder?",
-                  message: "Some changes may not be saved yet. If you leave now, those changes could be lost.",
-                  confirmLabel: "Leave builder",
-                  tone: "danger",
-                });
-                if (shouldLeave) router.push("/admin/forms?section=manage");
-              }} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-sm font-semibold text-blue-700 shadow-sm transition hover:border-blue-300 hover:bg-blue-100 hover:text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 active:bg-blue-200">
-                <ArrowLeft className="size-4" aria-hidden="true" />
-                Manage Forms
-              </Link>
-              {!isEditing ? <h1 className="mt-1 text-xl font-bold text-gray-900">Create a new form</h1> : null}
-            </div>
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              <button type="button" onClick={undo} disabled={pastSnapshots.length === 0} className="inline-flex size-10 items-center justify-center rounded-lg border border-blue-200 text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-35" title="Undo" aria-label="Undo last change">
+          <div className="flex flex-col gap-3 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5 sm:py-4">
+            {!isEditing ? <h1 className="text-xl font-bold text-gray-900">Create a new form</h1> : null}
+            <div className="grid w-full grid-cols-6 items-center gap-1.5 sm:ml-auto sm:flex sm:w-auto sm:flex-wrap sm:justify-end sm:gap-2">
+              <button type="button" onClick={undo} disabled={pastSnapshots.length === 0} className="inline-flex h-10 w-full items-center justify-center rounded-lg border border-blue-200 text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-35 sm:size-10" title="Undo" aria-label="Undo last change">
                 <Undo2 className="size-4" aria-hidden="true" />
               </button>
-              <button type="button" onClick={redo} disabled={futureSnapshots.length === 0} className="inline-flex size-10 items-center justify-center rounded-lg border border-blue-200 text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-35" title="Redo" aria-label="Redo last change">
+              <button type="button" onClick={redo} disabled={futureSnapshots.length === 0} className="inline-flex h-10 w-full items-center justify-center rounded-lg border border-blue-200 text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-35 sm:size-10" title="Redo" aria-label="Redo last change">
                 <Redo2 className="size-4" aria-hidden="true" />
               </button>
-              <button type="button" onClick={() => setShowTemplates(true)} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-blue-200 px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50">
-                <Layers className="size-4" aria-hidden="true" /> Templates
+              <button type="button" onClick={() => setShowTemplates(true)} aria-label="Templates" title="Templates" className="inline-flex min-h-10 w-full items-center justify-center gap-1.5 rounded-lg border border-blue-200 px-2 text-xs font-semibold text-blue-700 hover:bg-blue-50 sm:w-auto sm:gap-2 sm:px-3 sm:text-sm">
+                <Layers className="size-4" aria-hidden="true" /> <span className="sr-only sm:not-sr-only">Templates</span>
               </button>
-              <button type="button" onClick={() => { setLibraryLoading(!libraryLoaded); setShowLibrary(true); }} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-blue-200 px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50">
-                <BookOpen className="size-4" aria-hidden="true" /> Library
+              <button type="button" onClick={() => { setLibraryLoading(!libraryLoaded); setShowLibrary(true); }} aria-label="Question library" title="Question library" className="inline-flex min-h-10 w-full items-center justify-center gap-1.5 rounded-lg border border-blue-200 px-2 text-xs font-semibold text-blue-700 hover:bg-blue-50 sm:w-auto sm:gap-2 sm:px-3 sm:text-sm">
+                <BookOpen className="size-4" aria-hidden="true" /> <span className="sr-only sm:not-sr-only">Library</span>
               </button>
-              <button type="button" onClick={() => setShowChecklist(true)} className="relative inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-blue-200 px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50">
-                <FileCheck2 className="size-4" aria-hidden="true" /> Check
+              <button type="button" onClick={() => setShowChecklist(true)} aria-label="Check form" title="Check form" className="relative inline-flex min-h-10 w-full items-center justify-center gap-1.5 rounded-lg border border-blue-200 px-2 text-xs font-semibold text-blue-700 hover:bg-blue-50 sm:w-auto sm:gap-2 sm:px-3 sm:text-sm">
+                <FileCheck2 className="size-4" aria-hidden="true" /> <span className="sr-only sm:not-sr-only">Check</span>
                 {publishingIssues.length > 0 ? <span className="rounded-full bg-red-100 px-1.5 text-[10px] text-red-700">{publishingIssues.length}</span> : null}
               </button>
-              <button type="button" onClick={() => setShowPreview(true)} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-blue-200 px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50">
-                <Presentation className="size-4" aria-hidden="true" /> Preview
+              <button type="button" onClick={() => setShowPreview(true)} aria-label="Preview form" title="Preview form" className="inline-flex min-h-10 w-full items-center justify-center gap-1.5 rounded-lg border border-blue-200 px-2 text-xs font-semibold text-blue-700 hover:bg-blue-50 sm:w-auto sm:gap-2 sm:px-3 sm:text-sm">
+                <Presentation className="size-4" aria-hidden="true" /> <span className="sr-only sm:not-sr-only">Preview</span>
               </button>
-              <button disabled={isSaving || activeImageUploads > 0} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60">
+              <button disabled={isSaving || activeImageUploads > 0} className={`${settings.is_quiz ? "col-span-4" : "col-span-6"} inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60 sm:w-auto sm:px-4`}>
                 <Check className="size-4" aria-hidden="true" />
                 {activeImageUploads > 0 ? "Uploading images…" : isSaving ? "Saving…" : isEditing ? "Save form" : "Create form"}
               </button>
               {settings.is_quiz ? (
-                <span className="inline-flex min-h-10 items-center rounded-lg border border-green-200 bg-green-50 px-3 text-sm font-semibold text-green-800" aria-live="polite">
+                <span className="col-span-2 inline-flex min-h-10 w-full items-center justify-center rounded-lg border border-green-200 bg-green-50 px-2 text-xs font-semibold text-green-800 sm:w-auto sm:px-3 sm:text-sm" aria-live="polite">
                   {formatIntercessionMarks(totalMarks)} Points
                 </span>
               ) : null}
@@ -860,7 +853,6 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
                   ariaLabel="Form description"
                   className="block min-h-7 w-full border-none text-lg leading-relaxed text-gray-900 outline-none focus:ring-0 sm:text-xl"
                 />
-                <p className="mt-2 text-xs text-gray-400">Press Ctrl+B for bold or Ctrl+I for italic.</p>
               </div>
             </div>
 
@@ -922,23 +914,21 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
                     </button>
                   </div>
                 ) : null}
-                {questions.map((question) => (
+                {questions.map((question, questionIndex) => (
                   <QuestionCard
                     key={question.id}
                     question={question}
                     selected={selectedQuestionId === question.id}
                     dragging={draggingQuestionId === question.id}
-                    collapsed={collapsedQuestionIds.has(question.id)}
+                    canMoveUp={questionIndex > 0}
+                    canMoveDown={questionIndex < questions.length - 1}
                     showPoints={settings.is_quiz}
                     membershipMappingAvailable={Boolean(settings.commitment) && (!membershipQuestionLinked || question.type === "membership_type")}
                     actionsDisabled={isSaving || activeImageUploads > 0}
                     onUploadingChange={(uploading) => setActiveImageUploads((count) => Math.max(0, count + (uploading ? 1 : -1)))}
                     onSelect={() => setSelectedQuestionId(question.id)}
-                    onToggleCollapsed={() => setCollapsedQuestionIds((current) => {
-                      const next = new Set(current);
-                      if (next.has(question.id)) next.delete(question.id); else next.add(question.id);
-                      return next;
-                    })}
+                    onMoveUp={() => moveQuestionByOffset(question.id, -1)}
+                    onMoveDown={() => moveQuestionByOffset(question.id, 1)}
                     onChange={(patch) => updateQuestion(question.id, patch)}
                     onRemoveImage={(index) => {
                       const image = question.images[index];
@@ -983,7 +973,6 @@ export function IntercessionFormBuilder({ initialData }: { initialData?: Interce
         setShowChecklist(false);
         setActiveArea("questions");
         setSelectedQuestionId(id);
-        setCollapsedQuestionIds((current) => { const next = new Set(current); next.delete(id); return next; });
         window.setTimeout(() => document.getElementById(`builder-question-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
       }} /> : null}
       {showTemplates ? <TemplatesModal onClose={() => setShowTemplates(false)} onApply={applyTemplate} /> : null}
@@ -1011,13 +1000,15 @@ function QuestionCard({
   question,
   selected,
   dragging,
-  collapsed,
+  canMoveUp,
+  canMoveDown,
   showPoints,
   membershipMappingAvailable,
   actionsDisabled,
   onUploadingChange,
   onSelect,
-  onToggleCollapsed,
+  onMoveUp,
+  onMoveDown,
   onChange,
   onRemoveImage,
   onAddQuestion,
@@ -1035,13 +1026,15 @@ function QuestionCard({
   question: BuilderQuestion;
   selected: boolean;
   dragging: boolean;
-  collapsed: boolean;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
   showPoints: boolean;
   membershipMappingAvailable: boolean;
   actionsDisabled: boolean;
   onUploadingChange: (uploading: boolean) => void;
   onSelect: () => void;
-  onToggleCollapsed: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
   onChange: (patch: Partial<BuilderQuestion> | ((question: BuilderQuestion) => Partial<BuilderQuestion>)) => void;
   onRemoveImage: (index: number) => void;
   onAddQuestion: () => void;
@@ -1059,6 +1052,19 @@ function QuestionCard({
   const isDisplayOnly = question.type === "title_section" || question.type === "section_break";
   const conditionSourceQuestions = precedingQuestions.filter((candidate) => ["short_answer", "paragraph", "multiple_choice", "membership_type", "checkboxes", "dropdown", "linear_scale", "rating", "multiple_choice_grid", "checkbox_grid", "date", "time"].includes(candidate.type));
 
+  function moveOption(index: number, offset: -1 | 1) {
+    const targetIndex = index + offset;
+    if (targetIndex < 0 || targetIndex >= question.options.length) return;
+    const options = [...question.options];
+    [options[index], options[targetIndex]] = [options[targetIndex], options[index]];
+    let membershipTypeMapping = question.membershipTypeMapping;
+    if (membershipTypeMapping != null) {
+      membershipTypeMapping = [...membershipTypeMapping];
+      [membershipTypeMapping[index], membershipTypeMapping[targetIndex]] = [membershipTypeMapping[targetIndex], membershipTypeMapping[index]];
+    }
+    onChange({ options, membershipTypeMapping });
+  }
+
   return (
     <div
       id={`builder-question-${question.id}`}
@@ -1069,13 +1075,14 @@ function QuestionCard({
         selected ? "border-blue-300 ring-2 ring-blue-100" : "border-gray-200"
       } ${dragging ? "opacity-50" : "opacity-100"}`}
     >
-      <div className="mb-2 flex items-center justify-between gap-3 sm:pl-7">
-        <p className={`truncate text-xs font-semibold text-slate-500 ${collapsed ? "block" : "hidden"}`}>{intercessionRichTextToPlainText(question.label) || "Untitled question"}</p>
-        <button type="button" onClick={(event) => { event.stopPropagation(); onToggleCollapsed(); }} className="ml-auto inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-blue-700 transition hover:bg-blue-50" aria-expanded={!collapsed} aria-controls={`question-content-${question.id}`} aria-label={collapsed ? "Expand question" : "Collapse question"}>
-          {collapsed ? <ChevronDown className="size-4" aria-hidden="true" /> : <ChevronUp className="size-4" aria-hidden="true" />}
+      <div className="mb-2 flex items-center justify-end gap-1 sm:pl-7">
+        <button type="button" disabled={!canMoveUp} onClick={(event) => { event.stopPropagation(); onMoveUp(); }} className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent" aria-label="Move question up" title="Move question up">
+          <ChevronUp className="size-4" aria-hidden="true" />
+        </button>
+        <button type="button" disabled={!canMoveDown} onClick={(event) => { event.stopPropagation(); onMoveDown(); }} className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent" aria-label="Move question down" title="Move question down">
+          <ChevronDown className="size-4" aria-hidden="true" />
         </button>
       </div>
-      <div id={`question-content-${question.id}`} hidden={collapsed}>
       {selected && (
         <div className="absolute bottom-[-52px] right-2 z-20 flex gap-1 rounded-xl border border-gray-200 bg-white p-1 shadow-sm sm:bottom-auto sm:right-[-62px] sm:top-0 sm:flex-col">
           <BuilderTool label="Add question" onClick={onAddQuestion}>
@@ -1150,7 +1157,7 @@ function QuestionCard({
           {["multiple_choice", "membership_type", "checkboxes", "dropdown"].includes(question.type) && (
             <div className="space-y-2">
               {(question.options.length ? question.options : [""]).map((option, index) => (
-                <div key={`${question.id}-option-${index}`} className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div key={`${question.id}-option-${index}`} className="relative flex flex-col gap-2 sm:flex-row sm:items-center">
                   <input
                     value={option}
                     onChange={(event) => {
@@ -1163,7 +1170,7 @@ function QuestionCard({
                         correctAnswers: question.correctAnswers.map((answer) => (answer === previousOption ? event.target.value : answer)),
                       });
                     }}
-                    className="min-w-0 flex-1 border-0 border-b border-gray-300 px-2 py-1 text-base text-gray-900 outline-none focus:border-indigo-500 focus:ring-0"
+                    className="min-w-0 flex-1 border-0 border-b border-gray-300 py-1 pl-2 pr-28 text-base text-gray-900 outline-none focus:border-indigo-500 focus:ring-0 sm:px-2"
                     placeholder={`Option ${index + 1}`}
                   />
                   {question.membershipTypeMapping != null ? <select
@@ -1200,22 +1207,46 @@ function QuestionCard({
                     )}
                     Correct
                   </label> : null}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const removed = question.options[index];
-                      const nextOptions = question.options.filter((_, optionIndex) => optionIndex !== index);
-                      onChange({
-                        options: nextOptions.length ? nextOptions : [""],
-                        membershipTypeMapping: question.membershipTypeMapping != null ? nextOptions.length ? question.membershipTypeMapping.filter((_, optionIndex) => optionIndex !== index) : [""] : null,
-                        correctAnswer: question.correctAnswer === removed ? "" : question.correctAnswer,
-                        correctAnswers: question.correctAnswers.filter((answer) => answer !== removed),
-                      });
-                    }}
-                    className="text-xs font-medium text-red-500 hover:text-red-700"
-                  >
-                    Remove
-                  </button>
+                  <div className="absolute right-0 top-0 flex shrink-0 items-center gap-0.5 bg-white pl-1 sm:static sm:bg-transparent sm:pl-0" aria-label={`Reorder option ${index + 1}`}>
+                    <button
+                      type="button"
+                      disabled={index === 0}
+                      onClick={() => moveOption(index, -1)}
+                      className="inline-flex size-8 items-center justify-center rounded-md text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
+                      aria-label={`Move option ${index + 1} up`}
+                      title="Move option up"
+                    >
+                      <ChevronUp className="size-4" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={index === question.options.length - 1}
+                      onClick={() => moveOption(index, 1)}
+                      className="inline-flex size-8 items-center justify-center rounded-md text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
+                      aria-label={`Move option ${index + 1} down`}
+                      title="Move option down"
+                    >
+                      <ChevronDown className="size-4" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const removed = question.options[index];
+                        const nextOptions = question.options.filter((_, optionIndex) => optionIndex !== index);
+                        onChange({
+                          options: nextOptions.length ? nextOptions : [""],
+                          membershipTypeMapping: question.membershipTypeMapping != null ? nextOptions.length ? question.membershipTypeMapping.filter((_, optionIndex) => optionIndex !== index) : [""] : null,
+                          correctAnswer: question.correctAnswer === removed ? "" : question.correctAnswer,
+                          correctAnswers: question.correctAnswers.filter((answer) => answer !== removed),
+                        });
+                      }}
+                      className="inline-flex size-8 items-center justify-center rounded-md text-red-500 transition hover:bg-red-50 hover:text-red-700"
+                      aria-label={`Remove option ${index + 1}`}
+                      title="Remove option"
+                    >
+                      <Trash2 className="size-4" aria-hidden="true" />
+                    </button>
+                  </div>
                 </div>
               ))}
               <button
@@ -1333,7 +1364,6 @@ function QuestionCard({
             <Trash2 className="size-4" />
           </button>
         </div>
-      </div>
       </div>
       {showPoints && question.points === 0 ? <p className="mt-2 text-right text-xs text-slate-500">A correct answer is optional for a 0-point question.</p> : null}
     </div>

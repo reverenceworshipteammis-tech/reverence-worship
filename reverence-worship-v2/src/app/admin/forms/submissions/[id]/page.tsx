@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { ArrowLeft, CalendarDays, CheckCircle2, FileText, Lock } from "lucide-react";
+import { ArrowLeft, CalendarDays, CheckCircle2, Lock } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import {
   memberCanViewScore,
@@ -182,29 +182,32 @@ export default async function MemberSubmissionResultPage({
     <div className="mx-auto max-w-5xl px-3 py-5 sm:px-4 sm:py-8">
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-sky-100 bg-gradient-to-br from-white via-sky-50 to-cyan-50/40 px-5 py-6 sm:px-8">
-          <Link
-            href="/admin/forms?section=results"
-            className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-sky-700 transition hover:text-sky-900"
-          >
-            <ArrowLeft className="size-4" aria-hidden="true" />
-            Back to My Results
-          </Link>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-sky-700">Your submission</p>
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <Link
+              href="/admin/forms?section=results"
+              className="inline-flex min-h-8 items-center gap-2 text-sm font-medium text-sky-700 transition hover:text-sky-900"
+            >
+              <ArrowLeft className="size-4" aria-hidden="true" />
+              Back to My Results
+            </Link>
+            <span className="inline-flex shrink-0 items-center gap-2 rounded-full bg-green-100 px-3 py-1.5 text-sm font-semibold text-green-700">
+              <CheckCircle2 className="size-4" aria-hidden="true" />
+              {canViewScore && scorePoints.total > 0 ? `${formatIntercessionMarks(scorePoints.earned)} / ${formatIntercessionMarks(scorePoints.total)}` : memberResultLabel(resultState)}
+            </span>
+          </div>
+          <div>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-sky-700">Your submission</p>
+                <p className="inline-flex min-w-0 items-center justify-end gap-1.5 text-right text-[10px] text-slate-500 sm:text-xs" aria-label={`Submitted ${formatDateTime(submission.submittedAt)}`}>
+                  <CalendarDays className="size-3.5 shrink-0" aria-hidden="true" />
+                  <span className="sm:hidden">{formatDateTime(submission.submittedAt)}</span>
+                  <span className="hidden sm:inline">Submitted {formatDateTime(submission.submittedAt)}</span>
+                </p>
+              </div>
               <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl"><IntercessionRichText value={submission.form.title} /></h1>
               {submission.form.description ? (
                 <p className="mt-2 text-sm leading-6 text-slate-600"><IntercessionRichText value={submission.form.description} /></p>
               ) : null}
-              <p className="mt-3 inline-flex items-center gap-2 text-sm text-slate-500">
-                <CalendarDays className="size-4" aria-hidden="true" />
-                Submitted {formatDateTime(submission.submittedAt)}
-              </p>
-            </div>
-            <span className="inline-flex shrink-0 items-center gap-2 self-start rounded-full bg-green-100 px-3 py-1.5 text-sm font-semibold text-green-700">
-              <CheckCircle2 className="size-4" aria-hidden="true" />
-              {canViewScore && scorePoints.total > 0 ? `${formatIntercessionMarks(scorePoints.earned)} / ${formatIntercessionMarks(scorePoints.total)}` : memberResultLabel(resultState)}
-            </span>
           </div>
         </div>
 
@@ -221,10 +224,6 @@ export default async function MemberSubmissionResultPage({
         <div className="bg-slate-50 p-5 sm:p-8">
           {allowViewResponse ? (
             <div>
-              <div className="mb-5 flex items-center gap-2">
-                <FileText className="size-5 text-blue-600" aria-hidden="true" />
-                <h2 className="text-lg font-bold text-slate-900">Your responses</h2>
-              </div>
               <div className="space-y-4">
                 {questions.map((question, displayIndex) => {
                   const grade = canViewScore

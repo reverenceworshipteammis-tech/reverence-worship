@@ -273,10 +273,8 @@ export async function updateNotificationSettings(formData: FormData) {
       const fieldPrefix = `notification_${category}`;
       notificationSettings[`${fieldPrefix}_in_app_enabled`] = readBoolean(formData, `${fieldPrefix}_in_app_enabled`);
       notificationSettings[`${fieldPrefix}_email_enabled`] = readBoolean(formData, `${fieldPrefix}_email_enabled`);
-      const recipientMode = category === "account"
-        ? "individuals"
-        : readString(formData, `${fieldPrefix}_recipient_mode`);
-      if (category !== "account" && !["individuals", "roles", "all"].includes(recipientMode)) {
+      const recipientMode = readString(formData, `${fieldPrefix}_recipient_mode`);
+      if (!["individuals", "roles", "all"].includes(recipientMode)) {
         throw new Error(`Select a valid recipient type for ${category.replaceAll("_", " ")} notifications.`);
       }
       const readIds = (fieldName: string, description: string) => formData.getAll(fieldName).map((value) => {
@@ -289,13 +287,11 @@ export async function updateNotificationSettings(formData: FormData) {
         }
         return id;
       });
-      const selectedRecipients = category === "account"
-        ? { mode: "individuals" as const, userIds: [], roleIds: [] }
-        : {
-            mode: recipientMode as "individuals" | "roles" | "all",
-            userIds: [...new Set(readIds(`${fieldPrefix}_recipient_users`, "person"))],
-            roleIds: [...new Set(readIds(`${fieldPrefix}_recipient_roles`, "role"))],
-          };
+      const selectedRecipients = {
+        mode: recipientMode as "individuals" | "roles" | "all",
+        userIds: [...new Set(readIds(`${fieldPrefix}_recipient_users`, "person"))],
+        roleIds: [...new Set(readIds(`${fieldPrefix}_recipient_roles`, "role"))],
+      };
       selectedRecipientsByCategory.set(category, selectedRecipients);
 
       if (category !== "account") {

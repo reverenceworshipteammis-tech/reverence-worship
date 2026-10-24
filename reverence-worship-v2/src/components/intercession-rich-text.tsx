@@ -1,5 +1,5 @@
 import { Fragment } from "react";
-import { IntercessionRichTextNode, parseIntercessionRichText } from "@/lib/intercession-rich-text";
+import { IntercessionRichTextNode, parseIntercessionRichText, richTextStyle } from "@/lib/intercession-rich-text";
 
 function renderNodes(nodes: IntercessionRichTextNode[], keyPrefix: string): React.ReactNode {
   return nodes.map((node, index) => {
@@ -19,6 +19,7 @@ function renderNodes(nodes: IntercessionRichTextNode[], keyPrefix: string): Reac
     }
 
     const children = renderNodes(node.children, key);
+    if (node.type === "span") return <span key={key} style={richTextStyle(node.font, node.size)}>{children}</span>;
     return node.type === "strong" ? <strong key={key}>{children}</strong> : <em key={key}>{children}</em>;
   });
 }

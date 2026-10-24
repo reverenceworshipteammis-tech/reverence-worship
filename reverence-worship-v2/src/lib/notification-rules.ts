@@ -137,10 +137,10 @@ export function unsupportedNotificationPlaceholders(value: string, allowedPlaceh
 }
 
 export function shouldIncludeConfiguredNotificationRecipients(
-  category: NotificationCategory,
+  _category: NotificationCategory,
   explicitlyRequested: boolean,
 ) {
-  return explicitlyRequested && category !== "account";
+  return explicitlyRequested;
 }
 
 export function accountNotificationEventSettingKey(event: AccountNotificationEvent) {

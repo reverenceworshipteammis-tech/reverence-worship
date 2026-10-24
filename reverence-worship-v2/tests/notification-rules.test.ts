@@ -186,8 +186,8 @@ test("notification recipients support individuals, roles, and all active members
   );
 });
 
-test("account notifications never add statically configured recipients", () => {
-  assert.equal(shouldIncludeConfiguredNotificationRecipients("account", true), false);
+test("configured notification recipients are included only when explicitly requested", () => {
+  assert.equal(shouldIncludeConfiguredNotificationRecipients("account", true), true);
   assert.equal(shouldIncludeConfiguredNotificationRecipients("account", false), false);
   assert.equal(shouldIncludeConfiguredNotificationRecipients("announcement", true), true);
   assert.equal(shouldIncludeConfiguredNotificationRecipients("announcement", false), false);

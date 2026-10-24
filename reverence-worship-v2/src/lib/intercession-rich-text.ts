@@ -1,8 +1,22 @@
 export type IntercessionRichTextNode =
   | { type: "text"; value: string }
-  | { type: "strong" | "em"; children: IntercessionRichTextNode[] };
+  | { type: "strong" | "em"; children: IntercessionRichTextNode[] }
+  | { type: "span"; font?: string; size?: number; children: IntercessionRichTextNode[] };
 
-const tagPattern = /<\/?(?:strong|em)>/gi;
+export const intercessionFonts: Record<string, string> = {
+  default: 'ui-sans-serif, system-ui, sans-serif',
+  aptos: 'Aptos, Calibri, sans-serif',
+  "aptos-narrow": '"Aptos Narrow", "Arial Narrow", Arial, sans-serif',
+  arial: 'Arial, sans-serif',
+  georgia: 'Georgia, serif',
+  times: '"Times New Roman", serif',
+  verdana: 'Verdana, sans-serif',
+  courier: '"Courier New", monospace',
+};
+export function richTextStyle(font?: string, size?: number) {
+  return { ...(font && Object.hasOwn(intercessionFonts, font) ? { fontFamily: intercessionFonts[font] } : {}), ...(size && Number.isInteger(size) && size >= 10 && size <= 64 ? { fontSize: `${size}px` } : {}) };
+}
+const tagPattern = /<\/?(?:strong|em)>|<span(?:\s+data-(?:font|size)="[a-z0-9-]+")*\s*>|<\/span>/gi;
 
 function decodeEntity(entity: string) {
   const normalized = entity.toLowerCase();
@@ -39,7 +53,7 @@ export function escapeIntercessionRichText(value: string) {
 
 export function parseIntercessionRichText(value: string): IntercessionRichTextNode[] {
   const root: IntercessionRichTextNode[] = [];
-  const stack: Array<{ type: "root" | "strong" | "em"; children: IntercessionRichTextNode[] }> = [
+  const stack: Array<{ type: "root" | "strong" | "em" | "span"; children: IntercessionRichTextNode[] }> = [
     { type: "root", children: root },
   ];
   let cursor = 0;
@@ -51,9 +65,15 @@ export function parseIntercessionRichText(value: string): IntercessionRichTextNo
     }
 
     const tag = match[0].toLowerCase();
-    const type = tag.includes("strong") ? "strong" : "em";
+    const type = tag.startsWith("<span") || tag === "</span>" ? "span" : tag.includes("strong") ? "strong" : "em";
     if (!tag.startsWith("</")) {
-      const node: IntercessionRichTextNode = { type, children: [] };
+      const node: Exclude<IntercessionRichTextNode, { type: "text" }> = { type, children: [] };
+      if (node.type === "span") {
+        const font = tag.match(/data-font="([a-z0-9-]+)"/)?.[1];
+        const size = Number(tag.match(/data-size="(\d+)"/)?.[1]);
+        if (font && Object.hasOwn(intercessionFonts, font)) node.font = font;
+        if (Number.isInteger(size) && size >= 10 && size <= 64) node.size = size;
+      }
       stack.at(-1)!.children.push(node);
       stack.push(node);
     } else if (stack.at(-1)?.type === type) {
@@ -82,6 +102,11 @@ export function intercessionRichTextToPlainText(value: string) {
 function nodesToSafeHtml(nodes: IntercessionRichTextNode[]): string {
   return nodes.map((node) => {
     if (node.type === "text") return escapeIntercessionRichText(node.value).replace(/\r?\n/g, "<br>");
+    if (node.type === "span") {
+      const styles = richTextStyle(node.font, node.size);
+      const css = `${styles.fontFamily ? `font-family:${styles.fontFamily};` : ""}${styles.fontSize ? `font-size:${styles.fontSize};` : ""}`;
+      return `<span${node.font ? ` data-font="${node.font}"` : ""}${node.size ? ` data-size="${node.size}"` : ""}${css ? ` style="${escapeIntercessionRichText(css)}"` : ""}>${nodesToSafeHtml(node.children)}</span>`;
+    }
     return `<${node.type}>${nodesToSafeHtml(node.children)}</${node.type}>`;
   }).join("");
 }

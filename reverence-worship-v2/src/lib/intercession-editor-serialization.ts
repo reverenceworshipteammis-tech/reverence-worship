@@ -1,6 +1,6 @@
-import { escapeIntercessionRichText } from "./intercession-rich-text";
+import { escapeIntercessionRichText, intercessionFonts } from "./intercession-rich-text";
 
-type EditorNode = { nodeType: number; textContent: string | null; childNodes: ArrayLike<EditorNode>; tagName?: string };
+type EditorNode = { nodeType: number; textContent: string | null; childNodes: ArrayLike<EditorNode>; tagName?: string; getAttribute?: (name: string) => string | null };
 
 export function serializeIntercessionEditor(parent: EditorNode): string {
   let result = "";
@@ -16,7 +16,12 @@ export function serializeIntercessionEditor(parent: EditorNode): string {
       if (!content.endsWith("\n")) result += "\n";
     } else if (tag === "STRONG" || tag === "B") result += `<strong>${content}</strong>`;
     else if (tag === "EM" || tag === "I") result += `<em>${content}</em>`;
-    else result += content;
+    else if (tag === "SPAN") {
+      const font = node.getAttribute?.("data-font");
+      const size = Number(node.getAttribute?.("data-size"));
+      const attrs = `${font && Object.hasOwn(intercessionFonts, font) ? ` data-font="${font}"` : ""}${Number.isInteger(size) && size >= 10 && size <= 64 ? ` data-size="${size}"` : ""}`;
+      result += attrs ? `<span${attrs}>${content}</span>` : content;
+    } else result += content;
   }
   return result;
 }

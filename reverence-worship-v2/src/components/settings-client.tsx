@@ -179,9 +179,13 @@ function NotificationCategorySettings({
   accountEvents?: SettingsValues["notifications"]["accountEvents"];
 }) {
   const [open, setOpen] = useState(false);
+  const [accountEventSettings, setAccountEventSettings] = useState<AccountNotificationEvent | null>(null);
   const [recipientMode, setRecipientMode] = useState(recipients.mode);
   const [selectedUserIds, setSelectedUserIds] = useState(recipients.userIds);
   const [selectedRoleIds, setSelectedRoleIds] = useState(recipients.roleIds);
+  const [accountEventChannels, setAccountEventChannels] = useState(() => Object.fromEntries(
+    ACCOUNT_NOTIFICATION_EVENTS.map((event) => [event.id, accountEvents?.[event.id] ?? { enabled: true, ...DEFAULT_ACCOUNT_EVENT_CHANNELS[event.id] }]),
+  ) as SettingsValues["notifications"]["accountEvents"]);
   const [search, setSearch] = useState("");
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -199,7 +203,8 @@ function NotificationCategorySettings({
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.preventDefault();
-        setOpen(false);
+        if (accountEventSettings) setAccountEventSettings(null);
+        else setOpen(false);
       }
       if (event.key === "Tab" && dialogRef.current) {
         const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(
@@ -221,7 +226,7 @@ function NotificationCategorySettings({
       window.removeEventListener("keydown", handleKeyDown);
       window.setTimeout(() => openerRef.current?.focus(), 0);
     };
-  }, [open]);
+  }, [accountEventSettings, open]);
 
   function showSettings(target: HTMLElement) {
     openerRef.current = target;
@@ -250,12 +255,10 @@ function NotificationCategorySettings({
           >
             {categoryLabel}
           </button>
-          {category !== "account" && <p className="mt-0.5 text-xs text-gray-500">{note}</p>}
+          <p className="mt-0.5 text-xs text-gray-500">{note}</p>
         </div>
         <span className="shrink-0 rounded-full bg-gray-50 px-2 py-0.5 text-[11px] text-gray-600">
-          {category === "account"
-            ? "Affected user"
-            : category === "birthday"
+          {category === "birthday"
               ? "Members and followers"
               : recipientMode === "all"
                 ? "All Members"
@@ -297,6 +300,15 @@ function NotificationCategorySettings({
           <div className="space-y-4 overflow-y-auto p-5">
           {category === "birthday" ? (
             <div className="space-y-4">
+              {ACCOUNT_NOTIFICATION_EVENTS.flatMap((event) => ([
+                accountEventChannels[event.id].inAppEnabled ? <input key={`${event.id}-in-app`} type="hidden" name={accountNotificationEventChannelSettingKey(event.id, "inAppEnabled")} value="1" /> : null,
+                accountEventChannels[event.id].emailEnabled ? <input key={`${event.id}-email`} type="hidden" name={accountNotificationEventChannelSettingKey(event.id, "emailEnabled")} value="1" /> : null,
+              ]))}
+              <input type="hidden" name={`${fieldPrefix}_recipient_mode`} value={recipientMode} />
+              {selectedUserIds.map((id) => <input key={`account-recipient-${id}`} type="hidden" name={`${fieldPrefix}_recipient_users`} value={id} />)}
+              {selectedRoleIds.map((id) => <input key={`account-role-${id}`} type="hidden" name={`${fieldPrefix}_recipient_roles`} value={id} />)}
+              <input type="hidden" name="notification_account_status_message_template" value={accountStatusMessageTemplate ?? ""} />
+              <input type="hidden" name="notification_account_role_message_template" value={accountRoleMessageTemplate ?? ""} />
               <NotificationChannelFields fieldPrefix={fieldPrefix} channels={channels} />
               <Field label="Notification title" note="Use {firstName} or {fullName} to personalize the greeting.">
                 <input
@@ -337,85 +349,91 @@ function NotificationCategorySettings({
                     };
                     return (
                       <div key={event.id} className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
-                        <CheckField
-                          name={accountNotificationEventSettingKey(event.id)}
-                          label={event.label}
-                          note=""
-                          defaultChecked={eventChannels.enabled}
-                        />
-                        <fieldset className="ml-7 sm:ml-4">
-                          <div className="flex flex-wrap gap-x-5 gap-y-1">
-                            <CheckField
-                              name={accountNotificationEventChannelSettingKey(event.id, "inAppEnabled")}
-                              label="In-app"
-                              note=""
-                              defaultChecked={eventChannels.inAppEnabled}
-                            />
-                            <CheckField
-                              name={accountNotificationEventChannelSettingKey(event.id, "emailEnabled")}
-                              label="Email"
-                              note=""
-                              defaultChecked={eventChannels.emailEnabled}
-                            />
-                          </div>
-                        </fieldset>
+                        <div className="flex items-center gap-3">
+                          <input
+                            id={accountNotificationEventSettingKey(event.id)}
+                            type="checkbox"
+                            name={accountNotificationEventSettingKey(event.id)}
+                            value="1"
+                            defaultChecked={eventChannels.enabled}
+                            aria-label={`Enable ${event.label}`}
+                            className="size-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <button
+                            type="button"
+                            aria-controls={`${fieldPrefix}_${event.id}_settings`}
+                            onClick={() => setAccountEventSettings(event.id)}
+                            className="text-left text-sm font-medium text-blue-700 underline decoration-blue-200 underline-offset-4 hover:text-blue-900 hover:decoration-blue-500"
+                          >
+                            {event.label}
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
                 </div>
               </fieldset>
-              <div className="space-y-4 rounded-xl border border-blue-200 bg-blue-50/40 p-4">
-                <h3 className="font-semibold text-gray-900">Account Change Messages</h3>
-                <Field
-                  label="Account status change message"
-                  note="Use {firstName}, {old status}, and {new status}."
-                >
-                  <textarea
-                    name="notification_account_status_message_template"
-                    value={accountStatusMessageTemplate ?? ""}
-                    onChange={(event) => setAccountStatusMessageTemplate?.(event.target.value)}
-                    maxLength={1000}
-                    rows={3}
-                    required
-                    className="w-full resize-y rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm leading-6 text-gray-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  />
-                </Field>
-                <div className="rounded-lg border border-blue-100 bg-white p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Status message preview</p>
-                  <p className="mt-2 whitespace-pre-line text-sm leading-6 text-gray-600">
-                    {renderNotificationContent(
-                      "",
-                      "",
-                      { title: "", message: accountStatusMessageTemplate ?? "" },
-                      { firstName: "Alice", oldStatus: "Pending", newStatus: "Active" },
-                    ).message}
-                  </p>
-                </div>
-                <Field
-                  label="Account role change message"
-                  note="Use {firstName}, {oldRole}, and {newRole}."
-                >
-                  <textarea
-                    name="notification_account_role_message_template"
-                    value={accountRoleMessageTemplate ?? ""}
-                    onChange={(event) => setAccountRoleMessageTemplate?.(event.target.value)}
-                    maxLength={1000}
-                    rows={3}
-                    required
-                    className="w-full resize-y rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm leading-6 text-gray-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  />
-                </Field>
-                <div className="rounded-lg border border-blue-100 bg-white p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Role message preview</p>
-                  <p className="mt-2 whitespace-pre-line text-sm leading-6 text-gray-600">
-                    {renderNotificationContent(
-                      "",
-                      "",
-                      { title: "", message: accountRoleMessageTemplate ?? "" },
-                      { firstName: "Alice", oldRole: "Visitor", newRole: "Member" },
-                    ).message}
-                  </p>
-                </div>
+              <div
+                className={accountEventSettings ? "fixed inset-0 z-[220] grid place-items-center bg-slate-950/50 p-4 backdrop-blur-[1px]" : "hidden"}
+                role="presentation"
+                onMouseDown={(event) => { if (event.target === event.currentTarget) setAccountEventSettings(null); }}
+              >
+                <section id={`${fieldPrefix}_${accountEventSettings ?? "registration"}_settings`} role="dialog" aria-modal="true" aria-labelledby={`${fieldPrefix}_event_settings_title`} className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+                  <header className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
+                    <div>
+                      <h3 id={`${fieldPrefix}_event_settings_title`} className="font-semibold text-slate-900">{ACCOUNT_NOTIFICATION_EVENTS.find((event) => event.id === accountEventSettings)?.label ?? "Account event settings"}</h3>
+                      <p className="mt-1 text-xs text-slate-500">Choose delivery channels and configure this notification.</p>
+                    </div>
+                    <button type="button" onClick={() => setAccountEventSettings(null)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label="Close account event settings"><X className="size-5" /></button>
+                  </header>
+                  <div className="space-y-5 overflow-y-auto p-5">
+                    <fieldset>
+                      <legend className="mb-2 text-sm font-medium text-gray-700">Delivery channels</legend>
+                      <div className="flex flex-wrap gap-x-5 gap-y-2">
+                        {(["inAppEnabled", "emailEnabled"] as const).map((channel) => <label key={channel} className="flex items-center gap-3"><input type="checkbox" checked={accountEventChannels[accountEventSettings ?? "registration"][channel]} onChange={(event) => setAccountEventChannels((current) => ({ ...current, [accountEventSettings ?? "registration"]: { ...current[accountEventSettings ?? "registration"], [channel]: event.target.checked } }))} className="size-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" /><span className="text-sm text-gray-700">{channel === "inAppEnabled" ? "In-app" : "Email"}</span></label>)}
+                      </div>
+                    </fieldset>
+                    {accountEventSettings === "registration" ? <>
+                    <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                      <legend className="px-1 text-sm font-medium text-gray-700">Who receives new registration alerts?</legend>
+                      <p className="mb-3 mt-1 text-xs text-gray-500">These recipients are added to administrators who can approve accounts.</p>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:gap-5">
+                        {(["individuals", "roles", "all"] as const).map((mode) => (
+                          <label key={mode} className="flex cursor-pointer items-center gap-2 text-sm text-gray-700">
+                            <input type="radio" value={mode} checked={recipientMode === mode} onChange={() => setRecipientMode(mode)} className="size-4 border-gray-300 text-blue-600 focus:ring-blue-500" />
+                            {mode === "individuals" ? "Per Individuals" : mode === "roles" ? "Per Role" : "All Members"}
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+                    {recipientMode === "individuals" ? <div>
+                      <label className="block text-sm font-medium text-gray-700" htmlFor={`${fieldPrefix}_recipient_search`}>Select individuals</label>
+                      <input id={`${fieldPrefix}_recipient_search`} type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search active people by name or email" className={`${inputClass} mt-1`} />
+                      <div className="mt-2 max-h-48 space-y-1 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2">
+                        {users.map((user) => <label key={user.id} className={`${visibleUsers.some((visibleUser) => visibleUser.id === user.id) ? "flex" : "hidden"} items-center gap-2 rounded px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50`}><input type="checkbox" value={user.id} checked={selectedUserIds.includes(user.id)} onChange={() => setSelectedUserIds((current) => current.includes(user.id) ? current.filter((id) => id !== user.id) : [...current, user.id])} className="size-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" /><span className="min-w-0 truncate">{user.name}</span></label>)}
+                        {!visibleUsers.length ? <p className="px-2 py-3 text-sm text-gray-500">No active people match this search.</p> : null}
+                      </div>
+                    </div> : null}
+                    {recipientMode === "roles" ? <div>
+                      <p className="mb-1 text-sm font-medium text-gray-700">Select roles</p>
+                      <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2">
+                        {roles.length ? roles.map((role) => <label key={role.id} className="flex items-center gap-2 rounded px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50"><input type="checkbox" value={role.id} checked={selectedRoleIds.includes(role.id)} onChange={() => setSelectedRoleIds((current) => current.includes(role.id) ? current.filter((id) => id !== role.id) : [...current, role.id])} className="size-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />{role.displayName}</label>) : <p className="px-2 py-3 text-sm text-gray-500">No roles are available.</p>}
+                      </div>
+                    </div> : null}
+                    {recipientMode === "all" ? <p className="text-xs text-gray-500">This includes everyone with an active account.</p> : null}
+                    </> : accountEventSettings === "status_change" ? <div className="space-y-4">
+                      <Field label="Account status change message" note="Use {firstName}, {old status}, and {new status}.">
+                        <textarea value={accountStatusMessageTemplate ?? ""} onChange={(event) => setAccountStatusMessageTemplate?.(event.target.value)} maxLength={1000} rows={4} required className="w-full resize-y rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm leading-6 text-gray-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                      </Field>
+                      <div className="rounded-lg border border-blue-100 bg-blue-50/40 p-3"><p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Status message preview</p><p className="mt-2 whitespace-pre-line text-sm leading-6 text-gray-600">{renderNotificationContent("", "", { title: "", message: accountStatusMessageTemplate ?? "" }, { firstName: "Alice", oldStatus: "Pending", newStatus: "Active" }).message}</p></div>
+                    </div> : accountEventSettings === "role_change" ? <div className="space-y-4">
+                      <Field label="Account role change message" note="Use {firstName}, {oldRole}, and {newRole}.">
+                        <textarea value={accountRoleMessageTemplate ?? ""} onChange={(event) => setAccountRoleMessageTemplate?.(event.target.value)} maxLength={1000} rows={4} required className="w-full resize-y rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm leading-6 text-gray-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                      </Field>
+                      <div className="rounded-lg border border-blue-100 bg-blue-50/40 p-3"><p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Role message preview</p><p className="mt-2 whitespace-pre-line text-sm leading-6 text-gray-600">{renderNotificationContent("", "", { title: "", message: accountRoleMessageTemplate ?? "" }, { firstName: "Alice", oldRole: "Visitor", newRole: "Member" }).message}</p></div>
+                    </div> : null}
+                  </div>
+                </section>
               </div>
             </div>
           ) : (

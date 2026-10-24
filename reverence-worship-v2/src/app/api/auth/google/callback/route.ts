@@ -71,6 +71,7 @@ async function createGoogleUser(profile: Awaited<ReturnType<typeof exchangeGoogl
       sourceId: user.id,
       dedupeKey: `google-registration:${user.id}:approval`,
       event: "registration",
+      includeConfiguredRecipients: true,
     });
   }
 

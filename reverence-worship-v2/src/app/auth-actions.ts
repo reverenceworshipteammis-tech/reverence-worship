@@ -432,6 +432,7 @@ export async function registerAction(
         sourceId: user.id,
         dedupeKey: `registration:${user.id}:approval`,
         event: "registration",
+        includeConfiguredRecipients: true,
       });
     }
   } catch (error) {
