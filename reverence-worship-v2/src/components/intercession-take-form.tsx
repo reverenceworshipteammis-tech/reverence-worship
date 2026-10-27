@@ -124,7 +124,6 @@ export function IntercessionTakeForm({
   const [attendanceDate, setAttendanceDate] = useState({ iso: "", label: "DD/MM/YYYY", longLabel: "Event date" });
   const formRef = useRef<HTMLFormElement>(null);
   const submittedResultRef = useRef<HTMLDivElement>(null);
-  const submittedMarksRef = useRef<HTMLParagraphElement>(null);
   const draftRestored = useRef(false);
   const [shuffleSeed] = useState(() => Math.random());
   const [isPending, startTransition] = useTransition();
@@ -189,7 +188,16 @@ export function IntercessionTakeForm({
 
   useEffect(() => {
     if (!submitted) return;
-    const scrollToMarks = () => (submittedMarksRef.current ?? submittedResultRef.current)?.scrollIntoView({ behavior: "instant", block: "start" });
+    const scrollToMarks = () => {
+      const target = submittedResultRef.current;
+      if (!target) return;
+      // Sticky app header and the Forms tabs (when stacked above the content) cover the top of the viewport.
+      const header = document.querySelector<HTMLElement>(".admin-top-header");
+      const tabs = document.querySelector<HTMLElement>(".forms-sticky-navigation");
+      const tabsStacked = tabs && tabs.getBoundingClientRect().width > window.innerWidth * 0.5;
+      const covered = (header?.offsetHeight ?? 0) + (tabsStacked ? tabs.offsetHeight : 0);
+      window.scrollTo({ top: target.getBoundingClientRect().top + window.scrollY - covered - 12, behavior: "instant" });
+    };
     scrollToMarks();
     // Revalidation after the server action can re-render the page and reset scroll, so re-apply briefly.
     const timers = [50, 150, 350, 700].map((delay) => window.setTimeout(scrollToMarks, delay));
@@ -315,9 +323,9 @@ export function IntercessionTakeForm({
   }
 
   if (submitted) return (
-    <div ref={submittedResultRef} className="scroll-mt-36">
+    <div ref={submittedResultRef}>
       <TakeShell title={settings.commitment ? "Commitment accepted" : editToken ? "Response updated" : isAttendanceAction ? "Attendance recorded" : "Response recorded"} tone="green">
-      {submitted.earnedPoints !== null && submitted.totalPoints !== null ? <p ref={submittedMarksRef} className="mb-4 scroll-mt-36 text-lg font-bold text-blue-700">Marks: {formatIntercessionMarks(submitted.earnedPoints)} / {formatIntercessionMarks(submitted.totalPoints)}</p> : null}
+      {submitted.earnedPoints !== null && submitted.totalPoints !== null ? <p className="mb-4 text-lg font-bold text-blue-700">Marks: {formatIntercessionMarks(submitted.earnedPoints)} / {formatIntercessionMarks(submitted.totalPoints)}</p> : null}
       {submitted.responseDetails.length ? (
         <div className="mt-6 space-y-3 text-left">
           {submitted.responseDetails.map((detail) => (
