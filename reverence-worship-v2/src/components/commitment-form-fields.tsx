@@ -7,7 +7,7 @@ import {
 } from "@/lib/membership-commitment";
 import { EDUCATION_LEVELS } from "@/lib/education-rules";
 
-const inputClass = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 read-only:bg-slate-100 disabled:bg-slate-100";
+const inputClass = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 [&:read-only:not(select)]:bg-slate-100 disabled:bg-slate-100";
 const educationDependentKeys = ["otherEducationLevel", "educationFieldOfStudy", "educationInstitution", "educationCompletionYear"] as const;
 
 export function CommitmentFormConfiguration({ value, onChange, membershipQuestionLinked = false }: { value: CommitmentSettings; onChange: (value: CommitmentSettings) => void; membershipQuestionLinked?: boolean }) {
@@ -25,7 +25,7 @@ export function CommitmentFormConfiguration({ value, onChange, membershipQuestio
       ...value,
       profileFields: [
         ...value.profileFields.filter((field) => field.key !== "highestEducationLevel" && !educationDependentKeys.includes(field.key as (typeof educationDependentKeys)[number])),
-        ...(selected ? [{ key, editable: false, required: false, requiresApproval: false }, ...educationFields] : []),
+        ...(selected ? [{ key, editable: true, required: false, requiresApproval: false }, ...educationFields] : []),
       ],
     });
   }
