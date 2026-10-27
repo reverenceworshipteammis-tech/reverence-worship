@@ -836,7 +836,10 @@ export async function toggleSpiritualFormPublish(formId: number) {
     if (!form) return { ok: false as const, message: "Form not found." };
 
     const settings = (form.settings as Record<string, unknown> | null) ?? {};
-    const nextPublished = !Boolean(settings.is_published);
+    const currentStatus = typeof settings.publication_status === "string" ? String(settings.publication_status).toLowerCase() : Boolean(settings.is_published) ? "published" : "draft";
+    const nextStatus = currentStatus === "published" ? "draft" : currentStatus === "draft" ? "review" : "published";
+    const nextPublished = nextStatus === "published";
+
     if (nextPublished) {
       const publishingIssues = getIntercessionPublishingIssues(form.title, form.questions, settings);
       if (publishingIssues.length > 0) {
@@ -844,7 +847,12 @@ export async function toggleSpiritualFormPublish(formId: number) {
       }
     }
 
-    const prepared = await prepareCommitmentFormSettings({ ...settings, is_published: nextPublished, ...(!nextPublished && settings.commitment ? { submission_opens_at: "" } : {}) }, form.settings, formId);
+    const prepared = await prepareCommitmentFormSettings({
+      ...settings,
+      publication_status: nextStatus,
+      is_published: nextPublished,
+      ...(!nextPublished && settings.commitment ? { submission_opens_at: "" } : {}),
+    }, form.settings, formId);
     if (!prepared.ok) return prepared;
     const updated = await tx.spiritualForm.update({
       where: { id: formId },
@@ -855,17 +863,17 @@ export async function toggleSpiritualFormPublish(formId: number) {
         ...(nextPublished ? { isActive: true } : {}),
       },
     });
-    return { ok: true as const, updated, nextPublished, isCommitment: Boolean(settings.commitment) };
+    return { ok: true as const, updated, nextStatus, isCommitment: Boolean(settings.commitment) };
   });
   if (!result.ok) return result;
 
-  if (result.nextPublished && result.isCommitment) after(() => notifyFormPublished(result.updated, String(result.updated.updatedAt.getTime())));
-  else if (result.nextPublished) await notifyFormPublished(result.updated, String(result.updated.updatedAt.getTime()));
+  if (result.nextStatus === "published" && result.isCommitment) after(() => notifyFormPublished(result.updated, String(result.updated.updatedAt.getTime())));
+  else if (result.nextStatus === "published") await notifyFormPublished(result.updated, String(result.updated.updatedAt.getTime()));
   else await prisma.notification.deleteMany({ where: { sourceType: "spiritual_form", sourceId: formId } });
 
   revalidateSpiritualFormPaths(formId);
 
-  return { ok: true, message: result.nextPublished ? "Form published." : "Form unpublished." };
+  return { ok: true, message: result.nextStatus === "published" ? "Form published." : result.nextStatus === "review" ? "Form moved to review." : "Form returned to draft." };
 }
 
 export async function setSpiritualFormArchived(formId: number, archived: boolean) {

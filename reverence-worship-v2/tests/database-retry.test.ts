@@ -8,6 +8,14 @@ test("database retry recognizes transient Prisma connection codes", () => {
   }
 });
 
+test("database retry recognizes serverless database wake-up and restart errors", () => {
+  for (const code of ["ECONNREFUSED", "57P01", "57P03", "08006"]) {
+    assert.equal(isTransientDatabaseError({ code, message: "Database request failed" }), true);
+  }
+  assert.equal(isTransientDatabaseError(new Error("terminating connection due to administrator command")), true);
+  assert.equal(isTransientDatabaseError(new Error("the database system is starting up")), true);
+});
+
 test("database retry recognizes transient errors nested in a cause", () => {
   const error = new Error("Request failed", {
     cause: { code: "ECONNRESET", message: "socket closed" },

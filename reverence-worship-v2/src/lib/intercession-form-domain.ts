@@ -151,6 +151,7 @@ export type IntercessionFormQuestion = {
 export type IntercessionFormSettings = {
   commitment: CommitmentSettings | null;
   is_published: boolean;
+  publication_status: "draft" | "review" | "published";
   accepting_responses: boolean;
   is_quiz: boolean;
   release_grade: string;
@@ -224,6 +225,10 @@ export function parseIntercessionFormQuestions(value: unknown): IntercessionForm
 
 export function parseIntercessionFormSettings(value: unknown): IntercessionFormSettings {
   const item = record(value);
+  const rawPublicationStatus = typeof item.publication_status === "string" ? item.publication_status.toLowerCase() : null;
+  const publicationStatus: "draft" | "review" | "published" = rawPublicationStatus === "review" || rawPublicationStatus === "published" || rawPublicationStatus === "draft"
+    ? rawPublicationStatus
+    : ((item.is_published === true || item.is_published === "true") ? "published" : "draft");
   const maxResponses = Number(item.max_responses ?? 0);
   const submitButtonLabel = typeof item.submit_button_label === "string" && item.submit_button_label.trim()
     ? item.submit_button_label.trim().slice(0, 80)
@@ -232,7 +237,9 @@ export function parseIntercessionFormSettings(value: unknown): IntercessionFormS
     && submitButtonLabel.toLowerCase() === "mark attendance";
   return {
     commitment: parseCommitmentSettings(item.commitment),
-    is_published: Boolean(item.is_published), is_quiz: Boolean(item.is_quiz),
+    is_published: publicationStatus === "published",
+    publication_status: publicationStatus,
+    is_quiz: Boolean(item.is_quiz),
     accepting_responses: item.accepting_responses !== false,
     release_grade: typeof item.release_grade === "string" ? item.release_grade : "never",
     show_correct_answers: item.show_correct_answers !== false,
@@ -314,13 +321,17 @@ export function formatIntercessionKigaliDateTime(value: Date) {
 }
 
 export function intercessionFormIsPublished(settings: IntercessionFormSettings, now = new Date()) {
+  const status = settings.publication_status ?? (settings.is_published ? "published" : "draft");
+  if (status === "draft" || status === "review") return false;
   const opens = settings.submission_opens_at ? intercessionLifecycleDate(settings.submission_opens_at) : null;
   const closes = settings.submission_deadline ? intercessionLifecycleDate(settings.submission_deadline, true) : null;
-  if (!opens) return settings.is_published && (!closes || now <= closes);
+  if (!opens) return (!closes || now <= closes);
   return now >= opens && (!closes || now <= closes);
 }
 
 export function intercessionFormPublicationStatus(settings: IntercessionFormSettings, now = new Date()) {
+  const status = settings.publication_status ?? (settings.is_published ? "published" : "draft");
+  if (status === "review") return "review" as const;
   const opens = settings.submission_opens_at ? intercessionLifecycleDate(settings.submission_opens_at) : null;
   if (opens && now < opens) return "scheduled" as const;
   const closes = settings.submission_deadline ? intercessionLifecycleDate(settings.submission_deadline, true) : null;
@@ -330,6 +341,8 @@ export function intercessionFormPublicationStatus(settings: IntercessionFormSett
 
 export function intercessionFormAvailability(settings: IntercessionFormSettings, isActive: boolean, submissionCount: number, now = new Date()) {
   if (!isActive) return "This form is archived.";
+  const status = settings.publication_status ?? (settings.is_published ? "published" : "draft");
+  if (status === "review") return null;
   if (settings.submission_opens_at) {
     const opens = intercessionLifecycleDate(settings.submission_opens_at);
     if (opens && now < opens) return `This form opens on ${opens.toLocaleString("en-RW", { timeZone: "Africa/Kigali" })}.`;

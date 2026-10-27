@@ -12,11 +12,27 @@ const TRANSIENT_DATABASE_ERRORS = [
   "remaining connection slots are reserved",
   "econnreset",
   "etimedout",
+  "econnrefused",
+  "eai_again",
+  "terminating connection",
+  "the database system is starting up",
+  "the database system is shutting down",
+  "socket hang up",
+  "client has encountered a connection error",
 ];
 
 const TRANSIENT_DATABASE_CODES = new Set([
   "ECONNRESET",
   "ETIMEDOUT",
+  "ECONNREFUSED",
+  "EAI_AGAIN",
+  "57P01",
+  "57P02",
+  "57P03",
+  "08000",
+  "08001",
+  "08003",
+  "08006",
   "P1001",
   "P1002",
   "P1008",
@@ -63,7 +79,7 @@ export async function withDatabaseRetry<T>(operation: () => Promise<T>, attempts
       lastError = error;
       if (!isTransientDatabaseError(error) || attempt === attempts) throw error;
       console.warn(`Database connection dropped; retrying (${attempt}/${attempts - 1}).`);
-      await new Promise((resolve) => setTimeout(resolve, attempt * 150));
+      await new Promise((resolve) => setTimeout(resolve, Math.min(attempt * 500, 2_000)));
     }
   }
 

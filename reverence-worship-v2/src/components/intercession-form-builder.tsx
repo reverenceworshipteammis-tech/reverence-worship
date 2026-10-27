@@ -36,7 +36,6 @@ import {
   updateSpiritualFormFromBuilder,
   uploadSpiritualFormQuestionImages,
 } from "@/app/admin/intercession/actions";
-import { MobileTabScroller } from "@/components/mobile-tab-scroller";
 import { IntercessionRichTextEditor } from "@/components/intercession-rich-text-editor";
 import { IntercessionTakeForm } from "@/components/intercession-take-form";
 import { CommitmentFormConfiguration } from "@/components/commitment-form-fields";
@@ -101,7 +100,7 @@ type BuilderQuestion = {
   condition: IntercessionQuestionCondition | null;
 };
 
-type SettingsTab = "quiz" | "responses" | "presentation" | "defaults" | "advanced";
+type SettingsTab = "quiz" | "advanced";
 
 type BuilderSettings = {
   commitment: CommitmentSettings | null;
@@ -1096,7 +1095,7 @@ function QuestionCard({
           </BuilderTool>
         </div>
       )}
-      <div className="grid gap-3 sm:grid-cols-[28px_minmax(0,1fr)_220px]">
+      <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-[28px_minmax(0,1fr)_220px]">
         <div
           draggable
           onDragStart={onDragStart}
@@ -1106,7 +1105,7 @@ function QuestionCard({
         >
           <GripVertical className="size-5" aria-hidden="true" />
         </div>
-        <div>
+        <div className="min-w-0">
           <IntercessionRichTextEditor
             value={question.label}
             onChange={(value) => onChange({ label: value })}
@@ -1550,8 +1549,8 @@ function ConditionalQuestionEditor({
   const conditionOptions = sourceIsGrid ? sourceQuestion?.columns.filter(Boolean) ?? [] : sourceOptions;
 
   return (
-    <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-3">
-        <div className={`grid gap-2 ${sourceIsGrid ? "md:grid-cols-4" : "md:grid-cols-3"}`}>
+    <div className="min-w-0 max-w-full rounded-lg border border-blue-100 bg-blue-50/50 p-3">
+        <div className={`grid grid-cols-1 gap-2 [&>select]:w-full [&>select]:min-w-0 [&>select]:max-w-full [&>input]:w-full [&>input]:min-w-0 ${sourceIsGrid ? "md:grid-cols-4" : "md:grid-cols-3"}`}>
           <select value={condition.questionId} onChange={(event) => {
             const nextSource = eligibleQuestions.find((candidate) => candidate.id === event.target.value);
             const nextIsGrid = nextSource && ["multiple_choice_grid", "checkbox_grid"].includes(nextSource.type);
@@ -1842,9 +1841,6 @@ function SettingsPanel({
 }) {
   const tabs: Array<{ id: SettingsTab; label: string }> = [
     { id: "quiz", label: "Quiz" },
-    { id: "responses", label: "Responses" },
-    { id: "presentation", label: "Presentation" },
-    { id: "defaults", label: "Defaults" },
     { id: "advanced", label: "Advanced" },
   ];
 
@@ -1855,15 +1851,30 @@ function SettingsPanel({
   return (
     <div className="mx-auto max-w-5xl overflow-hidden rounded-xl border border-gray-200 bg-white">
       <div className="border-b border-gray-200 px-5">
-        <div className="py-3 md:hidden">
-          <MobileTabScroller tabs={tabs} value={activeTab} onChange={(tab) => setActiveTab(tab as SettingsTab)} />
-        </div>
-        <nav className="hidden gap-6 overflow-x-auto md:flex">
+        <nav aria-label="Form settings sections" className="grid grid-cols-2 gap-2 py-3 md:hidden">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id)}
+              aria-pressed={activeTab === tab.id}
+              className={`min-h-11 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
+                activeTab === tab.id
+                  ? "border-blue-600 bg-blue-600 text-white shadow-sm"
+                  : "border-slate-200 bg-slate-50 text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+        <nav aria-label="Form settings sections" className="hidden gap-6 overflow-x-auto md:flex">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              aria-pressed={activeTab === tab.id}
               className={`whitespace-nowrap border-b-2 px-1 py-2 text-sm font-medium ${
                 activeTab === tab.id ? "border-indigo-600 text-indigo-600" : "border-transparent text-gray-500 hover:text-indigo-600"
               }`}
@@ -1884,40 +1895,37 @@ function SettingsPanel({
               ["never", "Never show score"],
             ]} />
             {settings.is_quiz ? <SettingToggle title="Show correct answers" description="Show correct answers to respondents when their quiz result is released" checked={Boolean(settings.show_correct_answers)} onChange={(value) => update("show_correct_answers", value)} /> : null}
-            <SettingNumber title="Default points" value={Number(settings.default_points)} onChange={(value) => update("default_points", value)} />
-          </>
-        )}
-        {activeTab === "responses" && (
-          <>
-            <SettingToggle title="Accept responses" description="Temporarily open or close this form without archiving it" checked={Boolean(settings.accepting_responses)} onChange={(value) => update("accepting_responses", value)} />
-            <SettingToggle title="User can view their responses" description={settings.commitment ? "Allow signed-in members to view accepted commitment details. Anonymous submissions are not linked to a member history." : "Allow users to see their submitted answers"} checked={Boolean(settings.allow_view_response)} onChange={(value) => update("allow_view_response", value)} />
-            <SettingToggle title="Limit to 1 response" description={settings.commitment ? settings.require_login ? "One acceptance per member per commitment year" : "Limit anonymous repeats from the same browser; anonymous submissions cannot be matched across devices" : "Prevent users from submitting more than once"} checked={Boolean(settings.limit_one_response)} onChange={(value) => update("limit_one_response", value)} />
-            <SettingToggle title="Require login to submit" description={settings.commitment ? "Link the acceptance to a member account and update permitted profile fields. Without login, name and membership type are recorded without profile updates." : "Only authenticated users can submit responses"} checked={Boolean(settings.require_login)} onChange={(value) => update("require_login", value)} />
-            {!settings.require_login && !settings.commitment ? <VisitorFieldsEditor fields={settings.visitor_fields} onChange={(visitor_fields) => setSettings((current) => ({ ...current, visitor_fields }))} /> : null}
-            <div className="grid gap-3 border-b border-gray-100 py-3 sm:grid-cols-2"><label className="text-sm font-medium text-gray-800">Opens at<input type="datetime-local" value={String(settings.submission_opens_at ?? "")} onChange={(event) => update("submission_opens_at", event.target.value)} className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label><label className="text-sm font-medium text-gray-800">Closes at<input type="datetime-local" value={String(settings.submission_deadline ?? "")} onChange={(event) => update("submission_deadline", event.target.value)} className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label></div>
-            <div className="border-b border-gray-100 py-3">
-              <h3 className="mb-2 text-sm font-medium text-gray-800">Maximum responses</h3>
-              <input type="number" min={0} disabled={Boolean(settings.commitment)} value={settings.max_responses ?? 200} onChange={(event) => update("max_responses", Math.max(0, Number(event.target.value) || 0))} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-slate-100" />
-              <p className="mt-1 text-xs text-gray-500">Use 0 for no response limit.</p>
+            <section className="space-y-2 border-t border-gray-100 pt-4">
+              <h3 className="text-sm font-semibold text-gray-800">Responses</h3>
+              <SettingToggle title="Accept responses" description="Temporarily open or close this form without archiving it" checked={Boolean(settings.accepting_responses)} onChange={(value) => update("accepting_responses", value)} />
+              <SettingToggle title="User can view their responses" description={settings.commitment ? "Allow signed-in members to view accepted commitment details. Anonymous submissions are not linked to a member history." : "Allow users to see their submitted answers"} checked={Boolean(settings.allow_view_response)} onChange={(value) => update("allow_view_response", value)} />
+              <SettingToggle title="Limit to 1 response" description={settings.commitment ? settings.require_login ? "One acceptance per member per commitment year" : "Limit anonymous repeats from the same browser; anonymous submissions cannot be matched across devices" : "Prevent users from submitting more than once"} checked={Boolean(settings.limit_one_response)} onChange={(value) => update("limit_one_response", value)} />
+              <SettingToggle title="Require login to submit" description={settings.commitment ? "Link the acceptance to a member account and update permitted profile fields. Without login, name and membership type are recorded without profile updates." : "Only authenticated users can submit responses"} checked={Boolean(settings.require_login)} onChange={(value) => update("require_login", value)} />
+              {!settings.require_login && !settings.commitment ? <VisitorFieldsEditor fields={settings.visitor_fields} onChange={(visitor_fields) => setSettings((current) => ({ ...current, visitor_fields }))} /> : null}
+              <div className="grid gap-3 border-b border-gray-100 py-3 sm:grid-cols-2"><label className="text-sm font-medium text-gray-800">Opens at<input type="datetime-local" value={String(settings.submission_opens_at ?? "")} onChange={(event) => update("submission_opens_at", event.target.value)} className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label><label className="text-sm font-medium text-gray-800">Closes at<input type="datetime-local" value={String(settings.submission_deadline ?? "")} onChange={(event) => update("submission_deadline", event.target.value)} className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label></div>
+              <div className="border-b border-gray-100 py-3">
+                <h3 className="mb-2 text-sm font-medium text-gray-800">Maximum responses</h3>
+                <input type="number" min={0} disabled={Boolean(settings.commitment)} value={settings.max_responses ?? 200} onChange={(event) => update("max_responses", Math.max(0, Number(event.target.value) || 0))} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-slate-100" />
+                <p className="mt-1 text-xs text-gray-500">Use 0 for no response limit.</p>
+              </div>
+              <label className="block border-b border-gray-100 py-3 text-sm font-medium text-gray-800">Thank-you message<textarea value={settings.thank_you_message} onChange={(event) => update("thank_you_message", event.target.value)} rows={3} className="mt-2 w-full resize-y rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+              <label className="block border-b border-gray-100 py-3 text-sm font-medium text-gray-800">Submit button label<input value={settings.submit_button_label} maxLength={80} onChange={(event) => update("submit_button_label", event.target.value)} placeholder="Submit" className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /><span className="mt-1 block text-xs font-normal text-gray-500">For example, Submit, Register, or Mark Attendance.</span></label>
+              <label className="block border-b border-gray-100 py-3 text-sm font-medium text-gray-800">Closed-form message<textarea value={settings.response_closed_message} onChange={(event) => update("response_closed_message", event.target.value)} rows={2} className="mt-2 w-full resize-y rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+              <label className="block border-b border-gray-100 py-3 text-sm font-medium text-gray-800">Continue to (optional)<input value={settings.redirect_url} onChange={(event) => update("redirect_url", event.target.value)} placeholder="/admin/intercession" className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /><span className="mt-1 block text-xs font-normal text-gray-500">Enter a safe path inside this system, beginning with /.</span></label>
+            </section>
+            <section className="space-y-2 border-t border-gray-100 pt-4">
+              <h3 className="text-sm font-semibold text-gray-800">Presentation</h3>
+              <SettingToggle title="Show progress bar" description="Display progress during form filling" checked={Boolean(settings.show_progress_bar)} onChange={(value) => update("show_progress_bar", value)} />
+              <SettingToggle title="Shuffle question order" description={hasOrderedQuestions ? "Unavailable while the form contains sections or conditional questions" : "Randomize question order for each user"} checked={Boolean(settings.shuffle_questions) && !hasOrderedQuestions} disabled={hasOrderedQuestions} onChange={(value) => update("shuffle_questions", value)} />
+              <SettingToggle title="Show question numbers" description="Display numbering on questions" checked={Boolean(settings.show_question_numbers)} onChange={(value) => update("show_question_numbers", value)} />
+            </section>
+            <div className="space-y-2 border-t border-gray-100 pt-4">
+              <h3 className="text-sm font-semibold text-gray-800">Defaults</h3>
+              <SettingNumber title="Default points" value={Number(settings.default_points)} onChange={(value) => update("default_points", value)} />
+              <SettingToggle title="Make questions required by default" description="Users must answer all questions" checked={Boolean(settings.default_required)} onChange={(value) => update("default_required", value)} />
+              <SettingToggle title="Publish form by default" description="Form will be visible immediately" checked={Boolean(settings.is_published)} onChange={(value) => update("is_published", value)} />
+              <SettingToggle title="Allow partial points for checkboxes" description="Award partial credit for correct selections and subtract credit for wrong selections, to a minimum of zero" checked={Boolean(settings.allow_partial_points)} onChange={(value) => update("allow_partial_points", value)} />
             </div>
-            <label className="block border-b border-gray-100 py-3 text-sm font-medium text-gray-800">Thank-you message<textarea value={settings.thank_you_message} onChange={(event) => update("thank_you_message", event.target.value)} rows={3} className="mt-2 w-full resize-y rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-            <label className="block border-b border-gray-100 py-3 text-sm font-medium text-gray-800">Submit button label<input value={settings.submit_button_label} maxLength={80} onChange={(event) => update("submit_button_label", event.target.value)} placeholder="Submit" className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /><span className="mt-1 block text-xs font-normal text-gray-500">For example, Submit, Register, or Mark Attendance.</span></label>
-            <label className="block border-b border-gray-100 py-3 text-sm font-medium text-gray-800">Closed-form message<textarea value={settings.response_closed_message} onChange={(event) => update("response_closed_message", event.target.value)} rows={2} className="mt-2 w-full resize-y rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-            <label className="block border-b border-gray-100 py-3 text-sm font-medium text-gray-800">Continue to (optional)<input value={settings.redirect_url} onChange={(event) => update("redirect_url", event.target.value)} placeholder="/admin/intercession" className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /><span className="mt-1 block text-xs font-normal text-gray-500">Enter a safe path inside this system, beginning with /.</span></label>
-          </>
-        )}
-        {activeTab === "presentation" && (
-          <>
-            <SettingToggle title="Show progress bar" description="Display progress during form filling" checked={Boolean(settings.show_progress_bar)} onChange={(value) => update("show_progress_bar", value)} />
-            <SettingToggle title="Shuffle question order" description={hasOrderedQuestions ? "Unavailable while the form contains sections or conditional questions" : "Randomize question order for each user"} checked={Boolean(settings.shuffle_questions) && !hasOrderedQuestions} disabled={hasOrderedQuestions} onChange={(value) => update("shuffle_questions", value)} />
-            <SettingToggle title="Show question numbers" description="Display numbering on questions" checked={Boolean(settings.show_question_numbers)} onChange={(value) => update("show_question_numbers", value)} />
-          </>
-        )}
-        {activeTab === "defaults" && (
-          <>
-            <SettingToggle title="Make questions required by default" description="Users must answer all questions" checked={Boolean(settings.default_required)} onChange={(value) => update("default_required", value)} />
-            <SettingToggle title="Publish form by default" description="Form will be visible immediately" checked={Boolean(settings.is_published)} onChange={(value) => update("is_published", value)} />
-            <SettingToggle title="Allow partial points for checkboxes" description="Award partial credit for correct selections and subtract credit for wrong selections, to a minimum of zero" checked={Boolean(settings.allow_partial_points)} onChange={(value) => update("allow_partial_points", value)} />
           </>
         )}
         {activeTab === "advanced" && (

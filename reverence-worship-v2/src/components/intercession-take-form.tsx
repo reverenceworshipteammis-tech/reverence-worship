@@ -123,6 +123,8 @@ export function IntercessionTakeForm({
   const [draftStatus, setDraftStatus] = useState<string | null>(null);
   const [attendanceDate, setAttendanceDate] = useState({ iso: "", label: "DD/MM/YYYY", longLabel: "Event date" });
   const formRef = useRef<HTMLFormElement>(null);
+  const submittedResultRef = useRef<HTMLDivElement>(null);
+  const submittedMarksRef = useRef<HTMLParagraphElement>(null);
   const draftRestored = useRef(false);
   const [shuffleSeed] = useState(() => Math.random());
   const [isPending, startTransition] = useTransition();
@@ -185,6 +187,15 @@ export function IntercessionTakeForm({
     ? Math.round((answeredVisibleQuestions / answerableQuestions.length) * 100)
     : 0;
 
+  useEffect(() => {
+    if (!submitted) return;
+    const scrollToMarks = () => (submittedMarksRef.current ?? submittedResultRef.current)?.scrollIntoView({ behavior: "instant", block: "start" });
+    scrollToMarks();
+    // Revalidation after the server action can re-render the page and reset scroll, so re-apply briefly.
+    const timers = [50, 150, 350, 700].map((delay) => window.setTimeout(scrollToMarks, delay));
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, [submitted]);
+
   const draftKey = `intercession-response-draft:${form.id}:${settings.commitment ? `commitment-v${form.version ?? 0}` : editToken ? "edit" : "new"}`;
   useEffect(() => {
     if (preview || form.id <= 0 || draftRestored.current) return;
@@ -232,7 +243,7 @@ export function IntercessionTakeForm({
     }
     try {
       localStorage.setItem(draftKey, JSON.stringify(values));
-      setDraftStatus("Draft saved on this device. Files must be selected again if you leave.");
+      setDraftStatus("");
     } catch { setDraftStatus("Draft could not be saved on this device. Keep this page open."); }
   }
 
@@ -304,30 +315,30 @@ export function IntercessionTakeForm({
   }
 
   if (submitted) return (
-    <TakeShell title={settings.commitment ? "Commitment accepted" : editToken ? "Response updated" : isAttendanceAction ? "Attendance recorded" : "Response recorded"} tone="green">
-      <CheckCircle2 className="mx-auto mb-3 size-10 text-emerald-600" aria-hidden="true" />
-      <p className="mb-2 text-slate-700">{submitted.message}</p>
-      {submitted.earnedPoints !== null && submitted.totalPoints !== null ? <p className="mb-4 text-lg font-bold text-blue-700">Score: {formatIntercessionMarks(submitted.earnedPoints)} / {formatIntercessionMarks(submitted.totalPoints)}</p> : null}
+    <div ref={submittedResultRef} className="scroll-mt-36">
+      <TakeShell title={settings.commitment ? "Commitment accepted" : editToken ? "Response updated" : isAttendanceAction ? "Attendance recorded" : "Response recorded"} tone="green">
+      {submitted.earnedPoints !== null && submitted.totalPoints !== null ? <p ref={submittedMarksRef} className="mb-4 scroll-mt-36 text-lg font-bold text-blue-700">Marks: {formatIntercessionMarks(submitted.earnedPoints)} / {formatIntercessionMarks(submitted.totalPoints)}</p> : null}
       {submitted.responseDetails.length ? (
         <div className="mt-6 space-y-3 text-left">
-          <h3 className="text-lg font-bold text-slate-900">Your responses</h3>
           {submitted.responseDetails.map((detail) => (
-            <article key={detail.questionIndex} className="rounded-xl border border-slate-200 bg-white p-4">
-              <div className="flex items-start justify-between gap-3">
-                <h4 className="font-semibold text-slate-900">
+            <article key={detail.questionIndex} className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
+              <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <h4 className="w-full min-w-0 break-words font-semibold text-slate-900 [overflow-wrap:anywhere]">
                   {settings.show_question_numbers !== false ? <span className="mr-2 text-blue-600">{detail.questionIndex + 1}.</span> : null}
                   <IntercessionRichText value={detail.question} />
                 </h4>
-                <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${detail.correct === null ? "bg-slate-100 text-slate-600" : detail.correct ? "bg-green-100 text-green-700" : detail.earnedPoints > 0 ? "bg-blue-100 text-blue-700" : "bg-red-100 text-red-700"}`}>
-                  {detail.correct === null ? "Response recorded" : `${formatIntercessionMarks(detail.earnedPoints)} / ${formatIntercessionMarks(detail.points)}`}
-                </span>
+                {detail.correct !== null ? (
+                  <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${detail.correct ? "bg-green-100 text-green-700" : detail.earnedPoints > 0 ? "bg-blue-100 text-blue-700" : "bg-red-100 text-red-700"}`}>
+                    {`${formatIntercessionMarks(detail.earnedPoints)} / ${formatIntercessionMarks(detail.points)}`}
+                  </span>
+                ) : null}
               </div>
-              <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 sm:px-4">
                 <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Answer</p>
                 <p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-800">{detail.answer}</p>
               </div>
               {detail.correctResponse ? (
-                <div className="mt-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3">
+                <div className="mt-3 rounded-lg border border-green-200 bg-green-50 px-3 py-3 sm:px-4">
                   <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-green-700">Correct response</p>
                   <p className="whitespace-pre-wrap break-words text-sm leading-6 text-green-900">{detail.correctResponse}</p>
                 </div>
@@ -345,7 +356,8 @@ export function IntercessionTakeForm({
         {submitted.editUrl ? <Link href={submitted.editUrl} className="inline-flex rounded-lg border border-blue-200 bg-blue-50 px-5 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-100">Edit response</Link> : null}
         <Link href={submitted.redirectUrl || backHref} className="inline-flex rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">Continue</Link>
       </div>
-    </TakeShell>
+      </TakeShell>
+    </div>
   );
 
   if (!preview && !editToken && alreadySubmitted && limitOneResponse) {
@@ -389,13 +401,13 @@ export function IntercessionTakeForm({
               <span>{preview ? "Preview" : "Form"}</span>
             </div> : null}
           </div> : null}
-          <div className={embedded ? "" : "mt-4"}>
-            <h1 className="mb-2 text-3xl font-bold text-slate-900"><IntercessionRichText value={form.title} /></h1>
-            {form.description && <p className="text-slate-600"><IntercessionRichText value={form.description} /></p>}
+          <div className={`min-w-0 ${embedded ? "" : "mt-4"}`}>
+            <h1 className="mb-2 text-xl font-bold leading-snug text-slate-900 [overflow-wrap:anywhere] sm:text-2xl md:text-3xl"><IntercessionRichText value={form.title} /></h1>
+            {form.description && <p className="text-slate-600 [overflow-wrap:anywhere]"><IntercessionRichText value={form.description} /></p>}
           </div>
         </div>
 
-        {(settings.show_progress_bar || mobileSteps) && (
+        {settings.show_progress_bar && (
           <div className="px-5 pt-6 sm:px-8">
             <div className="mb-2 flex justify-between text-sm text-gray-600">
               <span>Your Progress</span>
@@ -571,7 +583,7 @@ function VisitorInformationFields({ fields, formId, errors = {} }: { fields: Int
 function TakeShell({ title, tone, children }: { title: string; tone: "yellow" | "green"; children: React.ReactNode }) {
   const colors = tone === "yellow" ? "border-yellow-200 bg-yellow-50 text-yellow-700" : "border-emerald-200 bg-emerald-50 text-emerald-800";
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8">
+    <div className="mx-auto max-w-4xl px-1 py-4 sm:px-4 sm:py-8">
       <div className={`rounded-xl border p-6 text-center ${colors}`}>
         <h2 className="mb-2 text-xl font-bold">{title}</h2>
         {children}

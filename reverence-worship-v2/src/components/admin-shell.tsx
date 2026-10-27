@@ -612,7 +612,7 @@ export function AdminShell({
           </div>
         </header>
 
-        <div className="p-6">{children}</div>
+        <div className="p-3 sm:p-6">{children}</div>
       </div>
 
       <nav className="admin-mobile-footer">

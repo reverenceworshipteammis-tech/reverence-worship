@@ -102,7 +102,7 @@ type SpiritualForm = {
   questions: Question[];
   questionCount: number;
   isPublished: boolean;
-  publicationStatus: "scheduled" | "published" | "draft" | "closed";
+  publicationStatus: "scheduled" | "published" | "draft" | "closed" | "review";
   limitOneResponse: boolean;
   isActive: boolean;
   availabilityMessage: string | null;
@@ -259,6 +259,8 @@ export function IntercessionClient({
   const [reportDetail, setReportDetail] = useState<ReportRow | null>(null);
   const [previewForm, setPreviewForm] = useState<SpiritualForm | null>(null);
   const [manageStatus, setManageStatus] = useState<"active" | "archived">("active");
+  const [formSortField, setFormSortField] = useState<"title" | "modified" | "status" | "submissions">("title");
+  const [formSortDirection, setFormSortDirection] = useState<"asc" | "desc">("asc");
   const [selectedFormIds, setSelectedFormIds] = useState<Set<number>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
   const [actionsFormId, setActionsFormId] = useState<number | null>(null);
@@ -292,12 +294,34 @@ export function IntercessionClient({
   const filteredForms = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     const byStatus = forms.filter((form) => form.isActive === (manageStatus === "active"));
-    if (!normalized) return byStatus;
-    return byStatus.filter((form) =>
+    const searchable = !normalized ? byStatus : byStatus.filter((form) =>
       [intercessionRichTextToPlainText(form.title), intercessionRichTextToPlainText(form.description ?? ""), form.createdBy]
         .some((value) => value.toLowerCase().includes(normalized)),
     );
-  }, [forms, manageStatus, query]);
+    const sorted = [...searchable].sort((first, second) => {
+      if (formSortField === "title") {
+        const comparison = intercessionRichTextToPlainText(first.title).localeCompare(intercessionRichTextToPlainText(second.title), undefined, { sensitivity: "base" });
+        return formSortDirection === "asc" ? comparison : -comparison;
+      }
+      if (formSortField === "modified") {
+        const comparison = new Date(first.updatedAt).getTime() - new Date(second.updatedAt).getTime();
+        return formSortDirection === "asc" ? comparison : -comparison;
+      }
+      if (formSortField === "status") {
+        const statusRank = (form: SpiritualForm) => {
+          if (!form.isActive) return 0;
+          if (form.publicationStatus === "review") return 1;
+          if (form.isPublished) return 2;
+          return 3;
+        };
+        const comparison = statusRank(first) - statusRank(second);
+        return formSortDirection === "asc" ? comparison : -comparison;
+      }
+      const comparison = first.submissionsCount - second.submissionsCount;
+      return formSortDirection === "asc" ? comparison : -comparison;
+    });
+    return sorted;
+  }, [forms, manageStatus, query, formSortDirection, formSortField]);
   const selectedForms = forms.filter((form) => selectedFormIds.has(form.id));
   const allVisibleFormsSelected = filteredForms.length > 0 && filteredForms.every((form) => selectedFormIds.has(form.id));
   const selectedActiveForms = selectedForms.filter((form) => form.isActive);
@@ -1106,7 +1130,7 @@ export function IntercessionClient({
                         Submissions <span className="font-bold text-slate-900">{form.submissionsCount}</span>
                       </span>
                       <span className="shrink-0 rounded-full bg-blue-100 px-2 py-1 text-[11px] font-semibold text-blue-700">
-                        {form.publicationStatus === "scheduled" ? "Scheduled" : form.publicationStatus === "closed" ? "Closed" : form.isPublished ? "Published" : "Draft"}
+                        {form.publicationStatus === "review" ? "Review" : form.publicationStatus === "scheduled" ? "Scheduled" : form.publicationStatus === "closed" ? "Closed" : form.isPublished ? "Published" : "Draft"}
                       </span>
                     </div>
                     <h3 className="line-clamp-2 text-base font-semibold leading-snug text-gray-900"><IntercessionRichText value={form.title} /></h3>
@@ -1142,7 +1166,7 @@ export function IntercessionClient({
                           onClick={() => runAction(() => toggleSpiritualFormPublish(form.id))}
                           className="inline-flex h-8 items-center justify-center rounded-lg bg-blue-50 px-3 text-xs font-semibold text-blue-700 transition hover:bg-blue-100"
                         >
-                          {form.isPublished ? "Unpublish" : "Publish"}
+                          {form.publicationStatus === "review" ? "Review" : form.isPublished ? "Unpublish" : "Publish"}
                         </button>
                       ) : form.previewSettings.submission_opens_at ? <span className="inline-flex h-8 items-center rounded-lg bg-slate-100 px-3 text-xs font-semibold text-slate-600">Schedule controls publication</span> : null}
                       {permissions.canManageForms || permissions.canEditForms ? <button type="button" onClick={() => runAction(() => setSpiritualFormArchived(form.id, form.isActive))} className="inline-flex h-8 items-center justify-center rounded-lg bg-blue-50 px-3 text-xs font-semibold text-blue-700">{form.isActive ? "Archive" : "Restore"}</button> : null}
@@ -1188,9 +1212,54 @@ export function IntercessionClient({
                       <th className="px-4 py-3">
                         <input type="checkbox" checked={allVisibleFormsSelected} onChange={(event) => toggleVisibleFormSelection(event.target.checked)} aria-label="Select all visible forms" className="size-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
                       </th>
-                      <th className="px-4 py-3">Form</th>
-                      <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3">Submissions</th>
+                      <th className="px-4 py-3">
+                        <button type="button" onClick={() => {
+                          if (formSortField === "title") setFormSortDirection((current) => current === "asc" ? "desc" : "asc");
+                          else {
+                            setFormSortField("title");
+                            setFormSortDirection("asc");
+                          }
+                        }} className="inline-flex items-center gap-1.5 text-left font-semibold uppercase tracking-wide text-gray-500 transition hover:text-gray-700">
+                          <span>Form</span>
+                          {formSortField === "title" ? (formSortDirection === "asc" ? <ArrowUp className="size-3.5" /> : <ArrowDown className="size-3.5" />) : <ArrowUpDown className="size-3.5" />}
+                        </button>
+                      </th>
+                      <th className="px-4 py-3">
+                        <button type="button" onClick={() => {
+                          if (formSortField === "modified") setFormSortDirection((current) => current === "asc" ? "desc" : "asc");
+                          else {
+                            setFormSortField("modified");
+                            setFormSortDirection("desc");
+                          }
+                        }} className="inline-flex items-center gap-1.5 text-left font-semibold uppercase tracking-wide text-gray-500 transition hover:text-gray-700">
+                          <span>Modified</span>
+                          {formSortField === "modified" ? (formSortDirection === "asc" ? <ArrowUp className="size-3.5" /> : <ArrowDown className="size-3.5" />) : <ArrowUpDown className="size-3.5" />}
+                        </button>
+                      </th>
+                      <th className="px-4 py-3">
+                        <button type="button" onClick={() => {
+                          if (formSortField === "status") setFormSortDirection((current) => current === "asc" ? "desc" : "asc");
+                          else {
+                            setFormSortField("status");
+                            setFormSortDirection("asc");
+                          }
+                        }} className="inline-flex items-center gap-1.5 text-left font-semibold uppercase tracking-wide text-gray-500 transition hover:text-gray-700">
+                          <span>Status</span>
+                          {formSortField === "status" ? (formSortDirection === "asc" ? <ArrowUp className="size-3.5" /> : <ArrowDown className="size-3.5" />) : <ArrowUpDown className="size-3.5" />}
+                        </button>
+                      </th>
+                      <th className="px-4 py-3">
+                        <button type="button" onClick={() => {
+                          if (formSortField === "submissions") setFormSortDirection((current) => current === "asc" ? "desc" : "asc");
+                          else {
+                            setFormSortField("submissions");
+                            setFormSortDirection("asc");
+                          }
+                        }} className="inline-flex items-center gap-1.5 text-left font-semibold uppercase tracking-wide text-gray-500 transition hover:text-gray-700">
+                          <span>Submissions</span>
+                          {formSortField === "submissions" ? (formSortDirection === "asc" ? <ArrowUp className="size-3.5" /> : <ArrowDown className="size-3.5" />) : <ArrowUpDown className="size-3.5" />}
+                        </button>
+                      </th>
                       <th className="px-4 py-3 text-right">Actions</th>
                     </tr>
                   </thead>
@@ -1206,17 +1275,17 @@ export function IntercessionClient({
                         </td>
                         <td className="px-4 py-3">
                           <div className="font-semibold text-gray-900"><IntercessionRichText value={form.title} /></div>
-                          <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-                            <span className="flex items-center gap-1">
-                              <svg className="size-3 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                                <line x1="16" y1="2" x2="16" y2="6" />
-                                <line x1="8" y1="2" x2="8" y2="6" />
-                                <line x1="3" y1="10" x2="21" y2="10" />
-                              </svg>
-                              Modified: {form.updatedAt}
-                            </span>
-                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-slate-600">
+                          <span className="flex items-center gap-1">
+                            <svg className="size-3.5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                              <line x1="16" y1="2" x2="16" y2="6" />
+                              <line x1="8" y1="2" x2="8" y2="6" />
+                              <line x1="3" y1="10" x2="21" y2="10" />
+                            </svg>
+                            {form.updatedAt}
+                          </span>
                         </td>
                         <td className="px-4 py-3">
                           {permissions.canPublishForms && form.isActive && !form.previewSettings.submission_opens_at ? (
@@ -1228,13 +1297,13 @@ export function IntercessionClient({
                               }}
                               className="whitespace-nowrap rounded-full bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-700 transition hover:bg-blue-200"
                             >
-                              {form.isPublished ? "Unpublish" : "Publish"}
+                              {form.publicationStatus === "review" ? "Review" : form.isPublished ? "Unpublish" : "Publish"}
                             </button>
                           ) : (
                             <span
                               className="rounded-full bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-700"
                             >
-                              {form.publicationStatus === "scheduled" ? "Scheduled" : form.publicationStatus === "closed" ? "Closed" : form.isPublished ? "Published" : "Draft"}
+                              {form.publicationStatus === "review" ? "Review" : form.publicationStatus === "scheduled" ? "Scheduled" : form.publicationStatus === "closed" ? "Closed" : form.isPublished ? "Published" : "Draft"}
                             </span>
                           )}
                         </td>
@@ -1273,7 +1342,7 @@ export function IntercessionClient({
                               <option value="preview">Preview</option>
                               {permissions.canCreateForms ? <option value="duplicate">Duplicate</option> : null}
                               {permissions.canViewSubmissions ? <option value="submissions">Submissions</option> : null}
-                              {permissions.canPublishForms && form.isActive && !form.previewSettings.submission_opens_at ? <option value="publish">{form.isPublished ? "Unpublish" : "Publish"}</option> : null}
+                              {permissions.canPublishForms && form.isActive && !form.previewSettings.submission_opens_at ? <option value="publish">{form.publicationStatus === "review" ? "Review" : form.isPublished ? "Unpublish" : "Publish"}</option> : null}
                               {permissions.canManageForms || permissions.canEditForms ? <option value={form.isActive ? "archive" : "restore"}>{form.isActive ? "Archive" : "Restore"}</option> : null}
                               {permissions.canDeleteForms ? <option value="delete">Delete</option> : null}
                             </select>
