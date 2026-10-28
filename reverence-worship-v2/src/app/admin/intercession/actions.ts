@@ -1108,7 +1108,7 @@ export async function submitSpiritualForm(formId: number, formData: FormData) {
       revalidatePath("/admin/forms/commitments/mine");
       revalidatePath("/admin/profile");
       revalidatePath("/admin/users");
-      return { ok: true, message: settings.thank_you_message, redirectUrl: user && settings.allow_view_response ? "/admin/forms/commitments/mine" : "" };
+      return { ok: true, message: settings.thank_you_message, redirectUrl: user ? "/admin/forms?section=results" : "" };
     }
 
     if (settings.notify_on_submit) {
