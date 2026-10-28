@@ -1050,6 +1050,7 @@ function QuestionCard({
 }) {
   const isDisplayOnly = question.type === "title_section" || question.type === "section_break";
   const conditionSourceQuestions = precedingQuestions.filter((candidate) => ["short_answer", "paragraph", "multiple_choice", "membership_type", "checkboxes", "dropdown", "linear_scale", "rating", "multiple_choice_grid", "checkbox_grid", "date", "time"].includes(candidate.type));
+  const imageUpload = useQuestionImageUpload(question, onChange, onUploadingChange);
 
   function moveOption(index: number, offset: -1 | 1) {
     const targetIndex = index + offset;
@@ -1121,38 +1122,43 @@ function QuestionCard({
             className="mt-2 min-h-9 w-full overflow-hidden break-words whitespace-pre-wrap border-0 border-b border-gray-100 px-3 py-2 text-sm text-gray-500 outline-none focus:border-gray-300 focus:ring-0"
           />
         </div>
-        <select
-          aria-label="Question type"
-          value={question.type}
-          onChange={(event) => {
-            const type = event.target.value as QuestionType;
-            if (type !== "membership_type") return onChange({ type, membershipTypeMapping: null });
-            const usePreset = question.options.length === 1 && question.options[0] === "Option 1";
-            const options = usePreset ? newQuestion("membership_type").options : question.options;
-            onChange({ type, options, required: false, condition: null,
-              membershipTypeMapping: usePreset ? ["permanent", "temporary", "partner"] : question.membershipTypeMapping?.length === options.length ? question.membershipTypeMapping : options.map(() => ""),
-            });
-          }}
-          className="h-10 rounded-lg border border-gray-300 px-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-        >
-          {isDisplayOnly ? (
-            <>
-              <option value="title_section">Title and description</option>
-              <option value="section_break">Section break</option>
-            </>
-          ) : (
-            questionTypes.filter((type) => type.value !== "membership_type" || membershipMappingAvailable || question.type === "membership_type").map((type) => (
-              <option key={type.value} value={type.value}>
-                {type.label}
-              </option>
-            ))
-          )}
-        </select>
+        <div className="flex flex-col gap-2">
+          <select
+            aria-label="Question type"
+            value={question.type}
+            onChange={(event) => {
+              const type = event.target.value as QuestionType;
+              if (type !== "membership_type") return onChange({ type, membershipTypeMapping: null });
+              const usePreset = question.options.length === 1 && question.options[0] === "Option 1";
+              const options = usePreset ? newQuestion("membership_type").options : question.options;
+              onChange({ type, options, required: false, condition: null,
+                membershipTypeMapping: usePreset ? ["permanent", "temporary", "partner"] : question.membershipTypeMapping?.length === options.length ? question.membershipTypeMapping : options.map(() => ""),
+              });
+            }}
+            className="h-10 w-full rounded-lg border border-gray-300 px-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+          >
+            {isDisplayOnly ? (
+              <>
+                <option value="title_section">Title and description</option>
+                <option value="section_break">Section break</option>
+              </>
+            ) : (
+              questionTypes.filter((type) => type.value !== "membership_type" || membershipMappingAvailable || question.type === "membership_type").map((type) => (
+                <option key={type.value} value={type.value}>
+                  {type.label}
+                </option>
+              ))
+            )}
+          </select>
+          {!isDisplayOnly ? (
+            <QuestionImageUploadButton disabled={actionsDisabled} imageCount={question.images.length} upload={imageUpload} />
+          ) : null}
+        </div>
       </div>
 
       {!isDisplayOnly && (
         <div className="mt-4 space-y-3 pl-0 sm:pl-7">
-          <QuestionImageEditor question={question} disabled={actionsDisabled} onChange={onChange} onRemoveImage={onRemoveImage} onUploadingChange={onUploadingChange} />
+          <QuestionImageEditor question={question} disabled={actionsDisabled} onChange={onChange} onRemoveImage={onRemoveImage} upload={imageUpload} />
           {["multiple_choice", "membership_type", "checkboxes", "dropdown"].includes(question.type) && (
             <div className="space-y-2">
               {(question.options.length ? question.options : [""]).map((option, index) => (
@@ -1369,23 +1375,22 @@ function QuestionCard({
   );
 }
 
-function QuestionImageEditor({
-  question,
-  disabled,
-  onChange,
-  onRemoveImage,
-  onUploadingChange,
-}: {
-  question: BuilderQuestion;
-  disabled: boolean;
-  onChange: (patch: Partial<BuilderQuestion> | ((question: BuilderQuestion) => Partial<BuilderQuestion>)) => void;
-  onRemoveImage: (index: number) => void;
-  onUploadingChange: (uploading: boolean) => void;
-}) {
+type QuestionImageUpload = {
+  uploading: boolean;
+  error: string | null;
+  uploadNote: string | null;
+  remainingSlots: number;
+  uploadImages: (event: ChangeEvent<HTMLInputElement>) => void;
+};
+
+function useQuestionImageUpload(
+  question: BuilderQuestion,
+  onChange: (patch: Partial<BuilderQuestion> | ((question: BuilderQuestion) => Partial<BuilderQuestion>)) => void,
+  onUploadingChange: (uploading: boolean) => void,
+): QuestionImageUpload {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploadNote, setUploadNote] = useState<string | null>(null);
-  const [draggedImageIndex, setDraggedImageIndex] = useState<number | null>(null);
   const remainingSlots = MAX_QUESTION_IMAGES - question.images.length;
 
   async function uploadImages(event: ChangeEvent<HTMLInputElement>) {
@@ -1429,6 +1434,65 @@ function QuestionImageEditor({
     onChange((currentQuestion) => ({ images: [...currentQuestion.images, ...result.images].slice(0, MAX_QUESTION_IMAGES) }));
   }
 
+  return { uploading, error, uploadNote, remainingSlots, uploadImages };
+}
+
+function QuestionImageUploadButton({
+  disabled,
+  imageCount,
+  upload,
+}: {
+  disabled: boolean;
+  imageCount: number;
+  upload: QuestionImageUpload;
+}) {
+  const { uploading, remainingSlots, uploadImages } = upload;
+
+  if (remainingSlots <= 0) {
+    return (
+      <span title="Maximum of 5 images added" className="relative inline-flex size-9 items-center justify-center self-end rounded-lg border border-blue-200 bg-blue-50 text-blue-600">
+        <ImagePlus className="size-4.5" aria-hidden="true" />
+        <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-blue-600 text-[9px] font-bold text-white">5</span>
+      </span>
+    );
+  }
+
+  return (
+    <label
+      title={imageCount ? `Add more images (${imageCount}/5)` : "Add images"}
+      aria-label={imageCount ? `Add more question images. ${imageCount} of 5 added.` : "Add question images"}
+      className={`relative inline-flex size-9 cursor-pointer items-center justify-center self-end rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 ${disabled || uploading ? "pointer-events-none opacity-50" : ""}`}
+    >
+      <ImagePlus className="size-4.5" aria-hidden="true" />
+      {imageCount > 0 ? <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-blue-600 text-[9px] font-bold text-white">{imageCount}</span> : null}
+      <input
+        type="file"
+        multiple
+        accept={QUESTION_IMAGE_ACCEPT}
+        disabled={disabled || uploading}
+        onChange={uploadImages}
+        className="sr-only"
+      />
+    </label>
+  );
+}
+
+function QuestionImageEditor({
+  question,
+  disabled,
+  onChange,
+  onRemoveImage,
+  upload,
+}: {
+  question: BuilderQuestion;
+  disabled: boolean;
+  onChange: (patch: Partial<BuilderQuestion> | ((question: BuilderQuestion) => Partial<BuilderQuestion>)) => void;
+  onRemoveImage: (index: number) => void;
+  upload: QuestionImageUpload;
+}) {
+  const [draggedImageIndex, setDraggedImageIndex] = useState<number | null>(null);
+  const { uploading, error, uploadNote } = upload;
+
   function moveImage(index: number, direction: -1 | 1) {
     const target = index + direction;
     if (target < 0 || target >= question.images.length) return;
@@ -1446,36 +1510,16 @@ function QuestionImageEditor({
     setDraggedImageIndex(null);
   }
 
+  if (!uploading && !error && !uploadNote && question.images.length === 0) return null;
+
   return (
     <div>
-      <div className="flex min-h-9 items-center justify-end gap-2">
-        {uploading ? <span className="text-xs font-medium text-blue-600" role="status">Optimizing and uploading…</span> : null}
-        {remainingSlots > 0 ? (
-          <label
-            title={question.images.length ? `Add more images (${question.images.length}/5)` : "Add images"}
-            aria-label={question.images.length ? `Add more question images. ${question.images.length} of 5 added.` : "Add question images"}
-            className={`relative inline-flex size-9 cursor-pointer items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 ${disabled || uploading ? "pointer-events-none opacity-50" : ""}`}
-          >
-            <ImagePlus className="size-4.5" aria-hidden="true" />
-            {question.images.length > 0 ? <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-blue-600 text-[9px] font-bold text-white">{question.images.length}</span> : null}
-            <input
-              type="file"
-              multiple
-              accept={QUESTION_IMAGE_ACCEPT}
-              disabled={disabled || uploading}
-              onChange={uploadImages}
-              className="sr-only"
-            />
-          </label>
-        ) : (
-          <span title="Maximum of 5 images added" className="relative inline-flex size-9 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-600">
-            <ImagePlus className="size-4.5" aria-hidden="true" />
-            <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-blue-600 text-[9px] font-bold text-white">5</span>
-          </span>
-        )}
-      </div>
-
-      {uploading ? <div className="ml-auto mt-1 h-1 w-32 overflow-hidden rounded-full bg-blue-100" aria-label="Image upload in progress"><div className="h-full w-2/3 animate-pulse rounded-full bg-blue-600" /></div> : null}
+      {uploading ? (
+        <div className="flex items-center justify-end gap-2">
+          <span className="text-xs font-medium text-blue-600" role="status">Optimizing and uploading…</span>
+          <div className="h-1 w-32 overflow-hidden rounded-full bg-blue-100" aria-label="Image upload in progress"><div className="h-full w-2/3 animate-pulse rounded-full bg-blue-600" /></div>
+        </div>
+      ) : null}
 
       {error ? <p className="mt-1 text-right text-xs font-medium text-red-600" role="alert">{error}</p> : uploadNote ? <p className="mt-1 text-right text-xs font-medium text-emerald-600" role="status">{uploadNote}</p> : null}
 

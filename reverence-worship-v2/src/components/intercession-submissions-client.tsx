@@ -635,9 +635,9 @@ function ReviewSubmissionModal({
                     <div>
                       <h3 className="font-semibold text-slate-900"><IntercessionRichText value={answer.question} /></h3>
                     </div>
-                    {form.isQuiz ? (
+                    {form.isQuiz && answer.points > 0 ? (
                       <span className="w-fit rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
-                        {answer.points === 0 ? "Unscored reflection" : `${formatIntercessionMarks(answer.earnedPoints ?? 0)}/${formatIntercessionMarks(answer.points)}`}
+                        {formatIntercessionMarks(answer.earnedPoints ?? 0)}/{formatIntercessionMarks(answer.points)}
                       </span>
                     ) : null}
                   </div>
