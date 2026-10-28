@@ -48,17 +48,9 @@ const qualificationSchema = z.object({
 
 export const educationFieldsSchema = z.object({
   highestEducationLevel: z.enum(EDUCATION_LEVELS.map(({ value }) => value) as [string, ...string[]]),
-  otherEducationLevel: z.string().trim().max(160),
   educationFieldOfStudy: z.string().trim().max(160),
   additionalQualifications: z.array(qualificationSchema),
 }).superRefine((data, context) => {
-  if (data.highestEducationLevel === "other" && !data.otherEducationLevel) {
-    context.addIssue({
-      code: "custom",
-      path: ["otherEducationLevel"],
-      message: "Specify your highest education qualification.",
-    });
-  }
   if (data.highestEducationLevel !== "none" && data.highestEducationLevel !== "primary") {
     if (!data.educationFieldOfStudy) {
       context.addIssue({ code: "custom", path: ["educationFieldOfStudy"], message: "Enter your field of study." });

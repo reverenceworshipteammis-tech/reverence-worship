@@ -229,7 +229,6 @@ export async function completeGoogleProfileAction(
   try {
     const parsedEducation = educationFieldsSchema.safeParse({
       highestEducationLevel: profileValues.highestEducationLevel,
-      otherEducationLevel: profileValues.otherEducationLevel ?? "",
       educationFieldOfStudy: profileValues.educationFieldOfStudy ?? "",
       additionalQualifications: parseAdditionalQualifications(profileValues.additionalQualifications),
     });
@@ -258,7 +257,6 @@ export async function completeGoogleProfileAction(
       cell: parsed.data.cell,
       village: parsed.data.village,
       highestEducationLevel: educationData.highestEducationLevel,
-      otherEducationLevel: educationData.highestEducationLevel === "other" ? educationData.otherEducationLevel : null,
       educationFieldOfStudy: hasEducationDetails ? educationData.educationFieldOfStudy : null,
       educationQualifications: educationData.additionalQualifications.length
         ? { create: educationData.additionalQualifications }
@@ -314,7 +312,6 @@ export async function registerAction(
   try {
     const parsedEducation = educationFieldsSchema.safeParse({
       highestEducationLevel: registrationValues.highestEducationLevel,
-      otherEducationLevel: registrationValues.otherEducationLevel ?? "",
       educationFieldOfStudy: registrationValues.educationFieldOfStudy ?? "",
       additionalQualifications: parseAdditionalQualifications(registrationValues.additionalQualifications),
     });
@@ -375,7 +372,6 @@ export async function registerAction(
         village: parsed.data.village,
         occupation: parsed.data.occupation || null,
         highestEducationLevel: educationData.highestEducationLevel,
-        otherEducationLevel: educationData.highestEducationLevel === "other" ? educationData.otherEducationLevel : null,
         educationFieldOfStudy: hasEducationDetails ? educationData.educationFieldOfStudy : null,
         educationQualifications: educationData.additionalQualifications.length
           ? { create: educationData.additionalQualifications }

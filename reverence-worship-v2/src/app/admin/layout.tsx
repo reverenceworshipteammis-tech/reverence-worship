@@ -56,7 +56,6 @@ export default async function AdminLayout({
             membershipType: user.membershipType,
             occupation: user.occupation,
             highestEducationLevel: user.highestEducationLevel,
-            otherEducationLevel: user.otherEducationLevel,
             educationFieldOfStudy: user.educationFieldOfStudy,
             province: user.province,
             district: user.district,

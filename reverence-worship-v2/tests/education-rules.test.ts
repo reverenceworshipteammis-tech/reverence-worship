@@ -18,7 +18,6 @@ test("education levels include the required options", () => {
 test("no formal education does not require primary education details", () => {
   const result = educationFieldsSchema.safeParse({
     highestEducationLevel: "none",
-    otherEducationLevel: "",
     educationFieldOfStudy: "",
     additionalQualifications: [],
   });
@@ -29,7 +28,6 @@ test("no formal education does not require primary education details", () => {
 test("primary level does not require additional education details", () => {
   const result = educationFieldsSchema.safeParse({
     highestEducationLevel: "primary",
-    otherEducationLevel: "",
     educationFieldOfStudy: "",
     additionalQualifications: [],
   });
@@ -37,28 +35,19 @@ test("primary level does not require additional education details", () => {
   assert.equal(result.success, true);
 });
 
-test("formal education requires its qualification details and other specification", () => {
+test("formal education requires its qualification details", () => {
   const missingDetails = educationFieldsSchema.safeParse({
     highestEducationLevel: "bachelors_a0",
-    otherEducationLevel: "",
     educationFieldOfStudy: "",
-    additionalQualifications: [],
-  });
-  const missingOther = educationFieldsSchema.safeParse({
-    highestEducationLevel: "other",
-    otherEducationLevel: "",
-    educationFieldOfStudy: "History",
     additionalQualifications: [],
   });
 
   assert.equal(missingDetails.success, false);
-  assert.equal(missingOther.success, false);
 });
 
 test("supports multiple complete additional qualifications", () => {
   const result = educationFieldsSchema.safeParse({
     highestEducationLevel: "none",
-    otherEducationLevel: "",
     educationFieldOfStudy: "",
     additionalQualifications: [
       { name: "CCNA", fieldOfStudy: "Networking", institution: "Cisco", status: "completed", completionYear: 2022 },

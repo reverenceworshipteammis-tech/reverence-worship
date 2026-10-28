@@ -151,7 +151,6 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
         membershipType: user.membershipType,
         occupation: user.occupation,
         highestEducationLevel: user.highestEducationLevel,
-        otherEducationLevel: user.otherEducationLevel,
         educationFieldOfStudy: user.educationFieldOfStudy,
         additionalQualifications: user.educationQualifications.map(({ name, fieldOfStudy, institution, status, completionYear }) => ({
           name,

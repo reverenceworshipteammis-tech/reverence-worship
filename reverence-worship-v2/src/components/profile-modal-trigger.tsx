@@ -15,7 +15,6 @@ export type ProfileModalData = {
   membershipType: string | null;
   occupation: string | null;
   highestEducationLevel: string | null;
-  otherEducationLevel: string | null;
   educationFieldOfStudy: string | null;
   province: string | null;
   district: string | null;

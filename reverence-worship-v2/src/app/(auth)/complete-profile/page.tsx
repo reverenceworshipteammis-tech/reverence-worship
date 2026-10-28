@@ -37,7 +37,6 @@ export default async function CompleteProfilePage({ searchParams }: { searchPara
           cell: user.cell,
           village: user.village,
           highestEducationLevel: user.highestEducationLevel,
-          otherEducationLevel: user.otherEducationLevel,
           educationFieldOfStudy: user.educationFieldOfStudy,
           additionalQualifications: user.educationQualifications.map(({ name, fieldOfStudy, institution, status, completionYear }) => ({
             name,

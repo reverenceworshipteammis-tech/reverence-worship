@@ -58,7 +58,6 @@ export async function updateOwnProfileAction(
   try {
     const parsedEducation = educationFieldsSchema.safeParse({
       highestEducationLevel: profileValues.highestEducationLevel,
-      otherEducationLevel: profileValues.otherEducationLevel ?? "",
       educationFieldOfStudy: profileValues.educationFieldOfStudy ?? "",
       additionalQualifications: parseAdditionalQualifications(profileValues.additionalQualifications),
     });
@@ -89,7 +88,6 @@ export async function updateOwnProfileAction(
         cell: parsed.data.cell || null,
         village: parsed.data.village || null,
         highestEducationLevel: educationData.highestEducationLevel,
-        otherEducationLevel: educationData.highestEducationLevel === "other" ? educationData.otherEducationLevel : null,
         educationFieldOfStudy: hasEducationDetails ? educationData.educationFieldOfStudy : null,
       },
     });

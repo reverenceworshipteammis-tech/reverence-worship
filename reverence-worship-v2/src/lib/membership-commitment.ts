@@ -14,7 +14,6 @@ export const COMMITMENT_PROFILE_FIELDS = [
   { key: "membershipType", label: "Membership type", type: "select", options: MEMBERSHIP_TYPES, max: 20 },
   { key: "occupation", label: "Occupation", type: "text", max: 120 },
   { key: "highestEducationLevel", label: "Highest education level", type: "select", options: EDUCATION_LEVELS.map(({ value }) => value), max: 30 },
-  { key: "otherEducationLevel", label: "Other education qualification", type: "text", max: 160 },
   { key: "educationFieldOfStudy", label: "Education field of study", type: "text", max: 160 },
   { key: "province", label: "Province", type: "text", max: 100 },
   { key: "district", label: "District", type: "text", max: 100 },
@@ -56,7 +55,7 @@ export type CommitmentSnapshot = {
 };
 
 const keys = CONFIGURABLE_COMMITMENT_PROFILE_FIELDS.map((field) => field.key) as [CommitmentProfileKey, ...CommitmentProfileKey[]];
-const educationDependentKeys = ["otherEducationLevel", "educationFieldOfStudy"] as const;
+const educationDependentKeys = ["educationFieldOfStudy"] as const;
 const settingsSchema = z.object({
   year: z.number().int().min(2000).max(2200),
   terms: z.string().max(100_000),
@@ -73,7 +72,7 @@ function withoutRemovedCommitmentFields(value: unknown) {
     ...value,
     profileFields: value.profileFields.filter((field) =>
       field && typeof field === "object" && "key" in field
-        && !["emergencyName", "emergencyPhone", "skills", "educationInstitution", "educationCompletionYear"].includes(String(field.key)),
+        && !["emergencyName", "emergencyPhone", "skills", "educationInstitution", "educationCompletionYear", "otherEducationLevel"].includes(String(field.key)),
     ),
   };
 }
@@ -165,9 +164,8 @@ export function validateCommitmentProfile(config: CommitmentSettings, current: C
     const definition = COMMITMENT_PROFILE_FIELDS.find((item) => item.key === field.key)!;
     const raw = incoming.get(`profile_${field.key}`);
     const value = field.editable ? typeof raw === "string" ? raw.trim() : "" : current[field.key] ?? "";
-    const educationRequired = field.key === "otherEducationLevel" && educationLevel === "other"
-      || field.key === "educationFieldOfStudy" && educationLevel !== "" && educationLevel !== "none" && educationLevel !== "primary";
-    const conditionalEducationField = educationLevelField && (field.key === "otherEducationLevel" || field.key === "educationFieldOfStudy");
+    const educationRequired = field.key === "educationFieldOfStudy" && educationLevel !== "" && educationLevel !== "none" && educationLevel !== "primary";
+    const conditionalEducationField = educationLevelField && field.key === "educationFieldOfStudy";
     if ((conditionalEducationField ? educationRequired : field.required || educationRequired) && !value) return { ok: false as const, message: `${definition.label} is required.` };
     if (value.length > definition.max) return { ok: false as const, message: `${definition.label} is too long.` };
     if (field.editable && field.key === "name" && value.length < 2) return { ok: false as const, message: "Full name must contain at least 2 characters." };

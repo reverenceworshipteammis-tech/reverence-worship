@@ -113,7 +113,6 @@ test("education profile fields can be included and are formatted for commitment 
   const config = defaultCommitmentSettings(2027);
   const educationKeys = [
     "highestEducationLevel",
-    "otherEducationLevel",
     "educationFieldOfStudy",
   ] as const;
   assert.deepEqual(
@@ -131,8 +130,8 @@ test("education profile fields can be included and are formatted for commitment 
   });
   assert.equal(values.highestEducationLevel, "bachelors_a0");
   const parsedConfig = parseCommitmentSettings(config);
-  assert.equal(parsedConfig?.profileFields.length, config.profileFields.length + 1);
-  assert.equal(parsedConfig?.profileFields.some((field) => field.key === "otherEducationLevel"), true);
+  assert.equal(parsedConfig?.profileFields.length, config.profileFields.length);
+  assert.equal(parsedConfig?.profileFields.some((field) => field.key === "educationFieldOfStudy"), true);
 });
 
 test("removed education fields saved in older commitment settings are ignored", () => {
@@ -154,7 +153,7 @@ test("education level reveals and validates its dependent commitment fields", ()
     profileFields: [{ key: "highestEducationLevel", editable: true, required: true, requiresApproval: false }],
   })!;
   for (const field of config.profileFields) {
-    if (["otherEducationLevel", "educationFieldOfStudy"].includes(field.key)) {
+    if (field.key === "educationFieldOfStudy") {
       field.required = true;
     }
   }
@@ -166,12 +165,9 @@ test("education level reveals and validates its dependent commitment fields", ()
   assert.equal(validateCommitmentProfile(config, {}, h.data).ok, true);
 
   h.data.set("profile_highestEducationLevel", "other");
-  assert.equal(validateCommitmentProfile(config, {}, h.data).ok, false);
-  h.data.set("profile_otherEducationLevel", "Certificate in Accounting");
   assert.equal(validateCommitmentProfile(config, {}, h.data).ok, true);
 
   h.data.set("profile_highestEducationLevel", "primary");
-  h.data.delete("profile_otherEducationLevel");
   h.data.delete("profile_educationFieldOfStudy");
   assert.equal(validateCommitmentProfile(config, {}, h.data).ok, true);
 });

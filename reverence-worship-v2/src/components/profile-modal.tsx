@@ -196,7 +196,6 @@ export function ProfileModal({
                     showAdditionalQualifications={false}
                     initialValues={{
                       highestEducationLevel: profile.highestEducationLevel ?? "",
-                      otherEducationLevel: profile.otherEducationLevel ?? "",
                       educationFieldOfStudy: profile.educationFieldOfStudy ?? "",
                     }}
                   />
@@ -247,9 +246,6 @@ export function ProfileModal({
 
             <ProfileSection title="Educational Information" icon={GraduationCap} iconClassName="text-violet-600">
               <InfoRow label="Highest Education Level" value={educationLevelLabel(profile.highestEducationLevel) || "-"} icon={GraduationCap} />
-              {profile.highestEducationLevel === "other" ? (
-                <InfoRow label="Specified Qualification" value={display(profile.otherEducationLevel)} icon={GraduationCap} />
-              ) : null}
               {profile.highestEducationLevel && profile.highestEducationLevel !== "none" && profile.highestEducationLevel !== "primary" ? (
                 <InfoRow label="Field of Study" value={display(profile.educationFieldOfStudy)} icon={GraduationCap} last />
               ) : null}

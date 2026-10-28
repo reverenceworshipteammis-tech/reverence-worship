@@ -58,7 +58,6 @@ type UserRow = {
   membershipType: string | null;
   occupation: string | null;
   highestEducationLevel: string | null;
-  otherEducationLevel: string | null;
   educationFieldOfStudy: string | null;
   additionalQualifications: EducationQualification[];
   skills: string | null;
@@ -998,9 +997,6 @@ export function UserManagementClient({
                 ]],
                 ["Educational Information", [
                   ["Highest Education Level", educationLevelLabel(viewUser.highestEducationLevel) || "-"],
-                  ...(viewUser.highestEducationLevel === "other"
-                    ? [["Specified Qualification", viewUser.otherEducationLevel || "-"]]
-                    : []),
                   ...(viewUser.highestEducationLevel && viewUser.highestEducationLevel !== "none" && viewUser.highestEducationLevel !== "primary"
                     ? [
                         ["Field of Study", viewUser.educationFieldOfStudy || "-"],

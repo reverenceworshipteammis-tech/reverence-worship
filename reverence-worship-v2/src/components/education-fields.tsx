@@ -13,7 +13,6 @@ const controlClass = "w-full rounded-lg border border-gray-300 bg-white px-3 py-
 
 type EducationValues = {
   highestEducationLevel: string;
-  otherEducationLevel: string;
   educationFieldOfStudy: string;
   additionalQualifications: EducationQualification[];
 };
@@ -81,22 +80,6 @@ export function EducationFields({
           />
         </div>
 
-        {level === "other" ? (
-          <div>
-            <label htmlFor={fieldId("other-level")} className="mb-1 block text-[0.7rem] font-semibold text-gray-700">
-              Specify Other Qualification <span className="text-red-500">*</span>
-            </label>
-            <input
-              id={fieldId("other-level")}
-              name="otherEducationLevel"
-              defaultValue={initialValues?.otherEducationLevel ?? ""}
-              placeholder="e.g., Certificate in Accounting"
-              required
-              maxLength={160}
-              className={controlClass}
-            />
-          </div>
-        ) : null}
         {fieldsRequired ? (
           <>
             <div>

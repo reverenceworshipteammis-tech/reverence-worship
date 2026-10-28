@@ -23,7 +23,6 @@ type CompleteGoogleProfileFormProps = {
     cell: string | null;
     village: string | null;
     highestEducationLevel: string | null;
-    otherEducationLevel: string | null;
     educationFieldOfStudy: string | null;
     additionalQualifications: EducationQualification[];
   };
@@ -163,7 +162,6 @@ export function CompleteGoogleProfileForm({ user, returnTo }: CompleteGoogleProf
           idPrefix="google-profile-education"
           initialValues={{
             highestEducationLevel: user.highestEducationLevel ?? "",
-            otherEducationLevel: user.otherEducationLevel ?? "",
             educationFieldOfStudy: user.educationFieldOfStudy ?? "",
             additionalQualifications: user.additionalQualifications,
           }}
