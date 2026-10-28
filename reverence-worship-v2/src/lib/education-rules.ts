@@ -11,6 +11,17 @@ export const EDUCATION_LEVELS = [
   { value: "other", label: "Other (Please Specify)" },
 ] as const;
 
+export const BILINGUAL_EDUCATION_LABELS: Record<(typeof EDUCATION_LEVELS)[number]["value"], string> = {
+  none: "Ntabwo Nize / No Formal Education",
+  primary: "Amashuri Abanza / Primary Education",
+  secondary_a2: "Amashuri Yisumbuye (A2) / Secondary Education (A2)",
+  diploma_a1: "Icyiciro cya 1 cya Kaminuza / Diploma (A1)",
+  bachelors_a0: "Icyiciro cya 2 cya Kaminuza / Bachelor's Degree (A0)",
+  masters: "Icyiciro cya 3 cya Kaminuza / Master's Degree",
+  doctoral: "Impamyabumenyi y'Ikirenga (PhD) / Doctoral Degree (PhD)",
+  other: "Ibindi (Bisobanure) / Other (Please Specify)",
+};
+
 export const QUALIFICATION_STATUSES = [
   { value: "completed", label: "Completed" },
   { value: "studying", label: "Currently Studying" },
@@ -39,8 +50,6 @@ export const educationFieldsSchema = z.object({
   highestEducationLevel: z.enum(EDUCATION_LEVELS.map(({ value }) => value) as [string, ...string[]]),
   otherEducationLevel: z.string().trim().max(160),
   educationFieldOfStudy: z.string().trim().max(160),
-  educationInstitution: z.string().trim().max(160),
-  educationCompletionYear: z.string().trim(),
   additionalQualifications: z.array(qualificationSchema),
 }).superRefine((data, context) => {
   if (data.highestEducationLevel === "other" && !data.otherEducationLevel) {
@@ -53,13 +62,6 @@ export const educationFieldsSchema = z.object({
   if (data.highestEducationLevel !== "none" && data.highestEducationLevel !== "primary") {
     if (!data.educationFieldOfStudy) {
       context.addIssue({ code: "custom", path: ["educationFieldOfStudy"], message: "Enter your field of study." });
-    }
-    if (!data.educationInstitution) {
-      context.addIssue({ code: "custom", path: ["educationInstitution"], message: "Enter your institution." });
-    }
-    const year = Number(data.educationCompletionYear);
-    if (!Number.isInteger(year) || year < 1900 || year > new Date().getFullYear()) {
-      context.addIssue({ code: "custom", path: ["educationCompletionYear"], message: "Enter a valid year of completion." });
     }
   }
 });

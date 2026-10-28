@@ -20,8 +20,6 @@ test("no formal education does not require primary education details", () => {
     highestEducationLevel: "none",
     otherEducationLevel: "",
     educationFieldOfStudy: "",
-    educationInstitution: "",
-    educationCompletionYear: "",
     additionalQualifications: [],
   });
 
@@ -33,8 +31,6 @@ test("primary level does not require additional education details", () => {
     highestEducationLevel: "primary",
     otherEducationLevel: "",
     educationFieldOfStudy: "",
-    educationInstitution: "",
-    educationCompletionYear: "",
     additionalQualifications: [],
   });
 
@@ -46,16 +42,12 @@ test("formal education requires its qualification details and other specificatio
     highestEducationLevel: "bachelors_a0",
     otherEducationLevel: "",
     educationFieldOfStudy: "",
-    educationInstitution: "",
-    educationCompletionYear: "",
     additionalQualifications: [],
   });
   const missingOther = educationFieldsSchema.safeParse({
     highestEducationLevel: "other",
     otherEducationLevel: "",
     educationFieldOfStudy: "History",
-    educationInstitution: "University",
-    educationCompletionYear: "2020",
     additionalQualifications: [],
   });
 
@@ -68,8 +60,6 @@ test("supports multiple complete additional qualifications", () => {
     highestEducationLevel: "none",
     otherEducationLevel: "",
     educationFieldOfStudy: "",
-    educationInstitution: "",
-    educationCompletionYear: "",
     additionalQualifications: [
       { name: "CCNA", fieldOfStudy: "Networking", institution: "Cisco", status: "completed", completionYear: 2022 },
       { name: "CPA", fieldOfStudy: "Accounting", institution: "Training Provider", status: "studying", completionYear: 2027 },

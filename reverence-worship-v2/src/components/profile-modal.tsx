@@ -198,8 +198,6 @@ export function ProfileModal({
                       highestEducationLevel: profile.highestEducationLevel ?? "",
                       otherEducationLevel: profile.otherEducationLevel ?? "",
                       educationFieldOfStudy: profile.educationFieldOfStudy ?? "",
-                      educationInstitution: profile.educationInstitution ?? "",
-                      educationCompletionYear: profile.educationCompletionYear?.toString() ?? "",
                     }}
                   />
                 </div>
@@ -253,11 +251,7 @@ export function ProfileModal({
                 <InfoRow label="Specified Qualification" value={display(profile.otherEducationLevel)} icon={GraduationCap} />
               ) : null}
               {profile.highestEducationLevel && profile.highestEducationLevel !== "none" && profile.highestEducationLevel !== "primary" ? (
-                <>
-                  <InfoRow label="Field of Study" value={display(profile.educationFieldOfStudy)} icon={GraduationCap} />
-                  <InfoRow label="Institution" value={display(profile.educationInstitution)} icon={GraduationCap} />
-                  <InfoRow label="Year of Completion" value={profile.educationCompletionYear?.toString() ?? "-"} icon={CalendarDays} last />
-                </>
+                <InfoRow label="Field of Study" value={display(profile.educationFieldOfStudy)} icon={GraduationCap} last />
               ) : null}
             </ProfileSection>
 

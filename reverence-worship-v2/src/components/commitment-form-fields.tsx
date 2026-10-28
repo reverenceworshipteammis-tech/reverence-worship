@@ -5,10 +5,32 @@ import {
   CONFIGURABLE_COMMITMENT_PROFILE_FIELDS, COMMITMENT_PROFILE_FIELDS, commitmentAcceptanceLabel, commitmentProfileDisplay,
   type CommitmentSettings, type CommitmentProfileValues,
 } from "@/lib/membership-commitment";
-import { EDUCATION_LEVELS } from "@/lib/education-rules";
+import { EducationLevelSelect } from "@/components/education-level-select";
+import { ChoiceSelect } from "@/components/choice-select";
 
 const inputClass = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 [&:read-only:not(select)]:bg-slate-100 disabled:bg-slate-100";
-const educationDependentKeys = ["otherEducationLevel", "educationFieldOfStudy", "educationInstitution", "educationCompletionYear"] as const;
+const educationDependentKeys = ["otherEducationLevel", "educationFieldOfStudy"] as const;
+const BILINGUAL_PROFILE_LABELS: Partial<Record<string, string>> = {
+  name: "Amazina Yombi / Full Name",
+  email: "Imeyili / Email Address",
+  phone: "Nimero ya Telefoni / Phone Number",
+  dateOfBirth: "Itariki y'Amavuko / Date of Birth",
+  gender: "Igitsina / Gender",
+  maritalStatus: "Irangamimerere / Marital Status",
+  province: "Intara / Province",
+  district: "Akarere / District",
+  sector: "Umurenge / Sector",
+  cell: "Akagari / Cell",
+  village: "Umudugudu / Village",
+  occupation: "Icyo Ukora / Occupation",
+};
+const BILINGUAL_GENDERS: Record<string, string> = { male: "Gabo / Male", female: "Gore / Female" };
+const BILINGUAL_MARITAL_STATUSES: Record<string, string> = {
+  Single: "Ingaragu / Single",
+  Married: "Ndubatse / Married",
+  Divorced: "Naratandukanye / Divorced",
+  Widowed: "Umupfakazi / Widowed",
+};
 
 export function CommitmentFormConfiguration({ value, onChange, membershipQuestionLinked = false }: { value: CommitmentSettings; onChange: (value: CommitmentSettings) => void; membershipQuestionLinked?: boolean }) {
   function updateProfileFieldSelection(key: (typeof CONFIGURABLE_COMMITMENT_PROFILE_FIELDS)[number]["key"], selected: boolean) {
@@ -69,7 +91,7 @@ export function CommitmentMemberInformation({ config, values = {}, preview = fal
       const membershipFromQuestion = !anonymous && membershipQuestionLinked && field.key === "membershipType";
       const editable = anonymous || field.editable && !membershipFromQuestion;
       const educationDetailsRequired = educationLevel !== "" && educationLevel !== "none" && educationLevel !== "primary";
-      const dependentField = field.key === "educationFieldOfStudy" || field.key === "educationInstitution" || field.key === "educationCompletionYear";
+      const dependentField = field.key === "educationFieldOfStudy";
       const visible = hasEducationLevel && field.key === "otherEducationLevel" ? educationLevel === "other"
         : hasEducationLevel && dependentField ? educationDetailsRequired
           : true;
@@ -79,10 +101,11 @@ export function CommitmentMemberInformation({ config, values = {}, preview = fal
       const required = (anonymous && (field.key === "name" || field.key === "membershipType"))
         || (educationConditionalField ? educationRequired : field.required);
       const options = field.key === "membershipType" ? config.membershipTypes : "options" in definition ? definition.options : [];
-      return <label key={field.key} className="block text-sm font-medium text-slate-700">{definition.label}{required ? " *" : ""}
-        {field.key === "highestEducationLevel" ? <select name={`profile_${field.key}`} disabled={!editable} required={required} defaultValue={values.highestEducationLevel ?? ""} onChange={(event) => setEducationLevel(event.currentTarget.value)} className={`${inputClass} mt-1`}><option value="">Select education level</option>{EDUCATION_LEVELS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
-          : "options" in definition ? <select name={`profile_${field.key}`} disabled={!editable} required={required} defaultValue={values[field.key] ?? ""} className={`${inputClass} mt-1`}><option value="">Not specified</option>{options.map((option) => <option key={option} value={option}>{commitmentProfileDisplay(field.key, option)}</option>)}</select>
-            : <input type={definition.type} name={`profile_${field.key}`} readOnly={!editable} required={required} maxLength={definition.max} inputMode={field.key === "educationCompletionYear" ? "numeric" : undefined} pattern={field.key === "educationCompletionYear" ? "[0-9]{4}" : undefined} defaultValue={values[field.key] ?? ""} placeholder={field.key === "otherEducationLevel" ? "e.g., Certificate in Accounting" : field.key === "educationFieldOfStudy" ? "e.g., Accounting or Computer Science" : field.key === "educationInstitution" ? "e.g., University of Rwanda" : field.key === "educationCompletionYear" ? "e.g., 2020" : preview ? "Prefilled from member profile" : undefined} className={`${inputClass} mt-1`} />}
+      return <label key={field.key} className="block text-sm font-medium text-slate-700">{field.key === "highestEducationLevel" ? "Amashuri wize/Highest Education Level Obtained" : BILINGUAL_PROFILE_LABELS[field.key] ?? definition.label}{required ? " *" : ""}
+        {field.key === "highestEducationLevel" ? <EducationLevelSelect name={`profile_${field.key}`} disabled={!editable} required={required} value={educationLevel} onChange={setEducationLevel} className={`${inputClass} mt-1`} />
+          : "options" in definition ? <ChoiceSelect name={`profile_${field.key}`} disabled={!editable} required={required} defaultValue={values[field.key] ?? ""} placeholder="Not specified" options={options.map((option) => ({ value: option, label: field.key === "maritalStatus" ? BILINGUAL_MARITAL_STATUSES[option] ?? option : field.key === "gender" && BILINGUAL_GENDERS[option] ? BILINGUAL_GENDERS[option] : commitmentProfileDisplay(field.key, option) }))} className={`${inputClass} mt-1`} />
+            : field.key === "dateOfBirth" ? <input type="date" name={`profile_${field.key}`} readOnly={!editable} required={required} defaultValue={values[field.key] ?? ""} className={`${inputClass} mt-1 min-w-0`} />
+            : <input type={definition.type} name={`profile_${field.key}`} readOnly={!editable} required={required} maxLength={definition.max} defaultValue={values[field.key] ?? ""} placeholder={field.key === "otherEducationLevel" ? "e.g., Certificate in Accounting" : field.key === "educationFieldOfStudy" ? "e.g., Accounting or Computer Science" : preview ? "Prefilled from member profile" : undefined} className={`${inputClass} mt-1`} />}
         {!anonymous && !membershipFromQuestion && !editable ? <span className="mt-1 block text-xs font-normal text-slate-500">Read-only</span> : null}
       </label>;
     })}</div>

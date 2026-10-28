@@ -60,8 +60,6 @@ type UserRow = {
   highestEducationLevel: string | null;
   otherEducationLevel: string | null;
   educationFieldOfStudy: string | null;
-  educationInstitution: string | null;
-  educationCompletionYear: number | null;
   additionalQualifications: EducationQualification[];
   skills: string | null;
   status: "active" | "pending" | "inactive";
@@ -1006,8 +1004,6 @@ export function UserManagementClient({
                   ...(viewUser.highestEducationLevel && viewUser.highestEducationLevel !== "none" && viewUser.highestEducationLevel !== "primary"
                     ? [
                         ["Field of Study", viewUser.educationFieldOfStudy || "-"],
-                        ["Institution", viewUser.educationInstitution || "-"],
-                        ["Year of Completion", viewUser.educationCompletionYear?.toString() || "-"],
                       ]
                     : []),
                   ...viewUser.additionalQualifications.map((qualification) => [

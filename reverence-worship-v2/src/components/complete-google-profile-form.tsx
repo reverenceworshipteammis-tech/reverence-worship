@@ -25,8 +25,6 @@ type CompleteGoogleProfileFormProps = {
     highestEducationLevel: string | null;
     otherEducationLevel: string | null;
     educationFieldOfStudy: string | null;
-    educationInstitution: string | null;
-    educationCompletionYear: number | null;
     additionalQualifications: EducationQualification[];
   };
 };
@@ -167,8 +165,6 @@ export function CompleteGoogleProfileForm({ user, returnTo }: CompleteGoogleProf
             highestEducationLevel: user.highestEducationLevel ?? "",
             otherEducationLevel: user.otherEducationLevel ?? "",
             educationFieldOfStudy: user.educationFieldOfStudy ?? "",
-            educationInstitution: user.educationInstitution ?? "",
-            educationCompletionYear: user.educationCompletionYear?.toString() ?? "",
             additionalQualifications: user.additionalQualifications,
           }}
         />

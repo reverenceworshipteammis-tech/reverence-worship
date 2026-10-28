@@ -58,8 +58,6 @@ export default async function AdminLayout({
             highestEducationLevel: user.highestEducationLevel,
             otherEducationLevel: user.otherEducationLevel,
             educationFieldOfStudy: user.educationFieldOfStudy,
-            educationInstitution: user.educationInstitution,
-            educationCompletionYear: user.educationCompletionYear,
             province: user.province,
             district: user.district,
             sector: user.sector,

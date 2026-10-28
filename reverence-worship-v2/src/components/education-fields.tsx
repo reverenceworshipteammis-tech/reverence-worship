@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { EducationLevelSelect } from "@/components/education-level-select";
 import {
-  EDUCATION_LEVELS,
   QUALIFICATION_STATUSES,
   type EducationQualification,
   type QualificationStatus,
@@ -10,12 +10,11 @@ import {
 
 const controlClass = "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
 
+
 type EducationValues = {
   highestEducationLevel: string;
   otherEducationLevel: string;
   educationFieldOfStudy: string;
-  educationInstitution: string;
-  educationCompletionYear: string;
   additionalQualifications: EducationQualification[];
 };
 
@@ -69,27 +68,22 @@ export function EducationFields({
 
       <div className={inline ? "contents" : "grid grid-cols-1 gap-3 sm:grid-cols-2"}>
         <div>
-          <label htmlFor={fieldId("highest-level")} className="mb-1 block text-xs font-semibold text-gray-700">
-            Highest Education Level Obtained <span className="text-red-500">*</span>
+          <label htmlFor={fieldId("highest-level")} className="mb-1 block text-[0.7rem] font-semibold text-gray-700">
+            Amashuri wize/Highest Education Level Obtained <span className="text-red-500">*</span>
           </label>
-          <select
+          <EducationLevelSelect
             id={fieldId("highest-level")}
             name="highestEducationLevel"
             value={level}
-            onChange={(event) => setLevel(event.target.value)}
+            onChange={setLevel}
             required
             className={controlClass}
-          >
-            <option value="">Select education level</option>
-            {EDUCATION_LEVELS.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </select>
+          />
         </div>
 
         {level === "other" ? (
           <div>
-            <label htmlFor={fieldId("other-level")} className="mb-1 block text-xs font-semibold text-gray-700">
+            <label htmlFor={fieldId("other-level")} className="mb-1 block text-[0.7rem] font-semibold text-gray-700">
               Specify Other Qualification <span className="text-red-500">*</span>
             </label>
             <input
@@ -106,8 +100,8 @@ export function EducationFields({
         {fieldsRequired ? (
           <>
             <div>
-              <label htmlFor={fieldId("field-of-study")} className="mb-1 block text-xs font-semibold text-gray-700">
-                Field of Study / Specialization <span className="text-red-500">*</span>
+              <label htmlFor={fieldId("field-of-study")} className="mb-1 block text-[0.7rem] font-semibold text-gray-700">
+                Icyo Wize / Field of Study <span className="text-red-500">*</span>
               </label>
               <input
                 id={fieldId("field-of-study")}
@@ -116,37 +110,6 @@ export function EducationFields({
                 placeholder="e.g., Accounting or Computer Science"
                 required
                 maxLength={160}
-                className={controlClass}
-              />
-            </div>
-            <div>
-              <label htmlFor={fieldId("institution")} className="mb-1 block text-xs font-semibold text-gray-700">
-                Institution / School / University Name <span className="text-red-500">*</span>
-              </label>
-              <input
-                id={fieldId("institution")}
-                name="educationInstitution"
-                defaultValue={initialValues?.educationInstitution ?? ""}
-                placeholder="e.g., University of Rwanda"
-                required
-                maxLength={160}
-                className={controlClass}
-              />
-            </div>
-            <div>
-              <label htmlFor={fieldId("completion-year")} className="mb-1 block text-xs font-semibold text-gray-700">
-                Year of Completion <span className="text-red-500">*</span>
-              </label>
-              <input
-                id={fieldId("completion-year")}
-                name="educationCompletionYear"
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]{4}"
-                maxLength={4}
-                defaultValue={initialValues?.educationCompletionYear ?? ""}
-                placeholder="e.g., 2020"
-                required
                 className={controlClass}
               />
             </div>

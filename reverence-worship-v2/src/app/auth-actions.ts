@@ -231,8 +231,6 @@ export async function completeGoogleProfileAction(
       highestEducationLevel: profileValues.highestEducationLevel,
       otherEducationLevel: profileValues.otherEducationLevel ?? "",
       educationFieldOfStudy: profileValues.educationFieldOfStudy ?? "",
-      educationInstitution: profileValues.educationInstitution ?? "",
-      educationCompletionYear: profileValues.educationCompletionYear ?? "",
       additionalQualifications: parseAdditionalQualifications(profileValues.additionalQualifications),
     });
     if (!parsedEducation.success) {
@@ -262,10 +260,6 @@ export async function completeGoogleProfileAction(
       highestEducationLevel: educationData.highestEducationLevel,
       otherEducationLevel: educationData.highestEducationLevel === "other" ? educationData.otherEducationLevel : null,
       educationFieldOfStudy: hasEducationDetails ? educationData.educationFieldOfStudy : null,
-      educationInstitution: hasEducationDetails ? educationData.educationInstitution : null,
-      educationCompletionYear: !hasEducationDetails
-        ? null
-        : Number(educationData.educationCompletionYear),
       educationQualifications: educationData.additionalQualifications.length
         ? { create: educationData.additionalQualifications }
         : undefined,
@@ -322,8 +316,6 @@ export async function registerAction(
       highestEducationLevel: registrationValues.highestEducationLevel,
       otherEducationLevel: registrationValues.otherEducationLevel ?? "",
       educationFieldOfStudy: registrationValues.educationFieldOfStudy ?? "",
-      educationInstitution: registrationValues.educationInstitution ?? "",
-      educationCompletionYear: registrationValues.educationCompletionYear ?? "",
       additionalQualifications: parseAdditionalQualifications(registrationValues.additionalQualifications),
     });
     if (!parsedEducation.success) {
@@ -385,10 +377,6 @@ export async function registerAction(
         highestEducationLevel: educationData.highestEducationLevel,
         otherEducationLevel: educationData.highestEducationLevel === "other" ? educationData.otherEducationLevel : null,
         educationFieldOfStudy: hasEducationDetails ? educationData.educationFieldOfStudy : null,
-        educationInstitution: hasEducationDetails ? educationData.educationInstitution : null,
-        educationCompletionYear: !hasEducationDetails
-          ? null
-          : Number(educationData.educationCompletionYear),
         educationQualifications: educationData.additionalQualifications.length
           ? { create: educationData.additionalQualifications }
           : undefined,

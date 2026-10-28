@@ -8,7 +8,7 @@ export const COMMITMENT_PROFILE_FIELDS = [
   { key: "name", label: "Full name", type: "text", max: 120 },
   { key: "email", label: "Email address", type: "email", max: 254, readOnly: true },
   { key: "phone", label: "Phone number", type: "tel", max: 40 },
-  { key: "gender", label: "Gender", type: "select", options: ["male", "female", "other"], max: 20 },
+  { key: "gender", label: "Gender", type: "select", options: ["male", "female"], max: 20 },
   { key: "dateOfBirth", label: "Date of birth", type: "date", max: 10 },
   { key: "maritalStatus", label: "Marital status", type: "select", options: MARITAL_STATUSES, max: 50 },
   { key: "membershipType", label: "Membership type", type: "select", options: MEMBERSHIP_TYPES, max: 20 },
@@ -16,8 +16,6 @@ export const COMMITMENT_PROFILE_FIELDS = [
   { key: "highestEducationLevel", label: "Highest education level", type: "select", options: EDUCATION_LEVELS.map(({ value }) => value), max: 30 },
   { key: "otherEducationLevel", label: "Other education qualification", type: "text", max: 160 },
   { key: "educationFieldOfStudy", label: "Education field of study", type: "text", max: 160 },
-  { key: "educationInstitution", label: "Education institution", type: "text", max: 160 },
-  { key: "educationCompletionYear", label: "Education year of completion", type: "text", max: 4 },
   { key: "province", label: "Province", type: "text", max: 100 },
   { key: "district", label: "District", type: "text", max: 100 },
   { key: "sector", label: "Sector", type: "text", max: 100 },
@@ -58,7 +56,7 @@ export type CommitmentSnapshot = {
 };
 
 const keys = CONFIGURABLE_COMMITMENT_PROFILE_FIELDS.map((field) => field.key) as [CommitmentProfileKey, ...CommitmentProfileKey[]];
-const educationDependentKeys = ["otherEducationLevel", "educationFieldOfStudy", "educationInstitution", "educationCompletionYear"] as const;
+const educationDependentKeys = ["otherEducationLevel", "educationFieldOfStudy"] as const;
 const settingsSchema = z.object({
   year: z.number().int().min(2000).max(2200),
   terms: z.string().max(100_000),
@@ -75,7 +73,7 @@ function withoutRemovedCommitmentFields(value: unknown) {
     ...value,
     profileFields: value.profileFields.filter((field) =>
       field && typeof field === "object" && "key" in field
-        && !["emergencyName", "emergencyPhone", "skills"].includes(String(field.key)),
+        && !["emergencyName", "emergencyPhone", "skills", "educationInstitution", "educationCompletionYear"].includes(String(field.key)),
     ),
   };
 }
@@ -168,8 +166,8 @@ export function validateCommitmentProfile(config: CommitmentSettings, current: C
     const raw = incoming.get(`profile_${field.key}`);
     const value = field.editable ? typeof raw === "string" ? raw.trim() : "" : current[field.key] ?? "";
     const educationRequired = field.key === "otherEducationLevel" && educationLevel === "other"
-      || ["educationFieldOfStudy", "educationInstitution", "educationCompletionYear"].includes(field.key) && educationLevel !== "" && educationLevel !== "none" && educationLevel !== "primary";
-    const conditionalEducationField = educationLevelField && (field.key === "otherEducationLevel" || ["educationFieldOfStudy", "educationInstitution", "educationCompletionYear"].includes(field.key));
+      || field.key === "educationFieldOfStudy" && educationLevel !== "" && educationLevel !== "none" && educationLevel !== "primary";
+    const conditionalEducationField = educationLevelField && (field.key === "otherEducationLevel" || field.key === "educationFieldOfStudy");
     if ((conditionalEducationField ? educationRequired : field.required || educationRequired) && !value) return { ok: false as const, message: `${definition.label} is required.` };
     if (value.length > definition.max) return { ok: false as const, message: `${definition.label} is too long.` };
     if (field.editable && field.key === "name" && value.length < 2) return { ok: false as const, message: "Full name must contain at least 2 characters." };
@@ -180,10 +178,6 @@ export function validateCommitmentProfile(config: CommitmentSettings, current: C
       if (field.key === "dateOfBirth") {
         const date = new Date(`${value}T00:00:00Z`);
         if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value || date > now) return { ok: false as const, message: "Enter a valid date of birth." };
-      }
-      if (field.key === "educationCompletionYear") {
-        const year = Number(value);
-        if (!/^\d{4}$/.test(value) || !Number.isInteger(year) || year < 1900 || year > now.getFullYear()) return { ok: false as const, message: "Enter a valid education completion year." };
       }
     }
     values[field.key] = value;
@@ -197,9 +191,7 @@ export function commitmentProfileUpdate(changes: CommitmentProfileChange[]) {
     change.key,
     change.key === "dateOfBirth"
       ? change.after ? new Date(`${change.after}T12:00:00Z`) : null
-      : change.key === "educationCompletionYear"
-        ? change.after ? Number(change.after) : null
-        : change.after || null,
+      : change.after || null,
   ]));
 }
 

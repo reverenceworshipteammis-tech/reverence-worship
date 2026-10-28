@@ -115,8 +115,6 @@ test("education profile fields can be included and are formatted for commitment 
     "highestEducationLevel",
     "otherEducationLevel",
     "educationFieldOfStudy",
-    "educationInstitution",
-    "educationCompletionYear",
   ] as const;
   assert.deepEqual(
     COMMITMENT_PROFILE_FIELDS.filter((field) => educationKeys.includes(field.key as (typeof educationKeys)[number])).map(({ key }) => key),
@@ -126,21 +124,28 @@ test("education profile fields can be included and are formatted for commitment 
   config.profileFields.push(
     { key: "highestEducationLevel", editable: false, required: false, requiresApproval: false },
     { key: "educationFieldOfStudy", editable: false, required: false, requiresApproval: false },
-    { key: "educationInstitution", editable: false, required: false, requiresApproval: false },
-    { key: "educationCompletionYear", editable: false, required: false, requiresApproval: false },
   );
   const values = commitmentProfileValues({
     highestEducationLevel: "bachelors_a0",
     educationFieldOfStudy: "Accounting",
-    educationInstitution: "University of Rwanda",
-    educationCompletionYear: 2020,
   });
   assert.equal(values.highestEducationLevel, "bachelors_a0");
-  assert.equal(values.educationCompletionYear, "2020");
   const parsedConfig = parseCommitmentSettings(config);
   assert.equal(parsedConfig?.profileFields.length, config.profileFields.length + 1);
   assert.equal(parsedConfig?.profileFields.some((field) => field.key === "otherEducationLevel"), true);
-  assert.equal(parsedConfig?.profileFields.some((field) => field.key === "educationInstitution"), true);
+});
+
+test("removed education fields saved in older commitment settings are ignored", () => {
+  const parsed = parseCommitmentSettings({
+    ...configuration(),
+    profileFields: [
+      { key: "highestEducationLevel", editable: true, required: false, requiresApproval: false },
+      { key: "educationInstitution", editable: true, required: true, requiresApproval: false },
+      { key: "educationCompletionYear", editable: true, required: true, requiresApproval: false },
+    ],
+  });
+  assert.ok(parsed);
+  assert.equal(parsed.profileFields.some((field) => ["educationInstitution", "educationCompletionYear"].includes(field.key)), false);
 });
 
 test("education level reveals and validates its dependent commitment fields", () => {
@@ -149,7 +154,7 @@ test("education level reveals and validates its dependent commitment fields", ()
     profileFields: [{ key: "highestEducationLevel", editable: true, required: true, requiresApproval: false }],
   })!;
   for (const field of config.profileFields) {
-    if (["otherEducationLevel", "educationFieldOfStudy", "educationInstitution", "educationCompletionYear"].includes(field.key)) {
+    if (["otherEducationLevel", "educationFieldOfStudy"].includes(field.key)) {
       field.required = true;
     }
   }
@@ -158,8 +163,6 @@ test("education level reveals and validates its dependent commitment fields", ()
   h.data.set("profile_highestEducationLevel", "bachelors_a0");
   assert.equal(validateCommitmentProfile(config, {}, h.data).ok, false);
   h.data.set("profile_educationFieldOfStudy", "Accounting");
-  h.data.set("profile_educationInstitution", "University of Rwanda");
-  h.data.set("profile_educationCompletionYear", "2020");
   assert.equal(validateCommitmentProfile(config, {}, h.data).ok, true);
 
   h.data.set("profile_highestEducationLevel", "other");
@@ -170,26 +173,7 @@ test("education level reveals and validates its dependent commitment fields", ()
   h.data.set("profile_highestEducationLevel", "primary");
   h.data.delete("profile_otherEducationLevel");
   h.data.delete("profile_educationFieldOfStudy");
-  h.data.delete("profile_educationInstitution");
-  h.data.delete("profile_educationCompletionYear");
   assert.equal(validateCommitmentProfile(config, {}, h.data).ok, true);
-});
-
-test("education year is validated and converted to a number when a commitment profile is updated", () => {
-  const config: CommitmentSettings = {
-    ...configuration(),
-    profileFields: [{ key: "educationCompletionYear", editable: true, required: true, requiresApproval: false }],
-  };
-  const h = harness(config);
-  h.data.set("profile_educationCompletionYear", "2020");
-  const valid = validateCommitmentProfile(config, {}, h.data);
-  assert.equal(valid.ok, true);
-  if (valid.ok) {
-    assert.deepEqual(commitmentProfileUpdate(valid.changes), { educationCompletionYear: 2020 });
-  }
-
-  h.data.set("profile_educationCompletionYear", "20x0");
-  assert.equal(validateCommitmentProfile(config, {}, h.data).ok, false);
 });
 
 test("read-only tampering and arbitrary profile keys never change the accepted information", () => {
