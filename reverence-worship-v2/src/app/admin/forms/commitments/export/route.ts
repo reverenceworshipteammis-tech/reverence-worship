@@ -32,14 +32,14 @@ export async function GET(request: Request) {
   const records = await prisma.membershipCommitment.findMany({ where: { id: { in: rows.flatMap((row) => row.commitmentId ? [row.commitmentId] : []) } } });
   const profileRows: XlsxCell[][] = [["Member", "Year", "Field", "Confirmed value"]];
   const changeRows: XlsxCell[][] = [["Member", "Year", "Field", "Previous value", "Updated value", "Update status"]];
-  const evidenceRows: XlsxCell[][] = [["Member", "Year", "Submitted (Kigali)", "Form version", "Acceptance statement", "Terms part", "Accepted terms"]];
+  const evidenceRows: XlsxCell[][] = [["Member", "Year", "Submitted (Kigali)", "Acceptance statement", "Terms part", "Accepted terms"]];
   const answerRows: XlsxCell[][] = [["Member", "Year", "Question", "Answer part", "Submitted answer"]];
   const chunks = (value: string) => value.match(/[\s\S]{1,30000}/g) ?? [""];
   for (const record of records) {
     const snapshot = record.snapshot as unknown as CommitmentSnapshot;
     for (const field of snapshot.profile) profileRows.push([snapshot.memberName, year, field.label, commitmentProfileDisplay(field.key, field.value)]);
     for (const change of parseCommitmentChanges(record.profileChanges)) changeRows.push([snapshot.memberName, year, change.label, commitmentProfileDisplay(change.key, change.before), commitmentProfileDisplay(change.key, change.after), "Applied on submission"]);
-    chunks(intercessionRichTextToPlainText(snapshot.terms)).forEach((part, index) => evidenceRows.push([snapshot.memberName, year, date(record.acceptedAt.toISOString()), record.formVersion, snapshot.acceptanceLabel || "Form submitted", index + 1, part]));
+    chunks(intercessionRichTextToPlainText(snapshot.terms)).forEach((part, index) => evidenceRows.push([snapshot.memberName, year, date(record.acceptedAt.toISOString()), snapshot.acceptanceLabel || "Form submitted", index + 1, part]));
     const questions = parseIntercessionFormQuestions(snapshot.questions);
     questions.forEach((question, index) => {
       if (!Object.prototype.hasOwnProperty.call(snapshot.answers, `question_${index}`)) return;
