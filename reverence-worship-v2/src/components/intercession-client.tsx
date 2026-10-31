@@ -259,8 +259,8 @@ export function IntercessionClient({
   const [reportDetail, setReportDetail] = useState<ReportRow | null>(null);
   const [previewForm, setPreviewForm] = useState<SpiritualForm | null>(null);
   const [manageStatus, setManageStatus] = useState<"active" | "archived">("active");
-  const [formSortField, setFormSortField] = useState<"title" | "modified" | "status" | "submissions">("title");
-  const [formSortDirection, setFormSortDirection] = useState<"asc" | "desc">("asc");
+  const [formSortField, setFormSortField] = useState<"title" | "modified" | "status" | "submissions">("modified");
+  const [formSortDirection, setFormSortDirection] = useState<"asc" | "desc">("desc");
   const [selectedFormIds, setSelectedFormIds] = useState<Set<number>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
   const [actionsFormId, setActionsFormId] = useState<number | null>(null);

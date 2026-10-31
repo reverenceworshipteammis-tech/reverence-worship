@@ -38,7 +38,7 @@ import {
   questionImagePaths,
 } from "@/lib/intercession-question-images";
 import { intercessionAnswerForQuestion, intercessionSubmissionQuestions } from "@/lib/intercession-response-data";
-import { commitmentAcceptanceLabel, parseCommitmentSettings } from "@/lib/membership-commitment";
+import { commitmentAcceptanceLabel, parseCommitmentSettings, type CommitmentSnapshot } from "@/lib/membership-commitment";
 import { prepareCommitmentFormSettings } from "@/lib/membership-commitment-service";
 import { recordMembershipCommitment } from "@/lib/membership-commitment-record";
 
@@ -1388,6 +1388,29 @@ export async function permanentlyDeleteFormSubmission(submissionId: number) {
   revalidatePath("/admin/forms");
   revalidatePath(`/admin/forms/${result.submission.formId}/submissions`);
   return { ok: true, message: "Submission permanently deleted." };
+}
+
+export async function deleteMembershipCommitment(commitmentId: number) {
+  const user = await requirePermission("intercession", "delete-forms", "/admin/forms");
+  if (!Number.isInteger(commitmentId) || commitmentId <= 0) return { ok: false, message: "Invalid commitment record." };
+  const result = await prisma.$transaction(async (tx) => {
+    const commitment = await tx.membershipCommitment.findUnique({ where: { id: commitmentId }, select: { id: true, formId: true, submissionId: true, year: true, snapshot: true } });
+    if (!commitment) return { ok: false as const, message: "Commitment record not found." };
+    const submission = commitment.submissionId
+      ? await tx.formSubmission.findUnique({ where: { id: commitment.submissionId }, select: { id: true, answers: true } })
+      : null;
+    await tx.membershipCommitment.delete({ where: { id: commitment.id } });
+    if (submission) await tx.formSubmission.delete({ where: { id: submission.id } });
+    return { ok: true as const, commitment, submission };
+  });
+  if (!result.ok) return result;
+  if (result.submission) await Promise.all(responseFilePaths(result.submission.answers).map(deleteResponseFile));
+  const snapshot = result.commitment.snapshot as unknown as CommitmentSnapshot;
+  await logIntercessionActivity(user.id, "membership.commitment.deleted", { commitmentId, formId: result.commitment.formId, submissionId: result.commitment.submissionId, year: result.commitment.year, memberName: snapshot.memberName ?? "" });
+  revalidatePath("/admin/forms");
+  revalidatePath("/admin/forms/commitments");
+  revalidatePath(`/admin/forms/${result.commitment.formId}/submissions`);
+  return { ok: true, message: "Commitment record permanently deleted." };
 }
 
 export async function bulkUpdateFormSubmissions(formId: number, submissionIds: number[], action: "release" | "hide" | "reviewed" | "trash" | "restore") {
