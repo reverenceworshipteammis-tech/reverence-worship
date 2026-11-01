@@ -12,6 +12,7 @@ import {
   MIN_SESSION_LIFETIME_MINUTES,
 } from "@/lib/session-policy";
 import { unsupportedBirthdayPlaceholders } from "@/lib/birthday-rules";
+import { isPeriodDateKey } from "@/lib/current-period-rules";
 import {
   ACCOUNT_NOTIFICATION_EVENTS,
   accountNotificationEventChannelSettingKey,
@@ -177,6 +178,39 @@ export async function updateSecuritySettings(formData: FormData) {
     return {
       ok: false,
       message: error instanceof Error ? error.message : "Failed to update security settings.",
+    };
+  }
+}
+
+export async function updatePeriodSettings(formData: FormData) {
+  try {
+    const enabled = readBoolean(formData, "current_period_enabled");
+    const start = readString(formData, "current_period_start");
+    const end = readString(formData, "current_period_end");
+    if (!isPeriodDateKey(start) || !isPeriodDateKey(end)) {
+      throw new Error("Choose valid start and end dates for the current period.");
+    }
+    if (start > end) {
+      throw new Error("The period start date must be on or before the end date.");
+    }
+
+    const result = await saveSettings(
+      "period",
+      {
+        current_period_enabled: enabled,
+        current_period_start: start,
+        current_period_end: end,
+      },
+      enabled
+        ? `Current period updated. Pages now default to records from ${start} to ${end}.`
+        : "Current period disabled. Pages now default to the current calendar year.",
+    );
+    revalidatePath("/admin", "layout");
+    return result;
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Failed to update period settings.",
     };
   }
 }

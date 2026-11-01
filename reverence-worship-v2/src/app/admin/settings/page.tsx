@@ -3,6 +3,7 @@ import { requirePageAccess } from "@/lib/auth";
 import { getEmailConfiguration } from "@/lib/email-config";
 import { prisma } from "@/lib/prisma";
 import { normalizeSessionLifetimeMinutes } from "@/lib/session-policy";
+import { currentKigaliYear } from "@/lib/calendar-date";
 import { DEFAULT_BIRTHDAY_MESSAGE_TEMPLATE, DEFAULT_BIRTHDAY_TITLE_TEMPLATE } from "@/lib/birthday-rules";
 import {
   ACCOUNT_NOTIFICATION_EVENTS,
@@ -78,8 +79,14 @@ export default async function SettingsPage() {
     },
   ])) as SettingsValues["notifications"]["channels"];
   const emailConfiguration = getEmailConfiguration();
+  const periodFallbackYear = currentKigaliYear();
   const values: SettingsValues = {
     registrationEnabled: boolValue(settings.get("registration_enabled"), true),
+    currentPeriod: {
+      enabled: boolValue(settings.get("current_period_enabled"), false),
+      start: stringValue(settings.get("current_period_start"), `${periodFallbackYear}-01-01`),
+      end: stringValue(settings.get("current_period_end"), `${periodFallbackYear}-12-31`),
+    },
     sessionLifetime: normalizeSessionLifetimeMinutes(settings.get("session_lifetime")),
     passwordMinLength: numberValue(settings.get("password_min_length"), 6),
     passwordMaxLength: numberValue(settings.get("password_max_length"), 32),

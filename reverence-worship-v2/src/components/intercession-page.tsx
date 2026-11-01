@@ -1,4 +1,6 @@
 import { IntercessionClient } from "@/components/intercession-client";
+import { PeriodScopeNotice } from "@/components/period-scope-notice";
+import { getCurrentPeriod } from "@/lib/current-period";
 import { redirect } from "next/navigation";
 import { getUserPermissionSet, permissionSetHas, requireUser } from "@/lib/auth";
 import { memberCanViewScore, memberResultLabel, memberResultState } from "@/lib/intercession-result-rules";
@@ -66,11 +68,12 @@ export async function IntercessionPage({
   searchParams,
   standaloneForms = false,
 }: {
-  searchParams: Promise<{ tab?: string; section?: string }>;
+  searchParams: Promise<{ tab?: string; section?: string; all?: string }>;
   standaloneForms?: boolean;
 }) {
   const user = await requireUser();
   const params = await searchParams;
+  const period = await getCurrentPeriod();
   const permissions = await getUserPermissionSet(user);
   const intercessionPermissions = {
     canSubmitForms: permissionSetHas(permissions, "intercession", "submit-forms"),
@@ -95,6 +98,7 @@ export async function IntercessionPage({
 
   const loadForms = standaloneForms && canLoadForms;
   const loadReports = standaloneForms && canLoadReports && params.section === "reports";
+  const scopedToPeriod = loadReports && period.enabled && params.all !== "1";
   const [forms, mySubmissions, users, allSubmissions, actionPlans] = await Promise.all([
     loadForms ? withDatabaseRetry(() => prisma.spiritualForm.findMany({
       orderBy: { createdAt: "desc" },
@@ -125,7 +129,10 @@ export async function IntercessionPage({
       : Promise.resolve([]),
     loadReports
       ? withDatabaseRetry(() => prisma.formSubmission.findMany({
-          where: { deletedAt: null },
+          where: {
+            deletedAt: null,
+            ...(scopedToPeriod ? { submittedAt: { gte: period.fromDate, lte: period.toDate } } : {}),
+          },
           select: {
             id: true,
             formId: true,
@@ -208,7 +215,9 @@ export async function IntercessionPage({
   }
 
   return (
-    <IntercessionClient
+    <>
+      {loadReports && period.enabled ? <PeriodScopeNotice showingAll={!scopedToPeriod} label={period.label} /> : null}
+      <IntercessionClient
       initialTab={standaloneForms ? "forms" : "actions"}
       initialSection={params.section === "manage" ? "manage" : params.section === "reports" ? "reports" : params.section === "results" ? "results" : "available"}
       showDepartmentNavigation={standaloneForms ? false : showDepartmentNavigation}
@@ -305,5 +314,6 @@ export async function IntercessionPage({
         })),
       }))}
     />
+    </>
   );
 }

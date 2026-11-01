@@ -1,5 +1,7 @@
 import { AnnouncementsClient } from "@/components/announcements-client";
+import { PeriodScopeNotice } from "@/components/period-scope-notice";
 import { getUserPermissionSet, permissionSetHas, requirePageAccess } from "@/lib/auth";
+import { getCurrentPeriod } from "@/lib/current-period";
 import { prisma } from "@/lib/prisma";
 import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
 import { databaseDate, kigaliDateKey } from "@/lib/calendar-date";
@@ -64,15 +66,23 @@ function recipientFilterLabel(filters: RecipientFilters) {
   return labels.length ? `Filtered: ${labels.map((label) => label.slice(0, 1).toUpperCase() + label.slice(1)).join(", ")}` : "Filtered users";
 }
 
-export default async function AnnouncementsPage() {
+export default async function AnnouncementsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ all?: string }>;
+}) {
   const user = await requirePageAccess("announcements");
   const permissions = await getUserPermissionSet(user);
   const canManage = ["create", "edit", "delete", "publish"].some((feature) => permissionSetHas(permissions, "announcements", feature));
   const roleIds = user.roles.map((userRole) => userRole.roleId);
+  const period = await getCurrentPeriod();
+  const scopedToPeriod = canManage && period.enabled && (await searchParams).all !== "1";
 
   const [allAnnouncements, roles, users, deliveryRows] = await Promise.all([
     prisma.announcement.findMany({
-      where: canManage ? undefined : { status: "active", OR: [{ expiryDate: null }, { expiryDate: { gte: databaseDate(kigaliDateKey()) } }] },
+      where: canManage
+        ? scopedToPeriod ? { createdAt: { gte: period.fromDate, lte: period.toDate } } : undefined
+        : { status: "active", OR: [{ expiryDate: null }, { expiryDate: { gte: databaseDate(kigaliDateKey()) } }] },
       orderBy: { createdAt: "desc" },
       include: {
         creator: { select: { id: true, name: true } },
@@ -196,7 +206,9 @@ export default async function AnnouncementsPage() {
   });
 
   return (
-    <AnnouncementsClient
+    <>
+      {canManage && period.enabled ? <PeriodScopeNotice showingAll={!scopedToPeriod} label={period.label} /> : null}
+      <AnnouncementsClient
       readOnly={!canManage}
       roles={roles}
       users={users.map((recipient) => ({
@@ -256,5 +268,6 @@ export default async function AnnouncementsPage() {
         };
       })}
     />
+    </>
   );
 }

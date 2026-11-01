@@ -11,6 +11,7 @@ import {
   getActionPlanPortfolio,
   normalizeActionPlanPortfolioFilters,
 } from "@/lib/action-plan-portfolio";
+import { getCurrentPeriod } from "@/lib/current-period";
 
 type SearchParams = {
   year?: string | string[];
@@ -22,9 +23,9 @@ type SearchParams = {
 
 export default async function ConsolidatedActionPlansPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const user = await requirePermission("reports", "view");
-  const [params, permissions] = await Promise.all([searchParams, getUserPermissionSet(user)]);
+  const [params, permissions, period] = await Promise.all([searchParams, getUserPermissionSet(user), getCurrentPeriod()]);
   const filters = normalizeActionPlanPortfolioFilters({
-    year: firstValue(params.year),
+    year: firstValue(params.year) ?? String(period.year),
     department: firstValue(params.department),
     status: firstValue(params.status),
     deadline: firstValue(params.deadline),

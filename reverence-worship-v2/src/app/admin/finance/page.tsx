@@ -2,7 +2,7 @@ import { getUserPermissionSet, permissionSetHas, requirePageAccess } from "@/lib
 import { prisma } from "@/lib/prisma";
 import { FinanceClient } from "@/components/finance-client";
 import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
-import { currentKigaliYear } from "@/lib/calendar-date";
+import { getCurrentPeriod } from "@/lib/current-period";
 
 function money(value: unknown) {
   return Number(value ?? 0);
@@ -65,7 +65,7 @@ async function safeRead<T>(promise: Promise<T>, fallback: T) {
 export default async function FinancePage() {
   const currentUser = await requirePageAccess("finance");
   const permissionSet = await getUserPermissionSet(currentUser);
-  const year = currentKigaliYear();
+  const year = (await getCurrentPeriod()).year;
 
   const [users, families, contributions, payments, contributionEvents, gifts, expenses, sponsors, actionPlans, termSettings] = await Promise.all([
     safeRead(

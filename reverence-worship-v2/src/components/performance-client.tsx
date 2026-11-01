@@ -40,7 +40,8 @@ function typeClass(value: string) {
   return value === "positive" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700";
 }
 
-export function PerformanceClient({ year, fromDate, toDate, rangeLabel, initialType, metrics, records }: { year: number; fromDate: string; toDate: string; rangeLabel: string; initialType: PerformanceType; metrics: PerformanceMetrics; records: PerformanceRecords }) {
+export function PerformanceClient({ year, yearBounded = true, fromDate, toDate, rangeLabel, initialType, metrics, records }: { year: number; yearBounded?: boolean; fromDate: string; toDate: string; rangeLabel: string; initialType: PerformanceType; metrics: PerformanceMetrics; records: PerformanceRecords }) {
+  const dateBounds = yearBounded ? { min: `${year}-01-01`, max: `${year}-12-31` } : {};
   const [activeType, setActiveType] = useState<PerformanceType>(initialType);
   const [requestedPage, setRequestedPage] = useState(1);
   const contributionBalance = Math.max(0, metrics.contribution.expected - metrics.contribution.paid);
@@ -71,11 +72,11 @@ export function PerformanceClient({ year, fromDate, toDate, rangeLabel, initialT
           <input type="hidden" name="type" value={activeType} />
           <label className="block min-w-0">
             <span className="mb-1 block text-xs font-medium text-gray-600">From</span>
-            <input name="from" type="date" min={`${year}-01-01`} max={`${year}-12-31`} defaultValue={fromDate} className="h-9 w-full min-w-0 rounded-lg border border-gray-300 bg-white px-2 text-xs text-gray-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+            <input name="from" type="date" {...dateBounds} defaultValue={fromDate} className="h-9 w-full min-w-0 rounded-lg border border-gray-300 bg-white px-2 text-xs text-gray-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
           </label>
           <label className="block min-w-0">
             <span className="mb-1 block text-xs font-medium text-gray-600">To</span>
-            <input name="to" type="date" min={`${year}-01-01`} max={`${year}-12-31`} defaultValue={toDate} className="h-9 w-full min-w-0 rounded-lg border border-gray-300 bg-white px-2 text-xs text-gray-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+            <input name="to" type="date" {...dateBounds} defaultValue={toDate} className="h-9 w-full min-w-0 rounded-lg border border-gray-300 bg-white px-2 text-xs text-gray-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
           </label>
           <button type="submit" className="col-span-2 h-9 rounded-lg bg-blue-600 px-4 text-xs font-semibold text-white transition hover:bg-blue-700">Apply</button>
         </form>

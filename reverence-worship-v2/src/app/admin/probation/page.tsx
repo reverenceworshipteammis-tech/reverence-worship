@@ -1,5 +1,7 @@
 import { ProbationClient, type ProbationRow } from "@/components/probation-client";
+import { PeriodScopeNotice } from "@/components/period-scope-notice";
 import { getUserPermissionSet, permissionSetHas, requirePageAccess } from "@/lib/auth";
+import { getCurrentPeriod } from "@/lib/current-period";
 import { getProbationMonitoringBatch, probationDateSummary } from "@/lib/probation-data";
 import { DEFAULT_PROBATION_DURATION_MONTHS } from "@/lib/probation-rules";
 import { withDatabaseRetry } from "@/lib/database-retry";
@@ -17,14 +19,25 @@ function dateTimeValue(date: Date | null) {
 export default async function ProbationPage({
   searchParams,
 }: {
-  searchParams: Promise<{ record?: string; status?: string }>;
+  searchParams: Promise<{ record?: string; status?: string; all?: string }>;
 }) {
   const user = await requirePageAccess("probation");
+  const period = await getCurrentPeriod();
+  const scopedToPeriod = period.enabled && (await searchParams).all !== "1";
   const [params, permissions, defaultDurationSetting, probations, eligibleMembers, decisionApprovers] = await withDatabaseRetry(() => Promise.all([
     searchParams,
     getUserPermissionSet(user),
     getSystemSetting("probation_default_duration_months"),
     prisma.probation.findMany({
+      where: scopedToPeriod
+        ? {
+            // Ongoing probations stay visible; only closed ones are limited to the period.
+            OR: [
+              { state: { in: ["active", "extended"] } },
+              { createdAt: { gte: period.fromDate, lte: period.toDate } },
+            ],
+          }
+        : undefined,
       orderBy: [{ state: "asc" }, { currentExpectedEndDate: "asc" }, { createdAt: "desc" }],
       include: {
         member: { select: { id: true, name: true, phone: true, status: true } },
@@ -129,7 +142,9 @@ export default async function ProbationPage({
   );
 
   return (
-    <ProbationClient
+    <>
+      {period.enabled ? <PeriodScopeNotice showingAll={!scopedToPeriod} label={period.label} /> : null}
+      <ProbationClient
       rows={rows}
       eligibleMembers={eligibleMembers}
       decisionApprovers={decisionApprovers}
@@ -148,5 +163,6 @@ export default async function ProbationPage({
         export: permissionSetHas(permissions, "probation", "export"),
       }}
     />
+    </>
   );
 }

@@ -5,7 +5,7 @@ import { calculateContributionRate, calculateContributionTermTarget } from "@/li
 import { prisma } from "@/lib/prisma";
 import { hasSuperAdminRole } from "@/lib/system-account-rules";
 import { redirect } from "next/navigation";
-import { currentKigaliYear } from "@/lib/calendar-date";
+import { getCurrentPeriod } from "@/lib/current-period";
 
 type ContributionsPageProps = {
   searchParams: Promise<{ year?: string }>;
@@ -69,7 +69,7 @@ export default async function MyContributionsPage({ searchParams }: Contribution
   if (hasSuperAdminRole(user.roles.map(({ role }) => role.name))) redirect("/admin/dashboard");
   const permissions = await getUserPermissionSet(user);
   const params = await searchParams;
-  const currentYear = currentKigaliYear();
+  const currentYear = (await getCurrentPeriod()).year;
   const [contributions, allPayments, termSettings] = await Promise.all([
     prisma.contribution.findMany({
       where: { userId: user.id },
@@ -91,7 +91,9 @@ export default async function MyContributionsPage({ searchParams }: Contribution
     ]),
   ).sort((a, b) => b - a);
 
-  const selectedYear = params.year && years.includes(Number(params.year)) ? Number(params.year) : years[0] ?? currentYear;
+  const selectedYear = params.year && years.includes(Number(params.year))
+    ? Number(params.year)
+    : years.includes(currentYear) ? currentYear : years[0] ?? currentYear;
   const contribution = contributions.find((item) => item.year === selectedYear);
   const payments = allPayments.filter((item) => item.year === selectedYear);
   const setting = termSettings.find((item) => item.currentYear === selectedYear);

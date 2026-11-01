@@ -2,13 +2,14 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { ActionNotice } from "@/components/action-notice";
-import { Bell, BrushCleaning, CalendarClock, CheckCircle2, MailCheck, RefreshCw, ShieldCheck, TriangleAlert, UserPlus, X } from "lucide-react";
+import { Bell, BrushCleaning, CalendarClock, CalendarRange, CheckCircle2, MailCheck, RefreshCw, ShieldCheck, TriangleAlert, UserPlus, X } from "lucide-react";
 import {
   clearSystemCache,
   retryQueuedEmails,
   sendTestEmail,
   updateAccessSettings,
   updateNotificationSettings,
+  updatePeriodSettings,
   updateProbationSettings,
   updateSecuritySettings,
 } from "@/app/admin/settings/actions";
@@ -31,6 +32,11 @@ import {
 
 export type SettingsValues = {
   registrationEnabled: boolean;
+  currentPeriod: {
+    enabled: boolean;
+    start: string;
+    end: string;
+  };
   sessionLifetime: number;
   passwordMinLength: number;
   passwordMaxLength: number;
@@ -86,10 +92,11 @@ type Result = {
   message: string;
 };
 
-type TabId = "access" | "security" | "probation" | "notifications" | "maintenance";
+type TabId = "access" | "period" | "security" | "probation" | "notifications" | "maintenance";
 
 const tabs = [
   { id: "access" as const, label: "Access", icon: UserPlus },
+  { id: "period" as const, label: "Period", icon: CalendarRange },
   { id: "security" as const, label: "Security", icon: ShieldCheck },
   { id: "probation" as const, label: "Probation", icon: CalendarClock },
   { id: "notifications" as const, label: "Notifications", icon: Bell },
@@ -569,6 +576,7 @@ export function SettingsClient({ values }: { values: SettingsValues }) {
   const [accountRoleMessageTemplate, setAccountRoleMessageTemplate] = useState(values.notifications.accountRoleMessageTemplate);
   const [pending, startTransition] = useTransition();
   const accessRef = useRef<HTMLFormElement>(null);
+  const periodRef = useRef<HTMLFormElement>(null);
   const securityRef = useRef<HTMLFormElement>(null);
   const probationRef = useRef<HTMLFormElement>(null);
   const notificationRef = useRef<HTMLFormElement>(null);
@@ -668,6 +676,42 @@ export function SettingsClient({ values }: { values: SettingsValues }) {
                         note="When off, the login page register link is removed, /register is blocked, and direct registration submissions fail."
                         defaultChecked={values.registrationEnabled}
                       />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <AutoSaveNote pending={pending} />
+          </form>
+        </div>
+
+        <div className={activeTab === "period" ? "block" : "hidden"}>
+          <form ref={periodRef} onChange={() => autoSave("period", updatePeriodSettings, periodRef.current)} className="p-4 sm:p-6">
+            <div>
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <div className="flex items-start gap-3">
+                  <span className={`mt-0.5 inline-flex size-10 items-center justify-center rounded-full ${values.currentPeriod.enabled ? "bg-green-100 text-green-700" : "bg-gray-200 text-gray-600"}`}>
+                    <CalendarRange className="size-5" aria-hidden="true" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-semibold text-gray-900">Current Working Period</h3>
+
+                    <div className="mt-4">
+                      <CheckField
+                        name="current_period_enabled"
+                        label="Limit default data to a custom period"
+                        note="When on, lists and dashboards default to records inside this date range. Users can still expand filters to see older records. When off, the current calendar year is used. The period stays as configured until you change it."
+                        defaultChecked={values.currentPeriod.enabled}
+                      />
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <Field label="Period start" note="First day included in the current period.">
+                        <input name="current_period_start" type="date" required defaultValue={values.currentPeriod.start} className={inputClass} />
+                      </Field>
+                      <Field label="Period end" note="Last day included in the current period.">
+                        <input name="current_period_end" type="date" required defaultValue={values.currentPeriod.end} className={inputClass} />
+                      </Field>
                     </div>
                   </div>
                 </div>

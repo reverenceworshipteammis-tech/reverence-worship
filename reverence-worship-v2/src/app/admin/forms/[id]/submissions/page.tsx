@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import { IntercessionSubmissionsClient } from "@/components/intercession-submissions-client";
+import { PeriodScopeNotice } from "@/components/period-scope-notice";
 import { getUserPermissionSet, permissionSetHas, requireAnyPermission } from "@/lib/auth";
+import { getCurrentPeriod } from "@/lib/current-period";
 import { prisma } from "@/lib/prisma";
 import { parseIntercessionFormSettings, parseIntercessionVisitorDetails } from "@/lib/intercession-form-domain";
 import { normalizeIntercessionResponseValue } from "@/lib/intercession-response-summary";
@@ -68,13 +70,16 @@ function totalEarnedPoints(value: unknown) {
 
 export default async function IntercessionFormSubmissionsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ all?: string }>;
 }) {
   const user = await requireAnyPermission("intercession", ["view-submissions", "view-results"], "/admin/forms");
   const permissions = await getUserPermissionSet(user);
-  const { id } = await params;
+  const [{ id }, periodParams, period] = await Promise.all([params, searchParams, getCurrentPeriod()]);
   const formId = Number(id);
+  const scopedToPeriod = period.enabled && periodParams.all !== "1";
 
   if (!Number.isFinite(formId)) {
     notFound();
@@ -84,6 +89,7 @@ export default async function IntercessionFormSubmissionsPage({
     where: { id: formId },
     include: {
       submissions: {
+        where: scopedToPeriod ? { submittedAt: { gte: period.fromDate, lte: period.toDate } } : undefined,
         orderBy: { submittedAt: "desc" },
         include: {
           user: {
@@ -125,7 +131,9 @@ export default async function IntercessionFormSubmissionsPage({
     .filter((question) => question.type !== "title_section" && question.type !== "section_break");
 
   return (
-    <IntercessionSubmissionsClient
+    <>
+      {period.enabled ? <PeriodScopeNotice showingAll={!scopedToPeriod} label={period.label} /> : null}
+      <IntercessionSubmissionsClient
       form={{
         id: form.id,
         title: form.title,
@@ -207,5 +215,6 @@ export default async function IntercessionFormSubmissionsPage({
         };
       })}
     />
+    </>
   );
 }

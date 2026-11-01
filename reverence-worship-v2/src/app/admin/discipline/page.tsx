@@ -3,6 +3,7 @@ import { getUserPermissionSet, permissionSetHas, requirePageAccess } from "@/lib
 import { prisma } from "@/lib/prisma";
 import { excludeSuperAdminUserWhere } from "@/lib/system-account-rules";
 import { databaseDate, databaseDateKey, kigaliDateKey, kigaliDayBounds } from "@/lib/calendar-date";
+import { getCurrentPeriod } from "@/lib/current-period";
 
 function formatDate(date: Date) {
   return new Intl.DateTimeFormat("en", {
@@ -67,10 +68,11 @@ export default async function DisciplinePage({
   const canManage = permissionSetHas(permissions, "discipline", "view");
   const canViewProbation = permissionSetHas(permissions, "probation", "view");
   const params = await searchParams;
-  const startDateValue = params.start_date ?? monthStart();
-  const endDateValue = params.end_date ?? monthEnd();
-  const attendanceStartDateValue = params.attendance_start_date ?? yearStart();
-  const attendanceEndDateValue = params.attendance_end_date ?? monthEnd();
+  const period = await getCurrentPeriod();
+  const startDateValue = params.start_date ?? (period.enabled ? period.from : monthStart());
+  const endDateValue = params.end_date ?? (period.enabled ? period.to : monthEnd());
+  const attendanceStartDateValue = params.attendance_start_date ?? (period.enabled ? period.from : yearStart());
+  const attendanceEndDateValue = params.attendance_end_date ?? (period.enabled ? period.to : monthEnd());
   const startDate = kigaliDayBounds(startDateValue).start;
   const endDate = kigaliDayBounds(endDateValue).end;
   const startCalendarDate = databaseDate(startDateValue);

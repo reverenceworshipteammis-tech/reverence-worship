@@ -23,7 +23,9 @@ import { filterCurrentNotifications } from "@/lib/notification-source-validity";
 import { PerformanceSummaryCards } from "@/components/performance-client";
 import { getPerformanceDateRange } from "@/lib/performance-date-range";
 import { getUserPerformanceData, type PerformanceMetrics } from "@/lib/user-performance";
-import { currentKigaliYear, databaseDate, kigaliDateKey } from "@/lib/calendar-date";
+import { databaseDate, kigaliDateKey } from "@/lib/calendar-date";
+import { getCurrentPeriod } from "@/lib/current-period";
+import { resolvePeriodRange } from "@/lib/current-period-rules";
 import { ProfileModalTrigger } from "@/components/profile-modal-trigger";
 import { getProbationMonitoring, probationDateSummary } from "@/lib/probation-data";
 import { PROBATION_GOOD_THRESHOLD } from "@/lib/probation-rules";
@@ -220,9 +222,12 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
   const params = await searchParams;
   const roles = user.roles.map((userRole) => userRole.role.name);
   const roleIds = user.roles.map((userRole) => userRole.roleId);
-  const year = currentKigaliYear();
-  const range = getPerformanceDateRange(year, params.from, params.to);
-  const sharedProps = { userId: user.id, userName: user.name, roles, roleIds, year, range };
+  const period = await getCurrentPeriod();
+  const year = period.year;
+  const range = period.enabled
+    ? resolvePeriodRange(period, params.from, params.to)
+    : getPerformanceDateRange(year, params.from, params.to);
+  const sharedProps = { userId: user.id, userName: user.name, roles, roleIds, year, range, periodEnabled: period.enabled };
 
   if (hasRole(roles, "super-admin")) {
     return <SuperAdminDashboard {...sharedProps} />;
@@ -252,6 +257,7 @@ type DashboardSectionsProps = {
   roleIds: number[];
   year: number;
   range: DashboardRange;
+  periodEnabled: boolean;
 };
 
 type SystemDashboardCounts = {
@@ -398,7 +404,7 @@ async function DashboardHeroSection({
   return <DashboardHero message={`Welcome back, ${userName}!`} bulletins={bulletins} actions={actions} />;
 }
 
-async function DashboardPerformanceSection({ userId, year, range }: DashboardSectionsProps) {
+async function DashboardPerformanceSection({ userId, year, range, periodEnabled }: DashboardSectionsProps) {
   const { metrics } = await getUserPerformanceData(userId, year, {
     from: range.fromDate,
     to: range.toDate,
@@ -406,7 +412,7 @@ async function DashboardPerformanceSection({ userId, year, range }: DashboardSec
     databaseTo: range.databaseToDate,
     label: range.label,
   });
-  return <DashboardPerformance metrics={metrics} fromDate={range.from} toDate={range.to} />;
+  return <DashboardPerformance metrics={metrics} fromDate={range.from} toDate={range.to} yearBounded={!periodEnabled} />;
 }
 
 function RoleDashboard({
@@ -612,7 +618,8 @@ async function DashboardTodoPanel({ userId, includeProbation = false }: { userId
   );
 }
 
-function DashboardPerformance({ metrics, fromDate, toDate }: { metrics: PerformanceMetrics; fromDate: string; toDate: string }) {
+function DashboardPerformance({ metrics, fromDate, toDate, yearBounded = true }: { metrics: PerformanceMetrics; fromDate: string; toDate: string; yearBounded?: boolean }) {
+  const dateBounds = yearBounded ? { min: `${metrics.discipline.year}-01-01`, max: `${metrics.discipline.year}-12-31` } : {};
   return (
     <section className="mb-4">
       <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
@@ -624,11 +631,11 @@ function DashboardPerformance({ metrics, fromDate, toDate }: { metrics: Performa
           <form method="get" className="grid grid-cols-2 gap-2 sm:flex sm:items-end">
             <label className="block min-w-0">
               <span className="mb-1 block text-xs font-medium text-gray-600">From</span>
-              <input name="from" type="date" min={`${metrics.discipline.year}-01-01`} max={`${metrics.discipline.year}-12-31`} defaultValue={fromDate} className="h-9 w-full min-w-0 rounded-lg border border-gray-300 bg-white px-2 text-xs text-gray-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+              <input name="from" type="date" {...dateBounds} defaultValue={fromDate} className="h-9 w-full min-w-0 rounded-lg border border-gray-300 bg-white px-2 text-xs text-gray-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
             </label>
             <label className="block min-w-0">
               <span className="mb-1 block text-xs font-medium text-gray-600">To</span>
-              <input name="to" type="date" min={`${metrics.discipline.year}-01-01`} max={`${metrics.discipline.year}-12-31`} defaultValue={toDate} className="h-9 w-full min-w-0 rounded-lg border border-gray-300 bg-white px-2 text-xs text-gray-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+              <input name="to" type="date" {...dateBounds} defaultValue={toDate} className="h-9 w-full min-w-0 rounded-lg border border-gray-300 bg-white px-2 text-xs text-gray-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
             </label>
             <button type="submit" className="col-span-2 h-9 rounded-lg bg-blue-600 px-4 text-xs font-semibold text-white transition hover:bg-blue-700">Apply</button>
           </form>
