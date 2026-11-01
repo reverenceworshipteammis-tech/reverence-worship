@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { getUserPermissionSet, permissionSetHas, requirePermission, requireUser } from "@/lib/auth";
+import { getUserPermissionSet, permissionSetHas, requirePermission } from "@/lib/auth";
 import { notifyUsers, userIdsWithPermission } from "@/lib/notifications";
 import { prisma } from "@/lib/prisma";
 import { kigaliDateKey } from "@/lib/calendar-date";
@@ -368,41 +368,31 @@ export async function requestProbationDecision(formData: FormData): Promise<Prob
   }
   const actor = await requirePermission("probation", requestedState === "completed" ? "complete" : "terminate", "/admin/probation");
   if (!actor.roles.some(({ role }) => role.name === "discipline-dpt" || role.name === "admin" || role.name === "super-admin")) {
-    return { ok: false, message: "A Discipline leader, Admin, or Super Admin must submit completion and termination requests." };
+    return { ok: false, message: "A Discipline leader, Admin, or Super Admin must record completion and termination decisions." };
   }
   const probationId = Number(text(formData, "probationId"));
-  const approverId = Number(text(formData, "approverId"));
   const reason = text(formData, "reason");
   const comments = text(formData, "comments");
   if (!Number.isInteger(probationId) || probationId <= 0) return { ok: false, message: "Probation record not found." };
-  if (!Number.isInteger(approverId) || approverId <= 0) return { ok: false, message: "Select an administrator to approve this decision." };
-  if (approverId === actor.id) return { ok: false, message: "The requester and approver must be different users." };
   if (!reason) return { ok: false, message: "A decision reason is required." };
   if (!comments) return { ok: false, message: "Final decision comments are required." };
 
+  const roles = await probationRoles();
+  if (!roles.member || !roles.probation) return { ok: false, message: "Probation roles are not configured." };
+  const now = new Date();
+
   try {
     const result = await prisma.$transaction(async (tx) => {
-      const [probation, approver] = await Promise.all([
-        tx.probation.findFirst({
-          where: { id: probationId, state: { in: [...openStates] } },
-          select: {
-            id: true,
-            userId: true,
-            member: { select: { name: true } },
-            decisionRequests: { where: { status: "pending" }, select: { id: true }, take: 1 },
-          },
-        }),
-        tx.user.findFirst({
-          where: {
-            id: approverId,
-            status: "active",
-            roles: { some: { role: { name: { in: ["admin", "super-admin"] } } } },
-          },
-          select: { id: true, name: true },
-        }),
-      ]);
-      if (!probation) return { ok: false as const, message: "Only an active or extended probation can receive a final decision request." };
-      if (!approver) return { ok: false as const, message: "Select an active user with Admin or Super Admin rights." };
+      const probation = await tx.probation.findFirst({
+        where: { id: probationId, state: { in: [...openStates] } },
+        select: {
+          id: true,
+          userId: true,
+          member: { select: { name: true } },
+          decisionRequests: { where: { status: "pending" }, select: { id: true }, take: 1 },
+        },
+      });
+      if (!probation) return { ok: false as const, message: "Only an active or extended probation can receive a final decision." };
       if (probation.decisionRequests.length) return { ok: false as const, message: "This probation already has a decision awaiting approval." };
 
       const request = await tx.probationDecisionRequest.create({
@@ -412,214 +402,89 @@ export async function requestProbationDecision(formData: FormData): Promise<Prob
           reason,
           comments,
           requestedById: actor.id,
+          status: "approved",
+          reviewedById: actor.id,
+          reviewedAt: now,
         },
       });
-      await tx.probation.update({
-        where: { id: probationId },
-        data: { assignedAdminId: approver.id, updatedById: actor.id },
-      });
-      await tx.activityLog.create({
-        data: {
-          userId: actor.id,
-          action: `probation.${requestedState}-requested`,
-          module: "probation",
-          metadata: { probationId, requestId: request.id, approverId: approver.id, reason },
-        },
-      });
-      return {
-        ok: true as const,
-        requestId: request.id,
-        approverId: approver.id,
-        approverName: approver.name,
-        memberName: probation.member.name,
-      };
-    }, { isolationLevel: "Serializable" });
-    if (!result.ok) return result;
 
-    await deliverProbationNotification(() => notifyUsers({
-      userIds: [result.approverId],
-      type: "probation",
-      title: `Probation ${requestedState === "completed" ? "completion" : "termination"} awaiting approval`,
-      message: `${actor.name} requested ${requestedState === "completed" ? "completion" : "termination"} of ${result.memberName}'s probation.`,
-      link: `/admin/probation?record=${probationId}`,
-      sourceType: "probation_decision_request",
-      sourceId: result.requestId,
-      dedupeKey: `probation-decision:${result.requestId}:submitted`,
-    }));
-    revalidateProbation();
-    return { ok: true, message: `The ${requestedState === "completed" ? "completion" : "termination"} request was sent to ${result.approverName} for approval.` };
-  } catch (error) {
-    return { ok: false, message: errorMessage(error, "The decision request could not be submitted.") };
-  }
-}
-
-async function assignedAdminForRequest(requestId: number, userId: number) {
-  return prisma.probationDecisionRequest.findFirst({
-    where: {
-      id: requestId,
-      status: "pending",
-      requestedById: { not: userId },
-      probation: { assignedAdminId: userId },
-    },
-    select: {
-      id: true,
-      requestedState: true,
-      reason: true,
-      comments: true,
-      requestedById: true,
-      probationId: true,
-      probation: {
-        select: {
-          state: true,
-          userId: true,
-          member: { select: { name: true } },
-        },
-      },
-    },
-  });
-}
-
-export async function approveProbationDecision(requestId: number, reviewComments: string): Promise<ProbationActionResult> {
-  const actor = await requireUser();
-  const actorRoles = actor.roles.map((item) => item.role.name);
-  if (!actorRoles.some((role) => role === "admin" || role === "super-admin")) {
-    return { ok: false, message: "You are not authorized to approve this decision." };
-  }
-  if (!Number.isInteger(requestId) || requestId <= 0) return { ok: false, message: "Decision request not found." };
-  const request = await assignedAdminForRequest(requestId, actor.id);
-  if (!request) return { ok: false, message: "You are not authorized to approve this pending decision." };
-  if (!openStates.includes(request.probation.state as (typeof openStates)[number])) {
-    return { ok: false, message: "This probation is no longer open." };
-  }
-
-  const roles = await probationRoles();
-  if (!roles.member || !roles.probation) return { ok: false, message: "Probation roles are not configured." };
-  const now = new Date();
-
-  try {
-    const result = await prisma.$transaction(async (tx) => {
-      const claimed = await tx.probationDecisionRequest.updateMany({
-        where: { id: requestId, status: "pending", probation: { assignedAdminId: actor.id, state: { in: [...openStates] } } },
-        data: { status: "approved", reviewedById: actor.id, reviewedAt: now, reviewComments: reviewComments.trim() || null },
-      });
-      if (claimed.count !== 1) return { ok: false as const, message: "This request changed. Refresh and try again." };
-
-      if (request.requestedState === "completed") {
-        await tx.userRole.deleteMany({ where: { userId: request.probation.userId, roleId: roles.probation } });
+      if (requestedState === "completed") {
+        await tx.userRole.deleteMany({ where: { userId: probation.userId, roleId: roles.probation } });
         await tx.userRole.upsert({
-          where: { userId_roleId: { userId: request.probation.userId, roleId: roles.member! } },
+          where: { userId_roleId: { userId: probation.userId, roleId: roles.member! } },
           update: {},
-          create: { userId: request.probation.userId, roleId: roles.member! },
+          create: { userId: probation.userId, roleId: roles.member! },
         });
-        await tx.user.update({ where: { id: request.probation.userId }, data: { status: "active" } });
+        await tx.user.update({ where: { id: probation.userId }, data: { status: "active" } });
       } else {
         await tx.user.update({
-          where: { id: request.probation.userId },
+          where: { id: probation.userId },
           data: { status: "inactive", sessionVersion: { increment: 1 } },
         });
       }
 
       await tx.probation.update({
-        where: { id: request.probationId },
+        where: { id: probationId },
         data: {
-          state: request.requestedState,
-          finalDecisionComments: request.comments,
+          state: requestedState,
+          finalDecisionComments: comments,
           decisionDate: now,
           decidedById: actor.id,
           updatedById: actor.id,
         },
       });
       await tx.probationDecisionRequest.updateMany({
-        where: { probationId: request.probationId, status: "pending", id: { not: requestId } },
-        data: { status: "cancelled", reviewedById: actor.id, reviewedAt: now, reviewComments: "Cancelled because another final decision was approved." },
+        where: { probationId, status: "pending", id: { not: request.id } },
+        data: { status: "cancelled", reviewedById: actor.id, reviewedAt: now, reviewComments: "Cancelled because a final decision was recorded." },
       });
       await tx.activityLog.create({
         data: {
           userId: actor.id,
-          action: `probation.${request.requestedState}`,
+          action: `probation.${requestedState}`,
           module: "probation",
           metadata: {
-            probationId: request.probationId,
-            requestId,
-            memberId: request.probation.userId,
-            requestedById: request.requestedById,
-            accountDisabled: request.requestedState === "terminated",
-            rolesChanged: request.requestedState === "completed",
+            probationId,
+            requestId: request.id,
+            memberId: probation.userId,
+            reason,
+            accountDisabled: requestedState === "terminated",
+            rolesChanged: requestedState === "completed",
           },
         },
       });
-      return { ok: true as const };
+      return { ok: true as const, memberId: probation.userId, memberName: probation.member.name };
     }, { isolationLevel: "Serializable" });
     if (!result.ok) return result;
 
-    if (request.requestedState === "completed") {
+    if (requestedState === "completed") {
       await deliverProbationNotification(() => notifyUsers({
-        userIds: [request.probation.userId],
+        userIds: [result.memberId],
         type: "probation",
         title: "Probation completed",
         message: "Your probation was completed successfully. Your account is now a normal member account, and attendance and discipline performance start fresh from this decision.",
         link: "/admin/dashboard",
         sourceType: "probation",
-        sourceId: request.probationId,
-        dedupeKey: `probation:${request.probationId}:completed:member`,
+        sourceId: probationId,
+        dedupeKey: `probation:${probationId}:completed:member`,
       }));
     }
     await deliverProbationNotification(() => notifyProbationLeaders({
       type: "probation",
-      title: `Probation ${request.requestedState}`,
-      message: `${request.probation.member.name}'s probation was ${request.requestedState} by ${actor.name}.`,
-      probationId: request.probationId,
-      extraUserIds: [request.requestedById],
-      dedupeKey: `probation:${request.probationId}:${request.requestedState}:leaders`,
+      title: `Probation ${requestedState}`,
+      message: `${result.memberName}'s probation was ${requestedState} by ${actor.name}.`,
+      probationId,
+      dedupeKey: `probation:${probationId}:${requestedState}:leaders`,
     }));
     revalidateProbation();
     return {
       ok: true,
-      message: request.requestedState === "completed"
+      message: requestedState === "completed"
         ? "Probation completed. The probation role was removed and the normal member role was assigned."
         : "Probation terminated. The account was disabled and existing sessions were revoked.",
     };
   } catch (error) {
-    return { ok: false, message: errorMessage(error, "The decision could not be approved.") };
+    return { ok: false, message: errorMessage(error, "The decision could not be recorded.") };
   }
-}
-
-export async function rejectProbationDecision(requestId: number, reviewComments: string): Promise<ProbationActionResult> {
-  const actor = await requireUser();
-  const actorRoles = actor.roles.map((item) => item.role.name);
-  if (!actorRoles.some((role) => role === "admin" || role === "super-admin")) {
-    return { ok: false, message: "You are not authorized to reject this decision." };
-  }
-  const cleanComments = reviewComments.trim();
-  if (cleanComments.length < 3) return { ok: false, message: "A rejection reason is required." };
-  const request = await assignedAdminForRequest(requestId, actor.id);
-  if (!request) return { ok: false, message: "You are not authorized to reject this pending decision." };
-
-  const updated = await prisma.probationDecisionRequest.updateMany({
-    where: { id: requestId, status: "pending", probation: { assignedAdminId: actor.id } },
-    data: { status: "rejected", reviewedById: actor.id, reviewedAt: new Date(), reviewComments: cleanComments },
-  });
-  if (updated.count !== 1) return { ok: false, message: "This request changed. Refresh and try again." };
-  await prisma.activityLog.create({
-    data: {
-      userId: actor.id,
-      action: `probation.${request.requestedState}-rejected`,
-      module: "probation",
-      metadata: { probationId: request.probationId, requestId, requestedById: request.requestedById, reason: cleanComments },
-    },
-  });
-  await deliverProbationNotification(() => notifyUsers({
-    userIds: [request.requestedById],
-    type: "probation",
-    title: "Probation decision request rejected",
-    message: `${actor.name} rejected the ${request.requestedState === "completed" ? "completion" : "termination"} request for ${request.probation.member.name}: ${cleanComments}`,
-    link: `/admin/probation?record=${request.probationId}`,
-    sourceType: "probation_decision_request",
-    sourceId: requestId,
-    dedupeKey: `probation-decision:${requestId}:rejected`,
-  }));
-  revalidateProbation();
-  return { ok: true, message: "The decision request was rejected. The probation remains open." };
 }
 
 export async function reopenProbation(formData: FormData): Promise<ProbationActionResult> {

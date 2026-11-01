@@ -24,7 +24,7 @@ export default async function ProbationPage({
   const user = await requirePageAccess("probation");
   const period = await getCurrentPeriod();
   const scopedToPeriod = period.enabled && (await searchParams).all !== "1";
-  const [params, permissions, defaultDurationSetting, probations, eligibleMembers, decisionApprovers] = await withDatabaseRetry(() => Promise.all([
+  const [params, permissions, defaultDurationSetting, probations, eligibleMembers] = await withDatabaseRetry(() => Promise.all([
     searchParams,
     getUserPermissionSet(user),
     getSystemSetting("probation_default_duration_months"),
@@ -41,7 +41,6 @@ export default async function ProbationPage({
       orderBy: [{ state: "asc" }, { currentExpectedEndDate: "asc" }, { createdAt: "desc" }],
       include: {
         member: { select: { id: true, name: true, phone: true, status: true } },
-        assignedAdmin: { select: { name: true } },
         creator: { select: { name: true } },
         updater: { select: { name: true } },
         decisionMaker: { select: { name: true } },
@@ -66,15 +65,6 @@ export default async function ProbationPage({
         roles: { none: { role: { name: { in: ["admin", "super-admin"] } } } },
       },
       orderBy: { name: "asc" },
-      select: { id: true, name: true },
-    }),
-    prisma.user.findMany({
-      where: {
-        id: { not: user.id },
-        status: "active",
-        roles: { some: { role: { name: { in: ["admin", "super-admin"] } } } },
-      },
-      orderBy: [{ name: "asc" }, { id: "asc" }],
       select: { id: true, name: true },
     }),
   ]), 5);
@@ -108,10 +98,6 @@ export default async function ProbationPage({
       createdAt: probation.createdAt.toISOString(),
       updatedAt: probation.updatedAt.toISOString(),
       monitoring,
-      canApprovePendingDecision: isAdministrator && probation.assignedAdminId === user.id,
-      pendingApproverName: probation.decisionRequests.some((decision) => decision.status === "pending")
-        ? probation.assignedAdmin.name
-        : null,
       extensions: probation.extensions.map((extension) => ({
         id: extension.id,
         previousExpectedEndDate: dateValue(extension.previousExpectedEndDate)!,
@@ -147,7 +133,6 @@ export default async function ProbationPage({
       <ProbationClient
       rows={rows}
       eligibleMembers={eligibleMembers}
-      decisionApprovers={decisionApprovers}
       defaultDurationMonths={defaultDurationMonths}
       initialRecordId={Number(params.record) || null}
       initialStatus={params.status ?? "open"}

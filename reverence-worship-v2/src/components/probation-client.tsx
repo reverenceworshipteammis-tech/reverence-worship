@@ -12,14 +12,11 @@ import {
   ShieldCheck,
   UserPlus,
   X,
-  XCircle,
 } from "lucide-react";
 import { FormEvent, useMemo, useState, useTransition } from "react";
 import {
-  approveProbationDecision,
   enrollProbation,
   extendProbation,
-  rejectProbationDecision,
   reopenProbation,
   requestProbationDecision,
   updateProbation,
@@ -52,8 +49,6 @@ export type ProbationRow = {
   createdAt: string;
   updatedAt: string;
   monitoring: ProbationMonitoring;
-  canApprovePendingDecision: boolean;
-  pendingApproverName: string | null;
   extensions: Array<{
     id: number;
     previousExpectedEndDate: string;
@@ -80,7 +75,6 @@ export type ProbationRow = {
 type Props = {
   rows: ProbationRow[];
   eligibleMembers: Person[];
-  decisionApprovers: Person[];
   defaultDurationMonths: number;
   initialRecordId: number | null;
   initialStatus: string;
@@ -201,7 +195,6 @@ function MonitoringGrid({ monitoring }: { monitoring: ProbationMonitoring }) {
 export function ProbationClient({
   rows,
   eligibleMembers,
-  decisionApprovers,
   defaultDurationMonths,
   initialRecordId,
   initialStatus,
@@ -266,49 +259,15 @@ export function ProbationClient({
     const formData = new FormData(event.currentTarget);
     const summary = `Attendance ${row.monitoring.attendance.rate}%, communication ${row.monitoring.communication.rate}%, discipline ${row.monitoring.discipline.rate}%, ${row.monitoring.discipline.unresolved} unresolved discipline record(s), ${row.monitoring.permissions.pending} pending permission(s), and ${row.extensions.length} extension(s).`;
     const confirmed = await dialog.confirm({
-      title: decision === "terminated" ? "Request probation termination?" : "Request probation completion?",
+      title: decision === "terminated" ? "Terminate probation?" : "Complete probation?",
       message: decision === "terminated"
-        ? `${summary} An administrator will make the final decision. If approved, the member's account will be disabled and all sessions revoked.`
-        : `${summary} An administrator will make the final decision. If approved, the probation role will be replaced with the normal member role.`,
-      confirmLabel: decision === "terminated" ? "Request termination" : "Request completion",
+        ? `${summary} This will disable ${row.member.name}'s account and revoke active sessions immediately. Historical records will be preserved.`
+        : `${summary} This will remove only the probation role, add the normal member role, preserve other roles, and start normal attendance and discipline performance fresh from today.`,
+      confirmLabel: decision === "terminated" ? "Disable account" : "Complete probation",
       tone: decision === "terminated" ? "danger" : "primary",
     });
     if (!confirmed) return;
     run(() => requestProbationDecision(formData));
-  }
-
-  async function approveDecision(row: ProbationRow, request: ProbationRow["decisions"][number]) {
-    const summary = `Attendance ${row.monitoring.attendance.rate}%, communication ${row.monitoring.communication.rate}%, discipline ${row.monitoring.discipline.rate}%, ${row.monitoring.discipline.unresolved} unresolved discipline record(s), ${row.monitoring.permissions.pending} pending permission(s), and ${row.extensions.length} extension(s).`;
-    const confirmed = await dialog.confirm({
-      title: request.requestedState === "terminated" ? "Approve termination?" : "Approve completion?",
-      message: request.requestedState === "terminated"
-        ? `${summary} This will disable ${row.member.name}'s account and revoke active sessions immediately. Historical records will be preserved.`
-        : `${summary} This will remove only the probation role, add the normal member role, preserve other roles, and start normal attendance and discipline performance fresh from today.`,
-      confirmLabel: request.requestedState === "terminated" ? "Disable account" : "Complete probation",
-      tone: request.requestedState === "terminated" ? "danger" : "primary",
-    });
-    if (!confirmed) return;
-    const comments = await dialog.prompt({
-      title: "Approval comments",
-      message: "Optionally record comments for the decision history.",
-      inputLabel: "Comments",
-      confirmLabel: "Approve",
-    });
-    if (comments === null) return;
-    run(() => approveProbationDecision(request.id, comments));
-  }
-
-  async function rejectDecision(row: ProbationRow, request: ProbationRow["decisions"][number]) {
-    const reason = await dialog.prompt({
-      title: "Reject decision request",
-      message: `Explain why the ${request.requestedState === "completed" ? "completion" : "termination"} request for ${row.member.name} is being rejected.`,
-      inputLabel: "Rejection reason",
-      confirmLabel: "Reject request",
-      tone: "danger",
-      required: true,
-    });
-    if (!reason) return;
-    run(() => rejectProbationDecision(request.id, reason));
   }
 
   return (
@@ -377,7 +336,7 @@ export function ProbationClient({
                 <tr key={row.id} className="align-top hover:bg-slate-50/70">
                   <td className="px-4 py-4">
                     <p className="font-bold text-slate-900">{row.member.name}</p>
-                    {pendingDecision(row) ? <p className="mt-1 text-xs font-semibold text-violet-700">Decision awaiting approval</p> : null}
+                    {pendingDecision(row) ? <p className="mt-1 text-xs font-semibold text-violet-700">Decision pending</p> : null}
                   </td>
                   <td className="px-4 py-4"><StateBadge row={row} /></td>
                   <td className="px-4 py-4 text-sm text-slate-600">
@@ -494,13 +453,10 @@ export function ProbationClient({
             <Details
               row={modal.row}
               permissions={permissions}
-              pending={pending}
               onEdit={(row) => setModal({ type: "edit", row })}
               onExtend={(row) => setModal({ type: "extend", row })}
               onDecision={(row, decision) => setModal({ type: "decision", row, decision })}
               onReopen={(row) => setModal({ type: "reopen", row })}
-              onApprove={approveDecision}
-              onReject={rejectDecision}
             />
           ) : null}
 
@@ -537,23 +493,12 @@ export function ProbationClient({
               <DecisionSummary row={modal.row} />
               {modal.decision === "terminated" ? (
                 <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-900">
-                  Approval will disable the member’s account and revoke active sessions immediately. The account and historical records will not be deleted.
+                  This will disable the member’s account and revoke active sessions immediately. The account and historical records will not be deleted.
                 </div>
-              ) : null}
-              <Field label="Administrator approver" note="">
-                <select name="approverId" required className={inputClass} defaultValue="">
-                  <option value="" disabled>Select an active administrator</option>
-                  {decisionApprovers.map((approver) => (
-                    <option key={approver.id} value={approver.id}>{approver.name}</option>
-                  ))}
-                </select>
-              </Field>
-              {!decisionApprovers.length ? (
-                <p className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">No other active Admin or Super Admin is available to approve this decision.</p>
               ) : null}
               <Field label="Decision reason"><textarea name="reason" required className={textareaClass} /></Field>
               <Field label="Final decision comments"><textarea name="comments" required className={textareaClass} /></Field>
-              <SubmitButtons pending={pending} disabled={!decisionApprovers.length} label={modal.decision === "terminated" ? "Request termination" : "Request completion"} danger={modal.decision === "terminated"} onCancel={() => setModal({ type: "details", row: modal.row })} />
+              <SubmitButtons pending={pending} label={modal.decision === "terminated" ? "Terminate probation" : "Complete probation"} danger={modal.decision === "terminated"} onCancel={() => setModal({ type: "details", row: modal.row })} />
             </form>
           ) : null}
 
@@ -589,7 +534,7 @@ function RowActions({ row, permissions, open }: { row: ProbationRow; permissions
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 md:justify-end">
       <button type="button" onClick={() => open({ type: "details", row })} className={actionClass}>
-        {decision ? row.canApprovePendingDecision ? "Review" : "Pending" : "Details"}
+        {decision ? "Pending" : "Details"}
       </button>
       {permissions.update && isOpen(row) ? (
         <button type="button" onClick={() => open({ type: "edit", row })} className={actionClass}>Edit</button>
@@ -613,23 +558,17 @@ function RowActions({ row, permissions, open }: { row: ProbationRow; permissions
 function Details({
   row,
   permissions,
-  pending,
   onEdit,
   onExtend,
   onDecision,
   onReopen,
-  onApprove,
-  onReject,
 }: {
   row: ProbationRow;
   permissions: Props["permissions"];
-  pending: boolean;
   onEdit: (row: ProbationRow) => void;
   onExtend: (row: ProbationRow) => void;
   onDecision: (row: ProbationRow, decision: "completed" | "terminated") => void;
   onReopen: (row: ProbationRow) => void;
-  onApprove: (row: ProbationRow, request: ProbationRow["decisions"][number]) => void;
-  onReject: (row: ProbationRow, request: ProbationRow["decisions"][number]) => void;
 }) {
   const pendingRequest = pendingDecision(row);
   return (
@@ -670,25 +609,6 @@ function Details({
         </div>
       ) : null}
 
-      {pendingRequest ? (
-        <div className="rounded-xl border border-violet-200 bg-violet-50 p-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <p className="font-black text-violet-950">{titleCase(pendingRequest.requestedState)} awaiting approval{row.pendingApproverName ? ` from ${row.pendingApproverName}` : ""}</p>
-              <p className="mt-1 text-sm text-violet-800">Requested by {pendingRequest.requestedByName} on {formatDate(pendingRequest.requestedAt, true)}</p>
-              <p className="mt-3 text-sm text-violet-900"><strong>Reason:</strong> {pendingRequest.reason}</p>
-              <p className="mt-1 whitespace-pre-wrap text-sm text-violet-900"><strong>Final comments:</strong> {pendingRequest.comments}</p>
-            </div>
-            {row.canApprovePendingDecision ? (
-              <div className="flex shrink-0 gap-2">
-                <button type="button" disabled={pending} onClick={() => onApprove(row, pendingRequest)} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"><CheckCircle2 className="size-4" /> Approve</button>
-                <button type="button" disabled={pending} onClick={() => onReject(row, pendingRequest)} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-rose-600 px-3 text-xs font-bold text-white hover:bg-rose-700 disabled:opacity-50"><XCircle className="size-4" /> Reject</button>
-              </div>
-            ) : <span className="shrink-0 rounded-full bg-white px-3 py-1 text-xs font-semibold text-violet-800">Administrator review required</span>}
-          </div>
-        </div>
-      ) : null}
-
       <HistorySection row={row} />
 
       <div className="flex flex-wrap gap-2 border-t border-slate-200 pt-4">
@@ -697,8 +617,8 @@ function Details({
         <Link href={`/admin/discipline?tab=discipline-records&member=${row.member.id}`} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">Record discipline</Link>
         {permissions.update && isOpen(row) ? <button type="button" onClick={() => onEdit(row)} className="rounded-lg border border-blue-200 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50">Edit details</button> : null}
         {permissions.extend && isOpen(row) && !pendingRequest ? <button type="button" onClick={() => onExtend(row)} className="rounded-lg border border-amber-200 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-50">Extend</button> : null}
-        {permissions.complete && isOpen(row) && !pendingRequest ? <button type="button" onClick={() => onDecision(row, "completed")} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700">Request completion</button> : null}
-        {permissions.terminate && isOpen(row) && !pendingRequest ? <button type="button" onClick={() => onDecision(row, "terminated")} className="rounded-lg bg-rose-600 px-3 py-2 text-xs font-bold text-white hover:bg-rose-700">Request termination</button> : null}
+        {permissions.complete && isOpen(row) && !pendingRequest ? <button type="button" onClick={() => onDecision(row, "completed")} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700">Complete probation</button> : null}
+        {permissions.terminate && isOpen(row) && !pendingRequest ? <button type="button" onClick={() => onDecision(row, "terminated")} className="rounded-lg bg-rose-600 px-3 py-2 text-xs font-bold text-white hover:bg-rose-700">Terminate probation</button> : null}
         {permissions.reopen && !isOpen(row) ? <button type="button" onClick={() => onReopen(row)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white hover:bg-blue-700">Reopen probation</button> : null}
       </div>
     </div>
@@ -789,5 +709,5 @@ function modalTitle(modal: Exclude<Modal, null>) {
   if (modal.type === "edit") return "Update probation details";
   if (modal.type === "extend") return "Extend probation";
   if (modal.type === "reopen") return "Reopen probation";
-  return modal.decision === "terminated" ? "Request probation termination" : "Request probation completion";
+  return modal.decision === "terminated" ? "Terminate probation" : "Complete probation";
 }

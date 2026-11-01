@@ -10,7 +10,7 @@ import { ActionPlanTaskTemplateButtons } from "@/components/action-plan-task-tem
 import { DepartmentActionPlanManager } from "@/components/department-action-plan-manager";
 import { IntercessionRichText } from "@/components/intercession-rich-text";
 import { intercessionRichTextToPlainText } from "@/lib/intercession-rich-text";
-import { membershipTypeLabel, membershipTypeOptions } from "@/lib/membership-types";
+import { membershipTypeOptions, reportMembershipTypeLabel, reportMembershipTypeValue } from "@/lib/membership-types";
 import {
   AlertTriangle,
   ArrowDown,
@@ -131,6 +131,7 @@ type ReportRow = {
   id: number;
   name: string;
   membershipType: string | null;
+  onProbation: boolean;
   submissions: Array<{
     formId: number;
     score: number | null;
@@ -222,6 +223,7 @@ export function IntercessionClient({
   mySubmissions,
   reportRows,
   reportFormActivity,
+  reportPeriod,
   actionPlans,
 }: {
   initialTab: "forms" | "actions";
@@ -233,6 +235,7 @@ export function IntercessionClient({
   mySubmissions: FormSubmission[];
   reportRows: ReportRow[];
   reportFormActivity: Array<{ formId: number; submittedAt: string }>;
+  reportPeriod?: { from: string; to: string } | null;
   actionPlans: IntercessionActionPlan[];
 }) {
   const router = useRouter();
@@ -244,8 +247,15 @@ export function IntercessionClient({
   const [reportSearch, setReportSearch] = useState("");
   const [reportStatus, setReportStatus] = useState("all");
   const [reportMembershipType, setReportMembershipType] = useState("all");
-  const [reportDateFrom, setReportDateFrom] = useState("");
-  const [reportDateTo, setReportDateTo] = useState("");
+  const [reportDateFrom, setReportDateFrom] = useState(reportPeriod?.from ?? "");
+  const [reportDateTo, setReportDateTo] = useState(reportPeriod?.to ?? "");
+  const appliedReportPeriod = useRef(reportPeriod);
+  useEffect(() => {
+    if (appliedReportPeriod.current?.from === reportPeriod?.from && appliedReportPeriod.current?.to === reportPeriod?.to) return;
+    appliedReportPeriod.current = reportPeriod;
+    setReportDateFrom(reportPeriod?.from ?? "");
+    setReportDateTo(reportPeriod?.to ?? "");
+  }, [reportPeriod]);
   const [reportSortField, setReportSortField] = useState<ReportSortField>("name");
   const [reportSortDirection, setReportSortDirection] = useState<"asc" | "desc">("asc");
   const [actionPlanSearch, setActionPlanSearch] = useState("");
@@ -363,16 +373,15 @@ export function IntercessionClient({
         status,
       };
       const matchesStatus = reportStatus === "all" || scopedRow.status === reportStatus;
-      const membershipType = row.membershipType ?? "unspecified";
+      const membershipType = reportMembershipTypeValue(row.membershipType, row.onProbation);
       const matchesMembershipType = reportMembershipType === "all" || membershipType === reportMembershipType;
       const matchesSearch = !normalized || row.name.toLowerCase().includes(normalized);
-      const hasRangeSubmission = !reportDateFrom && !reportDateTo || inRange.length > 0;
-      return matchesStatus && matchesMembershipType && matchesSearch && hasRangeSubmission ? scopedRow : null;
+      return matchesStatus && matchesMembershipType && matchesSearch ? scopedRow : null;
     }).filter((row): row is ReportRow => row !== null)
       .sort((first, second) => {
         let comparison = 0;
         if (reportSortField === "name") comparison = first.name.localeCompare(second.name, undefined, { sensitivity: "base" });
-        if (reportSortField === "membershipType") comparison = membershipTypeLabel(first.membershipType).localeCompare(membershipTypeLabel(second.membershipType), undefined, { sensitivity: "base" });
+        if (reportSortField === "membershipType") comparison = reportMembershipTypeLabel(first.membershipType, first.onProbation).localeCompare(reportMembershipTypeLabel(second.membershipType, second.onProbation), undefined, { sensitivity: "base" });
         if (reportSortField === "submitted") comparison = first.submitted - second.submitted;
         if (reportSortField === "participation") comparison = first.participation - second.participation;
         if (reportSortField === "points") comparison = (first.averageScore ?? -1) - (second.averageScore ?? -1);
@@ -594,15 +603,15 @@ export function IntercessionClient({
     setReportSearch("");
     setReportStatus("all");
     setReportMembershipType("all");
-    setReportDateFrom("");
-    setReportDateTo("");
+    setReportDateFrom(reportPeriod?.from ?? "");
+    setReportDateTo(reportPeriod?.to ?? "");
   }
 
   function exportReportCsv() {
     const header = ["Name", "Membership Type", "Submitted", "Total Forms", "Participation", "Points", "Status", "Latest Submitted"];
     const rows = filteredReportRows.map((row) => [
       row.name,
-      membershipTypeLabel(row.membershipType),
+      reportMembershipTypeLabel(row.membershipType, row.onProbation),
       String(row.submitted),
       String(row.totalForms),
       `${row.participation}%`,
@@ -1409,6 +1418,7 @@ export function IntercessionClient({
                     >
                       <option value="all">All membership types</option>
                       {membershipTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                      <option value="in-probation">In-Probation</option>
                       <option value="unspecified">Not specified</option>
                     </select>
                   </div></div>)}
@@ -1465,7 +1475,7 @@ export function IntercessionClient({
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           <h3 className="truncate text-sm font-semibold text-gray-900">{row.name}</h3>
-                          <p className="mt-0.5 text-xs text-gray-500">{membershipTypeLabel(row.membershipType)}</p>
+                          <p className="mt-0.5 text-xs text-gray-500">{reportMembershipTypeLabel(row.membershipType, row.onProbation)}</p>
                         </div>
                         <span
                           className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold ${
@@ -1530,7 +1540,7 @@ export function IntercessionClient({
                           <td className="px-4 py-3">
                             <div className="font-medium text-gray-900">{row.name}</div>
                           </td>
-                          <td className="px-4 py-3 text-center text-gray-600">{membershipTypeLabel(row.membershipType)}</td>
+                          <td className="px-4 py-3 text-center text-gray-600">{reportMembershipTypeLabel(row.membershipType, row.onProbation)}</td>
                           <td className="px-4 py-3 text-center font-medium text-gray-700">
                             {row.submitted}/{row.totalForms}
                           </td>
@@ -1773,7 +1783,7 @@ function ReportDetailModal({
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">User Progress</p>
             <h2 className="mt-1 text-lg font-bold text-slate-900">{row.name}</h2>
-            <p className="mt-0.5 text-sm text-slate-500">{membershipTypeLabel(row.membershipType)}</p>
+            <p className="mt-0.5 text-sm text-slate-500">{reportMembershipTypeLabel(row.membershipType, row.onProbation)}</p>
           </div>
           <button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600" aria-label="Close">
             <X className="size-5" aria-hidden="true" />

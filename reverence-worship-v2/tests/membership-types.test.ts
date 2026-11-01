@@ -9,6 +9,8 @@ import {
   membershipTypeOptions,
   normalizeMembershipType,
   parseMembershipTypeFilters,
+  reportMembershipTypeLabel,
+  reportMembershipTypeValue,
 } from "../src/lib/membership-types";
 
 test("all membership choices and validation use Permanent, Temporary, and Partner", () => {
@@ -21,6 +23,16 @@ test("all membership choices and validation use Permanent, Temporary, and Partne
   const schema = z.enum(MEMBERSHIP_TYPES);
   for (const type of MEMBERSHIP_TYPES) assert.equal(schema.safeParse(type).success, true);
   for (const value of ["visitor", "", "other", undefined, null]) assert.equal(schema.safeParse(value).success, false);
+});
+
+test("report membership type shows In-Probation for members on open probation", () => {
+  assert.equal(reportMembershipTypeValue("permanent", true), "in-probation");
+  assert.equal(reportMembershipTypeValue("temporary", true), "in-probation");
+  assert.equal(reportMembershipTypeValue("permanent", false), "permanent");
+  assert.equal(reportMembershipTypeValue(null, false), "unspecified");
+  assert.equal(reportMembershipTypeLabel("permanent", true), "In-Probation");
+  assert.equal(reportMembershipTypeLabel("permanent", false), "Permanent");
+  assert.equal(reportMembershipTypeLabel(null, false), "Not specified");
 });
 
 test("legacy Visitor labels and filters resolve to Partner without broadening recipients", () => {

@@ -124,15 +124,17 @@ export async function IntercessionPage({
       ? withDatabaseRetry(() => prisma.user.findMany({
           where: { status: "active", ...excludeSuperAdminUserWhere() },
           orderBy: { name: "asc" },
-          select: { id: true, name: true, membershipType: true },
+          select: {
+            id: true,
+            name: true,
+            membershipType: true,
+            probations: { where: { state: { in: ["active", "extended"] } }, select: { id: true }, take: 1 },
+          },
         }), 3)
       : Promise.resolve([]),
     loadReports
       ? withDatabaseRetry(() => prisma.formSubmission.findMany({
-          where: {
-            deletedAt: null,
-            ...(scopedToPeriod ? { submittedAt: { gte: period.fromDate, lte: period.toDate } } : {}),
-          },
+          where: { deletedAt: null },
           select: {
             id: true,
             formId: true,
@@ -267,6 +269,7 @@ export async function IntercessionPage({
           id: reportUser.id,
           name: reportUser.name,
           membershipType: reportUser.membershipType,
+          onProbation: reportUser.probations.length > 0,
           submissions: reportSubmissions.map((submission) => ({
             formId: submission.formId,
             score: submission.score,
@@ -284,6 +287,7 @@ export async function IntercessionPage({
         formId: submission.formId,
         submittedAt: kigaliDateKey(submission.submittedAt),
       }))}
+      reportPeriod={loadReports && scopedToPeriod ? { from: period.from, to: period.to } : null}
       actionPlans={actionPlans.map((plan) => ({
         id: plan.id,
         title: plan.title,

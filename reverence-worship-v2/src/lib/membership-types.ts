@@ -24,6 +24,15 @@ export function membershipTypeLabel(value: unknown, fallback = "Not specified"):
   return type ? membershipLabels[type] : fallback;
 }
 
+/** Display value for reports: members on open probation are shown as "In-Probation". */
+export function reportMembershipTypeValue(membershipType: unknown, onProbation: boolean): string {
+  return onProbation ? "in-probation" : normalizeMembershipType(membershipType) ?? "unspecified";
+}
+
+export function reportMembershipTypeLabel(value: unknown, onProbation: boolean): string {
+  return onProbation ? "In-Probation" : membershipTypeLabel(value);
+}
+
 export function parseMembershipTypeFilters(value: unknown): MembershipType[] {
   const values = typeof value === "string" ? value.split(",") : Array.isArray(value) ? value : [];
   return [...new Set(values.map(normalizeMembershipType).filter((type): type is MembershipType => type !== null))];
