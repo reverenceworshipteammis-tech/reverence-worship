@@ -9,7 +9,7 @@ import { parseIntercessionFormQuestions } from "../src/lib/intercession-form-dom
 
 const question = () => ({
   id: "membership-choice", type: "multiple_choice", label: "Niyemeje kuba / I commit to be:", required: true,
-  options: ["Umunyamuryango uhoraho / Permanent member", "Umunyamuryango udahoraho / Temporary", "Umufatanyabikorwa / Partner"],
+  options: ["Umunyamuryango uhoraho / Permanent member", "Umunyamuryango udahoraho / Non-Permanent", "Umufatanyabikorwa / Partner"],
   membershipTypeMapping: ["permanent", "temporary", "partner"], condition: null,
 });
 

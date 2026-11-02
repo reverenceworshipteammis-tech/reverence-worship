@@ -38,7 +38,7 @@ export function membershipQuestionConfigurationIssue(questions: unknown, hasComm
   const labels = (options as string[]).map((option) => option.trim());
   if (new Set(labels).size !== labels.length) return issue("Use unique answer options for the membership type question.");
   const mapping = parseMembershipTypeMapping(question.membershipTypeMapping);
-  if (!mapping || mapping.length !== options.length || mapping.some((entry) => !entry)) return issue("Map every membership answer to Permanent, Temporary, or Partner.");
+  if (!mapping || mapping.length !== options.length || mapping.some((entry) => !entry)) return issue("Map every membership answer to Permanent, Non-Permanent, or Partner.");
   return null;
 }
 

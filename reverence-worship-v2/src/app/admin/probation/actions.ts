@@ -130,7 +130,7 @@ export async function enrollProbation(formData: FormData): Promise<ProbationActi
     }),
     probationRoles(),
   ]);
-  if (!member) return { ok: false, message: "Only an active non-temporary member can be enrolled in probation." };
+  if (!member) return { ok: false, message: "Only an active member whose membership type is not Non-Permanent can be enrolled in probation." };
   if (!assignedAdmin) return { ok: false, message: "Another active administrator is required to approve future final decisions." };
   if (!roles.member || !roles.probation) return { ok: false, message: "Probation roles are not configured. Run the latest migration or seed." };
 

@@ -243,7 +243,7 @@ async function writeAttendanceSession(formData: FormData, complete: boolean) {
     return { ok: false, message: "Attendance can only include users who joined on or before the session date." };
   }
   if (attendanceUsers.some((attendanceUser) => attendanceUser.membershipType === "temporary")) {
-    return { ok: false, message: "Temporary members are not included in attendance." };
+    return { ok: false, message: "Non-Permanent members are not included in attendance." };
   }
 
   const existingSession = await prisma.attendanceSession.findUnique({
@@ -468,7 +468,7 @@ export async function importAttendanceCsv(formData: FormData) {
       return;
     }
     if (matchedUser.membershipType === "temporary") {
-      failures.push(`${location}: ${email} is a temporary member`);
+      failures.push(`${location}: ${email} is a non-permanent member`);
       return;
     }
     if (!status) {

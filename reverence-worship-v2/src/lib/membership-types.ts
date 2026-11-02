@@ -4,7 +4,7 @@ export type MembershipType = typeof MEMBERSHIP_TYPES[number];
 
 const membershipLabels: Record<MembershipType, string> = {
   permanent: "Permanent",
-  temporary: "Temporary",
+  temporary: "Non-Permanent",
   partner: "Partner",
 };
 
@@ -40,7 +40,7 @@ export function parseMembershipTypeFilters(value: unknown): MembershipType[] {
 
 export function importedMembershipType(value: string): MembershipType | null {
   const normalized = value.trim().toLowerCase();
-  if (normalized.includes("temporary")) return "temporary";
+  if (normalized.includes("temporary") || /non[\s-]*permanent/.test(normalized)) return "temporary";
   if (normalized.includes("visitor") || normalized.includes("partner")) return "partner";
   if (normalized.includes("permanent")) return "permanent";
   return normalized ? "permanent" : null;

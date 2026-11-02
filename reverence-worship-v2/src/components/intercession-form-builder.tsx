@@ -179,7 +179,7 @@ function newQuestion(type: QuestionType = "multiple_choice", required = true): B
     label: type === "title_section" ? "Title and description" : type === "section_break" ? "New section" : "Untitled question",
     description: "",
     required: membershipTypeQuestion ? false : required,
-    options: membershipTypeQuestion ? ["Umunyamuryango uhoraho / Permanent member", "Umunyamuryango udahoraho / Temporary member", "Umufatanyabikorwa / Partner"] : ["Option 1"],
+    options: membershipTypeQuestion ? ["Umunyamuryango uhoraho / Permanent member", "Umunyamuryango udahoraho / Non-Permanent member", "Umufatanyabikorwa / Partner"] : ["Option 1"],
     membershipTypeMapping: membershipTypeQuestion ? ["permanent", "temporary", "partner"] : null,
     points: 1,
     correctAnswer: "",

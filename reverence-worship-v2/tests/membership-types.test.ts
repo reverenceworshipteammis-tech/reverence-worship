@@ -13,13 +13,13 @@ import {
   reportMembershipTypeValue,
 } from "../src/lib/membership-types";
 
-test("all membership choices and validation use Permanent, Temporary, and Partner", () => {
+test("all membership choices and validation use Permanent, Non-Permanent, and Partner", () => {
   assert.deepEqual(membershipTypeOptions, [
     { value: "permanent", label: "Permanent" },
-    { value: "temporary", label: "Temporary" },
+    { value: "temporary", label: "Non-Permanent" },
     { value: "partner", label: "Partner" },
   ]);
-  assert.deepEqual(membershipTypeFilterOptions, [["permanent", "Permanent"], ["temporary", "Temporary"], ["partner", "Partner"]]);
+  assert.deepEqual(membershipTypeFilterOptions, [["permanent", "Permanent"], ["temporary", "Non-Permanent"], ["partner", "Partner"]]);
   const schema = z.enum(MEMBERSHIP_TYPES);
   for (const type of MEMBERSHIP_TYPES) assert.equal(schema.safeParse(type).success, true);
   for (const value of ["visitor", "", "other", undefined, null]) assert.equal(schema.safeParse(value).success, false);
@@ -38,7 +38,7 @@ test("report membership type shows In-Probation for members on open probation", 
 test("legacy Visitor labels and filters resolve to Partner without broadening recipients", () => {
   assert.equal(normalizeMembershipType(" Visitor "), "partner");
   assert.equal(membershipTypeLabel("visitor"), "Partner");
-  assert.equal(membershipTypeLabel("temporary"), "Temporary");
+  assert.equal(membershipTypeLabel("temporary"), "Non-Permanent");
   assert.equal(membershipTypeLabel(null), "Not specified");
   assert.equal(membershipTypeLabel(undefined, "N/A"), "N/A");
   assert.deepEqual(parseMembershipTypeFilters("visitor,partner,permanent,temporary,visitor"), ["partner", "permanent", "temporary"]);
@@ -49,7 +49,9 @@ test("legacy Visitor labels and filters resolve to Partner without broadening re
 
 test("current and older membership exports import into the canonical types", () => {
   for (const value of ["Partner", "Visitor", "Partner Member", " visitor "]) assert.equal(importedMembershipType(value), "partner");
-  assert.equal(importedMembershipType("Temporary Member"), "temporary");
+  for (const value of ["Non-Permanent", "Non-Permanent Member", "non permanent", "Temporary Member"]) {
+    assert.equal(importedMembershipType(value), "temporary");
+  }
   assert.equal(importedMembershipType("Permanent"), "permanent");
   assert.equal(importedMembershipType(""), null);
 });
