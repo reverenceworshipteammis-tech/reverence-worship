@@ -77,6 +77,12 @@ export async function loadCommitmentReports(requestedYear?: number) {
     });
     for (const member of eligibleMembers) if (!people.has(member.id)) people.set(member.id, member);
   }
+  const existingUsers = await prisma.user.findMany({
+    where: { id: { in: [...people.keys()] }, status: "active", ...excludeSuperAdminUserWhere() },
+    select: { id: true, membershipType: true },
+  });
+  const activeMembers = new Map(existingUsers.map((user) => [user.id, user]));
+  for (const id of [...people.keys()]) if (!activeMembers.has(id)) people.delete(id);
   const acceptedIds = new Set<number>();
   const rows: CommitmentReportRow[] = records.map((record) => {
     const snapshot = record.snapshot as unknown as CommitmentSnapshot;
