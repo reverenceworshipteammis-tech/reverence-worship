@@ -318,8 +318,9 @@ export function FinanceClient({
   ];
 
   const stats = useMemo(() => {
-    const fromYear = Number(startDate.slice(0, 4)) || year;
-    const toYear = Number(endDate.slice(0, 4)) || year;
+    const inPeriod = Boolean(startDate) && startDate >= period.from && startDate <= period.to;
+    const fromYear = inPeriod ? year : Number(startDate.slice(0, 4)) || year;
+    const toYear = inPeriod ? year : Number(endDate.slice(0, 4)) || year;
     const memberCommitments = contributions.filter((item) => item.year >= fromYear && item.year <= toYear).reduce((sum, item) => sum + item.annualAmount, 0);
     const sponsorCommitments = sponsors.filter((item) => item.year >= fromYear && item.year <= toYear && item.status !== "inactive").reduce((sum, item) => sum + item.commitmentAmount, 0);
     const totalExpected = memberCommitments + sponsorCommitments;
@@ -348,7 +349,7 @@ export function FinanceClient({
       collectionRate,
       reservedExpenses,
     };
-  }, [year, contributions, payments, contributionEvents, gifts, sponsors, expenses, startDate, endDate]);
+  }, [year, period, contributions, payments, contributionEvents, gifts, sponsors, expenses, startDate, endDate]);
 
   return (
     <div className="mx-auto max-w-7xl space-y-4 px-2 py-4 sm:px-4 sm:py-6">
