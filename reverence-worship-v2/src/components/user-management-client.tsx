@@ -68,7 +68,7 @@ type UserRow = {
   roles: Role[];
 };
 
-type SortField = "name" | "status" | "registered";
+type SortField = "name" | "status" | "registered" | "membershipType";
 type SortDirection = "asc" | "desc";
 
 type UserSort = {
@@ -334,6 +334,10 @@ export function UserManagementClient({
 
       if (sort.field === "registered") {
         comparison = Date.parse(first.createdAtValue) - Date.parse(second.createdAtValue);
+      } else if (sort.field === "membershipType") {
+        comparison = membershipTypeLabel(first.membershipType, "").localeCompare(membershipTypeLabel(second.membershipType, ""), undefined, {
+          sensitivity: "base",
+        });
       } else {
         comparison = first[sort.field].localeCompare(second[sort.field], undefined, {
           sensitivity: "base",
@@ -766,6 +770,15 @@ export function UserManagementClient({
                   Role
                 </th>
                 <th
+                  aria-sort={sort.field === "membershipType" ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}
+                  className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    Membership Type
+                    <SortButton field="membershipType" label="membership type" sort={sort} onSort={handleSort} />
+                  </span>
+                </th>
+                <th
                   aria-sort={sort.field === "status" ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}
                   className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
                 >
@@ -833,6 +846,7 @@ export function UserManagementClient({
                       </select>
                     )}
                   </td>
+                  <td className="px-4 py-3 text-sm text-gray-700">{membershipTypeLabel(user.membershipType, "-")}</td>
                   <td className="px-4 py-3">
                     <span className={`rounded-full px-2 py-1 text-xs capitalize ${statusBadge(user.status)}`}>
                       {user.status}
@@ -864,7 +878,7 @@ export function UserManagementClient({
               })}
               {users.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
                     No users found
                   </td>
                 </tr>
@@ -917,6 +931,10 @@ export function UserManagementClient({
                 <div>
                   <span className="text-gray-500">Role:</span>{" "}
                   <span className="text-gray-700">{user.inProbation ? "In Probation" : fullSystemAccess ? "Full System Access" : visibleRoles[0]?.displayName || "-"}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Membership:</span>{" "}
+                  <span className="text-gray-700">{membershipTypeLabel(user.membershipType, "-")}</span>
                 </div>
                 <div>
                   <span className="text-gray-500">Status:</span>{" "}
