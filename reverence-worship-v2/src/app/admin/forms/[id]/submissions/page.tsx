@@ -4,6 +4,7 @@ import { PeriodScopeNotice } from "@/components/period-scope-notice";
 import { getUserPermissionSet, permissionSetHas, requireAnyPermission } from "@/lib/auth";
 import { getCurrentPeriod } from "@/lib/current-period";
 import { prisma } from "@/lib/prisma";
+import { syncFormSubmissionOptions } from "@/lib/intercession-option-sync";
 import { parseIntercessionFormSettings, parseIntercessionVisitorDetails } from "@/lib/intercession-form-domain";
 import { normalizeIntercessionResponseValue } from "@/lib/intercession-response-summary";
 import { intercessionAnswerForQuestion, intercessionAnswerText, intercessionResponseQuestionCatalog, intercessionSubmissionQuestions } from "@/lib/intercession-response-data";
@@ -79,11 +80,16 @@ export default async function IntercessionFormSubmissionsPage({
   const permissions = await getUserPermissionSet(user);
   const [{ id }, periodParams, period] = await Promise.all([params, searchParams, getCurrentPeriod()]);
   const formId = Number(id);
-  const scopedToPeriod = period.enabled && periodParams.all !== "1";
 
   if (!Number.isFinite(formId)) {
     notFound();
   }
+
+  const formQuestions = await prisma.spiritualForm.findUnique({ where: { id: formId }, select: { questions: true, settings: true } });
+  if (formQuestions) await syncFormSubmissionOptions(prisma, formId, formQuestions.questions);
+  // Annual commitment forms have their own year, so every response belongs to them.
+  const isCommitmentForm = Boolean(parseIntercessionFormSettings(formQuestions?.settings).commitment);
+  const scopedToPeriod = period.enabled && periodParams.all !== "1" && !isCommitmentForm;
 
   const form = await prisma.spiritualForm.findUnique({
     where: { id: formId },
@@ -132,7 +138,7 @@ export default async function IntercessionFormSubmissionsPage({
 
   return (
     <>
-      {period.enabled ? <PeriodScopeNotice showingAll={!scopedToPeriod} label={period.label} /> : null}
+      {period.enabled && !isCommitmentForm ? <PeriodScopeNotice showingAll={!scopedToPeriod} label={period.label} /> : null}
       <IntercessionSubmissionsClient
       form={{
         id: form.id,

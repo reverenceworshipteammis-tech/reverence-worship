@@ -38,6 +38,7 @@ import {
   questionImagePaths,
 } from "@/lib/intercession-question-images";
 import { intercessionAnswerForQuestion, intercessionSubmissionQuestions } from "@/lib/intercession-response-data";
+import { syncFormSubmissionOptions } from "@/lib/intercession-option-sync";
 import { commitmentAcceptanceLabel, parseCommitmentSettings, type CommitmentSnapshot } from "@/lib/membership-commitment";
 import { prepareCommitmentFormSettings } from "@/lib/membership-commitment-service";
 import { recordMembershipCommitment } from "@/lib/membership-commitment-record";
@@ -756,8 +757,10 @@ export async function updateSpiritualFormFromBuilder(formId: number, formData: F
       title, description: readString(formData, "description"), questions: questions as Prisma.InputJsonValue, settings: mergedSettings,
       ...(questionsChanged ? { version: { increment: 1 } } : {}),
     } });
+    // Renamed answer options are applied to submissions already received.
+    await syncFormSubmissionOptions(tx, formId, questions);
     return { ok: true as const, form };
-  });
+  }, { timeout: 30000 });
   if (!updateResult.ok) return updateResult;
   const updated = updateResult.form;
 
