@@ -65,7 +65,8 @@ async function safeRead<T>(promise: Promise<T>, fallback: T) {
 export default async function FinancePage() {
   const currentUser = await requirePageAccess("finance");
   const permissionSet = await getUserPermissionSet(currentUser);
-  const year = (await getCurrentPeriod()).year;
+  const currentPeriod = await getCurrentPeriod();
+  const year = currentPeriod.year;
 
   const [users, families, contributions, payments, contributionEvents, gifts, expenses, sponsors, actionPlans, termSettings] = await Promise.all([
     safeRead(
@@ -167,6 +168,7 @@ export default async function FinancePage() {
   return (
     <FinanceClient
       year={year}
+      period={{ from: currentPeriod.from, to: currentPeriod.to }}
       currentUserId={currentUser.id}
       permissions={{
         manageContributions: permissionSetHas(permissionSet, "finance", "manage-contributions"),

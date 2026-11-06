@@ -234,6 +234,7 @@ type ConfirmAction = {
 
 export function FinanceClient({
   year,
+  period,
   currentUserId,
   users,
   families,
@@ -248,6 +249,7 @@ export function FinanceClient({
   permissions,
 }: {
   year: number;
+  period: { from: string; to: string };
   currentUserId: number;
   users: UserOption[];
   families: FamilyOption[];
@@ -302,8 +304,8 @@ export function FinanceClient({
   );
   const [activeTab, setActiveTab] = useState("overview");
   const [contributionView, setContributionView] = useState<"annual" | "events">("annual");
-  const [startDate, setStartDate] = useState(`${year}-01-01`);
-  const [endDate, setEndDate] = useState(`${year}-12-31`);
+  const [startDate, setStartDate] = useState(period.from);
+  const [endDate, setEndDate] = useState(period.to);
   const tabs = [
     { id: "overview", label: "Overview", mobileLabel: "Home", icon: BarChart3 },
     ...(permissions.manageSettings ? [{ id: "settings", label: "Settings", mobileLabel: "Settings", icon: Settings }] : []),
@@ -437,6 +439,7 @@ export function FinanceClient({
                   </div>
                   <FinanceContributionsTab
                     currentYear={year}
+                    period={period}
                     users={users}
                     families={families}
                     contributions={contributions}
@@ -478,6 +481,7 @@ export function FinanceClient({
           ) : activeTab === "expenses" ? (
             <FinanceExpensesTab
               currentYear={year}
+              period={period}
               currentUserId={currentUserId}
               accountBalance={stats.accountBalance}
               expenses={expenses}
@@ -1413,6 +1417,7 @@ type ContributionSortField = "member" | "progress" | `term-${number}`;
 
 function FinanceContributionsTab({
   currentYear,
+  period,
   users,
   families,
   contributions,
@@ -1424,6 +1429,7 @@ function FinanceContributionsTab({
   setToDate,
 }: {
   currentYear: number;
+  period: { from: string; to: string };
   users: UserOption[];
   families: FamilyOption[];
   contributions: Contribution[];
@@ -1450,12 +1456,15 @@ function FinanceContributionsTab({
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const selectedYear = Number(fromDate.slice(0, 4)) || currentYear;
-  const selectedYearEnd = `${selectedYear}-12-31`;
+  const fromInPeriod = Boolean(fromDate) && fromDate >= period.from && fromDate <= period.to;
+  const selectedYear = fromInPeriod ? currentYear : Number(fromDate.slice(0, 4)) || currentYear;
+  const selectedYearEnd = fromInPeriod ? period.to : `${selectedYear}-12-31`;
+  const selectedYearStartMs = fromInPeriod ? Date.parse(`${period.from}T00:00:00.000Z`) : Date.UTC(selectedYear, 0, 1);
+  const selectedYearEndMs = fromInPeriod ? Date.parse(`${period.to}T00:00:00.000Z`) : Date.UTC(selectedYear + 1, 0, 1) - 1;
 
   const yearFamilies = useMemo(
-    () => families.filter((family) => family.year === selectedYear),
-    [families, selectedYear],
+    () => families,
+    [families],
   );
   const termSetting = termSettings.find((setting) => setting.currentYear === selectedYear);
   const termPercentages = percentagesFromSetting(termSetting, termSetting?.numberOfTerms ?? 3);
@@ -1476,7 +1485,6 @@ function FinanceContributionsTab({
   const rows = useMemo(() => {
     const query = search.trim().toLowerCase();
     return users
-      .filter((user) => user.familyYear === selectedYear || !user.familyYear)
       .filter((user) => familyFilter === "all" || user.familyId === Number(familyFilter))
       .filter((user) => !query || user.name.toLowerCase().includes(query))
       .map((user) => {
@@ -1499,33 +1507,31 @@ function FinanceContributionsTab({
           user,
           contribution,
           annualAmount,
-          familyName: user.familyYear === selectedYear ? user.familyName : null,
+          familyName: user.familyName,
           termRows,
           totalPaid,
           progress,
         };
       });
-  }, [users, selectedYear, familyFilter, search, contributionMap, paymentsForRange, termNumbers, termPercentages]);
+  }, [users, familyFilter, search, contributionMap, paymentsForRange, termNumbers, termPercentages]);
 
   const memberStats = useMemo(() => {
     const annualExpected = rows.reduce((sum, row) => sum + row.annualAmount, 0);
     const totalReceived = rows.reduce((sum, row) => sum + row.totalPaid, 0);
     const rangeStart = Date.parse(`${fromDate}T00:00:00.000Z`);
     const rangeEnd = Date.parse(`${toDate}T00:00:00.000Z`);
-    const yearStart = Date.UTC(selectedYear, 0, 1);
-    const nextYearStart = Date.UTC(selectedYear + 1, 0, 1);
-    const clampedStart = Math.max(rangeStart, yearStart);
-    const clampedEnd = Math.min(rangeEnd, nextYearStart - 1);
+    const clampedStart = Math.max(rangeStart, selectedYearStartMs);
+    const clampedEnd = Math.min(rangeEnd, selectedYearEndMs);
     const selectedDays = Number.isFinite(clampedStart) && Number.isFinite(clampedEnd) && clampedEnd >= clampedStart
       ? Math.floor((clampedEnd - clampedStart) / 86_400_000) + 1
       : 0;
-    const daysInYear = Math.round((nextYearStart - yearStart) / 86_400_000);
+    const daysInYear = Math.round((selectedYearEndMs - selectedYearStartMs) / 86_400_000) + 1;
     const totalExpected = Math.round(annualExpected * (selectedDays / daysInYear));
     const pendingAmount = Math.max(totalExpected - totalReceived, 0);
     const contributionRate = calculateContributionRate(totalReceived, totalExpected);
 
     return { totalExpected, totalReceived, pendingAmount, contributionRate };
-  }, [rows, fromDate, toDate, selectedYear]);
+  }, [rows, fromDate, toDate, selectedYearStartMs, selectedYearEndMs]);
 
   const sortedRows = useMemo(() => {
     const direction = sortDirection === "asc" ? 1 : -1;
@@ -1660,8 +1666,13 @@ function FinanceContributionsTab({
                 onChange={(event) => {
                   const nextFromDate = event.target.value;
                   const nextYear = Number(nextFromDate.slice(0, 4)) || currentYear;
+                  const nextInPeriod = nextFromDate >= period.from && nextFromDate <= period.to;
                   setFromDate(nextFromDate);
-                  if (!toDate || toDate.slice(0, 4) !== String(nextYear) || toDate < nextFromDate) setToDate(`${nextYear}-12-31`);
+                  if (nextInPeriod) {
+                    if (!toDate || toDate > period.to || toDate < nextFromDate) setToDate(period.to);
+                  } else if (!toDate || toDate.slice(0, 4) !== String(nextYear) || toDate < nextFromDate) {
+                    setToDate(`${nextYear}-12-31`);
+                  }
                   setFamilyFilter("all");
                   setRequestedPage(1);
                 }}
@@ -1767,7 +1778,7 @@ function FinanceContributionsTab({
               <tr key={row.user.id}>
                 <td className="min-w-56 px-3 py-3">
                   <p className="font-medium text-gray-800">{row.user.name}</p>
-                  <p className={`mt-1 text-xs text-gray-400 ${row.familyName ? "" : "italic"}`}>{row.familyName ?? `No Family in ${selectedYear}`}</p>
+                  <p className={`mt-1 text-xs text-gray-400 ${row.familyName ? "" : "italic"}`}>{row.familyName ?? "No Family"}</p>
                 </td>
                 {row.termRows.map((term) => (
                   <td key={term.term} className="min-w-[120px] px-3 py-2">
@@ -1834,7 +1845,7 @@ function FinanceContributionsTab({
             <div className="bg-gray-50 px-3 py-2">
               <p className="font-medium text-gray-800">{row.user.name}</p>
               <div className="mt-1 flex flex-wrap gap-2 text-xs text-gray-500">
-                <span className={row.familyName ? "" : "italic"}>{row.familyName ?? `No Family in ${selectedYear}`}</span>
+                <span className={row.familyName ? "" : "italic"}>{row.familyName ?? "No Family"}</span>
               </div>
             </div>
             <div className="divide-y divide-gray-100">
@@ -2202,6 +2213,7 @@ function FinancePaymentsTab({
 
 function FinanceExpensesTab({
   currentYear,
+  period,
   currentUserId,
   accountBalance,
   expenses,
@@ -2213,6 +2225,7 @@ function FinanceExpensesTab({
   onEndDateChange,
 }: {
   currentYear: number;
+  period: { from: string; to: string };
   currentUserId: number;
   accountBalance: number;
   expenses: Expense[];
@@ -2269,8 +2282,8 @@ function FinanceExpensesTab({
   };
 
   function resetFilters() {
-    onStartDateChange(`${currentYear}-01-01`);
-    onEndDateChange(`${currentYear}-12-31`);
+    onStartDateChange(period.from);
+    onEndDateChange(period.to);
     setStatusFilter("all");
     setApproverFilter("all");
     setRequestedPage(1);
