@@ -231,7 +231,7 @@ async function writeAttendanceSession(formData: FormData, complete: boolean) {
   const requestedAttendanceUserIds = [...new Set(records.map((record) => Number(record.userId)))];
   const attendanceUsers = await prisma.user.findMany({
     where: { id: { in: requestedAttendanceUserIds }, ...excludeSuperAdminUserWhere() },
-    select: { id: true, createdAt: true, membershipType: true },
+    select: { id: true, createdAt: true },
   });
   if (attendanceUsers.length !== requestedAttendanceUserIds.length) {
     return { ok: false, message: "Attendance can include normal member accounts only. Super Admin is a protected system account." };
@@ -242,10 +242,6 @@ async function writeAttendanceSession(formData: FormData, complete: boolean) {
   if (ineligibleUserIds.length > 0) {
     return { ok: false, message: "Attendance can only include users who joined on or before the session date." };
   }
-  if (attendanceUsers.some((attendanceUser) => attendanceUser.membershipType === "temporary")) {
-    return { ok: false, message: "Non-Permanent members are not included in attendance." };
-  }
-
   const existingSession = await prisma.attendanceSession.findUnique({
     where: {
       sessionDate_sessionType: {
@@ -424,11 +420,11 @@ export async function importAttendanceCsv(formData: FormData) {
       });
     });
   }
-  let users: Array<{ id: number; email: string; createdAt: Date; membershipType: string | null }>;
+  let users: Array<{ id: number; email: string; createdAt: Date }>;
   try {
     users = await prisma.user.findMany({
       where: excludeSuperAdminUserWhere(),
-      select: { id: true, email: true, createdAt: true, membershipType: true },
+      select: { id: true, email: true, createdAt: true },
     });
   } catch (error) {
     return { ok: false, message: attendanceImportDatabaseFailure(error) };
@@ -465,10 +461,6 @@ export async function importAttendanceCsv(formData: FormData) {
     }
     if (kigaliDateKey(matchedUser.createdAt) > sessionDate) {
       failures.push(`${location}: ${email} joined after the session date`);
-      return;
-    }
-    if (matchedUser.membershipType === "temporary") {
-      failures.push(`${location}: ${email} is a non-permanent member`);
       return;
     }
     if (!status) {

@@ -60,7 +60,6 @@ export default async function ProbationPage({
     prisma.user.findMany({
       where: {
         status: "active",
-        OR: [{ membershipType: null }, { membershipType: { not: "temporary" } }],
         probations: { none: { state: { in: ["active", "extended"] } } },
         roles: { none: { role: { name: { in: ["admin", "super-admin"] } } } },
       },

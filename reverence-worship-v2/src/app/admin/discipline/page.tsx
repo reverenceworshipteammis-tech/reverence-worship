@@ -167,7 +167,6 @@ export default async function DisciplinePage({
             INNER JOIN "users" users ON users."id" = records."user_id"
             WHERE records."session_date" BETWEEN ${startCalendarDate} AND ${endCalendarDate}
               AND users."status" = 'active'
-              AND (users."membership_type" IS NULL OR users."membership_type" <> 'temporary')
               AND NOT EXISTS (
                 SELECT 1 FROM "role_user" system_role
                 INNER JOIN "roles" role ON role."id" = system_role."role_id"
@@ -178,7 +177,6 @@ export default async function DisciplinePage({
             WHERE records."session_date" BETWEEN ${startCalendarDate} AND ${endCalendarDate}
               AND records."status" = 'present'
               AND users."status" = 'active'
-              AND (users."membership_type" IS NULL OR users."membership_type" <> 'temporary')
               AND NOT EXISTS (
                 SELECT 1 FROM "role_user" system_role
                 INNER JOIN "roles" role ON role."id" = system_role."role_id"
@@ -189,7 +187,6 @@ export default async function DisciplinePage({
             WHERE records."session_date" BETWEEN ${startCalendarDate} AND ${endCalendarDate}
               AND records."communicated" = true
               AND users."status" = 'active'
-              AND (users."membership_type" IS NULL OR users."membership_type" <> 'temporary')
               AND NOT EXISTS (
                 SELECT 1 FROM "role_user" system_role
                 INNER JOIN "roles" role ON role."id" = system_role."role_id"
@@ -199,7 +196,6 @@ export default async function DisciplinePage({
             INNER JOIN "users" users ON users."id" = records."user_id"
             WHERE records."created_at" BETWEEN ${startDate} AND ${endDate}
               AND users."status" = 'active'
-              AND (users."membership_type" IS NULL OR users."membership_type" <> 'temporary')
               AND NOT EXISTS (
                 SELECT 1 FROM "role_user" system_role
                 INNER JOIN "roles" role ON role."id" = system_role."role_id"
@@ -210,7 +206,6 @@ export default async function DisciplinePage({
             WHERE records."created_at" BETWEEN ${startDate} AND ${endDate}
               AND records."type" = 'positive'
               AND users."status" = 'active'
-              AND (users."membership_type" IS NULL OR users."membership_type" <> 'temporary')
               AND NOT EXISTS (
                 SELECT 1 FROM "role_user" system_role
                 INNER JOIN "roles" role ON role."id" = system_role."role_id"
@@ -243,7 +238,6 @@ export default async function DisciplinePage({
       prisma.attendanceRecord.findMany({
         where: {
           sessionDate: { gte: attendanceStartDate, lte: attendanceEndDate },
-          user: { is: { OR: [{ membershipType: null }, { membershipType: { not: "temporary" } }] } },
         },
         orderBy: [{ sessionDate: "desc" }, { sessionType: "asc" }, { user: { name: "asc" } }],
         include: {
@@ -256,7 +250,6 @@ export default async function DisciplinePage({
       prisma.user.findMany({
         where: {
           status: "active",
-          OR: [{ membershipType: null }, { membershipType: { not: "temporary" } }],
           ...excludeSuperAdminUserWhere(),
         },
         orderBy: { name: "asc" },

@@ -197,7 +197,7 @@ export function LandingPageClient({ dashboardHref, videos, pictures, events }: L
           </nav>
 
           <div className="ml-auto flex shrink-0 items-center gap-1.5 md:hidden">
-            <Link href="/join" onClick={() => setMenuOpen(false)} className="inline-flex h-[34px] items-center rounded-full bg-white/10 px-2.5 text-[11px] font-bold hover:bg-white/15">Join us</Link>
+            <a href="#about" onClick={() => setMenuOpen(false)} className="inline-flex h-[34px] items-center rounded-full bg-white/10 px-2.5 text-[11px] font-bold hover:bg-white/15">About us</a>
             <Link href={dashboardHref ?? "/login"} onClick={() => setMenuOpen(false)} className="inline-flex h-[34px] items-center rounded-full border border-white/50 bg-white/10 px-2.5 text-[11px] font-bold hover:bg-white/15">
               {dashboardHref ? "Dashboard" : "Login"}
             </Link>
