@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ImageResponse } from "next/og";
 
-export const alt = "Reverence Worship Team — Worship. Ministry. Community.";
+export const alt = "Reverence Worship Team — Hebrews 12:28";
 export const size = {
   width: 1200,
   height: 630,
@@ -92,7 +92,7 @@ export default async function OpenGraphImage() {
                 backgroundColor: "#d6b66e",
               }}
             />
-            WORSHIP. MINISTRY. COMMUNITY.
+            HEBREWS 12:28
             <div
               style={{
                 width: "34px",

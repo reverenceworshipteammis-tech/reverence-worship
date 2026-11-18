@@ -15,8 +15,7 @@ const playfair = Playfair_Display({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.reverenceworshipteam.rw"),
-  title: "Reverence Worship",
-  description: "Ministry management for Reverence Worship.",
+  title: "Reverence Worship Team",
   verification: {
     google: "Wjwy81ZQznEuL3ziUJAh81WVE8eUa4Z4rM9VFNxWWOA",
   },
