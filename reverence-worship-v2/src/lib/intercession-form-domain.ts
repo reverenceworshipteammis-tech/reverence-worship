@@ -366,6 +366,10 @@ function normalizedText(value: unknown) {
   return String(value ?? "").trim().replace(/\s+/g, " ").toLocaleLowerCase();
 }
 
+function normalizedFreeTextAnswer(value: unknown) {
+  return String(value ?? "").replace(/\s+/g, "").toLocaleLowerCase();
+}
+
 function answerValues(value: unknown) {
   const values = Array.isArray(value) ? value.map(normalizedText) : [normalizedText(value)];
   return [...new Set(values.filter(Boolean))].sort();
@@ -435,6 +439,9 @@ export function scoreIntercessionQuiz(questions: IntercessionFormQuestion[], ans
       const expected = answerValues(question.correctAnswers);
       const actual = answerValues(submitted);
       earnedPoints = question.points * selectionCredit(expected, actual, partial);
+    } else if (question.type === "short_answer" || question.type === "paragraph") {
+      const actual = normalizedFreeTextAnswer(submitted);
+      earnedPoints = actual && actual === normalizedFreeTextAnswer(question.correctAnswer) ? question.points : 0;
     } else {
       earnedPoints = normalizedText(submitted) && normalizedText(submitted) === normalizedText(question.correctAnswer) ? question.points : 0;
     }

@@ -95,6 +95,21 @@ test("quiz scoring supports exact and partial checkbox marks", () => {
   assert.equal(result.earnedPoints, 3);
 });
 
+test("short and paragraph answers ignore case and whitespace when graded", () => {
+  const questions = parseIntercessionFormQuestions([
+    { id: "short", type: "short_answer", label: "Short answer", points: 1, correctAnswer: "Kuva 14:21-22" },
+    { id: "paragraph", type: "paragraph", label: "Paragraph", points: 1, correctAnswer: "God is good" },
+  ]);
+  const result = scoreIntercessionQuiz(
+    questions,
+    { question_0: "  KUVA 14:21 - 22 ", question_1: "GOD\tIS\nGOOD" },
+    new Set([0, 1]),
+    false,
+  );
+  assert.equal(result.earnedPoints, 2);
+  assert.equal(scoreIntercessionQuiz(questions, { question_0: "   ", question_1: "God is great" }, new Set([0, 1]), false).earnedPoints, 0);
+});
+
 test("partial credit notice only appears when wrong checkbox selections cancel correct selections", () => {
   const checkbox = parseIntercessionFormQuestions([
     { id: "check", type: "checkboxes", label: "Select", points: 2, correctAnswers: ["A", "B"] },
