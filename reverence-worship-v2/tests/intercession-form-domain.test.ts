@@ -13,6 +13,7 @@ import {
   parseIntercessionFormQuestions,
   parseIntercessionFormSettings,
   intercessionPartialCreditWasDeducted,
+  reconcileIntercessionWhitespaceGrades,
   scoreIntercessionQuiz,
   visibleIntercessionQuestions,
 } from "../src/lib/intercession-form-domain";
@@ -108,6 +109,43 @@ test("short and paragraph answers ignore case and whitespace when graded", () =>
   );
   assert.equal(result.earnedPoints, 2);
   assert.equal(scoreIntercessionQuiz(questions, { question_0: "   ", question_1: "God is great" }, new Set([0, 1]), false).earnedPoints, 0);
+});
+
+test("reconciliation restores whitespace-related marks without changing other grades", () => {
+  const questions = parseIntercessionFormQuestions([
+    { type: "short_answer", points: 2, correctAnswer: "Kuva 14:21-22" },
+    { type: "paragraph", points: 3, correctAnswer: "God is good" },
+    { type: "multiple_choice", points: 5, correctAnswer: "Yes" },
+  ]);
+  const answers = { question_0: " KUVA 14 :21 - 22 ", question_1: "Godis good", question_2: "No" };
+  const grades = [
+    { questionIndex: 0, correct: false, points: 2, earnedPoints: 0 },
+    { questionIndex: 1, correct: false, points: 3, earnedPoints: 0 },
+    { questionIndex: 2, correct: false, points: 5, earnedPoints: 1 },
+  ];
+  const result = reconcileIntercessionWhitespaceGrades(questions, answers, grades, 10);
+  assert.equal(result.status, "corrected");
+  if (result.status !== "corrected") return;
+  assert.equal(result.score, 60);
+  assert.equal(result.addedPoints, 5);
+  assert.deepEqual(result.grades[2], grades[2]);
+  assert.deepEqual(result.grades.slice(0, 2).map((grade) => grade.earnedPoints), [2, 3]);
+  assert.equal(reconcileIntercessionWhitespaceGrades(questions, answers, result.grades, result.score).status, "unchanged");
+});
+
+test("reconciliation rejects inconsistent grades and does not award unrelated answers", () => {
+  const questions = parseIntercessionFormQuestions([
+    { type: "short_answer", points: 1, correctAnswer: "Kuva 14:21-22" },
+    { type: "multiple_choice", points: 1, correctAnswer: "Yes No" },
+  ]);
+  const grades = [
+    { questionIndex: 0, correct: false, points: 1, earnedPoints: 0 },
+    { questionIndex: 1, correct: false, points: 1, earnedPoints: 0 },
+  ];
+  assert.equal(reconcileIntercessionWhitespaceGrades(questions, { question_0: "Kuva 14:21-23", question_1: "YesNo" }, grades, 0).status, "unchanged");
+  assert.equal(reconcileIntercessionWhitespaceGrades(questions, { question_0: " " }, grades, 0).status, "unchanged");
+  assert.equal(reconcileIntercessionWhitespaceGrades(questions, { question_0: "Kuva 14 :21-22" }, grades, 50).status, "invalid");
+  assert.equal(reconcileIntercessionWhitespaceGrades(questions, {}, [grades[0], grades[0]], 0).status, "invalid");
 });
 
 test("partial credit notice only appears when wrong checkbox selections cancel correct selections", () => {

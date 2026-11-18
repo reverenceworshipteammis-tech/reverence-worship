@@ -450,3 +450,51 @@ export function scoreIntercessionQuiz(questions: IntercessionFormQuestion[], ans
   });
   return { score: total > 0 ? Math.round((earned / total) * 1000) / 10 : null, grades, earnedPoints: Math.round(earned * 100) / 100, totalPoints: total };
 }
+
+export function reconcileIntercessionWhitespaceGrades(
+  questions: IntercessionFormQuestion[],
+  answersValue: unknown,
+  gradesValue: unknown,
+  score: number,
+) {
+  if (!answersValue || typeof answersValue !== "object" || Array.isArray(answersValue) || !Array.isArray(gradesValue) || !Number.isFinite(score)) {
+    return { status: "invalid" as const };
+  }
+  const answers = record(answersValue);
+  const grades: Record<string, unknown>[] = [];
+  const indexes = new Set<number>();
+  let total = 0;
+  let earned = 0;
+  let added = 0;
+  for (const value of gradesValue) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return { status: "invalid" as const };
+    const grade = record(value);
+    const index = grade.questionIndex;
+    const points = grade.points;
+    const earnedPoints = grade.earnedPoints === undefined && typeof grade.correct === "boolean"
+      ? grade.correct ? points : 0
+      : grade.earnedPoints;
+    if (typeof index !== "number" || !Number.isInteger(index) || index < 0 || indexes.has(index)
+      || typeof points !== "number" || !Number.isFinite(points) || points <= 0
+      || typeof earnedPoints !== "number" || !Number.isFinite(earnedPoints) || earnedPoints < 0 || earnedPoints > points
+      || typeof grade.correct !== "boolean") return { status: "invalid" as const };
+    indexes.add(index);
+    total += points;
+    earned += earnedPoints;
+    const question = questions[index];
+    const submitted = answers[`question_${index}`];
+    if (question && (question.type === "short_answer" || question.type === "paragraph")
+      && question.points === points && earnedPoints === 0 && !grade.correct
+      && typeof submitted === "string" && normalizedFreeTextAnswer(submitted)
+      && normalizedText(submitted) !== normalizedText(question.correctAnswer)
+      && normalizedFreeTextAnswer(submitted) === normalizedFreeTextAnswer(question.correctAnswer)) {
+      grades.push({ ...grade, correct: true, earnedPoints: points });
+      added += points;
+    } else {
+      grades.push(grade);
+    }
+  }
+  if (!total || Math.abs(score - Math.round((earned / total) * 1000) / 10) > 0.11) return { status: "invalid" as const };
+  if (!added) return { status: "unchanged" as const };
+  return { status: "corrected" as const, grades, score: Math.round(((earned + added) / total) * 1000) / 10, addedPoints: added };
+}
