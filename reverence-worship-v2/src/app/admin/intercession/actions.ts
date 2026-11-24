@@ -37,7 +37,7 @@ import {
   parseQuestionImages,
   questionImagePaths,
 } from "@/lib/intercession-question-images";
-import { intercessionAnswerForQuestion, intercessionSubmissionQuestions } from "@/lib/intercession-response-data";
+import { intercessionAnswerForQuestion, intercessionQuizComment, intercessionSubmissionQuestions, parseIntercessionQuizComment } from "@/lib/intercession-response-data";
 import { syncFormSubmissionOptions } from "@/lib/intercession-option-sync";
 import { commitmentAcceptanceLabel, parseCommitmentSettings, type CommitmentSnapshot } from "@/lib/membership-commitment";
 import { prepareCommitmentFormSettings } from "@/lib/membership-commitment-service";
@@ -950,6 +950,11 @@ export async function submitSpiritualForm(formId: number, formData: FormData) {
     : intercessionFormAvailability(settings, form.isActive, form._count.submissions);
   if (availability) return { ok: false, message: availability };
 
+  const quizComment = settings.is_quiz
+    ? parseIntercessionQuizComment(formData.get("quiz_comment"))
+    : { ok: true as const, comment: editSubmission ? intercessionQuizComment(editSubmission.answers) : "" };
+  if (!quizComment.ok) return quizComment;
+
   const respondentName = user?.name ?? normalizeIntercessionRespondentName(formData.get("profile_name") ?? formData.get("respondent_name"));
   const visitorDetails = !user && !settings.commitment ? validateVisitorDetails(settings.visitor_fields, formData) : { ok: true as const, details: [] };
   if (!visitorDetails.ok) return { ok: false, message: visitorDetails.message };
@@ -1039,6 +1044,7 @@ export async function submitSpiritualForm(formId: number, formData: FormData) {
     return { ok: false, message: "Your browser could not create a response key. Refresh this page and try again." };
   }
   if (responseKey) answers.__respondentKey = responseKey;
+  if (quizComment.comment) answers.__quizComment = quizComment.comment;
 
   const quizResult = settings.is_quiz
     ? scoreIntercessionQuiz(questions, answers, visibleIndexes, settings.allow_partial_points)

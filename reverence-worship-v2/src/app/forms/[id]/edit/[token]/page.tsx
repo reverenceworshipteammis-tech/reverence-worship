@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { IntercessionTakeForm } from "@/components/intercession-take-form";
 import { getCurrentUser } from "@/lib/auth";
 import { parseIntercessionFormSettings, parseIntercessionVisitorDetails } from "@/lib/intercession-form-domain";
-import { intercessionAnswerForQuestion, intercessionSubmissionQuestions } from "@/lib/intercession-response-data";
+import { intercessionAnswerForQuestion, intercessionQuizComment, intercessionSubmissionQuestions } from "@/lib/intercession-response-data";
 import { prisma } from "@/lib/prisma";
 
 export default async function EditFormResponsePage({ params }: { params: Promise<{ id: string; token: string }> }) {
@@ -21,6 +21,7 @@ export default async function EditFormResponsePage({ params }: { params: Promise
   if (submission.userId && user?.id !== submission.userId) notFound();
   const questions = intercessionSubmissionQuestions(submission.questionSnapshot, submission.form.questions);
   const initialValues: Record<string, string | string[]> = {};
+  if (settings.is_quiz) initialValues.quiz_comment = intercessionQuizComment(submission.answers);
   questions.forEach((question, index) => {
     const value = intercessionAnswerForQuestion(submission.answers, questions, question.id);
     if (value && typeof value === "object" && !Array.isArray(value)) {

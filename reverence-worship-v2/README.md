@@ -16,6 +16,10 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Quiz comments
+
+Quiz forms include an optional comment before submission. Comments are saved with the response, shown in response review, and included in response exports; they do not affect quiz marks.
+
 ## Correcting previous quiz marks
 
 After deploying the short-answer and paragraph whitespace grading fix, back up the target database and run `npm run forms:reconcile-whitespace-marks` against it to preview corrections. Run `npm run forms:reconcile-whitespace-marks -- --apply` to save them. The command can be rerun safely; it changes only answers newly matching under the whitespace rule, preserving other grades and release settings. Manually reviewed submissions, submissions without question snapshots, and inconsistent grades are skipped and counted for manual review.

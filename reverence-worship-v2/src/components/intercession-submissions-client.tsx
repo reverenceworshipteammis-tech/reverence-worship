@@ -36,6 +36,7 @@ type SubmissionRow = {
   deletedAt: string | null;
   formVersion: number;
   completionSeconds: number | null;
+  comment: string;
   answers: Array<{
     questionId: string;
     questionIndex: number;
@@ -679,6 +680,12 @@ function ReviewSubmissionModal({
               </div>
             )}
           </div>
+          {submission.comment ? (
+            <section className="mt-3 rounded-xl border border-slate-200 bg-white p-4">
+              <h3 className="text-sm font-bold text-slate-900">Comment</h3>
+              <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-700">{submission.comment}</p>
+            </section>
+          ) : null}
         </div>
 
         <div className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:justify-end">

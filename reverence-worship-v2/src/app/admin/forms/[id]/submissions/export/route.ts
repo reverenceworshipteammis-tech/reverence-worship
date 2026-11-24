@@ -1,6 +1,6 @@
 import { requireAnyPermission } from "@/lib/auth";
 import { intercessionScoreMarks, parseIntercessionFormSettings, parseIntercessionVisitorDetails } from "@/lib/intercession-form-domain";
-import { intercessionAnswerForQuestion, intercessionAnswerText, intercessionResponseQuestionCatalog, intercessionSubmissionQuestions } from "@/lib/intercession-response-data";
+import { intercessionAnswerForQuestion, intercessionAnswerText, intercessionQuizComment, intercessionResponseQuestionCatalog, intercessionSubmissionQuestions } from "@/lib/intercession-response-data";
 import { intercessionRichTextToPlainText } from "@/lib/intercession-rich-text";
 import { prisma } from "@/lib/prisma";
 import { createXlsxWorkbook, type XlsxCell } from "@/lib/xlsx-workbook";
@@ -47,6 +47,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       type: submission.user ? "Member" : "Guest",
       visitorDetails,
       answers,
+      comment: intercessionQuizComment(submission.answers),
     };
   }).filter((row) => {
     if (status === "active" && row.submission.deletedAt || status === "trash" && !row.submission.deletedAt) return false;
@@ -75,7 +76,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   });
 
   const visitorColumns = Array.from(new Map(prepared.flatMap((row) => row.visitorDetails.map((detail) => [detail.fieldId, detail.label] as const))).entries());
-  const responseHeader: XlsxCell[] = ["No.", "Responder", "Type", ...visitorColumns.map(([, label]) => label), ...(settings.include_timestamps ? ["Submitted"] : []), ...catalog.map((question, index) => `Q${index + 1}: ${plain(question.label)}`), ...(settings.is_quiz ? ["Score"] : [])];
+  const includeComment = settings.is_quiz || prepared.some((row) => row.comment);
+  const responseHeader: XlsxCell[] = ["No.", "Responder", "Type", ...visitorColumns.map(([, label]) => label), ...(settings.include_timestamps ? ["Submitted"] : []), ...catalog.map((question, index) => `Q${index + 1}: ${plain(question.label)}`), ...(includeComment ? ["Comment"] : []), ...(settings.is_quiz ? ["Score"] : [])];
   const responseRows: XlsxCell[][] = prepared.map((row, index) => [
     index + 1,
     row.name,
@@ -86,6 +88,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     }),
     ...(settings.include_timestamps ? [row.submission.submittedAt] : []),
     ...catalog.map((question) => intercessionAnswerText(row.answers.find((answer) => answer.questionId === question.id)?.value ?? null)),
+    ...(includeComment ? [row.comment] : []),
     ...(settings.is_quiz ? [row.submission.score === null ? null : intercessionScoreMarks(row.submission.manualGrades)] : []),
   ]);
 

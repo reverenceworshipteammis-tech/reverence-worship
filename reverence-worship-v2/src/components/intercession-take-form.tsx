@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ActionNotice } from "@/components/action-notice";
 import { intercessionMobileSteps } from "@/lib/intercession-mobile-steps";
+import { MAX_QUIZ_COMMENT_LENGTH } from "@/lib/intercession-response-data";
 import { FormEvent, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { ArrowLeft, CheckCircle2, Clock, FileText, Info, Lock, Paperclip, Presentation, Send } from "lucide-react";
 import { submitSpiritualForm } from "@/app/admin/intercession/actions";
@@ -245,7 +246,7 @@ export function IntercessionTakeForm({
     const data = new FormData(target);
     const values: Record<string, string | string[]> = {};
     for (const [key, value] of data.entries()) {
-      if (!key.startsWith("visitor_") && !key.startsWith("question_") || value instanceof File) continue;
+      if (!key.startsWith("visitor_") && !key.startsWith("question_") && key !== "quiz_comment" || value instanceof File) continue;
       const all = data.getAll(key).filter((item): item is string => typeof item === "string");
       values[key] = all.length > 1 ? all : String(value);
     }
@@ -434,7 +435,7 @@ export function IntercessionTakeForm({
           <fieldset disabled={isPending} className="contents">
           {settings.commitment ? <input type="hidden" name="commitment_version" value={form.version ?? 0} /> : null}
           {settings.commitment ? <div data-form-intro className={`${mobileSteps && activeStep > 0 ? "hidden sm:block" : ""} bg-slate-50 px-5 pt-5 sm:px-8 sm:pt-8`}><CommitmentMemberInformation config={settings.commitment} values={memberProfile} preview={preview} membershipQuestionLinked={questions.some((question) => question.membershipTypeMapping != null)} anonymous={!settings.require_login && !memberProfile} /></div> : null}
-          {requireRespondentName || displayQuestions.length > 0 || !settings.allow_empty_submission ? (
+          {requireRespondentName || displayQuestions.length > 0 || !settings.allow_empty_submission || settings.is_quiz ? (
             <div className="space-y-4 bg-slate-50 px-2 py-4 @min-[640px]/form:space-y-6 @min-[640px]/form:p-8">
               {requireRespondentName && !settings.commitment ? <div data-form-intro className={mobileSteps && activeStep > 0 ? "hidden sm:block" : ""}><VisitorInformationFields fields={parseIntercessionVisitorFields(settings.visitor_fields)} formId={form.id} errors={fieldErrors} /></div> : null}
               {Object.entries(fieldErrors).filter(([name]) => !name.startsWith("question_") && !name.startsWith("visitor_")).map(([name, error]) => <p key={name} id={`error-${name}`} role="alert" className="text-sm text-red-700">{error}</p>)}
@@ -455,6 +456,12 @@ export function IntercessionTakeForm({
               ) : (
                 !settings.commitment ? <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-sm text-gray-500">This form has no questions yet.</div> : null
               )}
+              {settings.is_quiz ? (
+                <div className={`${mobileSteps && activeStep < stepCount - 1 ? "hidden sm:block " : ""}rounded-xl border border-slate-200 bg-white p-4 sm:p-5`}>
+                  <label htmlFor="quiz-comment" className="block text-sm font-semibold text-slate-900">Comment <span className="font-normal text-slate-500">(optional)</span></label>
+                  <textarea id="quiz-comment" name="quiz_comment" rows={3} maxLength={MAX_QUIZ_COMMENT_LENGTH} placeholder="Leave a comment" className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200" />
+                </div>
+              ) : null}
             </div>
           ) : null}
 

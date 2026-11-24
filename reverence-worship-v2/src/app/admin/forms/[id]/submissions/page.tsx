@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { syncFormSubmissionOptions } from "@/lib/intercession-option-sync";
 import { parseIntercessionFormSettings, parseIntercessionVisitorDetails } from "@/lib/intercession-form-domain";
 import { normalizeIntercessionResponseValue } from "@/lib/intercession-response-summary";
-import { intercessionAnswerForQuestion, intercessionAnswerText, intercessionResponseQuestionCatalog, intercessionSubmissionQuestions } from "@/lib/intercession-response-data";
+import { intercessionAnswerForQuestion, intercessionAnswerText, intercessionQuizComment, intercessionResponseQuestionCatalog, intercessionSubmissionQuestions } from "@/lib/intercession-response-data";
 
 const INTERCESSION_TIME_ZONE = "Africa/Kigali";
 
@@ -205,6 +205,7 @@ export default async function IntercessionFormSubmissionsPage({
           deletedAt: submission.deletedAt ? formatDateTime(submission.deletedAt) : null,
           formVersion: submission.formVersion,
           completionSeconds: submission.completionSeconds,
+          comment: intercessionQuizComment(submission.answers),
           releasedAt: submission.releasedAt ? formatDateTime(submission.releasedAt) : null,
           answers: visibleReviewQuestions.map((question) => ({
             questionId: question.id,

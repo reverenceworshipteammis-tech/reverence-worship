@@ -4,6 +4,20 @@ export type IntercessionResponseQuestion = IntercessionFormQuestion & {
   questionIndex: number;
 };
 
+export const MAX_QUIZ_COMMENT_LENGTH = 20_000;
+
+export function parseIntercessionQuizComment(value: unknown): { ok: true; comment: string } | { ok: false; message: string } {
+  if (value === null || value === undefined) return { ok: true, comment: "" };
+  if (typeof value !== "string") return { ok: false, message: "The comment must be text." };
+  if (value.length > MAX_QUIZ_COMMENT_LENGTH) return { ok: false, message: `The comment must be ${MAX_QUIZ_COMMENT_LENGTH} characters or fewer.` };
+  return { ok: true, comment: value.trim() };
+}
+
+export function intercessionQuizComment(answersValue: unknown): string {
+  const comment = record(answersValue).__quizComment;
+  return typeof comment === "string" ? comment : "";
+}
+
 export function intercessionResponseQuestionCatalog(currentQuestions: unknown, snapshots: unknown[]): IntercessionResponseQuestion[] {
   const sources = [currentQuestions, ...snapshots];
   const seen = new Set<string>();

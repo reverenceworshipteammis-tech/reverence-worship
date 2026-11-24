@@ -12,6 +12,7 @@ import { IntercessionRichText } from "@/components/intercession-rich-text";
 import { IntercessionQuestionImages } from "@/components/intercession-question-images";
 import { parseQuestionImages, type IntercessionQuestionImage } from "@/lib/intercession-question-images";
 import { formatIntercessionMarks, intercessionPartialCreditWasDeducted } from "@/lib/intercession-form-domain";
+import { intercessionQuizComment } from "@/lib/intercession-response-data";
 
 type Question = {
   index: number;
@@ -163,6 +164,7 @@ export default async function MemberSubmissionResultPage({
 
   const settings = asObject(submission.form.settings);
   const answers = asObject(submission.answers);
+  const comment = intercessionQuizComment(submission.answers);
   const questions = parseQuestions(submission.questionSnapshot ?? submission.form.questions);
   const allowViewResponse = settings.allow_view_response !== false;
   const showQuestionNumbers = settings.show_question_numbers !== false;
@@ -269,6 +271,12 @@ export default async function MemberSubmissionResultPage({
                   );
                 })}
               </div>
+              {comment ? (
+                <section className="mt-4 rounded-xl border border-slate-200 bg-white p-5">
+                  <h3 className="font-semibold text-slate-900">Comment</h3>
+                  <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-800">{comment}</p>
+                </section>
+              ) : null}
             </div>
           ) : (
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-center">
