@@ -395,7 +395,7 @@ export function intercessionPartialCreditWasDeducted(
   if (question.type === "checkboxes") {
     expected = answerValues(question.correctAnswers);
     actual = answerValues(submitted);
-  } else if (question.type === "checkbox_grid") {
+  } else if (question.type === "checkbox_grid" || question.type === "multiple_choice_grid") {
     const submittedRows = record(submitted);
     const correctRows = record(question.correctAnswers);
     expected = question.rows.flatMap((_, rowIndex) =>

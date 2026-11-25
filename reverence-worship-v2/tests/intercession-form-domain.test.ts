@@ -163,6 +163,18 @@ test("partial credit notice only appears when wrong checkbox selections cancel c
   assert.equal(intercessionPartialCreditWasDeducted(grid, { row_0: ["A", "C"] }, 0), true);
 });
 
+test("partial credit notice covers multiple-choice grids with both correct and wrong rows", () => {
+  const [grid] = parseIntercessionFormQuestions([
+    { type: "multiple_choice_grid", rows: ["First", "Second"], columns: ["Yes", "No"], points: 2, correctAnswers: { row_0: "No", row_1: "Yes" } },
+  ]);
+  const mixed = { row_0: "No", row_1: "No" };
+  assert.equal(intercessionPartialCreditWasDeducted(grid, mixed, 0), true);
+  assert.equal(scoreIntercessionQuiz([grid], { question_0: mixed }, new Set([0]), true).earnedPoints, 0);
+  assert.equal(intercessionPartialCreditWasDeducted(grid, { row_0: "No", row_1: "" }, 0), false);
+  assert.equal(intercessionPartialCreditWasDeducted(grid, { row_0: "Yes", row_1: "No" }, 0), false);
+  assert.equal(intercessionPartialCreditWasDeducted(grid, { row_0: "No", row_1: "Yes" }, 0), false);
+});
+
 test("checkbox partial grading subtracts one correct selection for each wrong choice without going below zero", () => {
   const questions = parseIntercessionFormQuestions([
     { id: "check", type: "checkboxes", label: "Select", points: 4, correctAnswers: ["A", "B"] },
