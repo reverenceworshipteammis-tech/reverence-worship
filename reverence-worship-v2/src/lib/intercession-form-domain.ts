@@ -375,14 +375,28 @@ function answerValues(value: unknown) {
   return [...new Set(values.filter(Boolean))].sort();
 }
 
-function selectionCredit(expected: string[], actual: string[], allowPartial: boolean) {
+function selectionCredit(expected: string[], actual: string[], allowPartial: boolean, deductIncorrect = true) {
   if (!expected.length) return 0;
   const exact = expected.length === actual.length && expected.every((item, index) => item === actual[index]);
   if (exact) return 1;
   if (!allowPartial) return 0;
   const correctSelected = actual.filter((item) => expected.includes(item)).length;
   const incorrectSelected = actual.filter((item) => !expected.includes(item)).length;
-  return Math.max(0, Math.min(1, (correctSelected - incorrectSelected) / expected.length));
+  return Math.max(0, Math.min(1, (correctSelected - (deductIncorrect ? incorrectSelected : 0)) / expected.length));
+}
+
+function gridAnswerCells(question: Pick<IntercessionFormQuestion, "rows" | "correctAnswers">, submitted: unknown, questionIndex: number) {
+  const submittedRows = record(submitted);
+  const correctRows = record(question.correctAnswers);
+  const expected = question.rows.flatMap((_, rowIndex) =>
+    answerValues(correctRows[`row_${rowIndex}`] ?? correctRows[String(rowIndex)] ?? correctRows[`question_${questionIndex}_${rowIndex}`])
+      .map((value) => `${rowIndex}:${value}`),
+  );
+  const actual = question.rows.flatMap((_, rowIndex) =>
+    answerValues(submittedRows[`row_${rowIndex}`] ?? submittedRows[`question_${questionIndex}_${rowIndex}`])
+      .map((value) => `${rowIndex}:${value}`),
+  );
+  return { expected, actual };
 }
 
 export function intercessionPartialCreditWasDeducted(
@@ -395,17 +409,8 @@ export function intercessionPartialCreditWasDeducted(
   if (question.type === "checkboxes") {
     expected = answerValues(question.correctAnswers);
     actual = answerValues(submitted);
-  } else if (question.type === "checkbox_grid" || question.type === "multiple_choice_grid") {
-    const submittedRows = record(submitted);
-    const correctRows = record(question.correctAnswers);
-    expected = question.rows.flatMap((_, rowIndex) =>
-      answerValues(correctRows[`row_${rowIndex}`] ?? correctRows[String(rowIndex)] ?? correctRows[`question_${questionIndex}_${rowIndex}`])
-        .map((value) => `${rowIndex}:${value}`),
-    );
-    actual = question.rows.flatMap((_, rowIndex) =>
-      answerValues(submittedRows[`row_${rowIndex}`] ?? submittedRows[`question_${questionIndex}_${rowIndex}`])
-        .map((value) => `${rowIndex}:${value}`),
-    );
+  } else if (question.type === "checkbox_grid") {
+    ({ expected, actual } = gridAnswerCells(question, submitted, questionIndex));
   } else {
     return false;
   }
@@ -424,17 +429,8 @@ export function scoreIntercessionQuiz(questions: IntercessionFormQuestion[], ans
     const submitted = answers[`question_${index}`];
     let earnedPoints = 0;
     if (["multiple_choice_grid", "checkbox_grid"].includes(question.type)) {
-      const submittedRows = record(submitted);
-      const correctRows = record(question.correctAnswers);
-      const expectedCells = question.rows.flatMap((_, rowIndex) =>
-        answerValues(correctRows[`row_${rowIndex}`] ?? correctRows[String(rowIndex)] ?? correctRows[`question_${index}_${rowIndex}`])
-          .map((value) => `${rowIndex}:${value}`),
-      );
-      const actualCells = question.rows.flatMap((_, rowIndex) =>
-        answerValues(submittedRows[`row_${rowIndex}`] ?? submittedRows[`question_${index}_${rowIndex}`])
-          .map((value) => `${rowIndex}:${value}`),
-      );
-      earnedPoints = question.points * selectionCredit(expectedCells, actualCells, partial);
+      const { expected, actual } = gridAnswerCells(question, submitted, index);
+      earnedPoints = question.points * selectionCredit(expected, actual, partial, question.type !== "multiple_choice_grid");
     } else if (question.type === "checkboxes") {
       const expected = answerValues(question.correctAnswers);
       const actual = answerValues(submitted);
@@ -449,6 +445,57 @@ export function scoreIntercessionQuiz(questions: IntercessionFormQuestion[], ans
     grades.push({ questionIndex: index, correct: earnedPoints >= question.points, points: question.points, earnedPoints: Math.round(earnedPoints * 10_000) / 10_000 });
   });
   return { score: total > 0 ? Math.round((earned / total) * 1000) / 10 : null, grades, earnedPoints: Math.round(earned * 100) / 100, totalPoints: total };
+}
+
+export function reconcileIntercessionMultipleChoiceGridGrades(
+  questions: IntercessionFormQuestion[],
+  answersValue: unknown,
+  gradesValue: unknown,
+  score: number,
+) {
+  if (!answersValue || typeof answersValue !== "object" || Array.isArray(answersValue) || !Array.isArray(gradesValue) || !Number.isFinite(score)) {
+    return { status: "invalid" as const };
+  }
+  const answers = record(answersValue);
+  const grades: Record<string, unknown>[] = [];
+  const indexes = new Set<number>();
+  let total = 0;
+  let earned = 0;
+  let added = 0;
+  let needsReview = false;
+  for (const value of gradesValue) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return { status: "invalid" as const };
+    const grade = record(value);
+    const index = grade.questionIndex;
+    const points = grade.points;
+    const earnedPoints = grade.earnedPoints === undefined && typeof grade.correct === "boolean"
+      ? grade.correct ? points : 0
+      : grade.earnedPoints;
+    if (typeof index !== "number" || !Number.isInteger(index) || index < 0 || indexes.has(index)
+      || typeof points !== "number" || !Number.isFinite(points) || points <= 0
+      || typeof earnedPoints !== "number" || !Number.isFinite(earnedPoints) || earnedPoints < 0 || earnedPoints > points
+      || typeof grade.correct !== "boolean") return { status: "invalid" as const };
+    indexes.add(index);
+    total += points;
+    earned += earnedPoints;
+    const question = questions[index];
+    if (question?.type === "multiple_choice_grid" && question.points === points && grade.correct === (earnedPoints >= points)) {
+      const { expected, actual } = gridAnswerCells(question, answers[`question_${index}`], index);
+      const oldPoints = Math.round(points * selectionCredit(expected, actual, true) * 10_000) / 10_000;
+      const newPoints = Math.round(points * selectionCredit(expected, actual, true, false) * 10_000) / 10_000;
+      if (Math.abs(oldPoints - earnedPoints) < 0.00001 && newPoints > earnedPoints) {
+        grades.push({ ...grade, correct: newPoints >= points, earnedPoints: newPoints });
+        added += newPoints - earnedPoints;
+        continue;
+      }
+      if (newPoints > earnedPoints) needsReview = true;
+    }
+    grades.push(grade);
+  }
+  if (!total || Math.abs(score - Math.round((earned / total) * 1000) / 10) > 0.11) return { status: "invalid" as const };
+  if (needsReview) return { status: "review" as const };
+  if (!added) return { status: "unchanged" as const };
+  return { status: "corrected" as const, grades, score: Math.round(((earned + added) / total) * 1000) / 10, addedPoints: added };
 }
 
 export function reconcileIntercessionWhitespaceGrades(

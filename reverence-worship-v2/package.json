@@ -14,6 +14,7 @@
     "test:notifications": "tsx --test tests/notification-rules.test.ts",
     "notifications:reconcile": "node --conditions=react-server --import tsx scripts/reconcile-notifications.ts",
     "forms:reconcile-whitespace-marks": "tsx scripts/reconcile-form-whitespace-marks.ts",
+    "forms:reconcile-grid-marks": "tsx scripts/reconcile-form-grid-marks.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",

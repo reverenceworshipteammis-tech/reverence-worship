@@ -13,6 +13,7 @@ import {
   parseIntercessionFormQuestions,
   parseIntercessionFormSettings,
   intercessionPartialCreditWasDeducted,
+  reconcileIntercessionMultipleChoiceGridGrades,
   reconcileIntercessionWhitespaceGrades,
   scoreIntercessionQuiz,
   visibleIntercessionQuestions,
@@ -163,16 +164,45 @@ test("partial credit notice only appears when wrong checkbox selections cancel c
   assert.equal(intercessionPartialCreditWasDeducted(grid, { row_0: ["A", "C"] }, 0), true);
 });
 
-test("partial credit notice covers multiple-choice grids with both correct and wrong rows", () => {
+test("multiple-choice grids award correct answers without deducting wrong answers", () => {
   const [grid] = parseIntercessionFormQuestions([
     { type: "multiple_choice_grid", rows: ["First", "Second"], columns: ["Yes", "No"], points: 2, correctAnswers: { row_0: "No", row_1: "Yes" } },
   ]);
   const mixed = { row_0: "No", row_1: "No" };
-  assert.equal(intercessionPartialCreditWasDeducted(grid, mixed, 0), true);
-  assert.equal(scoreIntercessionQuiz([grid], { question_0: mixed }, new Set([0]), true).earnedPoints, 0);
+  assert.equal(intercessionPartialCreditWasDeducted(grid, mixed, 0), false);
+  assert.equal(scoreIntercessionQuiz([grid], { question_0: mixed }, new Set([0]), true).earnedPoints, 1);
+  assert.equal(scoreIntercessionQuiz([grid], { question_0: mixed }, new Set([0]), false).earnedPoints, 0);
+  assert.equal(scoreIntercessionQuiz([grid], { question_0: { row_0: "No", row_1: "" } }, new Set([0]), true).earnedPoints, 1);
+  assert.equal(scoreIntercessionQuiz([grid], { question_0: { row_0: "Yes", row_1: "No" } }, new Set([0]), true).earnedPoints, 0);
+  assert.equal(scoreIntercessionQuiz([grid], { question_0: { row_0: "No", row_1: "Yes" } }, new Set([0]), true).earnedPoints, 2);
   assert.equal(intercessionPartialCreditWasDeducted(grid, { row_0: "No", row_1: "" }, 0), false);
-  assert.equal(intercessionPartialCreditWasDeducted(grid, { row_0: "Yes", row_1: "No" }, 0), false);
-  assert.equal(intercessionPartialCreditWasDeducted(grid, { row_0: "No", row_1: "Yes" }, 0), false);
+  const [threeRows] = parseIntercessionFormQuestions([
+    { type: "multiple_choice_grid", rows: ["One", "Two", "Three"], points: 2, correctAnswers: { row_0: "Yes", row_1: "No", row_2: "Yes" } },
+  ]);
+  assert.equal(scoreIntercessionQuiz([threeRows], { question_0: { row_0: "Yes", row_1: "Yes", row_2: "No" } }, new Set([0]), true).grades[0].earnedPoints, 0.6667);
+});
+
+test("multiple-choice grid reconciliation preserves other grades and is idempotent", () => {
+  const questions = parseIntercessionFormQuestions([
+    { type: "multiple_choice_grid", rows: ["First", "Second"], points: 2, correctAnswers: { row_0: "No", row_1: "Yes" } },
+    { type: "checkboxes", points: 2, correctAnswers: ["A", "B"] },
+  ]);
+  const answers = { question_0: { row_0: "No", row_1: "No" }, question_1: ["A", "C"] };
+  const grades = [
+    { questionIndex: 0, correct: false, points: 2, earnedPoints: 0 },
+    { questionIndex: 1, correct: false, points: 2, earnedPoints: 0 },
+  ];
+  const result = reconcileIntercessionMultipleChoiceGridGrades(questions, answers, grades, 0);
+  assert.equal(result.status, "corrected");
+  if (result.status !== "corrected") return;
+  assert.equal(result.addedPoints, 1);
+  assert.equal(result.score, 25);
+  assert.deepEqual(result.grades[1], grades[1]);
+  assert.equal(result.grades[0].earnedPoints, 1);
+  assert.equal(reconcileIntercessionMultipleChoiceGridGrades(questions, answers, result.grades, result.score).status, "unchanged");
+  assert.equal(reconcileIntercessionMultipleChoiceGridGrades(questions, answers, grades, 50).status, "invalid");
+  assert.equal(reconcileIntercessionMultipleChoiceGridGrades(questions, answers, [grades[0], grades[0]], 0).status, "invalid");
+  assert.equal(reconcileIntercessionMultipleChoiceGridGrades(questions, answers, [{ ...grades[0], earnedPoints: 0.5 }], 25).status, "review");
 });
 
 test("checkbox partial grading subtracts one correct selection for each wrong choice without going below zero", () => {

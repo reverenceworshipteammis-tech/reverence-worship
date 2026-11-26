@@ -24,6 +24,10 @@ Quiz forms include an optional comment before submission. Comments are saved wit
 
 After deploying the short-answer and paragraph whitespace grading fix, back up the target database and run `npm run forms:reconcile-whitespace-marks` against it to preview corrections. Run `npm run forms:reconcile-whitespace-marks -- --apply` to save them. The command can be rerun safely; it changes only answers newly matching under the whitespace rule, preserving other grades and release settings. Manually reviewed submissions, submissions without question snapshots, and inconsistent grades are skipped and counted for manual review.
 
+Multiple-choice grids award an equal share of their points for each correct answer when partial points are enabled; incorrect answers do not cancel correct ones. Checkbox and checkbox-grid deductions are unchanged. To correct earlier results, back up the target database, then run `npm run forms:reconcile-grid-marks` to preview and `npm run forms:reconcile-grid-marks -- --apply --backup=<new-file-path>` to save. The required new backup file contains original scores and grades; keep it private. The command is safe to rerun and preserves other marks and release settings. It skips manually reviewed submissions, missing snapshots, inconsistent grades, and submissions whose form was updated after submission because historical settings were not saved; those require manual review.
+
+If partial points are independently confirmed to have been enabled for a specific skipped submission, add `--confirmed-partial-submission=<id>` to the preview and apply commands. This bypasses only the historical setting check for that submission.
+
 ## Annual membership commitments
 
 Open **Intercession → Forms → Manage → Create form → Templates → Annual commitment**. Set the year, member fields and editing permissions. Add the description and extra questions with the existing builder, preview, and publish. Submitting the form records the member's commitment; there is no separate terms or acceptance section. Duplicate a previous commitment to prepare the following year.
